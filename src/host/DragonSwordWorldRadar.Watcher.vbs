@@ -4,6 +4,7 @@ Dim fso, shell, scriptDir, modDir, runtimeDir, logDir, logPath
 Dim requestPath, stopPath, lastStamp, currentStamp, command, rc
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
+shell.CurrentDirectory = shell.ExpandEnvironmentStrings("%TEMP%")
 scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
 modDir = fso.GetParentFolderName(scriptDir)
 If WScript.Arguments.Count > 0 Then modDir = fso.GetAbsolutePathName(WScript.Arguments(0))
@@ -29,7 +30,7 @@ Function Quote(value)
     Quote = Chr(34) & Replace(value, Chr(34), Chr(34) & Chr(34)) & Chr(34)
 End Function
 
-LogLine "WATCHER_START version=0.3.2c host=wscript pidless=true"
+LogLine "WATCHER_START version=0.4.0-dev7-stable6 host=wscript pidless=true"
 Do
     If fso.FileExists(stopPath) Then
         On Error Resume Next

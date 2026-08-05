@@ -18,6 +18,7 @@ namespace DragonSwordWorldRadar.Installer
             List<IDataProvider> providers = new List<IDataProvider>
             {
                 new TreasureDataProvider(),
+                new BossDataProvider(),
             };
             List<DataSetResult> results = new List<DataSetResult>();
 

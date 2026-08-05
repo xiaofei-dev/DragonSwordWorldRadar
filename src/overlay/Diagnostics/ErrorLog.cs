@@ -5,6 +5,8 @@ namespace DragonSwordWorldRadar
 {
     internal static class ErrorLog
     {
+        private static readonly object Sync = new object();
+
         public static readonly string Path = ModPath.RuntimePath("logs", "DragonSwordWorldRadar.Overlay.log");
 
         public static void Write(
@@ -43,8 +45,12 @@ namespace DragonSwordWorldRadar
         {
             try
             {
-                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path));
-                File.AppendAllText(Path, text);
+                lock (Sync)
+                {
+                    Directory.CreateDirectory(
+                        System.IO.Path.GetDirectoryName(Path));
+                    File.AppendAllText(Path, text);
+                }
             }
             catch
             {

@@ -10,24 +10,32 @@ public interface IDataProvider
 }
 ```
 
-`InstallationPipeline` owns the provider registry. Version 0.3.2c registers `TreasureDataProvider` only.
+`InstallationPipeline` owns the provider registry. Version 0.4.0-dev3 registers two independent providers.
 
-## Adding a future layer
+## Treasure provider
 
-For a boss layer:
+`TreasureDataProvider` extracts `SectionTreasureBoxData.xml` and generates `data/generated/treasures.lua`.
 
-1. Add `BossDataProvider : IDataProvider` under `src/installer/Core/Providers`.
+## Boss provider
+
+`BossDataProvider` extracts `FieldBossListData.xml` and `SectionMonsterData.xml`, resolves the nine supported field-boss rows by exact boss ID, validates their UID/UIDName/XYZ data, and generates `data/generated/bosses.lua`.
+
+The generated boss catalog is static location and identity data only. Death and respawn are runtime concerns handled by `scripts/boss_tracker.lua`; no boss status is written into the treasure save-state model.
+
+## Adding another layer
+
+1. Add an `IDataProvider` under `src/installer/Core/Providers`.
 2. Extract or scan the required local game data.
-3. Write a deterministic file such as `data/generated/bosses.lua`.
+3. Write a deterministic file under `data/generated`.
 4. Return a `DataSetResult` with record count and source metadata.
 5. Register the provider in `InstallationPipeline`.
-6. Add a stable UE4SS module shim and an independent renderer layer.
+6. Add a stable UE4SS module shim, state tracker if needed, and an independent renderer layer.
 
-The installer automatically records every returned dataset in `metadata/datasets.json`. Game-version invalidation applies to the entire provider pipeline, so a reinstall regenerates treasures, bosses, and future datasets together.
+The installer records every returned dataset in `metadata/datasets.json`. Game-version invalidation applies to the full provider pipeline.
 
 ## Extraction constraints
 
 - Extracted game data is generated locally and is not included in releases.
 - The PAK AES key is detected from the user's local executable.
-- Oodle decompression uses the open-source `ooz.exe` decoder.
-- No extractor executable is shipped.
+- Oodle-compatible decompression uses the bundled `ooz.exe` decoder.
+- No custom radar executable is built or distributed.

@@ -1,30 +1,33 @@
 {
   "schema_version": 1,
   "name": "DragonSwordWorldRadar",
-  "version": "0.3.2c",
-  "stage": "treasure-layer-framework",
+  "version": "0.4.0-dev7-stable6",
+  "stage": "stable-graphics-outline-and-overlap-fix",
   "mod_folder": "DragonSwordWorldRadar",
   "renderer": "WinForms source compiled in memory by Windows PowerShell 5.1",
   "custom_executable_count": 0,
-  "automatic_start": "hidden WScript watcher; transient PowerShell host only while the game is running",
-  "world_map_producer_interval_ms": 16,
+  "automatic_start": "hidden WScript watcher using a TEMP working directory; transient PowerShell host only while the game is running",
+  "world_map_producer_interval_ms": 8,
   "minimap_motion_interval_ms": 16,
   "data_installation": "local game PAK extraction through in-memory C# and the ooz.exe decoder",
   "game_update_detection": "stored executable/PAK fingerprint checked on each game launch",
   "implemented_layers": [
-    "treasures"
+    "treasures",
+    "bosses"
   ],
   "planned_layer_slots": [
-    "bosses",
     "groundhog",
     "assault"
   ],
+  "boss_record_count": 9,
+  "boss_runtime_tracking": "tb_actor_respawn read from consistent .db/.bak plus WAL/SHM/journal snapshots; no Character enumeration",
+  "boss_marker": "single enlarged vector marker modeled on Icon_Mark_FieldBoss_Sprite and shared by all bosses",
   "bundled_tool_executable_count": 1,
   "bundled_tools": [
     {
       "name": "ooz.exe",
       "path": "tools/ooz.exe",
-      "sha256": "520e3596e50859194e1fcbf9cfda09ea0e33a70e2793be277f0a0070bd22dc8c",
+      "sha256": "271d3fd02e582175ff033d0a23dca3785b6888fa21b8cd06741ba8c19b71df41",
       "purpose": "installation-time Oodle-compatible decompression"
     }
   ],
@@ -34,5 +37,29 @@
   ],
   "pawn_tracking": "Current PlayerController.Pawn sampled directly; no Lua-wrapper identity comparison",
   "diagnostics_output": "runtime/diagnostics",
-  "player_z_reference_offset": -120
+  "player_z_reference_offset": -150,
+  "static_state_interval_ms": 250,
+  "overlay_timer_resolution_ms": 1,
+  "bridge_protocol": "alternating static JSON plus compact sequence-validated motion slots",
+  "save_fingerprint_poll_ms": 500,
+  "save_slot_discovery_seconds": 5,
+  "treasure_marker_outline": "DrawEllipse and GraphicsPath outlines retained; outline color equals each treasure marker fill color",
+  "background_visibility": "overlay remains active and visible after F7 until F8; no foreground, overlap, or minimized-window visibility polling",
+  "runtime_probe_hooks": "none; exploration probes are isolated in DragonSwordWorldDataProbe",
+  "installer_overlay_validation": "Install.ps1 compiles the exact complete overlay source set used by the F7 host",
+  "config_validation": "malformed preserved config.lua is archived and replaced by a validated complete default",
+  "marker_style": {
+    "shared_outline": "opaque dark navy-charcoal",
+    "treasure_fill": "semantic type colors",
+    "boss_fill": "warm red with ivory icon",
+    "nearest_marker": "larger diameter; no purple selection ring",
+    "anti_aliasing": "disabled only for treasure geometry to avoid transparency-key fringe"
+  },
+  "graphics_fix": {
+    "treasure_outline": "shared neutral dark RadarMarkerStyle.Outline",
+    "world_map_path_fill": "FillMode.Winding",
+    "world_map_pixel_dedupe": true,
+    "boss_visual_style_changed": false,
+    "runtime_or_bridge_changes": false
+  }
 }

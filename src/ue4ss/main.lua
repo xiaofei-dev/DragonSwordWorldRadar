@@ -43,12 +43,13 @@ local show_treasure_types = config.show_treasure_types ~= false
 local text_scale = tonumber(config.text_scale) or 1.0
 text_scale = math.max(0.5, math.min(2.0, text_scale))
 local show_treasures = config.show_treasures ~= false
+local show_bosses = config.show_bosses ~= false
 local auto_start_overlay = config.auto_start_overlay ~= false
 local start_key = config.start_key or config.refresh_key or "F7"
 local stop_key = config.stop_key or config.toggle_key or "F8"
 if diagnostics ~= nil then
     diagnostics.configure({
-        version = "0.3.2c",
+        version = "0.4.0-dev7-stable6",
         generation = generation,
         enabled = config.diagnostic_logging ~= false,
         verbose = config.diagnostic_verbose == true,
@@ -56,6 +57,7 @@ if diagnostics ~= nil then
     })
 end
 local mod_directory = nil
+local resolve_mod_directory
 local overlay_start_requested = false
 if world_map_markers_enabled then
     world_map.initialize(log, is_current_generation)
@@ -69,6 +71,7 @@ if world_map_markers_enabled then
             show_treasure_types = show_treasure_types,
             text_scale = text_scale,
             show_treasures = show_treasures,
+            show_bosses = show_bosses,
             start_key = start_key,
             stop_key = stop_key,
         })
@@ -80,36 +83,39 @@ local FIELD_RADAR_RADIUS = 22500.0
 local MINIMAP_SCALE_THRESHOLD = 2.7
 local MINIMAP_SCALE_CHECK_INTERVAL_MS = 1000
 local MAX_RADAR_POINTS = 80
--- Keep timing internal while preserving responsive world-map tracking.
-local WORLD_MAP_UPDATE_INTERVAL_MS = 16
+-- Full marker/configuration state stays low-frequency. Compact movement
+-- frames use separate double-buffered files: 16 ms on the minimap and 8 ms
+-- while the world map is open. High-frequency loops never serialize JSON.
+local WORLD_MAP_ACTIVE_INTERVAL_MS = 8
 local MAP_LOAD_RESUME_DELAY_MS = 3000
-
--- Keep DragonSwordTreasureRadar 1.6.1 scheduling for full state generation.
--- Radar membership updates at 250 ms; the map path runs at 16 ms. A separate
--- fast bridge is used only in radar mode and never competes with map UI reads.
 local MINIMAP_UPDATE_INTERVAL_MS = 250
 local FAST_MOTION_INTERVAL_MS = 16
-local FAST_MOTION_RECORD_SIZE = 384
+local FAST_MOTION_RECORD_SIZE = 768
 local WORLD_MAP_ID = 100
 local TREASURE_GRID_CELL_SIZE = FIELD_RADAR_RADIUS
 
 local world_treasures = nil
 local treasure_grid = nil
+local world_bosses = nil
+local boss_tracker = nil
 local radar_radius = FIELD_RADAR_RADIUS
 local enabled = false
 local loop_started = false
 local world_map_loop_started = false
 local update_pending = false
-local state_path = nil
+local state_path_a = nil
+local state_path_b = nil
 local motion_path_a = nil
 local motion_path_b = nil
 local motion_sequence = 0
+local last_motion_body = nil
 local motion_write_error_logged = false
 local latest_motion_x = nil
 local latest_motion_y = nil
 local latest_motion_z = nil
 local latest_motion_mode = "radar"
 local latest_motion_radius = FIELD_RADAR_RADIUS
+local latest_motion_map_state = nil
 local latest_motion_sample = 0
 local written_motion_sample = 0
 local write_error_logged = false
@@ -117,10 +123,14 @@ local engine = nil
 local player_pawn = nil
 local motion_loop_started = false
 local motion_update_pending = false
+local world_motion_update_pending = false
 local minimap_layer = nil
 local minimap_scale_elapsed_ms = MINIMAP_SCALE_CHECK_INTERVAL_MS
 local minimap_mode = nil
 local world_map_was_active = false
+local last_world_left = nil
+local last_world_top = nil
+local last_world_zoom = nil
 local map_resume_delay_remaining_ms = 0
 local state_sequence = 0
 local previous_state_write_ms = 0.0
@@ -128,6 +138,11 @@ local queued_update_started_ms = nil
 
 local function ensure_treasures_loaded()
     if world_treasures ~= nil then
+        return true
+    end
+    if not show_treasures then
+        world_treasures = {}
+        treasure_grid = {}
         return true
     end
 
@@ -180,7 +195,71 @@ local function ensure_treasures_loaded()
     return true
 end
 
-local function resolve_mod_directory()
+local function ensure_bosses_loaded()
+    if world_bosses ~= nil and boss_tracker ~= nil then
+        return true
+    end
+    if not show_bosses then
+        world_bosses = {}
+        return true
+    end
+
+    local ok_data, data = pcall(require, "bosses")
+    if not ok_data or type(data) ~= "table" then
+        log("bosses.lua could not be loaded: " .. tostring(data))
+        return false
+    end
+    local ok_tracker, tracker = pcall(require, "boss_tracker")
+    if not ok_tracker or type(tracker) ~= "table" then
+        log("boss_tracker.lua could not be loaded: " .. tostring(tracker))
+        return false
+    end
+
+    world_bosses = {}
+    for _, boss in ipairs(data) do
+        local boss_id = tonumber(boss.boss_id)
+        local map_id = tonumber(boss.map_id)
+        local x = tonumber(boss.x)
+        local y = tonumber(boss.y)
+        local z = tonumber(boss.z)
+        if boss_id ~= nil and map_id ~= nil and x ~= nil and y ~= nil then
+            table.insert(world_bosses, {
+                boss_id = boss_id,
+                map_id = map_id,
+                x = x,
+                y = y,
+                z = z,
+                uid_name = tostring(boss.uid_name or ""),
+            })
+        end
+    end
+    if #world_bosses ~= 9 then
+        log(string.format(
+            "World-boss dataset validation failed: expected 9, loaded %d.",
+            #world_bosses
+        ))
+        world_bosses = nil
+        return false
+    end
+
+    boss_tracker = tracker
+    boss_tracker.initialize(
+        world_bosses,
+        log,
+        resolve_mod_directory() .. "\\runtime\\boss_state.txt"
+    )
+    log("Loaded 9 world boss locations and initialized runtime state tracking.")
+    return true
+end
+
+local function ensure_layers_loaded()
+    if not show_treasures and not show_bosses then
+        return false
+    end
+    return ensure_treasures_loaded() and ensure_bosses_loaded()
+end
+
+resolve_mod_directory = function()
     if mod_directory ~= nil then
         return mod_directory
     end
@@ -243,42 +322,19 @@ local function start_overlay()
     log("PowerShell overlay launch requested through hidden watcher: " .. request_path)
 end
 
-local function resolve_state_path()
-    if state_path ~= nil then
-        return state_path
+local function resolve_state_paths()
+    if state_path_a ~= nil and state_path_b ~= nil then
+        return state_path_a, state_path_b
     end
 
-    local source = debug.getinfo(1, "S").source
-    if type(source) == "string" and string.sub(source, 1, 1) == "@" then
-        local script_file = string.sub(source, 2)
-        local scripts_directory = string.match(
-            script_file,
-            "^(.*)[/\\][^/\\]+$"
-        )
-        local mod_directory = scripts_directory
-            and string.match(scripts_directory, "^(.*)[/\\][^/\\]+$")
-        if mod_directory ~= nil then
-            state_path = mod_directory .. "\\runtime\\bridge\\radar_state.json"
-        end
+    local directory = resolve_mod_directory()
+    if directory ~= nil then
+        state_path_a = directory .. "\\runtime\\bridge\\radar_state_a.json"
+        state_path_b = directory .. "\\runtime\\bridge\\radar_state_b.json"
+        log("Static state bridge files: "
+            .. state_path_a .. " / " .. state_path_b)
     end
-
-    if state_path == nil then
-        local ok, directories = pcall(IterateGameDirectories)
-        local win64 = ok and directories
-            and directories.Game
-            and directories.Game.Binaries
-            and directories.Game.Binaries.Win64
-        local win64_path = win64 and win64.__absolute_path
-        if type(win64_path) == "string" then
-            state_path = win64_path
-                .. "\\Mods\\DragonSwordWorldRadar\\runtime\\bridge\\radar_state.json"
-        end
-    end
-
-    if state_path ~= nil then
-        log("Radar bridge file: " .. state_path)
-    end
-    return state_path
+    return state_path_a, state_path_b
 end
 
 local function resolve_motion_paths()
@@ -296,13 +352,38 @@ local function resolve_motion_paths()
     return motion_path_a, motion_path_b
 end
 
+local function reset_bridge_files()
+    local static_a, static_b = resolve_state_paths()
+    local motion_a, motion_b = resolve_motion_paths()
+    local directory = resolve_mod_directory()
+    local legacy_state = directory ~= nil
+        and (directory .. "\\runtime\\bridge\\radar_state.json")
+        or nil
+    for _, path in ipairs({
+        static_a,
+        static_b,
+        motion_a,
+        motion_b,
+        legacy_state,
+    }) do
+        if path ~= nil then
+            pcall(os.remove, path)
+        end
+    end
+    state_sequence = 0
+    motion_sequence = 0
+    last_motion_body = nil
+end
+
 local function write_fast_motion(
     is_enabled,
     mode,
     player_x,
     player_y,
     player_z,
-    radius
+    radius,
+    map_state,
+    force
 )
     local diagnostic_start = diagnostics ~= nil and diagnostics.now_ms() or 0.0
     local path_a, path_b = resolve_motion_paths()
@@ -313,14 +394,13 @@ local function write_fast_motion(
                 false
             )
         end
-        return
+        return false
     end
 
-    motion_sequence = motion_sequence + 1
-    local sequence_text = tostring(motion_sequence)
-    local payload = string.format(
-        "%s|%s|%s|%.6f|%.6f|%.6f|%s|%.6f|%s\n",
-        sequence_text,
+    map_state = map_state or {}
+    local body = string.format(
+        "%d|%s|%s|%.6f|%.6f|%.6f|%s|%.6f|%d|%.6f|%.6f|%.6f|%.6f|%.9f|%.6f|%.6f|%.9f|%.6f|%.6f",
+        generation,
         is_enabled and "1" or "0",
         mode or "radar",
         player_x or 0,
@@ -328,9 +408,25 @@ local function write_fast_motion(
         player_z or 0,
         player_z ~= nil and "1" or "0",
         radius or radar_radius,
-        sequence_text
+        tonumber(map_state.map_id) or 0,
+        tonumber(map_state.dimensions) or 0,
+        tonumber(map_state.ui_size) or 0,
+        tonumber(map_state.left) or 0,
+        tonumber(map_state.top) or 0,
+        tonumber(map_state.zoom) or 0,
+        tonumber(map_state.viewport_width) or 0,
+        tonumber(map_state.viewport_height) or 0,
+        tonumber(map_state.viewport_scale) or 0,
+        tonumber(map_state.player_map_x) or 0,
+        tonumber(map_state.player_map_y) or 0
     )
+    if not force and body == last_motion_body then
+        return true
+    end
 
+    motion_sequence = motion_sequence + 1
+    local sequence_text = tostring(motion_sequence)
+    local payload = sequence_text .. "|" .. body .. "|" .. sequence_text .. "\n"
     if #payload > FAST_MOTION_RECORD_SIZE then
         if not motion_write_error_logged then
             log("Fast motion record exceeded its fixed size.")
@@ -342,12 +438,9 @@ local function write_fast_motion(
                 false
             )
         end
-        return
+        return false
     end
 
-    -- Alternate files. The overlay can keep the previous complete slot while
-    -- the next slot is being replaced, so no reader/writer sharing assumption
-    -- is required from the Windows C runtime used by UE4SS Lua.
     local path = motion_sequence % 2 == 0 and path_a or path_b
     local file, open_error = io.open(path, "w")
     if file == nil then
@@ -361,8 +454,9 @@ local function write_fast_motion(
                 false
             )
         end
-        return
+        return false
     end
+
     local ok, result = pcall(function()
         file:write(payload)
         file:close()
@@ -374,9 +468,12 @@ local function write_fast_motion(
             log("Could not write fast motion bridge: " .. tostring(result))
             motion_write_error_logged = true
         end
-    elseif motion_write_error_logged then
-        log("Fast motion bridge recovered.")
-        motion_write_error_logged = false
+    else
+        last_motion_body = body
+        if motion_write_error_logged then
+            log("Fast motion bridge recovered.")
+            motion_write_error_logged = false
+        end
     end
     if diagnostics ~= nil then
         diagnostics.record_motion_write(
@@ -384,13 +481,11 @@ local function write_fast_motion(
             ok and result == true
         )
     end
+    return ok and result == true
 end
 
 local function flush_latest_motion()
-    if world_map_was_active
-        or latest_motion_mode == "world"
-        or latest_motion_sample == written_motion_sample
-    then
+    if latest_motion_sample == written_motion_sample then
         return
     end
     written_motion_sample = latest_motion_sample
@@ -400,64 +495,59 @@ local function flush_latest_motion()
         latest_motion_x,
         latest_motion_y,
         latest_motion_z,
-        latest_motion_radius
+        latest_motion_radius,
+        latest_motion_map_state,
+        false
     )
 end
 
-local function write_text_atomic(path, text)
-    local temporary_path = path
-        .. "."
-        .. tostring(generation)
-        .. "."
-        .. tostring(state_sequence)
-        .. ".tmp"
-    local file, open_error = io.open(temporary_path, "w")
+local function write_static_state(text)
+    local path_a, path_b = resolve_state_paths()
+    if path_a == nil or path_b == nil then
+        return false, "state bridge paths unavailable"
+    end
+    local path = state_sequence % 2 == 0 and path_a or path_b
+    local file, open_error = io.open(path, "w")
     if file == nil then
         return false, open_error
     end
-
-    local write_ok, write_result, write_error = pcall(
-        file.write,
-        file,
-        text
-    )
-    if not write_ok or write_result == nil then
+    local ok, result = pcall(function()
+        file:write(text)
+        file:close()
+        return true
+    end)
+    if not ok or result ~= true then
         pcall(file.close, file)
-        os.remove(temporary_path)
-        return false, write_ok and write_error or write_result
-    end
-    local close_ok, close_result, close_error = pcall(
-        file.close,
-        file
-    )
-    if not close_ok or close_result == nil then
-        os.remove(temporary_path)
-        return false, close_ok and close_error or close_result
-    end
-    os.remove(path)
-    local renamed, rename_error = os.rename(temporary_path, path)
-    if not renamed then
-        os.remove(temporary_path)
-        return false, rename_error
+        return false, result
     end
     return true, nil
 end
 
+local function publish_motion_sample(
+    mode,
+    player_x,
+    player_y,
+    player_z,
+    map_state
+)
+    latest_motion_x = player_x
+    latest_motion_y = player_y
+    latest_motion_z = player_z
+    latest_motion_mode = mode
+    latest_motion_radius = radar_radius
+    latest_motion_map_state = map_state
+    latest_motion_sample = latest_motion_sample + 1
+end
+
 local function write_disabled_state()
     state_sequence = state_sequence + 1
-    local path = resolve_state_path()
-    local written = false
-    local write_error = nil
-    if path ~= nil then
-        written, write_error = write_text_atomic(
-            path,
-            string.format(
-                '{"stateSequence":%d,"producerGeneration":%d,"enabled":false,"mode":"disabled","points":[]}',
-                state_sequence,
-                generation
-            )
+    local written, write_error = write_static_state(
+        string.format(
+            '{"stateSequence":%d,"producerGeneration":%d,"enabled":false,"mode":"disabled","points":[],"bosses":[]}',
+            state_sequence,
+            generation
         )
-    end
+    )
     if not written and diagnostics ~= nil then
         diagnostics.error_rate_limited(
             "disabled_state_write",
@@ -467,7 +557,7 @@ local function write_disabled_state()
             { state_sequence = state_sequence }
         )
     end
-    write_fast_motion(false, "radar", 0, 0, nil, radar_radius)
+    write_fast_motion(false, "disabled", 0, 0, nil, radar_radius, nil, true)
     if diagnostics ~= nil then
         diagnostics.set_mode("disabled", state_sequence)
     end
@@ -607,6 +697,49 @@ local function update_radar_radius()
     end
 end
 
+local function current_time_ms()
+    if diagnostics ~= nil then
+        return diagnostics.now_ms()
+    end
+    return os.clock() * 1000.0
+end
+
+local function build_boss_json(player_x, player_y, nearby_only, current_map_id)
+    if not show_bosses or boss_tracker == nil then
+        return "[]"
+    end
+    boss_tracker.update(player_x, player_y, current_time_ms(), current_map_id)
+    local snapshot = boss_tracker.snapshot()
+    local radius_squared = radar_radius * radar_radius
+    local parts = { "[" }
+    local written = 0
+    for _, boss in ipairs(snapshot) do
+        local dx = boss.x - player_x
+        local dy = boss.y - player_y
+        local is_nearby = dx * dx + dy * dy <= radius_squared
+        if (not nearby_only or is_nearby) and boss.visible ~= false then
+            if written > 0 then
+                table.insert(parts, ",")
+            end
+            written = written + 1
+            table.insert(parts, string.format(
+                '{"bossId":%d,"mapId":%d,"x":%.3f,"y":%.3f,"z":%.3f,"hasZ":%s,"dx":%.3f,"dy":%.3f,"visible":true,"status":"%s"}',
+                boss.boss_id,
+                boss.map_id,
+                boss.x,
+                boss.y,
+                boss.z or 0,
+                boss.has_z and "true" or "false",
+                dx,
+                dy,
+                tostring(boss.status or "unknown")
+            ))
+        end
+    end
+    table.insert(parts, "]")
+    return table.concat(parts)
+end
+
 local function build_radar_json(player_x, player_y, player_z)
     local radius_squared = radar_radius * radar_radius
     local nearby = {}
@@ -632,7 +765,7 @@ local function build_radar_json(player_x, player_y, player_z)
                         delta_x * delta_x + delta_y * delta_y
                     local delta_z = 0
                     if treasure.has_z == true and player_z ~= nil then
-                        local comparable_player_z = player_z - 120.0
+                        local comparable_player_z = player_z - 150.0
                         delta_z = treasure.z - comparable_player_z
                     end
                     local distance_squared =
@@ -661,9 +794,11 @@ local function build_radar_json(player_x, player_y, player_z)
     local count = math.min(#nearby, MAX_RADAR_POINTS)
     local parts = {
         string.format(
-            '{"enabled":true,"showHeight":%s,"showTreasureTypes":%s,"textScale":%.3f,"playerX":%.3f,"playerY":%.3f,"playerZ":%.3f,"hasPlayerZ":%s,"radius":%.3f,"points":[',
+            '{"enabled":true,"showHeight":%s,"showTreasureTypes":%s,"showTreasures":%s,"showBosses":%s,"textScale":%.3f,"playerX":%.3f,"playerY":%.3f,"playerZ":%.3f,"hasPlayerZ":%s,"mode":"radar","radius":%.3f,"points":[',
             show_height and "true" or "false",
             show_treasure_types and "true" or "false",
+            show_treasures and "true" or "false",
+            show_bosses and "true" or "false",
             text_scale,
             player_x,
             player_y,
@@ -688,23 +823,29 @@ local function build_radar_json(player_x, player_y, player_z)
             point.dy
         ))
     end
-    table.insert(parts, "]}")
+    table.insert(parts, '],"bosses":')
+    table.insert(parts, build_boss_json(player_x, player_y, true, nil))
+    table.insert(parts, "}")
     return table.concat(parts)
 end
 
 local function build_world_map_json(map, player_x, player_y, player_z)
     return string.format(
-        '{"enabled":true,"showHeight":%s,"showTreasureTypes":%s,"textScale":%.3f,"playerZ":%.3f,"hasPlayerZ":%s,"mode":"world","worldMap":'
+        '{"enabled":true,"showHeight":%s,"showTreasureTypes":%s,"showTreasures":%s,"showBosses":%s,"textScale":%.3f,"playerX":%.3f,"playerY":%.3f,"playerZ":%.3f,"hasPlayerZ":%s,"mode":"world","worldMap":'
             .. '{"mapId":%d,"dimensions":%.3f,'
             .. '"uiSize":%.3f,"left":%.3f,"top":%.3f,'
             .. '"zoom":%.6f,"viewportWidth":%.3f,'
             .. '"viewportHeight":%.3f,"viewportScale":%.6f,'
             .. '"playerWorldX":%.3f,"playerWorldY":%.3f,'
             .. '"playerMapX":%.3f,"playerMapY":%.3f},'
-            .. '"points":[]}',
+            .. '"points":[],"bosses":%s}',
         show_height and "true" or "false",
         show_treasure_types and "true" or "false",
+        show_treasures and "true" or "false",
+        show_bosses and "true" or "false",
         text_scale,
+        player_x,
+        player_y,
         player_z or 0,
         player_z ~= nil and "true" or "false",
         map.map_id,
@@ -719,7 +860,8 @@ local function build_world_map_json(map, player_x, player_y, player_z)
         player_x,
         player_y,
         map.player_map_x,
-        map.player_map_y
+        map.player_map_y,
+        build_boss_json(player_x, player_y, false, map.map_id)
     )
 end
 
@@ -747,7 +889,7 @@ end
 local function update_radar_state(queue_delay_ms)
     local update_started_ms = diagnostics ~= nil
         and diagnostics.now_ms() or 0.0
-    if not enabled or not ensure_treasures_loaded() then
+    if not enabled or not ensure_layers_loaded() then
         return
     end
 
@@ -803,6 +945,9 @@ local function update_radar_state(queue_delay_ms)
         and diagnostics.now_ms() or 0.0
     if map_state ~= nil then
         world_map_was_active = true
+        last_world_left = map_state.left or 0
+        last_world_top = map_state.top or 0
+        last_world_zoom = map_state.zoom or 0
         mode = "world"
         output = build_world_map_json(
             map_state,
@@ -810,8 +955,18 @@ local function update_radar_state(queue_delay_ms)
             player_y,
             player_z
         )
+        publish_motion_sample(
+            "world",
+            player_x,
+            player_y,
+            player_z,
+            map_state
+        )
     else
         world_map_was_active = false
+        last_world_left = nil
+        last_world_top = nil
+        last_world_zoom = nil
         mode = "radar"
 
         minimap_scale_elapsed_ms =
@@ -830,28 +985,16 @@ local function update_radar_state(queue_delay_ms)
             player_y,
             player_z
         )
+        publish_motion_sample(
+            "radar",
+            player_x,
+            player_y,
+            player_z,
+            nil
+        )
     end
     local build_ms = diagnostics ~= nil
         and (diagnostics.now_ms() - build_started_ms) or 0.0
-
-    local path = resolve_state_path()
-    if path == nil then
-        if diagnostics ~= nil then
-            diagnostics.record_update({
-                mode = mode,
-                state_sequence = state_sequence,
-                queue_delay_ms = queue_delay_ms or 0.0,
-                player_ms = player_ms,
-                world_ms = world_ms,
-                build_ms = build_ms,
-                write_ms = 0.0,
-                total_ms = diagnostics.now_ms() - update_started_ms,
-                failed = true,
-                write_ok = false,
-            })
-        end
-        return
-    end
 
     state_sequence = state_sequence + 1
     local before_write_ms = diagnostics ~= nil
@@ -867,10 +1010,7 @@ local function update_radar_state(queue_delay_ms)
 
     local write_started_ms = diagnostics ~= nil
         and diagnostics.now_ms() or 0.0
-    local written, write_error = write_text_atomic(
-        path,
-        output
-    )
+    local written, write_error = write_static_state(output)
     local write_ms = diagnostics ~= nil
         and (diagnostics.now_ms() - write_started_ms) or 0.0
     previous_state_write_ms = write_ms
@@ -902,6 +1042,56 @@ local function update_radar_state(queue_delay_ms)
     end
 end
 
+local function queue_world_motion_update()
+    if not is_current_generation()
+        or not enabled
+        or not world_map_was_active
+        or world_motion_update_pending
+        or map_resume_delay_remaining_ms > 0
+    then
+        return
+    end
+
+    world_motion_update_pending = true
+    ExecuteInGameThread(function()
+        if is_current_generation()
+            and enabled
+            and world_map_was_active
+            and map_resume_delay_remaining_ms <= 0
+        then
+            local player_x, player_y, player_z = get_player_location()
+            local map_state = world_map.read_state()
+            if player_x ~= nil and player_y ~= nil and map_state ~= nil then
+                last_world_left = map_state.left or 0
+                last_world_top = map_state.top or 0
+                last_world_zoom = map_state.zoom or 0
+                publish_motion_sample(
+                    "world",
+                    player_x,
+                    player_y,
+                    player_z,
+                    map_state
+                )
+            elseif map_state == nil then
+                world_map_was_active = false
+                last_world_left = nil
+                last_world_top = nil
+                last_world_zoom = nil
+                if player_x ~= nil and player_y ~= nil then
+                    publish_motion_sample(
+                        "radar",
+                        player_x,
+                        player_y,
+                        player_z,
+                        nil
+                    )
+                end
+            end
+        end
+        world_motion_update_pending = false
+    end)
+end
+
 local function queue_motion_update()
     if not is_current_generation()
         or not enabled
@@ -921,13 +1111,13 @@ local function queue_motion_update()
         then
             local player_x, player_y, player_z = get_player_location()
             if player_x ~= nil and player_y ~= nil then
-                latest_motion_x = player_x
-                latest_motion_y = player_y
-                latest_motion_z = player_z
-                latest_motion_mode = world_map_was_active
-                    and "world" or "radar"
-                latest_motion_radius = radar_radius
-                latest_motion_sample = latest_motion_sample + 1
+                publish_motion_sample(
+                    "radar",
+                    player_x,
+                    player_y,
+                    player_z,
+                    nil
+                )
             end
         end
         motion_update_pending = false
@@ -949,8 +1139,8 @@ local function ensure_motion_loop_started()
             return true
         end
         if world_map_was_active then
-            -- Stop the 4 ms loop completely while the map is active. Merely
-            -- idling it still wakes the UE4SS async scheduler 250 times/sec.
+            -- Stop the radar motion loop completely while the map is active.
+            -- Idling it would still wake the UE4SS async scheduler unnecessarily.
             motion_loop_started = false
             return true
         end
@@ -1029,7 +1219,7 @@ ensure_world_map_loop_started = function()
     end
     world_map_loop_started = true
 
-    LoopAsync(WORLD_MAP_UPDATE_INTERVAL_MS, function()
+    LoopAsync(WORLD_MAP_ACTIVE_INTERVAL_MS, function()
         if not is_current_generation() then
             return true
         end
@@ -1037,7 +1227,11 @@ ensure_world_map_loop_started = function()
             world_map_loop_started = false
             return true
         end
-        queue_radar_update()
+
+        -- Flush only the compact transform from the previous sample, then
+        -- queue UObject reads for the next sample. No JSON is built here.
+        flush_latest_motion()
+        queue_world_motion_update()
         return false
     end)
 end
@@ -1050,6 +1244,10 @@ local function ensure_loop_started()
 
     LoopAsync(MINIMAP_UPDATE_INTERVAL_MS, function()
         if not is_current_generation() then
+            return true
+        end
+        if not enabled then
+            loop_started = false
             return true
         end
 
@@ -1081,15 +1279,15 @@ RegisterKeyBind(Key[start_key], function()
     if not is_current_generation() then
         return
     end
-    if not show_treasures then
-        log("Treasure layer is disabled in config.lua.")
+    if not show_treasures and not show_bosses then
+        log("All radar layers are disabled in config.lua.")
         return
     end
-    if ensure_treasures_loaded() then
+    if ensure_layers_loaded() then
         enabled = true
         ensure_loop_started()
         ensure_motion_loop_started()
-        log("Treasure radar enabled.")
+        log("World radar enabled.")
         queue_motion_update()
         queue_radar_update()
     end
@@ -1100,10 +1298,14 @@ RegisterKeyBind(Key[stop_key], function()
         return
     end
     enabled = false
+    latest_motion_sample = 0
+    written_motion_sample = 0
+    latest_motion_map_state = nil
     write_disabled_state()
-    log("Treasure radar disabled.")
+    log("World radar disabled; all producer loops will stop.")
 end)
 
+reset_bridge_files()
 start_overlay()
 write_disabled_state()
-log("Ready. F7 enables the treasure radar; F8 disables it. Fast motion is radar-only; world map uses a 16 ms producer and low-latency WinForms consumer. Diagnostics: runtime/logs/DragonSwordWorldRadar.Lua.log and Collect-Diagnostics.cmd.")
+log("Ready. F7 enables configured radar layers; F8 disables them. Static state uses 250 ms double buffering; radar motion uses 16 ms and world-map motion uses 8 ms only while open. Diagnostics: runtime/logs/DragonSwordWorldRadar.Lua.log and Collect-Diagnostics.cmd.")

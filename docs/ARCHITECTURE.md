@@ -2,7 +2,7 @@
 
 ## Runtime processes
 
-DragonSwordWorldRadar uses one hidden Windows PowerShell process. The process remains as a low-overhead watcher and hosts the WinForms overlay in the same process while the game is running.
+DragonSwordWorldRadar uses a hidden WScript watcher and a transient Windows PowerShell process while the game is running. PowerShell compiles the WinForms overlay source in memory.
 
 ```text
 UE4SS Lua -> runtime/launch.request -> hidden watcher
@@ -10,7 +10,31 @@ UE4SS Lua -> runtime/launch.request -> hidden watcher
                                       -> WinForms overlay
 ```
 
-No custom `.exe` is built or distributed.
+No custom radar `.exe` is built or distributed.
+
+## Layer boundaries
+
+```text
+TreasureDataProvider -> generated/treasures.lua -> treasure bridge points
+                                              -> TreasureSaveState filter
+                                              -> treasure renderer
+
+BossDataProvider     -> generated/bosses.lua    -> boss_tracker.lua
+                                              -> boss bridge points
+                                              -> boss renderer
+```
+
+The boss layer does not use `tb_treasure_box`, treasure overrides, or permanent opened-bit filtering. Runtime actor observation owns boss visibility.
+
+## Boss state lifecycle
+
+1. Boss catalog entries start visible with an `unknown` runtime state.
+2. A streamed actor matching the configured UIDName and spawn coordinates confirms `alive`.
+3. A reflected dead flag hides the marker immediately on the next one-second scan.
+4. If a previously observed actor disappears while the player remains near its spawn, two consecutive scans confirm the hidden state.
+5. A newly spawned matching actor restores the marker.
+
+This deliberately avoids guessing a server-global state from static `FieldBossListData`. Off-screen server changes are reconciled when the relevant actor streams in.
 
 ## Runtime directories
 
@@ -22,25 +46,21 @@ runtime/
   reinstall-required.json
 ```
 
-All runtime files are disposable. User configuration and generated datasets are stored outside `runtime`.
-
 ## Data lifecycle
 
 ```text
 Install.cmd
   -> resolve local game layout
   -> compile installer C# in memory
-  -> execute registered IDataProvider implementations
+  -> execute TreasureDataProvider and BossDataProvider
   -> write data/generated/*
   -> write metadata/datasets.json
   -> write metadata/install-state.json
 ```
 
-At game launch, the watcher checks the stored game fingerprint before starting the overlay. A mismatch produces a reinstall prompt.
-
 ## Configuration lifecycle
 
 - `scripts/config.default.lua` is version controlled.
-- `scripts/config.lua` is created on first installation and preserved on upgrades.
-- `data/defaults/treasure_overrides.txt` is version controlled.
-- `data/treasure_overrides.txt` is user controlled and preserved on upgrades.
+- `scripts/config.lua` is created on first installation and merged without replacing user values.
+- `show_treasures` and `show_bosses` independently control their layers.
+- `data/treasure_overrides.txt` remains treasure-only and is preserved on upgrades.

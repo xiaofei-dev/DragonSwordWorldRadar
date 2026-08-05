@@ -1,7 +1,7 @@
 return {
-    -- Unified DragonSwordWorldRadar layer control. Treasure is the only implemented layer.
+    -- Unified DragonSwordWorldRadar layer control.
     show_treasures = true,
-    show_bosses = false,
+    show_bosses = true,
     show_groundhog = false,
     show_assault = false,
 
@@ -10,7 +10,7 @@ return {
     toggle_key = "F8",
     auto_start_overlay = true,
 
-    -- DragonSwordTreasureRadar 1.6.1 behavior and display settings.
+    -- Treasure behavior and display settings.
     world_map_markers = true,
     show_height = true,
     show_treasure_types = false,

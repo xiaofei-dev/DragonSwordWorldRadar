@@ -27,7 +27,7 @@ function Copy-IfExists([string]$Source,[string]$RelativeDestination) {
 
 $success = $false
 try {
-    Write-CollectorLog "COLLECT_START version=0.3.2c; modRoot=$modRoot"
+    Write-CollectorLog "COLLECT_START version=0.4.0-dev7-stable6; modRoot=$modRoot"
 
     $logsPath = Join-Path $runtime 'logs'
     if (Test-Path -LiteralPath $logsPath) {
@@ -39,7 +39,12 @@ try {
     foreach ($name in @('active-version.txt','reinstall-required.json','launch.request')) {
         Copy-IfExists (Join-Path $runtime $name) (Join-Path 'runtime' $name)
     }
-    foreach ($name in @('radar_state.json','radar_motion_a.dat','radar_motion_b.dat')) {
+    foreach ($name in @(
+        'radar_state_a.json',
+        'radar_state_b.json',
+        'radar_motion_a.dat',
+        'radar_motion_b.dat',
+        'radar_state.json')) {
         Copy-IfExists (Join-Path $runtime ('bridge\' + $name)) (Join-Path 'bridge' $name)
     }
     foreach ($name in @('release.json','install-state.json','datasets.json','build-manifest.json')) {
@@ -48,6 +53,7 @@ try {
     Copy-IfExists (Join-Path $modRoot 'scripts\config.lua') 'config\config.lua'
     Copy-IfExists (Join-Path $modRoot 'data\treasure_overrides.txt') 'config\treasure_overrides.txt'
     Copy-IfExists (Join-Path $modRoot 'data\generated\treasures.lua') 'data\treasures.lua'
+    Copy-IfExists (Join-Path $modRoot 'data\generated\bosses.lua') 'data\bosses.lua'
 
     $modsRoot = Split-Path -Parent $modRoot
     Copy-IfExists (Join-Path $modsRoot 'mods.txt') 'ue4ss\mods.txt'
@@ -79,9 +85,22 @@ try {
 
     $hashes = @()
     foreach ($relative in @(
-        'scripts\main.lua','scripts\world_map.lua','scripts\treasures.lua',
-        'host\DragonSwordWorldRadar.Watcher.vbs','host\DragonSwordWorldRadar.Host.ps1',
-        'metadata\release.json','data\generated\treasures.lua')) {
+        'scripts\main.lua',
+        'scripts\world_map.lua',
+        'scripts\treasures.lua',
+        'scripts\bosses.lua',
+        'src\overlay\Bridge\MotionBridgeReader.cs',
+        'src\overlay\Bridge\StaticStateBridgeReader.cs',
+        'src\overlay\Rendering\TreasureMarkerPalette.cs',
+        'src\overlay\UI\RadarForm.cs',
+        'src\overlay\SaveData\SaveDatabaseFingerprint.cs',
+        'src\overlay\SaveData\BossRespawnRuleResolver.cs',
+        'src\overlay\SaveData\TreasureSaveState.cs',
+        'host\DragonSwordWorldRadar.Watcher.vbs',
+        'host\DragonSwordWorldRadar.Host.ps1',
+        'metadata\release.json',
+        'data\generated\treasures.lua',
+        'data\generated\bosses.lua')) {
         $path = Join-Path $modRoot $relative
         if (Test-Path -LiteralPath $path) {
             $hashes += [ordered]@{

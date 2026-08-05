@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "version": "0.4.0-dev7-stable6",
+  "generated_at_utc": "2026-08-05T18:26:01.137358Z",
+  "source_verification": "passed",
+  "bridge": {
+    "static_slots": [
+      "runtime/bridge/radar_state_a.json",
+      "runtime/bridge/radar_state_b.json"
+    ],
+    "motion_slots": [
+      "runtime/bridge/radar_motion_a.dat",
+      "runtime/bridge/radar_motion_b.dat"
+    ],
+    "motion_field_count": 21,
+    "minimap_interval_ms": 16,
+    "world_interval_ms": 8,
+    "unchanged_motion_write_suppression": true,
+    "world_marker_batching": "GraphicsPath"
+  },
+  "save_state": {
+    "fingerprint_sidecars": [
+      "-wal",
+      "-shm",
+      "-journal"
+    ],
+    "consistent_db_and_bak_snapshots": true,
+    "boss_table": "tb_actor_respawn",
+    "character_enumeration": false,
+    "version_changes_only_on_semantic_state_changes": true
+  },
+  "required_release_entries": "passed",
+  "backup_artifacts": 0,
+  "validation_environment_note": "Package/static validation completed in Linux. Install.cmd now performs the authoritative Windows PowerShell 5.1 compile gate before installation completes.",
+  "source_baseline": "DragonSwordWorldRadar-0.4.0-dev7-bridge-save-event-fix-release.zip",
+  "minimal_diff_policy": {
+    "radar_form_restored_from_dev7": true,
+    "removed_methods": [
+      "UpdateForegroundVisibility",
+      "RectanglesOverlap"
+    ],
+    "preserved_methods": [
+      "GetTreasureBrush",
+      "DrawHeightIndicator",
+      "DrawNearestLabel",
+      "DrawOutlinedLabelLine",
+      "DrawTreasureMarker"
+    ],
+    "added_rendering_utility": "TreasureMarkerPalette"
+  },
+  "treasure_rendering": {
+    "draw_ellipse_retained": true,
+    "graphics_path_outlines_retained": true,
+    "outline_color_matches_fill": true,
+    "cached_outline_pens": true,
+    "per_frame_pen_allocation": false
+  },
+  "visibility": {
+    "foreground_poll_removed": true,
+    "overlap_poll_removed": true,
+    "minimized_window_hide_removed": true,
+    "control": "F7 enable / F8 disable"
+  },
+  "process_working_directory": {
+    "host": "TEMP/DragonSwordWorldRadar",
+    "watcher_host": "TEMP/DragonSwordWorldRadar",
+    "wscript": "TEMP",
+    "startup_shortcut": "TEMP/DragonSwordWorldRadar"
+  },
+  "runtime_hooks": {
+    "event_probe_removed": true,
+    "register_hook_in_main_package": false,
+    "separate_probe_mod": "DragonSwordWorldDataProbe"
+  },
+  "config_repair": {
+    "complete_default": true,
+    "validate_before_preserve": true,
+    "archive_invalid": true,
+    "validate_after_merge": true
+  },
+  "windows_compile_gate": {
+    "installer_compiles_exact_overlay_source_set": true,
+    "host_recompiles_exact_overlay_source_set_on_F7": true,
+    "local_linux_windows_powershell_compile": "unavailable"
+  },
+  "baseline_sha256": "71be8fc280619f6b2d51741093b3f135990f87e930139e7a34c1e1865b3eb49f",
+  "overlay_source_count": 24,
+  "static_validation": {
+    "csharp_delimiter_scan": "passed",
+    "radarform_method_preservation": "passed",
+    "private_field_reference_scan": "passed",
+    "powershell_delimiter_scan": "passed",
+    "json_parse": "passed",
+    "lua_config_shape": "passed",
+    "package_probe_hook_scan": "passed"
+  },
+  "expected_file_delta": {
+    "added": [
+      "src/overlay/Rendering/TreasureMarkerPalette.cs"
+    ],
+    "removed": [
+      "scripts/treasure_event_probe.lua"
+    ],
+    "radarform_removed_methods": [
+      "UpdateForegroundVisibility",
+      "RectanglesOverlap"
+    ]
+  },
+  "important_note": "The package is not claimed to have been compiled in Linux. Install.cmd performs the authoritative Windows PowerShell 5.1 overlay compile and aborts before watcher installation on any error or warning.",
+  "marker_style": {
+    "shared_style_class": "RadarMarkerStyle",
+    "treasure_outline_uses_shared_dark_color": true,
+    "boss_outline_uses_shared_dark_color": true,
+    "treasure_type_fills_preserved": true,
+    "boss_vector_silhouette_preserved": true,
+    "runtime_hooks_added": false
+  },
+  "graphics_fix": {
+    "treasure_outline_pen_uses_shared_outline": true,
+    "world_paths_use_winding_fill": 4,
+    "projected_pixel_dedupe": true,
+    "boss_renderer_unchanged_from_stable5": true,
+    "experimental_hooks_added": false
+  }
+}

@@ -8,6 +8,15 @@
       "source_entry": "SectionTreasureBoxData.xml",
       "output": "data/generated/treasures.lua",
       "runtime_module": "scripts/treasures.lua"
+    },
+    {
+      "id": "bosses",
+      "class": "DragonSwordWorldRadar.Installer.BossDataProvider",
+      "source_pak": "pakchunk109-WindowsClient.pak",
+      "source_entry": "SectionMonsterData.xml (CID-matched fixed world-boss definitions)",
+      "output": "data/generated/bosses.lua",
+      "runtime_module": "scripts/bosses.lua",
+      "record_count": 9
     }
   ]
 }

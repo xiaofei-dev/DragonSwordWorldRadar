@@ -8,6 +8,10 @@ $ModDir = [IO.Path]::GetFullPath($ModDir)
 $runtime = Join-Path $ModDir 'runtime'
 $logDir = Join-Path $runtime 'logs'
 New-Item -ItemType Directory -Force -Path $logDir,(Join-Path $runtime 'bridge') | Out-Null
+$processWorkDir = Join-Path ([IO.Path]::GetTempPath()) 'DragonSwordWorldRadar'
+New-Item -ItemType Directory -Force -Path $processWorkDir | Out-Null
+[Environment]::CurrentDirectory = $processWorkDir
+Set-Location -LiteralPath $processWorkDir
 $log = Join-Path $logDir 'DragonSwordWorldRadar.WatcherHost.log'
 function Log([string]$message) {
     try { Add-Content -LiteralPath $log -Encoding UTF8 -Value ("[{0:O}] {1}" -f [DateTime]::UtcNow,$message) } catch {}
@@ -17,7 +21,7 @@ $createdNew = $false
 $mutex = New-Object Threading.Mutex($true, 'Local\DragonSwordWorldRadar.TransientHost', [ref]$createdNew)
 if (-not $createdNew) { Log "HOST_ALREADY_RUNNING stamp=$RequestStamp pid=$PID"; exit 0 }
 try {
-    Log "HOST_START version=0.3.2c stamp=$RequestStamp pid=$PID"
+    Log "HOST_START version=0.4.0-dev7-stable6 stamp=$RequestStamp pid=$PID"
     $layout = Resolve-DragonSwordWorldRadarGameLayout -ModDir $ModDir
     $compatibility = Test-DragonSwordWorldRadarInstalledGame -ModDir $ModDir -Layout $layout
     if (-not $compatibility.Compatible) {

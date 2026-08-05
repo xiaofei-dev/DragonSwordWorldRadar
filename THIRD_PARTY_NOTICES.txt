@@ -22,7 +22,7 @@ The full SQLCipher license is included in licenses/SQLCIPHER.txt.
 ooz.exe decoder
 Version string reported by the binary: ooz v7.0
 Bundled path: tools/ooz.exe
-SHA-256: 520e3596e50859194e1fcbf9cfda09ea0e33a70e2793be277f0a0070bd22dc8c
+SHA-256: 271d3fd02e582175ff033d0a23dca3785b6888fa21b8cd06741ba8c19b71df41
 
 This binary was supplied for this project as the installation-time decoder used
 by the established treasure-data extraction workflow. Its upstream provenance

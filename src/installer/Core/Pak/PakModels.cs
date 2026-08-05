@@ -29,6 +29,7 @@ namespace DragonSwordWorldRadar.Installer
     internal sealed class DataEntry
     {
         public ulong PakOffset;
+        public ulong PayloadOffset;
         public ulong Offset;
         public ulong CompressedSize;
         public ulong UncompressedSize;

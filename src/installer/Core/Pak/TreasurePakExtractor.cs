@@ -15,12 +15,28 @@ namespace DragonSwordWorldRadar.Installer
         private const int PakFooterSize = 221;
         private const string TargetMountPoint =
             "../../../DS/Content/__GeneratedGameData__/Server/XML/GameData/";
-        private const string TargetFileName = "SectionTreasureBoxData.xml";
+        private const string DefaultTargetFileName =
+            "SectionTreasureBoxData.xml";
 
         public static void Extract(
             string executablePath,
             string pakPath,
             string oodleLibraryPath,
+            string outputPath)
+        {
+            Extract(
+                executablePath,
+                pakPath,
+                oodleLibraryPath,
+                DefaultTargetFileName,
+                outputPath);
+        }
+
+        public static void Extract(
+            string executablePath,
+            string pakPath,
+            string oodleLibraryPath,
+            string targetFileName,
             string outputPath)
         {
             if (!File.Exists(executablePath))
@@ -34,10 +50,11 @@ namespace DragonSwordWorldRadar.Installer
                     "The generated game-data PAK was not found.", pakPath);
             }
             byte[] aesKey = FindWorkingAesKey(executablePath, pakPath);
-            ExtractTreasureXml(
+            ExtractXml(
                 pakPath,
                 aesKey,
                 oodleLibraryPath,
+                targetFileName,
                 outputPath);
         }
 
@@ -86,10 +103,11 @@ namespace DragonSwordWorldRadar.Installer
             }
         }
 
-        private static void ExtractTreasureXml(
+        private static void ExtractXml(
             string pakPath,
             byte[] key,
             string oodleLibraryPath,
+            string targetFileName,
             string outputPath)
         {
             using (FileStream stream = File.OpenRead(pakPath))
@@ -153,11 +171,12 @@ namespace DragonSwordWorldRadar.Installer
                     directoryStringMask,
                     numberMask);
 
-                int encodedOffset = FindTargetEncodedOffset(directory);
+                int encodedOffset = FindTargetEncodedOffset(
+                    directory, targetFileName);
                 if (encodedOffset < 0)
                 {
                     throw new InvalidDataException(
-                        "The treasure XML uses an unsupported PAK entry layout.");
+                        "The requested XML uses an unsupported PAK entry layout.");
                 }
 
                 EncodedEntry encoded = FindEncodedEntry(
@@ -174,7 +193,8 @@ namespace DragonSwordWorldRadar.Installer
         }
 
         private static int FindTargetEncodedOffset(
-            CustomReader directory)
+            CustomReader directory,
+            string targetFileName)
         {
             uint directoryCount = directory.ReadUInt32();
             if (directoryCount > 100000)
@@ -202,7 +222,7 @@ namespace DragonSwordWorldRadar.Installer
                     string fileName = directory.ReadStringEndingWith(".xml");
                     int encodedOffset = directory.ReadInt32();
                     if (fileName.Equals(
-                        TargetFileName,
+                        targetFileName,
                         StringComparison.OrdinalIgnoreCase))
                     {
                         return encodedOffset;
@@ -210,7 +230,7 @@ namespace DragonSwordWorldRadar.Installer
                 }
             }
             throw new FileNotFoundException(
-                TargetFileName + " was not found in the game PAK.");
+                targetFileName + " was not found in the game PAK.");
         }
 
         private static EncodedEntry FindEncodedEntry(
@@ -224,16 +244,19 @@ namespace DragonSwordWorldRadar.Installer
                 {
                     EncodedEntry candidate = ReadEncodedEntry(
                         encodedEntries, encodedOffset, (byte)mask);
+                    bool compressed = candidate.CompressionSlot >= 0;
                     if (candidate.Offset >= (ulong)pakReader.BaseStream.Length
                         || candidate.UncompressedSize == 0
                         || candidate.UncompressedSize > 64 * 1024 * 1024
                         || candidate.CompressedSize == 0
-                        || candidate.CompressedSize >
-                            candidate.UncompressedSize
-                        || candidate.CompressionBlockCount == 0
-                        || candidate.CompressionBlockCount > 4096
-                        || candidate.CompressionBlockSize == 0
-                        || candidate.CompressionBlockSize > 4 * 1024 * 1024)
+                        || (compressed
+                            && (candidate.CompressionBlockCount == 0
+                                || candidate.CompressionBlockCount > 4096
+                                || candidate.CompressionBlockSize == 0
+                                || candidate.CompressionBlockSize > 4 * 1024 * 1024))
+                        || (!compressed
+                            && (candidate.CompressedSize != candidate.UncompressedSize
+                                || candidate.CompressionBlockCount != 0)))
                     {
                         continue;
                     }
@@ -243,7 +266,8 @@ namespace DragonSwordWorldRadar.Installer
                     if (data.CompressedSize == candidate.CompressedSize
                         && data.UncompressedSize == candidate.UncompressedSize
                         && data.CompressionIndex ==
-                            (uint)(candidate.CompressionSlot + 1))
+                            (uint)(candidate.CompressionSlot + 1)
+                        && ((data.Flags & 1) != 0) == candidate.Encrypted)
                     {
                         return candidate;
                     }
@@ -253,7 +277,7 @@ namespace DragonSwordWorldRadar.Installer
                 }
             }
             throw new InvalidDataException(
-                "The treasure XML entry could not be decoded.");
+                "The requested XML entry could not be decoded.");
         }
 
         private static EncodedEntry ReadEncodedEntry(
@@ -337,23 +361,40 @@ namespace DragonSwordWorldRadar.Installer
 
             entry.Flags = reader.ReadByte();
             entry.CompressionBlockSize = reader.ReadUInt32();
+            entry.PayloadOffset = checked((ulong)reader.BaseStream.Position);
             return entry;
         }
 
         private static void ValidateEntry(
             EncodedEntry encoded, DataEntry data, long pakLength)
         {
+            bool compressed = encoded.CompressionSlot >= 0;
             if (data.Offset != 0
                 || data.CompressedSize != encoded.CompressedSize
                 || data.UncompressedSize != encoded.UncompressedSize
                 || data.CompressionIndex !=
                     (uint)(encoded.CompressionSlot + 1)
+                || ((data.Flags & 1) != 0) != encoded.Encrypted
                 || data.Blocks.Count != encoded.CompressionBlockCount
-                || data.CompressionBlockSize !=
-                    encoded.CompressionBlockSize)
+                || (compressed
+                    && data.CompressionBlockSize !=
+                        encoded.CompressionBlockSize))
             {
                 throw new InvalidDataException(
                     "The PAK entry metadata is inconsistent.");
+            }
+
+            if (!compressed)
+            {
+                ulong storedLength = encoded.Encrypted
+                    ? (ulong)Align16(checked((int)data.UncompressedSize))
+                    : data.UncompressedSize;
+                if (data.PayloadOffset + storedLength > (ulong)pakLength)
+                {
+                    throw new InvalidDataException(
+                        "The uncompressed PAK entry is outside the file.");
+                }
+                return;
             }
 
             ulong totalCompressed = 0;
@@ -381,10 +422,19 @@ namespace DragonSwordWorldRadar.Installer
             string oodleLibraryPath,
             string outputPath)
         {
+            if (data.CompressionIndex == 0)
+            {
+                WriteUncompressedEntry(
+                    pak,
+                    data,
+                    aesKey,
+                    outputPath);
+                return;
+            }
             if (data.CompressionIndex != 1)
             {
                 throw new NotSupportedException(
-                    "The requested game-data entry is not using the expected Oodle compression.");
+                    "The requested game-data entry uses an unsupported compression method.");
             }
 
             using (FileStream output = File.Create(outputPath))
@@ -450,6 +500,31 @@ namespace DragonSwordWorldRadar.Installer
             }
         }
 
+
+        private static void WriteUncompressedEntry(
+            BinaryReader pak,
+            DataEntry data,
+            byte[] aesKey,
+            string outputPath)
+        {
+            int rawLength = checked((int)data.UncompressedSize);
+            int storedLength = (data.Flags & 1) != 0
+                ? Align16(rawLength)
+                : rawLength;
+            pak.BaseStream.Position = checked((long)data.PayloadOffset);
+            byte[] raw = pak.ReadBytes(storedLength);
+            if (raw.Length != storedLength)
+            {
+                throw new EndOfStreamException();
+            }
+            if ((data.Flags & 1) != 0)
+            {
+                raw = DecryptAes(raw, aesKey)
+                    .Take(rawLength)
+                    .ToArray();
+            }
+            File.WriteAllBytes(outputPath, raw);
+        }
 
         private static void RunOoz(string oozPath, string packedPath, string rawPath)
         {

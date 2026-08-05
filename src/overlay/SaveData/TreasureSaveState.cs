@@ -12,10 +12,13 @@ namespace DragonSwordWorldRadar
 {
     internal sealed class TreasureSaveState
     {
-        private const int SqliteOpenReadOnly = 0x00000001;
+        private const int SqliteOpenReadWrite = 0x00000002;
 
+        // Metadata checks are cheap and run on the UI timer; SQLCipher work is
+        // queued only when the active slot or one of its WAL/journal sidecars
+        // changes.
         private static readonly TimeSpan RefreshInterval =
-            TimeSpan.FromMilliseconds(250);
+            TimeSpan.FromMilliseconds(500);
         private static readonly TimeSpan DatabaseDiscoveryInterval =
             TimeSpan.FromSeconds(5);
 
@@ -26,6 +29,10 @@ namespace DragonSwordWorldRadar
             new SaveDatabaseKeyReader();
         private readonly TreasureOverrides _overrides =
             new TreasureOverrides();
+        private readonly BossRespawnRuleResolver _bossRuleResolver =
+            new BossRespawnRuleResolver();
+        private readonly Dictionary<int, BossRespawnRecord> _bossRespawns =
+            new Dictionary<int, BossRespawnRecord>();
 
         private DateTime _nextRefreshUtc;
         private DateTime _nextDatabaseDiscoveryUtc;
@@ -33,6 +40,8 @@ namespace DragonSwordWorldRadar
         private string _databaseCandidateSummary;
         private string _lastDatabasePath;
         private DateTime _lastDatabaseWriteUtc;
+        private string _lastSlotSignature;
+        private string _lastSlotSummary;
         private string _lastKey;
         private string _lastError;
         private string _lastDatabaseAttemptLog;
@@ -42,6 +51,8 @@ namespace DragonSwordWorldRadar
         private bool _hasLoadedSaveState;
         private bool _loadInProgress;
         private int _lastOverrideVersion = -1;
+        private readonly Dictionary<int, string> _lastBossStateLog =
+            new Dictionary<int, string>();
 
         public int GameProcessId
         {
@@ -119,6 +130,33 @@ namespace DragonSwordWorldRadar
                     return _lastError ?? "none";
                 }
             }
+        }
+
+
+        public bool IsBossAvailable(int bossId)
+        {
+            BossRespawnRecord record;
+            lock (_sync)
+            {
+                if (!_bossRespawns.TryGetValue(bossId, out record))
+                {
+                    return true;
+                }
+            }
+            return _bossRuleResolver.IsAvailable(record.DestroyTimeUtc);
+        }
+
+        public string DescribeBossState(int bossId)
+        {
+            BossRespawnRecord record;
+            lock (_sync)
+            {
+                if (!_bossRespawns.TryGetValue(bossId, out record))
+                {
+                    return "available-no-death-record";
+                }
+            }
+            return _bossRuleResolver.Describe(record.DestroyTimeUtc);
         }
 
         public bool IsOpened(long saveId)
@@ -264,16 +302,16 @@ namespace DragonSwordWorldRadar
             string databasePath = FindNewestSaveDatabaseCached(
                 game,
                 out candidateSummary);
+            SaveSlotFingerprint slot =
+                SaveSlotFingerprint.Capture(databasePath);
             LogDatabaseSelection(
                 databasePath,
-                candidateSummary);
+                candidateSummary + "; activeSlot=" + slot.Summary);
 
-            DateTime writeTime =
-                File.GetLastWriteTimeUtc(databasePath);
             lock (_sync)
             {
-                if (databasePath == _lastDatabasePath
-                    && writeTime == _lastDatabaseWriteUtc
+                if (slot.Stem == _lastDatabasePath
+                    && slot.Signature == _lastSlotSignature
                     && key == _lastKey)
                 {
                     return;
@@ -288,8 +326,7 @@ namespace DragonSwordWorldRadar
             SaveLoadRequest request = new SaveLoadRequest
             {
                 GameProcessId = game.Id,
-                DatabasePath = databasePath,
-                DatabaseWriteUtc = writeTime,
+                Slot = slot,
                 Key = key,
             };
             if (!ThreadPool.QueueUserWorkItem(
@@ -311,56 +348,77 @@ namespace DragonSwordWorldRadar
                 (SaveLoadRequest)state;
             try
             {
-                Dictionary<int, ulong> opened =
-                    ReadOpenedTreasureBits(
-                        request.DatabasePath,
-                        request.Key);
+                // Rule scanning and all database I/O stay on the worker thread.
+                _bossRuleResolver.Refresh();
+                SaveSnapshot snapshot = ReadSaveSlotSnapshot(
+                    request.Slot,
+                    request.Key);
+                Dictionary<int, ulong> opened = snapshot.Opened;
+
+                List<long> newlyOpened;
+                List<long> newlyClosed;
+                bool openedChanged;
+                bool bossChanged;
+                bool firstSuccessfulLoad;
                 lock (_sync)
                 {
-                    if (_gameProcessId !=
-                        request.GameProcessId)
+                    if (_gameProcessId != request.GameProcessId)
                     {
                         return;
                     }
 
-                    List<long> newlyOpened =
-                        FindNewlySetIds(
-                            _opened,
-                            opened);
-                    List<long> newlyClosed =
-                        FindNewlySetIds(
-                            opened,
-                            _opened);
+                    newlyOpened = FindNewlySetIds(_opened, opened);
+                    newlyClosed = FindNewlySetIds(opened, _opened);
+                    openedChanged = !OpenedDictionariesEqual(
+                        _opened,
+                        opened);
+                    bossChanged = !BossRespawnDictionariesEqual(
+                        _bossRespawns,
+                        snapshot.BossRespawns);
+                    firstSuccessfulLoad = !_hasLoadedSaveState;
 
                     _opened.Clear();
-                    foreach (KeyValuePair<int, ulong> pair
-                        in opened)
+                    foreach (KeyValuePair<int, ulong> pair in opened)
                     {
                         _opened[pair.Key] = pair.Value;
                     }
-                    _lastDatabasePath =
-                        request.DatabasePath;
-                    _lastDatabaseWriteUtc =
-                        request.DatabaseWriteUtc;
+                    _bossRespawns.Clear();
+                    foreach (KeyValuePair<int, BossRespawnRecord> pair
+                        in snapshot.BossRespawns)
+                    {
+                        _bossRespawns[pair.Key] = pair.Value;
+                    }
+                    _lastDatabasePath = request.Slot.Stem;
+                    _lastDatabaseWriteUtc = request.Slot.LatestWriteUtc;
+                    _lastSlotSignature = request.Slot.Signature;
+                    _lastSlotSummary = request.Slot.Summary;
                     _lastKey = request.Key;
                     _lastError = null;
                     _hasLoadedSaveState = true;
-                    _version++;
-                    LogDatabaseLoaded(
-                        request.DatabasePath,
-                        opened);
-                    LogDatabaseDelta(
-                        request.DatabasePath,
-                        newlyOpened,
-                        newlyClosed);
+                    if (firstSuccessfulLoad
+                        || openedChanged
+                        || bossChanged)
+                    {
+                        _version++;
+                    }
                 }
+
+                LogDatabaseLoaded(
+                    request.Slot.Stem,
+                    opened);
+                LogDatabaseDelta(
+                    request.Slot.Stem,
+                    newlyOpened,
+                    newlyClosed);
+                LogBossStates(
+                    snapshot.BossRespawns,
+                    request.Slot);
             }
             catch (Exception exception)
             {
                 lock (_sync)
                 {
-                    if (_gameProcessId ==
-                        request.GameProcessId)
+                    if (_gameProcessId == request.GameProcessId)
                     {
                         LogRefreshError(exception);
                     }
@@ -371,6 +429,66 @@ namespace DragonSwordWorldRadar
                 lock (_sync)
                 {
                     _loadInProgress = false;
+                }
+            }
+        }
+
+        private void LogBossStates(
+            IDictionary<int, BossRespawnRecord> current,
+            SaveSlotFingerprint slot)
+        {
+            int[] bossIds =
+            {
+                9000005, 9000007, 9000010,
+                9000011, 9000012, 9000019,
+                9000022, 9000023, 9000025
+            };
+            foreach (int bossId in bossIds)
+            {
+                BossRespawnRecord record;
+                string comparisonState;
+                string messageState;
+                if (!current.TryGetValue(bossId, out record))
+                {
+                    comparisonState = String.Format(
+                        CultureInfo.InvariantCulture,
+                        "bossId={0}; available=true; reason=no-death-record; rule={1}",
+                        bossId,
+                        _bossRuleResolver.RuleSummary);
+                    messageState = comparisonState +
+                        "; slot=" + slot.Summary;
+                }
+                else
+                {
+                    DateTime next = _bossRuleResolver.NextAvailableUtc(
+                        record.DestroyTimeUtc);
+                    comparisonState = String.Format(
+                        CultureInfo.InvariantCulture,
+                        "bossId={0}; destroyUtc={1:O}; nextUtc={2:O}; available={3}; respawnType={4}; rule={5}",
+                        bossId,
+                        record.DestroyTimeUtc,
+                        next,
+                        DateTime.UtcNow >= next,
+                        record.RespawnType,
+                        _bossRuleResolver.RuleSummary);
+                    messageState = comparisonState +
+                        "; slot=" + slot.Summary;
+                }
+
+                bool changed;
+                lock (_sync)
+                {
+                    string old;
+                    changed = !_lastBossStateLog.TryGetValue(
+                        bossId,
+                        out old)
+                        || old != comparisonState;
+                    _lastBossStateLog[bossId] = comparisonState;
+                }
+                if (changed)
+                {
+                    ErrorLog.WriteMessage(
+                        "World-boss save state: " + messageState);
                 }
             }
         }
@@ -465,18 +583,22 @@ namespace DragonSwordWorldRadar
             {
                 _gameProcessId = processId;
                 _opened.Clear();
+                _bossRespawns.Clear();
                 _nextDatabaseDiscoveryUtc =
                     DateTime.MinValue;
                 _selectedDatabasePath = null;
                 _databaseCandidateSummary = null;
                 _lastDatabasePath = null;
                 _lastDatabaseWriteUtc = DateTime.MinValue;
+                _lastSlotSignature = null;
+                _lastSlotSummary = null;
                 _lastKey = null;
                 _lastError = null;
                 _lastDatabaseAttemptLog = null;
                 _lastDatabaseSuccessLog = null;
                 _hasLoadedSaveState = false;
                 _loadInProgress = false;
+                _lastBossStateLog.Clear();
                 _version++;
             }
             _keyReader.Reset();
@@ -486,14 +608,28 @@ namespace DragonSwordWorldRadar
             Process game,
             out string candidateSummary)
         {
-            if (_selectedDatabasePath != null
-                && File.Exists(_selectedDatabasePath)
-                && DateTime.UtcNow <
-                    _nextDatabaseDiscoveryUtc)
+            DateTime now = DateTime.UtcNow;
+
+            // The game alternates writes between the active slot's .db and
+            // .bak files. Check only those two siblings on every refresh so a
+            // newly opened chest is observed immediately without recursively
+            // enumerating the complete SaveGames tree every 250 ms.
+            if (_selectedDatabasePath != null)
             {
-                candidateSummary =
-                    _databaseCandidateSummary;
-                return _selectedDatabasePath;
+                string newestActiveSlotDatabase =
+                    FindNewestActiveSlotDatabase(
+                        _selectedDatabasePath);
+                if (newestActiveSlotDatabase != null)
+                {
+                    _selectedDatabasePath =
+                        newestActiveSlotDatabase;
+                    if (now < _nextDatabaseDiscoveryUtc)
+                    {
+                        candidateSummary =
+                            _databaseCandidateSummary;
+                        return _selectedDatabasePath;
+                    }
+                }
             }
 
             _selectedDatabasePath =
@@ -501,10 +637,37 @@ namespace DragonSwordWorldRadar
                     game,
                     out _databaseCandidateSummary);
             _nextDatabaseDiscoveryUtc =
-                DateTime.UtcNow.Add(
-                    DatabaseDiscoveryInterval);
+                now.Add(DatabaseDiscoveryInterval);
             candidateSummary = _databaseCandidateSummary;
             return _selectedDatabasePath;
+        }
+
+        private static string FindNewestActiveSlotDatabase(
+            string selectedDatabasePath)
+        {
+            string directory =
+                Path.GetDirectoryName(selectedDatabasePath);
+            string stem =
+                Path.GetFileNameWithoutExtension(
+                    selectedDatabasePath);
+            if (String.IsNullOrEmpty(directory)
+                || String.IsNullOrEmpty(stem))
+            {
+                return null;
+            }
+
+            string database = Path.Combine(
+                directory,
+                stem + ".db");
+            string backup = Path.Combine(
+                directory,
+                stem + ".bak");
+
+            return new[] { database, backup }
+                .Where(File.Exists)
+                .OrderByDescending(
+                    File.GetLastWriteTimeUtc)
+                .FirstOrDefault();
         }
 
         private static string FindNewestSaveDatabase(
@@ -756,27 +919,85 @@ namespace DragonSwordWorldRadar
             return count;
         }
 
-        private static Dictionary<int, ulong>
-            ReadOpenedTreasureBits(
-                string source,
-                string key)
+        private static SaveSnapshot ReadSaveSlotSnapshot(
+            SaveSlotFingerprint slot,
+            string key)
         {
+            SaveSnapshot merged = new SaveSnapshot
+            {
+                Opened = new Dictionary<int, ulong>(),
+                BossRespawns = new Dictionary<int, BossRespawnRecord>()
+            };
             string temporaryDirectory = Path.Combine(
                 Path.GetTempPath(),
-                "DragonSwordWorldRadar");
+                "DragonSwordWorldRadar",
+                Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(temporaryDirectory);
-            string temporary = Path.Combine(
-                temporaryDirectory,
-                Guid.NewGuid().ToString("N") + ".db");
-            File.Copy(source, temporary, true);
+            Exception lastError = null;
+            int loaded = 0;
+            try
+            {
+                foreach (SaveDatabaseFingerprint database
+                    in slot.Databases)
+                {
+                    if (!database.Exists)
+                    {
+                        continue;
+                    }
+                    try
+                    {
+                        string snapshotPath =
+                            database.CopyConsistentSnapshot(
+                                temporaryDirectory);
+                        SaveSnapshot current =
+                            ReadSaveSnapshotFile(
+                                snapshotPath,
+                                key);
+                        MergeOpened(merged.Opened, current.Opened);
+                        MergeBossRespawns(
+                            merged.BossRespawns,
+                            current.BossRespawns);
+                        loaded++;
+                    }
+                    catch (Exception exception)
+                    {
+                        lastError = exception;
+                    }
+                }
+            }
+            finally
+            {
+                try
+                {
+                    Directory.Delete(
+                        temporaryDirectory,
+                        true);
+                }
+                catch
+                {
+                }
+            }
 
+            if (loaded == 0)
+            {
+                throw new InvalidOperationException(
+                    "No active save database snapshot could be read.",
+                    lastError);
+            }
+            return merged;
+        }
+
+        private static SaveSnapshot ReadSaveSnapshotFile(
+            string source,
+            string key)
+        {
             IntPtr database = IntPtr.Zero;
             try
             {
                 int result = NativeMethods.sqlite3_open_v2(
-                    Utf8(temporary),
+                    Utf8(source),
                     out database,
-                    SqliteOpenReadOnly,
+                    SqliteOpenReadWrite,
                     IntPtr.Zero);
                 if (result != 0)
                 {
@@ -785,10 +1006,15 @@ namespace DragonSwordWorldRadar
                         result,
                         IntPtr.Zero);
                 }
-
-                return QueryOpenedTreasureBits(
-                    database,
-                    key);
+                return new SaveSnapshot
+                {
+                    Opened = QueryOpenedTreasureBits(
+                        database,
+                        key),
+                    BossRespawns = QueryBossRespawns(
+                        database,
+                        key),
+                };
             }
             finally
             {
@@ -796,15 +1022,129 @@ namespace DragonSwordWorldRadar
                 {
                     NativeMethods.sqlite3_close_v2(database);
                 }
-                try
+            }
+        }
+
+        private static bool OpenedDictionariesEqual(
+            IDictionary<int, ulong> left,
+            IDictionary<int, ulong> right)
+        {
+            if (left.Count != right.Count)
+            {
+                return false;
+            }
+            foreach (KeyValuePair<int, ulong> pair in left)
+            {
+                ulong value;
+                if (!right.TryGetValue(pair.Key, out value)
+                    || value != pair.Value)
                 {
-                    File.Delete(temporary);
-                }
-                catch
-                {
-                    // A stale temporary copy is safe to remove later.
+                    return false;
                 }
             }
+            return true;
+        }
+
+        private static bool BossRespawnDictionariesEqual(
+            IDictionary<int, BossRespawnRecord> left,
+            IDictionary<int, BossRespawnRecord> right)
+        {
+            if (left.Count != right.Count)
+            {
+                return false;
+            }
+            foreach (KeyValuePair<int, BossRespawnRecord> pair in left)
+            {
+                BossRespawnRecord value;
+                if (!right.TryGetValue(pair.Key, out value)
+                    || value.RespawnType != pair.Value.RespawnType
+                    || value.DestroyTimeUtc != pair.Value.DestroyTimeUtc)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static void MergeOpened(
+            IDictionary<int, ulong> target,
+            IDictionary<int, ulong> source)
+        {
+            foreach (KeyValuePair<int, ulong> pair in source)
+            {
+                ulong existing;
+                target.TryGetValue(pair.Key, out existing);
+                target[pair.Key] = existing | pair.Value;
+            }
+        }
+
+        private static void MergeBossRespawns(
+            IDictionary<int, BossRespawnRecord> target,
+            IDictionary<int, BossRespawnRecord> source)
+        {
+            foreach (KeyValuePair<int, BossRespawnRecord> pair in source)
+            {
+                BossRespawnRecord existing;
+                if (!target.TryGetValue(pair.Key, out existing)
+                    || pair.Value.DestroyTimeUtc > existing.DestroyTimeUtc)
+                {
+                    target[pair.Key] = pair.Value;
+                }
+            }
+        }
+
+        private static Dictionary<int, BossRespawnRecord> QueryBossRespawns(
+            IntPtr database, string key)
+        {
+            Dictionary<int, BossRespawnRecord> resultRows =
+                new Dictionary<int, BossRespawnRecord>();
+            string escapedKey = key.Replace("'", "''");
+            string sql =
+                "PRAGMA key = '" + escapedKey + "';" +
+                "PRAGMA cipher_compatibility = 4;" +
+                "SELECT ACTOR_CID,RESPAWN_TYPE,DESTROY_TIME " +
+                "FROM tb_actor_respawn WHERE ACTOR_CID IN " +
+                "(9000005,9000007,9000010,9000011,9000012," +
+                "9000019,9000022,9000023,9000025);";
+            NativeMethods.ExecCallback callback = delegate(
+                IntPtr context, int count, IntPtr values, IntPtr names)
+            {
+                if (count >= 3)
+                {
+                    int cid; int respawnType; long destroyTime;
+                    if (int.TryParse(PointerString(Marshal.ReadIntPtr(values, 0)), out cid)
+                        && int.TryParse(PointerString(Marshal.ReadIntPtr(values, IntPtr.Size)), out respawnType)
+                        && long.TryParse(PointerString(Marshal.ReadIntPtr(values, IntPtr.Size * 2)), out destroyTime))
+                    {
+                        DateTime destroyUtc = DateTimeOffset
+                            .FromUnixTimeSeconds(destroyTime)
+                            .UtcDateTime;
+                        BossRespawnRecord existing;
+                        if (!resultRows.TryGetValue(cid, out existing)
+                            || destroyUtc > existing.DestroyTimeUtc)
+                        {
+                            resultRows[cid] = new BossRespawnRecord
+                            {
+                                BossId = cid,
+                                RespawnType = respawnType,
+                                DestroyTimeUtc = destroyUtc,
+                            };
+                        }
+                    }
+                }
+                return 0;
+            };
+            IntPtr error;
+            int execResult = NativeMethods.sqlite3_exec(
+                database, Utf8(sql), callback, IntPtr.Zero, out error);
+            GC.KeepAlive(callback);
+            if (execResult != 0)
+            {
+                Exception exception = SqliteError(database, execResult, error);
+                if (error != IntPtr.Zero) NativeMethods.sqlite3_free(error);
+                throw exception;
+            }
+            return resultRows;
         }
 
         private static Dictionary<int, ulong>
@@ -905,11 +1245,23 @@ namespace DragonSwordWorldRadar
                     string.Empty;
         }
 
+        private sealed class SaveSnapshot
+        {
+            public Dictionary<int, ulong> Opened;
+            public Dictionary<int, BossRespawnRecord> BossRespawns;
+        }
+
+        internal sealed class BossRespawnRecord
+        {
+            public int BossId;
+            public int RespawnType;
+            public DateTime DestroyTimeUtc;
+        }
+
         private sealed class SaveLoadRequest
         {
             public int GameProcessId;
-            public string DatabasePath;
-            public DateTime DatabaseWriteUtc;
+            public SaveSlotFingerprint Slot;
             public string Key;
         }
 

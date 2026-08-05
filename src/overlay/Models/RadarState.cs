@@ -5,15 +5,21 @@ namespace DragonSwordWorldRadar
     internal sealed class RadarState
     {
         public long stateSequence { get; set; }
+        public int producerGeneration { get; set; }
         public bool enabled { get; set; }
         public bool showHeight { get; set; }
         public bool showTreasureTypes { get; set; }
+        public bool showTreasures { get; set; }
+        public bool showBosses { get; set; }
         public double textScale { get; set; }
+        public double playerX { get; set; }
+        public double playerY { get; set; }
         public double playerZ { get; set; }
         public bool hasPlayerZ { get; set; }
         public string mode { get; set; }
         public double radius { get; set; }
         public List<RadarPoint> points { get; set; }
+        public List<BossPoint> bosses { get; set; }
         public WorldMapState worldMap { get; set; }
     }
 
@@ -26,6 +32,20 @@ namespace DragonSwordWorldRadar
         public bool hasZ { get; set; }
         public double dx { get; set; }
         public double dy { get; set; }
+    }
+
+    internal sealed class BossPoint
+    {
+        public int bossId { get; set; }
+        public int mapId { get; set; }
+        public double x { get; set; }
+        public double y { get; set; }
+        public double z { get; set; }
+        public bool hasZ { get; set; }
+        public double dx { get; set; }
+        public double dy { get; set; }
+        public bool visible { get; set; }
+        public string status { get; set; }
     }
 
     internal sealed class WorldMapState

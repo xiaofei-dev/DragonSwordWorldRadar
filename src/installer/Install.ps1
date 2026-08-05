@@ -22,6 +22,73 @@ function Log([string]$message) {
         $utf8)
 }
 
+function Test-LuaConfig {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $false
+    }
+
+    try {
+        $raw = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop
+    } catch {
+        return $false
+    }
+
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        return $false
+    }
+
+    $withoutComments = [regex]::Replace(
+        $raw,
+        '(?m)--[^\r\n]*$',
+        '')
+    $trimmed = $withoutComments.Trim()
+    if ($trimmed -notmatch '^return\s*\{') {
+        return $false
+    }
+
+    $openCount = ([regex]::Matches($trimmed, '\{')).Count
+    $closeCount = ([regex]::Matches($trimmed, '\}')).Count
+    if ($openCount -ne 1 -or $closeCount -ne 1) {
+        return $false
+    }
+
+    return $trimmed -match '\}\s*$'
+}
+
+function Repair-LuaConfig {
+    param(
+        [string]$DefaultPath,
+        [string]$UserPath,
+        [string]$ArchiveDirectory
+    )
+
+    if (-not (Test-LuaConfig -Path $DefaultPath)) {
+        throw 'Bundled scripts\config.default.lua is malformed. Re-extract the complete release package.'
+    }
+
+    if (-not (Test-Path -LiteralPath $UserPath -PathType Leaf)) {
+        Copy-Item -LiteralPath $DefaultPath -Destination $UserPath -Force
+        Log 'CREATED scripts\config.lua from validated default'
+        return
+    }
+
+    if (Test-LuaConfig -Path $UserPath) {
+        Log 'PRESERVED validated scripts\config.lua'
+        return
+    }
+
+    New-Item -ItemType Directory -Path $ArchiveDirectory -Force | Out-Null
+    $backup = Join-Path $ArchiveDirectory (
+        'config.invalid.' +
+        [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmssfff') +
+        '.lua')
+    Move-Item -LiteralPath $UserPath -Destination $backup -Force
+    Copy-Item -LiteralPath $DefaultPath -Destination $UserPath -Force
+    Log ("REPAIRED malformed scripts\config.lua; backup={0}" -f $backup)
+}
+
 function Merge-LuaConfig {
     param([string]$DefaultPath,[string]$UserPath)
     if (-not (Test-Path -LiteralPath $UserPath)) {
@@ -81,18 +148,26 @@ try {
         $archive = Join-Path $archiveDir ('DragonSwordWorldRadar.Install.' + [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmssfff') + '.log')
         Move-Item -LiteralPath $log -Destination $archive -Force
     }
-    Log 'INSTALL_START version=0.3.2c mode=self-contained-bootstrap-with-regeneration'
-
     $releasePath = Join-Path $metadataRoot 'release.json'
     if (-not (Test-Path -LiteralPath $releasePath)) { throw 'metadata\release.json is missing.' }
     $release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
-    if ([string]$release.version -ne '0.3.2c') { throw "Unexpected release version: $($release.version)" }
+    $releaseVersion = [string]$release.version
+    if ([string]::IsNullOrWhiteSpace($releaseVersion)) { throw 'metadata\release.json does not define a release version.' }
+    Log ("INSTALL_START version={0} mode=stable-double-buffer-no-runtime-probes" -f $releaseVersion)
 
     $layout = Resolve-DragonSwordWorldRadarGameLayout -ModDir $modRoot
     Log ("GAME_LAYOUT root={0}; exe={1}; pak={2}; oodle={3}" -f $layout.GameRoot,$layout.ExecutablePath,$layout.PakPath,$layout.OodleLibraryPath)
 
     $bundledOozPath = Join-Path $modRoot 'tools\ooz.exe'
-    $bundledOozSha256 = '520e3596e50859194e1fcbf9cfda09ea0e33a70e2793be277f0a0070bd22dc8c'
+    $bundledOozMetadata = @($release.bundled_tools |
+        Where-Object { [string]$_.name -ieq 'ooz.exe' } |
+        Select-Object -First 1)
+    if ($bundledOozMetadata.Count -ne 1 -or
+        [string]::IsNullOrWhiteSpace([string]$bundledOozMetadata[0].sha256)) {
+        throw 'metadata\release.json does not define the bundled ooz.exe SHA-256.'
+    }
+    $bundledOozSha256 =
+        ([string]$bundledOozMetadata[0].sha256).ToLowerInvariant()
     if (-not (Test-Path -LiteralPath $bundledOozPath -PathType Leaf)) {
         throw 'Bundled tools\ooz.exe is missing. Re-extract the complete DragonSwordWorldRadar release package.'
     }
@@ -113,7 +188,14 @@ try {
         Copy-Item -LiteralPath (Join-Path $oldModRoot 'scripts\config.lua') -Destination $userConfig
         Log 'MIGRATED config.lua from legacy eventrader folder'
     }
+    Repair-LuaConfig `
+        -DefaultPath $defaultConfig `
+        -UserPath $userConfig `
+        -ArchiveDirectory $archiveDir
     Merge-LuaConfig -DefaultPath $defaultConfig -UserPath $userConfig
+    if (-not (Test-LuaConfig -Path $userConfig)) {
+        throw 'scripts\config.lua failed validation after merge.'
+    }
 
     $overridePath = Join-Path $dataRoot 'treasure_overrides.txt'
     $legacyOverridePath = Join-Path $modRoot 'treasure_overrides.txt'
@@ -134,6 +216,29 @@ try {
     }
 
     Stop-ExistingWatcher
+
+    # Compile the exact overlay source set used by F7 before installing the
+    # watcher. This turns missing methods and warning-as-error failures into
+    # installation failures instead of a silent no-overlay runtime.
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    Add-Type -AssemblyName System.Web.Extensions
+    $overlaySourceRoot = Join-Path $modRoot 'src\overlay'
+    $overlaySources = @(Get-ChildItem -LiteralPath $overlaySourceRoot -Recurse -Filter '*.cs' -File |
+        Sort-Object FullName | Select-Object -ExpandProperty FullName)
+    if ($overlaySources.Count -lt 20) {
+        throw "Overlay source set is incomplete: $($overlaySources.Count) files."
+    }
+    $overlayReferences = @(
+        [System.Windows.Forms.Form].Assembly.Location,
+        [System.Drawing.Graphics].Assembly.Location,
+        [System.Web.Script.Serialization.JavaScriptSerializer].Assembly.Location,
+        [System.Linq.Enumerable].Assembly.Location,
+        [System.Uri].Assembly.Location
+    ) | Select-Object -Unique
+    Log ("OVERLAY_COMPILE sources={0}" -f $overlaySources.Count)
+    Add-Type -Path $overlaySources -ReferencedAssemblies $overlayReferences -ErrorAction Stop
+    Log 'OVERLAY_COMPILE_OK'
 
     $identityBeforeData = Get-DragonSwordWorldRadarGameIdentity -Layout $layout
     $bundledFingerprint = '20c421817e932c8bb0e6d761a24ea247a1ae91abd32629150cc9761a9067343b'
@@ -209,10 +314,25 @@ try {
         throw "Generated treasure catalog validation failed (records=$recordCount)."
     }
 
+    $bossCatalogPath = Join-Path $generatedRoot 'bosses.lua'
+    if (-not (Test-Path -LiteralPath $bossCatalogPath -PathType Leaf)) {
+        throw 'Generated world-boss catalog is missing.'
+    }
+    $bossCatalogText = [IO.File]::ReadAllText($bossCatalogPath)
+    $bossRecordCount = [regex]::Matches($bossCatalogText,'(?m)\bboss_id\s*=').Count
+    if (
+        $bossRecordCount -ne 9 -or
+        $bossCatalogText -notmatch '\bmap_id\s*=' -or
+        $bossCatalogText -notmatch '\buid_name\s*=' -or
+        $bossCatalogText -notmatch 'Icon_Mark_FieldBoss_Sprite'
+    ) {
+        throw "Generated world-boss catalog validation failed (records=$bossRecordCount)."
+    }
+
     $identity = Get-DragonSwordWorldRadarGameIdentity -Layout $layout
     Write-DragonSwordWorldRadarJson -Path (Join-Path $metadataRoot 'install-state.json') -Value ([ordered]@{
         schema_version = 1
-        mod_version = '0.3.2c'
+        mod_version = $releaseVersion
         installed_at_utc = [DateTime]::UtcNow.ToString('O')
         game_root = $layout.GameRoot
         game = $identity
@@ -222,16 +342,42 @@ try {
 
     $modsRoot = Split-Path -Parent $modRoot
     $modsFile = Join-Path $modsRoot 'mods.txt'
-    $lines = if (Test-Path -LiteralPath $modsFile) { @(Get-Content -LiteralPath $modsFile) } else { @() }
-    function Set-ModState([string]$Name,[int]$State) {
-        $script:lines = @($script:lines | Where-Object { $_ -notmatch ('^\s*' + [regex]::Escape($Name) + '\s*:') })
-        $script:lines += ("{0} : {1}" -f $Name,$State)
+    if (Test-Path -LiteralPath $modsFile) {
+        $reader = New-Object -TypeName IO.StreamReader -ArgumentList @($modsFile,$true)
+        try {
+            $modsText = $reader.ReadToEnd()
+            $modsEncoding = $reader.CurrentEncoding
+        }
+        finally {
+            $reader.Dispose()
+        }
     }
-    Set-ModState 'DragonSwordTreasureMap' 0
-    Set-ModState 'eventrader' 0
-    Set-ModState 'DragonSwordWorldRadar' 1
-    [IO.File]::WriteAllLines($modsFile,$lines,$utf8)
-    Log 'MOD_ENABLED DragonSwordWorldRadar=1 oldEventRadar=0 legacyTreasureMod=0'
+    else {
+        $modsText = ''
+        $modsEncoding = $utf8
+    }
+
+    $modPattern = '(?m)^([ \t]*DragonSwordWorldRadar[ \t]*:[ \t]*)(?:0|1)([ \t]*(?:#.*)?)$'
+    $updatedModsText = [regex]::Replace($modsText,$modPattern,'${1}1${2}')
+    if (
+        $updatedModsText -eq $modsText -and
+        $modsText -notmatch '(?m)^[ \t]*DragonSwordWorldRadar[ \t]*:'
+    ) {
+        $newline = if ($modsText -match "`r`n") { "`r`n" } else { "`n" }
+        if (
+            $updatedModsText.Length -gt 0 -and
+            -not $updatedModsText.EndsWith("`n") -and
+            -not $updatedModsText.EndsWith("`r")
+        ) {
+            $updatedModsText += $newline
+        }
+        $updatedModsText += 'DragonSwordWorldRadar : 1' + $newline
+    }
+    if ($updatedModsText -ne $modsText -or -not (Test-Path -LiteralPath $modsFile)) {
+        [IO.File]::WriteAllText($modsFile,$updatedModsText,$modsEncoding)
+    }
+    Log 'MOD_ENABLED DragonSwordWorldRadar=1; all other mods.txt bytes preserved'
+
 
     # Remove stale experimental coordinate rules. The supported override
     # contract is intentionally limited to ignore and alias.
@@ -248,7 +394,7 @@ try {
         }
     }
 
-    # Remove obsolete pre-0.3.2c files after migration.
+    # Remove obsolete pre-0.4.0 files after migration.
     foreach ($legacy in @(
         'DragonSwordWorldRadar.ps1','DragonSwordWorldRadarWatcher.ps1','OverlayBootstrap.ps1','StartDragonSwordWorldRadar.vbs',
         'Install-FirstStep.cmd','Install-FirstStep.ps1','Collect-Diagnostics.ps1',
@@ -272,7 +418,9 @@ try {
     $shortcut.TargetPath = "$env:SystemRoot\System32\wscript.exe"
     $watcherArguments = '//B //NoLogo "' + $watcherScript.Replace('"','""') + '" "' + $modRoot.Replace('"','""') + '"'
     $shortcut.Arguments = $watcherArguments
-    $shortcut.WorkingDirectory = $modRoot
+    $processWorkDir = Join-Path ([IO.Path]::GetTempPath()) 'DragonSwordWorldRadar'
+    New-Item -ItemType Directory -Force -Path $processWorkDir | Out-Null
+    $shortcut.WorkingDirectory = $processWorkDir
     $shortcut.WindowStyle = 7
     $shortcut.Save()
 
@@ -298,8 +446,8 @@ try {
     }
     if ($allExecutables.Count -ne 1) { throw "Expected exactly one bundled tool executable, found $($allExecutables.Count)." }
 
-    Log 'INSTALL_COMPLETE version=0.3.2c customExe=0 bundledToolExe=1 watcher=wscript transientPowerShell=true'
-    Write-Host "DragonSwordWorldRadar 0.3.2c installed. Generated $recordCount treasure records for game version $($identity.display_version)."
+    Log ("INSTALL_COMPLETE version={0} customExe=0 bundledToolExe=1 watcher=wscript transientPowerShell=true" -f $releaseVersion)
+    Write-Host ("DragonSwordWorldRadar {0} installed. Generated {1} treasure records and {2} world-boss records for game version {3}." -f $releaseVersion,$recordCount,$bossRecordCount,$identity.display_version)
     Write-Host 'Start the game normally. F7 enables the radar; F8 disables it.'
 } catch {
     try { Log ("INSTALL_FAILED " + ($_ | Out-String)) } catch {}

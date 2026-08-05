@@ -29,6 +29,12 @@ namespace DragonSwordWorldRadar
             IntPtr values,
             IntPtr names);
 
+        [DllImport("winmm.dll")]
+        public static extern uint timeBeginPeriod(uint period);
+
+        [DllImport("winmm.dll")]
+        public static extern uint timeEndPeriod(uint period);
+
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool SetProcessDpiAwarenessContext(
             IntPtr dpiContext);
@@ -47,6 +53,9 @@ namespace DragonSwordWorldRadar
 
         [DllImport("user32.dll")]
         public static extern bool IsWindowVisible(IntPtr window);
+
+        [DllImport("user32.dll")]
+        public static extern bool IsIconic(IntPtr window);
 
         [DllImport("user32.dll")]
         public static extern IntPtr GetForegroundWindow();

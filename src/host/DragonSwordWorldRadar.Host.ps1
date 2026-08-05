@@ -5,6 +5,10 @@ $env:EVENTRADAR_MOD_DIR = $ModDir
 $runtime = Join-Path $ModDir 'runtime'
 $logDir = Join-Path $runtime 'logs'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$processWorkDir = Join-Path ([IO.Path]::GetTempPath()) 'DragonSwordWorldRadar'
+New-Item -ItemType Directory -Force -Path $processWorkDir | Out-Null
+[Environment]::CurrentDirectory = $processWorkDir
+Set-Location -LiteralPath $processWorkDir
 $log = Join-Path $logDir 'DragonSwordWorldRadar.Host.log'
 function Log([string]$message) {
     Add-Content -LiteralPath $log -Encoding UTF8 -Value ("[{0:O}] {1}" -f [DateTime]::UtcNow,$message)
@@ -17,7 +21,7 @@ try {
     $mutex = New-Object Threading.Mutex($true, 'Local\DragonSwordWorldRadar.OverlayHost', [ref]$createdNew)
     if (-not $createdNew) { Log 'ALREADY_RUNNING'; return }
     $ownsMutex = $true
-    Log "START version=0.3.2c renderer=WinForms pid=$PID host=single_process_watcher"
+    Log "START version=0.4.0-dev7-stable6 renderer=WinForms pid=$PID host=single_process_watcher"
 
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
@@ -62,7 +66,7 @@ namespace DragonSwordWorldRadar {
 
     [IO.File]::WriteAllText(
         (Join-Path $runtime 'active-version.txt'),
-        '0.3.2c WinForms',
+        '0.4.0-dev7-stable6 WinForms',
         [Text.UTF8Encoding]::new($false))
     [DragonSwordWorldRadar.Program]::Run()
     Log 'RETURNED'
