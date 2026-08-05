@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "providers": [
+    {
+      "id": "treasures",
+      "class": "DragonSwordWorldRadar.Installer.TreasureDataProvider",
+      "source_pak": "pakchunk109-WindowsClient.pak",
+      "source_entry": "SectionTreasureBoxData.xml",
+      "output": "data/generated/treasures.lua",
+      "runtime_module": "scripts/treasures.lua"
+    }
+  ]
+}

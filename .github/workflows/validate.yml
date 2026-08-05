@@ -1,0 +1,20 @@
+name: validate
+on:
+  push:
+  pull_request:
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify source
+        shell: powershell
+        run: .\build\Verify-Source.ps1
+      - name: Build release
+        shell: powershell
+        run: .\build\Build-Release.ps1
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DragonSwordWorldRadar-release
+          path: dist/*.zip

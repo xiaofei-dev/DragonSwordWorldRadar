@@ -1,0 +1,18 @@
+/dist/
+*.user
+*.suo
+.vs/
+
+# Installed/runtime state
+/runtime/
+/metadata/install-state.json
+/metadata/datasets.json
+/data/generated/*.lua
+/data/treasure_overrides.txt
+/scripts/config.lua
+
+# Diagnostics
+EventRadar-Diagnostics-*.zip
+*.log
+
+vendor/ooz/ooz.exe

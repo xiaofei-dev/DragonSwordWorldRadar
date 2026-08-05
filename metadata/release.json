@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "name": "DragonSwordWorldRadar",
+  "version": "0.3.2c",
+  "stage": "treasure-layer-framework",
+  "mod_folder": "DragonSwordWorldRadar",
+  "renderer": "WinForms source compiled in memory by Windows PowerShell 5.1",
+  "custom_executable_count": 0,
+  "automatic_start": "hidden WScript watcher; transient PowerShell host only while the game is running",
+  "world_map_producer_interval_ms": 16,
+  "minimap_motion_interval_ms": 16,
+  "data_installation": "local game PAK extraction through in-memory C# and the ooz.exe decoder",
+  "game_update_detection": "stored executable/PAK fingerprint checked on each game launch",
+  "implemented_layers": [
+    "treasures"
+  ],
+  "planned_layer_slots": [
+    "bosses",
+    "groundhog",
+    "assault"
+  ],
+  "bundled_tool_executable_count": 1,
+  "bundled_tools": [
+    {
+      "name": "ooz.exe",
+      "path": "tools/ooz.exe",
+      "sha256": "520e3596e50859194e1fcbf9cfda09ea0e33a70e2793be277f0a0070bd22dc8c",
+      "purpose": "installation-time Oodle-compatible decompression"
+    }
+  ],
+  "override_operations": [
+    "ignore",
+    "alias"
+  ],
+  "pawn_tracking": "Current PlayerController.Pawn sampled directly; no Lua-wrapper identity comparison",
+  "diagnostics_output": "runtime/diagnostics",
+  "player_z_reference_offset": -120
+}
