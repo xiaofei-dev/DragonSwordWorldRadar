@@ -1,7 +1,8 @@
 # Contributing
 
-- Keep each radar feature as an independent layer and data provider.
-- Do not commit locally generated game data under `data/generated`.
-- Do not add custom executables to the release.
-- Preserve user files during upgrades: `scripts/config.lua` and `data/treasure_overrides.txt`.
-- Run `build/Verify-Source.ps1` and `build/Build-Release.ps1` before publishing.
+- Keep the 21-field motion protocol backward compatible unless a versioned migration is introduced.
+- Preserve F7/F8 behavior and independent treasure/Boss layer controls.
+- Run the Windows PowerShell 5.1 source compile gate before publishing.
+- Add aggregate diagnostics for new hot paths; do not write per-frame diagnostic lines.
+- Do not place experimental probes or broad UObject/Character scans in the production radar modules.
+- Update `CHANGELOG.md` and `metadata/release.json` for every published version.

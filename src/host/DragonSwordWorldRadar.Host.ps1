@@ -21,7 +21,7 @@ try {
     $mutex = New-Object Threading.Mutex($true, 'Local\DragonSwordWorldRadar.OverlayHost', [ref]$createdNew)
     if (-not $createdNew) { Log 'ALREADY_RUNNING'; return }
     $ownsMutex = $true
-    Log "START version=0.4.0-dev7-stable6 renderer=WinForms pid=$PID host=single_process_watcher"
+    Log "START version=0.4.0-dev9-performance1.1 renderer=WinForms pid=$PID host=single_process_watcher"
 
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
@@ -49,7 +49,7 @@ namespace DragonSwordWorldRadar {
         $sourceRoot = Join-Path $ModDir 'src\overlay'
         $sources = @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -Filter '*.cs' -File |
             Sort-Object FullName | Select-Object -ExpandProperty FullName)
-        if ($sources.Count -lt 10) { throw "Incomplete overlay source set: $($sources.Count) files" }
+        if ($sources.Count -lt 20) { throw "Incomplete overlay source set: $($sources.Count) files" }
         $refs = @(
             [System.Windows.Forms.Form].Assembly.Location,
             [System.Drawing.Graphics].Assembly.Location,
@@ -66,7 +66,7 @@ namespace DragonSwordWorldRadar {
 
     [IO.File]::WriteAllText(
         (Join-Path $runtime 'active-version.txt'),
-        '0.4.0-dev7-stable6 WinForms',
+        '0.4.0-dev9-performance1.1 WinForms',
         [Text.UTF8Encoding]::new($false))
     [DragonSwordWorldRadar.Program]::Run()
     Log 'RETURNED'

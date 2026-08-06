@@ -21,7 +21,7 @@ $createdNew = $false
 $mutex = New-Object Threading.Mutex($true, 'Local\DragonSwordWorldRadar.TransientHost', [ref]$createdNew)
 if (-not $createdNew) { Log "HOST_ALREADY_RUNNING stamp=$RequestStamp pid=$PID"; exit 0 }
 try {
-    Log "HOST_START version=0.4.0-dev7-stable6 stamp=$RequestStamp pid=$PID"
+    Log "HOST_START version=0.4.0-dev9-performance1.1 stamp=$RequestStamp pid=$PID"
     $layout = Resolve-DragonSwordWorldRadarGameLayout -ModDir $ModDir
     $compatibility = Test-DragonSwordWorldRadarInstalledGame -ModDir $ModDir -Layout $layout
     if (-not $compatibility.Compatible) {

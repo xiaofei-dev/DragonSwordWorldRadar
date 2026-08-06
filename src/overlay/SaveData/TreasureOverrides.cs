@@ -21,13 +21,13 @@ namespace DragonSwordWorldRadar
             "generated",
             "treasures.lua");
 
-        private Dictionary<long, long> _aliases =
-            new Dictionary<long, long>();
-        private HashSet<long> _ignored =
-            new HashSet<long>();
+        private volatile OverrideSnapshot _snapshot =
+            OverrideSnapshot.Empty;
         private DateTime _nextRefreshUtc;
         private DateTime _lastOverrideWriteUtc;
+        private long _lastOverrideLength;
         private DateTime _lastCatalogWriteUtc;
+        private long _lastCatalogLength;
         private bool _lastOverrideExists;
         private bool _lastCatalogExists;
         private string _lastError;
@@ -46,21 +46,21 @@ namespace DragonSwordWorldRadar
 
         public long Resolve(long saveId, out bool ignored)
         {
-            Refresh();
-            lock (_sync)
+            // Refresh is driven by TreasureSaveState's maintenance pass. The
+            // dictionaries are immutable after publication, so marker reads
+            // do not need a lock or a DateTime check on every paint.
+            OverrideSnapshot snapshot = _snapshot;
+            long resolved;
+            if (!snapshot.Aliases.TryGetValue(saveId, out resolved))
             {
-                long resolved;
-                if (!_aliases.TryGetValue(saveId, out resolved))
-                {
-                    resolved = saveId;
-                }
-
-                // Resolve aliases before applying ignore rules so ignoring an
-                // alias target also hides every source that maps to it.
-                ignored = _ignored.Contains(saveId)
-                    || _ignored.Contains(resolved);
-                return resolved;
+                resolved = saveId;
             }
+
+            // Resolve aliases before applying ignore rules so ignoring an
+            // alias target also hides every source that maps to it.
+            ignored = snapshot.Ignored.Contains(saveId)
+                || snapshot.Ignored.Contains(resolved);
+            return resolved;
         }
 
         public void Refresh()
@@ -74,21 +74,31 @@ namespace DragonSwordWorldRadar
 
             try
             {
-                bool overrideExists = File.Exists(_path);
-                DateTime overrideWriteUtc = overrideExists
-                    ? File.GetLastWriteTimeUtc(_path)
-                    : DateTime.MinValue;
-                bool catalogExists = File.Exists(_catalogPath);
-                DateTime catalogWriteUtc = catalogExists
-                    ? File.GetLastWriteTimeUtc(_catalogPath)
-                    : DateTime.MinValue;
+                bool overrideExists;
+                DateTime overrideWriteUtc;
+                long overrideLength;
+                CaptureFileStamp(
+                    _path,
+                    out overrideExists,
+                    out overrideWriteUtc,
+                    out overrideLength);
+                bool catalogExists;
+                DateTime catalogWriteUtc;
+                long catalogLength;
+                CaptureFileStamp(
+                    _catalogPath,
+                    out catalogExists,
+                    out catalogWriteUtc,
+                    out catalogLength);
 
                 lock (_sync)
                 {
                     if (overrideExists == _lastOverrideExists
                         && overrideWriteUtc == _lastOverrideWriteUtc
+                        && overrideLength == _lastOverrideLength
                         && catalogExists == _lastCatalogExists
-                        && catalogWriteUtc == _lastCatalogWriteUtc)
+                        && catalogWriteUtc == _lastCatalogWriteUtc
+                        && catalogLength == _lastCatalogLength)
                     {
                         return;
                     }
@@ -147,14 +157,42 @@ namespace DragonSwordWorldRadar
                     }
                 }
 
+                bool overrideExistsAfter;
+                DateTime overrideWriteUtcAfter;
+                long overrideLengthAfter;
+                CaptureFileStamp(
+                    _path,
+                    out overrideExistsAfter,
+                    out overrideWriteUtcAfter,
+                    out overrideLengthAfter);
+                bool catalogExistsAfter;
+                DateTime catalogWriteUtcAfter;
+                long catalogLengthAfter;
+                CaptureFileStamp(
+                    _catalogPath,
+                    out catalogExistsAfter,
+                    out catalogWriteUtcAfter,
+                    out catalogLengthAfter);
+                if (overrideExistsAfter != overrideExists
+                    || overrideWriteUtcAfter != overrideWriteUtc
+                    || overrideLengthAfter != overrideLength
+                    || catalogExistsAfter != catalogExists
+                    || catalogWriteUtcAfter != catalogWriteUtc
+                    || catalogLengthAfter != catalogLength)
+                {
+                    throw new IOException(
+                        "Treasure override inputs changed while being read.");
+                }
+
                 lock (_sync)
                 {
-                    _aliases = aliases;
-                    _ignored = ignored;
+                    _snapshot = new OverrideSnapshot(aliases, ignored);
                     _lastOverrideExists = overrideExists;
                     _lastOverrideWriteUtc = overrideWriteUtc;
+                    _lastOverrideLength = overrideLength;
                     _lastCatalogExists = catalogExists;
                     _lastCatalogWriteUtc = catalogWriteUtc;
+                    _lastCatalogLength = catalogLength;
                     _lastError = null;
                     _version++;
                 }
@@ -176,6 +214,21 @@ namespace DragonSwordWorldRadar
                     "Treasure override refresh failed",
                     exception);
             }
+        }
+
+        private static void CaptureFileStamp(
+            string path,
+            out bool exists,
+            out DateTime writeUtc,
+            out long length)
+        {
+            FileInfo info = new FileInfo(path);
+            info.Refresh();
+            exists = info.Exists;
+            writeUtc = exists
+                ? info.LastWriteTimeUtc
+                : DateTime.MinValue;
+            length = exists ? info.Length : 0;
         }
 
         private Dictionary<string, HashSet<long>> LoadNamedIds(
@@ -286,6 +339,25 @@ namespace DragonSwordWorldRadar
                 CultureInfo.InvariantCulture,
                 out id)
                 && id > 0;
+        }
+
+        private sealed class OverrideSnapshot
+        {
+            public static readonly OverrideSnapshot Empty =
+                new OverrideSnapshot(
+                    new Dictionary<long, long>(),
+                    new HashSet<long>());
+
+            public readonly Dictionary<long, long> Aliases;
+            public readonly HashSet<long> Ignored;
+
+            public OverrideSnapshot(
+                Dictionary<long, long> aliases,
+                HashSet<long> ignored)
+            {
+                Aliases = aliases;
+                Ignored = ignored;
+            }
         }
     }
 }

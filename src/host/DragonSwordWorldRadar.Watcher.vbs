@@ -30,7 +30,7 @@ Function Quote(value)
     Quote = Chr(34) & Replace(value, Chr(34), Chr(34) & Chr(34)) & Chr(34)
 End Function
 
-LogLine "WATCHER_START version=0.4.0-dev7-stable6 host=wscript pidless=true"
+LogLine "WATCHER_START version=0.4.0-dev9-performance1.1 host=wscript pidless=true"
 Do
     If fso.FileExists(stopPath) Then
         On Error Resume Next

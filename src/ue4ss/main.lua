@@ -49,7 +49,7 @@ local start_key = config.start_key or config.refresh_key or "F7"
 local stop_key = config.stop_key or config.toggle_key or "F8"
 if diagnostics ~= nil then
     diagnostics.configure({
-        version = "0.4.0-dev7-stable6",
+        version = "0.4.0-dev9-performance1.1",
         generation = generation,
         enabled = config.diagnostic_logging ~= false,
         verbose = config.diagnostic_verbose == true,
@@ -84,13 +84,20 @@ local MINIMAP_SCALE_THRESHOLD = 2.7
 local MINIMAP_SCALE_CHECK_INTERVAL_MS = 1000
 local MAX_RADAR_POINTS = 80
 -- Full marker/configuration state stays low-frequency. Compact movement
--- frames use separate double-buffered files: 16 ms on the minimap and 8 ms
--- while the world map is open. High-frequency loops never serialize JSON.
-local WORLD_MAP_ACTIVE_INTERVAL_MS = 8
+-- frames use a separate double-buffered bridge. Both producer modes use a
+-- 24 ms sampling cadence, then visual-delta filtering suppresses sub-pixel
+-- jitter and idle writes before touching the filesystem.
+local WORLD_MAP_ACTIVE_INTERVAL_MS = 24
 local MAP_LOAD_RESUME_DELAY_MS = 3000
 local MINIMAP_UPDATE_INTERVAL_MS = 250
-local FAST_MOTION_INTERVAL_MS = 16
+local FAST_MOTION_INTERVAL_MS = 24
 local FAST_MOTION_RECORD_SIZE = 768
+local FAST_MOTION_HEARTBEAT_MS = 1000
+local MOTION_POSITION_EPSILON = 20.0
+local MOTION_Z_EPSILON = 10.0
+local WORLD_MAP_PAN_EPSILON = 0.10
+local WORLD_MAP_PLAYER_MAP_EPSILON = 0.10
+local WORLD_MAP_ZOOM_EPSILON_RATIO = 0.0001
 local WORLD_MAP_ID = 100
 local TREASURE_GRID_CELL_SIZE = FIELD_RADAR_RADIUS
 
@@ -108,7 +115,8 @@ local state_path_b = nil
 local motion_path_a = nil
 local motion_path_b = nil
 local motion_sequence = 0
-local last_motion_body = nil
+local last_written_motion = nil
+local last_motion_write_epoch = 0
 local motion_write_error_logged = false
 local latest_motion_x = nil
 local latest_motion_y = nil
@@ -372,7 +380,139 @@ local function reset_bridge_files()
     end
     state_sequence = 0
     motion_sequence = 0
-    last_motion_body = nil
+    last_written_motion = nil
+    last_motion_write_epoch = 0
+end
+
+local function absolute_difference(left, right)
+    return math.abs((tonumber(left) or 0.0) - (tonumber(right) or 0.0))
+end
+
+local function zoom_changed(left, right)
+    left = tonumber(left) or 0.0
+    right = tonumber(right) or 0.0
+    local scale = math.max(math.abs(left), math.abs(right), 1.0)
+    return math.abs(left - right)
+        > scale * WORLD_MAP_ZOOM_EPSILON_RATIO
+end
+
+local function map_motion_changed(previous, current)
+    local had_map = previous ~= nil
+    local has_map = current ~= nil
+    if had_map ~= has_map then
+        return true
+    end
+    if not has_map then
+        return false
+    end
+
+    return (tonumber(previous.map_id) or 0)
+            ~= (tonumber(current.map_id) or 0)
+        or absolute_difference(previous.dimensions, current.dimensions) > 0.001
+        or absolute_difference(previous.ui_size, current.ui_size) > 0.001
+        or absolute_difference(previous.left, current.left)
+            > WORLD_MAP_PAN_EPSILON
+        or absolute_difference(previous.top, current.top)
+            > WORLD_MAP_PAN_EPSILON
+        or zoom_changed(previous.zoom, current.zoom)
+        or absolute_difference(
+            previous.viewport_width,
+            current.viewport_width
+        ) > 0.001
+        or absolute_difference(
+            previous.viewport_height,
+            current.viewport_height
+        ) > 0.001
+        or zoom_changed(
+            previous.viewport_scale,
+            current.viewport_scale
+        )
+        or absolute_difference(
+            previous.player_map_x,
+            current.player_map_x
+        ) > WORLD_MAP_PLAYER_MAP_EPSILON
+        or absolute_difference(
+            previous.player_map_y,
+            current.player_map_y
+        ) > WORLD_MAP_PLAYER_MAP_EPSILON
+end
+
+local function motion_has_visual_change(
+    previous,
+    is_enabled,
+    mode,
+    player_x,
+    player_y,
+    player_z,
+    radius,
+    map_state
+)
+    if previous == nil then
+        return true
+    end
+    if previous.is_enabled ~= (is_enabled == true)
+        or previous.mode ~= tostring(mode or "radar")
+        or absolute_difference(previous.radius, radius) > 0.001
+        or (previous.player_z ~= nil) ~= (player_z ~= nil)
+    then
+        return true
+    end
+
+    local delta_x = (tonumber(player_x) or 0.0) - previous.player_x
+    local delta_y = (tonumber(player_y) or 0.0) - previous.player_y
+    if delta_x * delta_x + delta_y * delta_y
+        > MOTION_POSITION_EPSILON * MOTION_POSITION_EPSILON
+    then
+        return true
+    end
+    if player_z ~= nil
+        and absolute_difference(previous.player_z, player_z)
+            > MOTION_Z_EPSILON
+    then
+        return true
+    end
+    return map_motion_changed(previous.map_state, map_state)
+end
+
+local function copy_map_motion(map_state)
+    if map_state == nil then
+        return nil
+    end
+    return {
+        map_id = tonumber(map_state.map_id) or 0,
+        dimensions = tonumber(map_state.dimensions) or 0.0,
+        ui_size = tonumber(map_state.ui_size) or 0.0,
+        left = tonumber(map_state.left) or 0.0,
+        top = tonumber(map_state.top) or 0.0,
+        zoom = tonumber(map_state.zoom) or 0.0,
+        viewport_width = tonumber(map_state.viewport_width) or 0.0,
+        viewport_height = tonumber(map_state.viewport_height) or 0.0,
+        viewport_scale = tonumber(map_state.viewport_scale) or 0.0,
+        player_map_x = tonumber(map_state.player_map_x) or 0.0,
+        player_map_y = tonumber(map_state.player_map_y) or 0.0,
+    }
+end
+
+local function remember_written_motion(
+    is_enabled,
+    mode,
+    player_x,
+    player_y,
+    player_z,
+    radius,
+    map_state,
+    written_at_epoch
+)
+    last_written_motion = {
+        is_enabled = is_enabled == true,
+        mode = tostring(mode or "radar"),
+        player_x = tonumber(player_x) or 0.0,
+        player_y = tonumber(player_y) or 0.0,
+        player_z = player_z ~= nil and tonumber(player_z) or nil,
+        radius = tonumber(radius) or radar_radius,
+        map_state = copy_map_motion(map_state),
+    }
+    last_motion_write_epoch = written_at_epoch
 end
 
 local function write_fast_motion(
@@ -385,7 +525,31 @@ local function write_fast_motion(
     map_state,
     force
 )
-    local diagnostic_start = diagnostics ~= nil and diagnostics.now_ms() or 0.0
+    local diagnostic_start = diagnostics ~= nil
+        and diagnostics.now_ms() or 0.0
+    local heartbeat_epoch = os.time()
+    local heartbeat_due = last_written_motion == nil
+        or os.difftime(
+            heartbeat_epoch,
+            last_motion_write_epoch
+        ) * 1000.0 >= FAST_MOTION_HEARTBEAT_MS
+    local visual_change = motion_has_visual_change(
+        last_written_motion,
+        is_enabled,
+        mode,
+        player_x,
+        player_y,
+        player_z,
+        radius,
+        map_state
+    )
+    if not force and not visual_change and not heartbeat_due then
+        if diagnostics ~= nil then
+            diagnostics.record_motion_skip()
+        end
+        return true
+    end
+
     local path_a, path_b = resolve_motion_paths()
     if path_a == nil or path_b == nil then
         if diagnostics ~= nil then
@@ -397,7 +561,7 @@ local function write_fast_motion(
         return false
     end
 
-    map_state = map_state or {}
+    local map_values = map_state or {}
     local body = string.format(
         "%d|%s|%s|%.6f|%.6f|%.6f|%s|%.6f|%d|%.6f|%.6f|%.6f|%.6f|%.9f|%.6f|%.6f|%.9f|%.6f|%.6f",
         generation,
@@ -408,21 +572,18 @@ local function write_fast_motion(
         player_z or 0,
         player_z ~= nil and "1" or "0",
         radius or radar_radius,
-        tonumber(map_state.map_id) or 0,
-        tonumber(map_state.dimensions) or 0,
-        tonumber(map_state.ui_size) or 0,
-        tonumber(map_state.left) or 0,
-        tonumber(map_state.top) or 0,
-        tonumber(map_state.zoom) or 0,
-        tonumber(map_state.viewport_width) or 0,
-        tonumber(map_state.viewport_height) or 0,
-        tonumber(map_state.viewport_scale) or 0,
-        tonumber(map_state.player_map_x) or 0,
-        tonumber(map_state.player_map_y) or 0
+        tonumber(map_values.map_id) or 0,
+        tonumber(map_values.dimensions) or 0,
+        tonumber(map_values.ui_size) or 0,
+        tonumber(map_values.left) or 0,
+        tonumber(map_values.top) or 0,
+        tonumber(map_values.zoom) or 0,
+        tonumber(map_values.viewport_width) or 0,
+        tonumber(map_values.viewport_height) or 0,
+        tonumber(map_values.viewport_scale) or 0,
+        tonumber(map_values.player_map_x) or 0,
+        tonumber(map_values.player_map_y) or 0
     )
-    if not force and body == last_motion_body then
-        return true
-    end
 
     motion_sequence = motion_sequence + 1
     local sequence_text = tostring(motion_sequence)
@@ -469,7 +630,16 @@ local function write_fast_motion(
             motion_write_error_logged = true
         end
     else
-        last_motion_body = body
+        remember_written_motion(
+            is_enabled,
+            mode,
+            player_x,
+            player_y,
+            player_z,
+            radius,
+            map_state,
+            heartbeat_epoch
+        )
         if motion_write_error_logged then
             log("Fast motion bridge recovered.")
             motion_write_error_logged = false
@@ -488,8 +658,8 @@ local function flush_latest_motion()
     if latest_motion_sample == written_motion_sample then
         return
     end
-    written_motion_sample = latest_motion_sample
-    write_fast_motion(
+    local sample = latest_motion_sample
+    local written = write_fast_motion(
         true,
         latest_motion_mode,
         latest_motion_x,
@@ -499,6 +669,12 @@ local function flush_latest_motion()
         latest_motion_map_state,
         false
     )
+    -- A visual-delta suppression is reported as success, while a real bridge
+    -- failure keeps the sample pending so the next loop retries it instead of
+    -- silently dropping the newest player/map transform.
+    if written then
+        written_motion_sample = sample
+    end
 end
 
 local function write_static_state(text)
@@ -537,6 +713,9 @@ local function publish_motion_sample(
     latest_motion_radius = radar_radius
     latest_motion_map_state = map_state
     latest_motion_sample = latest_motion_sample + 1
+    if diagnostics ~= nil then
+        diagnostics.record_motion_sample()
+    end
 end
 
 local function write_disabled_state()
@@ -1308,4 +1487,4 @@ end)
 reset_bridge_files()
 start_overlay()
 write_disabled_state()
-log("Ready. F7 enables configured radar layers; F8 disables them. Static state uses 250 ms double buffering; radar motion uses 16 ms and world-map motion uses 8 ms only while open. Diagnostics: runtime/logs/DragonSwordWorldRadar.Lua.log and Collect-Diagnostics.cmd.")
+log("Ready. F7 enables configured radar layers; F8 disables them. Static state uses 250 ms double buffering. Motion is sampled at 24 ms, written only on visual change or a 1 second heartbeat, and consumed by an adaptive Overlay timer. Diagnostics: runtime/logs/DragonSwordWorldRadar.Lua.log and Collect-Diagnostics.cmd.")

@@ -14,6 +14,7 @@ namespace DragonSwordWorldRadar
 
         private readonly string _path;
         private DateTime _lastWriteUtc;
+        private long _lastLength;
         private DateTime _nextRefreshUtc;
         private bool _hasLoaded;
         private int _version;
@@ -86,12 +87,17 @@ namespace DragonSwordWorldRadar
             }
             _nextRefreshUtc = now.AddSeconds(5);
 
-            if (!File.Exists(_path))
+            FileInfo before = new FileInfo(_path);
+            before.Refresh();
+            if (!before.Exists)
             {
                 return;
             }
-            DateTime writeTime = File.GetLastWriteTimeUtc(_path);
-            if (_hasLoaded && writeTime == _lastWriteUtc)
+            DateTime writeTime = before.LastWriteTimeUtc;
+            long length = before.Length;
+            if (_hasLoaded
+                && writeTime == _lastWriteUtc
+                && length == _lastLength)
             {
                 return;
             }
@@ -207,9 +213,20 @@ namespace DragonSwordWorldRadar
                 matches.Add(treasure);
             }
 
+            FileInfo after = new FileInfo(_path);
+            after.Refresh();
+            if (!after.Exists
+                || after.LastWriteTimeUtc != writeTime
+                || after.Length != length)
+            {
+                throw new IOException(
+                    "Treasure catalog changed while it was being read.");
+            }
+
             _points = loaded;
             _bySaveId = bySaveId;
             _lastWriteUtc = writeTime;
+            _lastLength = length;
             _hasLoaded = true;
             _version++;
         }

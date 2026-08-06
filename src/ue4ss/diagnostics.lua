@@ -27,6 +27,8 @@ local function reset_counters()
         player_missing = 0,
         state_writes = 0,
         state_write_failures = 0,
+        motion_samples = 0,
+        motion_write_skips = 0,
         motion_writes = 0,
         motion_write_failures = 0,
         motion_write_total_ms = 0.0,
@@ -274,6 +276,14 @@ function Diagnostics.record_queue_skip(reason)
     end
 end
 
+function Diagnostics.record_motion_sample()
+    counters.motion_samples = counters.motion_samples + 1
+end
+
+function Diagnostics.record_motion_skip()
+    counters.motion_write_skips = counters.motion_write_skips + 1
+end
+
 function Diagnostics.record_motion_write(duration_ms, ok)
     counters.motion_writes = counters.motion_writes + 1
     if not ok then
@@ -392,6 +402,9 @@ function Diagnostics.maybe_report(mode, state_sequence)
     local world_input_changed_percent = world_input_samples > 0
         and counters.world_input_changed * 100.0 / world_input_samples
         or 0.0
+    local motion_sample_count = math.max(1, counters.motion_samples)
+    local motion_skip_percent = counters.motion_write_skips
+        * 100.0 / motion_sample_count
     Diagnostics.event("INFO", "LUA_PERF", nil, {
         window_seconds = elapsed,
         mode = mode,
@@ -425,6 +438,10 @@ function Diagnostics.maybe_report(mode, state_sequence)
         world_input_changed_percent = world_input_changed_percent,
         max_pan_delta = counters.max_pan_delta,
         max_zoom_delta_percent = counters.max_zoom_delta_percent,
+        motion_samples = counters.motion_samples,
+        motion_write_skips = counters.motion_write_skips,
+        motion_skip_percent = motion_skip_percent,
+        motion_write_hz = counters.motion_writes / elapsed,
         motion_writes = counters.motion_writes,
         motion_write_failures = counters.motion_write_failures,
         motion_write_avg_ms = average(

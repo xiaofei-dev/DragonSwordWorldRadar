@@ -2,39 +2,43 @@
 
 ## Runtime processes
 
-DragonSwordWorldRadar uses a hidden WScript watcher and a transient Windows PowerShell process while the game is running. PowerShell compiles the WinForms overlay source in memory.
+DragonSwordWorldRadar uses UE4SS Lua as the game-side producer, a hidden WScript watcher, a transient Windows PowerShell 5.1 host, and an in-memory compiled WinForms overlay. No custom radar executable is built or distributed.
 
 ```text
-UE4SS Lua -> runtime/launch.request -> hidden watcher
-                                      -> in-memory C# compile
-                                      -> WinForms overlay
+UE4SS Lua
+  -> alternating static JSON slots (250 ms)
+  -> alternating compact motion slots (24 ms sampling; visual-delta writes)
+  -> hidden watcher / transient host
+  -> in-memory WinForms overlay
 ```
 
-No custom radar `.exe` is built or distributed.
-
-## Layer boundaries
+## Data and state boundaries
 
 ```text
-TreasureDataProvider -> generated/treasures.lua -> treasure bridge points
-                                              -> TreasureSaveState filter
-                                              -> treasure renderer
+TreasureDataProvider -> data/generated/treasures.lua
+                     -> SQLCipher opened-state filter
+                     -> per-map visibility index
+                     -> minimap/world-map renderer
 
-BossDataProvider     -> generated/bosses.lua    -> boss_tracker.lua
-                                              -> boss bridge points
-                                              -> boss renderer
+BossDataProvider     -> data/generated/bosses.lua
+                     -> SQLCipher tb_actor_respawn state
+                     -> availability deadline cache
+                     -> minimap/world-map renderer
 ```
 
-The boss layer does not use `tb_treasure_box`, treasure overrides, or permanent opened-bit filtering. Runtime actor observation owns boss visibility.
+Treasure and Boss save state are read from consistent copies of active `.db`/`.bak` files and available WAL/SHM/journal sidecars. The production runtime does not enumerate `Character` objects and does not install experimental gameplay hooks.
 
-## Boss state lifecycle
+## Scheduler
 
-1. Boss catalog entries start visible with an `unknown` runtime state.
-2. A streamed actor matching the configured UIDName and spawn coordinates confirms `alive`.
-3. A reflected dead flag hides the marker immediately on the next one-second scan.
-4. If a previously observed actor disappears while the player remains near its spawn, two consecutive scans confirm the hidden state.
-5. A newly spawned matching actor restores the marker.
+- UE4SS motion sampling: 24 ms in minimap and world-map modes.
+- Motion publication: only after a visible delta or a 1000 ms heartbeat.
+- Static state publication: 250 ms.
+- Overlay polling: 24 ms active, 50 ms idle world map, 75 ms idle minimap, 125 ms disabled.
+- Heartbeat-only and visually equivalent states update liveness without invalidating the window.
 
-This deliberately avoids guessing a server-global state from static `FieldBossListData`. Off-screen server changes are reconciled when the relevant actor streams in.
+## Rendering
+
+World-map treasures are projected once per paint into a reusable buffer with projected-pixel deduplication. Non-nearest treasure markers are grouped into four retained `GraphicsPath` batches. Boss markers, nearest treasure, labels, and height indicators retain independent rendering paths.
 
 ## Runtime directories
 
@@ -42,25 +46,7 @@ This deliberately avoids guessing a server-global state from static `FieldBossLi
 runtime/
   bridge/       transient Lua-to-overlay state
   logs/         installer, watcher, host, Lua, and overlay logs
+  diagnostics/  collected snapshots when diagnostics are requested
   launch.request
   reinstall-required.json
 ```
-
-## Data lifecycle
-
-```text
-Install.cmd
-  -> resolve local game layout
-  -> compile installer C# in memory
-  -> execute TreasureDataProvider and BossDataProvider
-  -> write data/generated/*
-  -> write metadata/datasets.json
-  -> write metadata/install-state.json
-```
-
-## Configuration lifecycle
-
-- `scripts/config.default.lua` is version controlled.
-- `scripts/config.lua` is created on first installation and merged without replacing user values.
-- `show_treasures` and `show_bosses` independently control their layers.
-- `data/treasure_overrides.txt` remains treasure-only and is preserved on upgrades.

@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.0-dev9-performance1.1
+
+- Reduced compact-motion bridge writes through cumulative visual-delta filtering while retaining a one-second liveness heartbeat.
+- Changed active minimap and world-map sampling to 24 ms without changing the fixed 21-field bridge protocol.
+- Added adaptive Overlay polling at 24/50/75/125 ms for active, world-idle, radar-idle, and disabled states.
+- Prevented unchanged bridge slots, heartbeat-only motion frames, and visually equivalent static frames from causing repeated reads, parsing, invalidation, or paint.
+- Batched non-nearest treasure markers into retained type-specific `GraphicsPath` instances.
+- Reused a validated game process ID across geometry, lifetime, and save polling.
+- Added scheduler/write-suppression counters to Lua and Overlay diagnostics.
+- Fixed the Windows PowerShell 5.1 CodeDOM local-variable shadowing error in `MotionVisualSnapshot.Update`.
+- In-game diagnostics confirmed normal operation, adaptive timer transitions, zero bridge/write failures, and materially lower idle/active work.
+
+# Changelog
+
+## 0.4.0-dev8-refactor2
+
+- Fixed the refactor1 Windows PowerShell 5.1 `Add-Type` compiler blocker.
+- Added mandatory real-compiler and regression-harness gates to release builds.
+- Added SHA-256 package integrity validation and exact immutable-tree checks before installation.
+- Made datasets, preserved config, overrides, metadata, `mods.txt`, and startup shortcut one staged, rollback-protected transaction; watcher readiness is the commit point.
+- Isolated treasure and boss save-state failures, retained last-known-good snapshots, and added bounded partial-module retry.
+- Added bounded bridge/catalog reads, PAK/decoder guards, canonical ZIP validation, and per-record rendering isolation.
+- No intended feature, marker-style, bridge-protocol, schema, hotkey, or sampling-interval change.
+
 ## 0.4.0-dev7-stable6
 
 - Frozen dev7 stability baseline after in-game validation of F7/F8, minimap and world-map double buffering.

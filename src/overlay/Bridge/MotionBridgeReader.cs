@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using System.IO;
 
 namespace DragonSwordWorldRadar
@@ -20,8 +19,13 @@ namespace DragonSwordWorldRadar
 
     internal sealed class MotionBridgeReader
     {
+        private const int MotionRecordBufferSize = 1024;
+
         private readonly Slot _slotA;
         private readonly Slot _slotB;
+        private readonly MotionFrame _publishedFrame = new MotionFrame();
+        private readonly WorldMapState _publishedWorldMap =
+            new WorldMapState();
         private int _lastDeliveredGeneration = -1;
         private long _lastDeliveredSequence = -1;
 
@@ -40,7 +44,9 @@ namespace DragonSwordWorldRadar
             Update(_slotA);
             Update(_slotB);
 
-            MotionFrame newest = Newer(_slotA.Frame, _slotB.Frame);
+            MotionFrame newest = Newer(
+                _slotA.HasCandidate ? _slotA.CandidateFrame : null,
+                _slotB.HasCandidate ? _slotB.CandidateFrame : null);
             if (newest == null
                 || CompareVersion(
                     newest.Generation,
@@ -52,25 +58,14 @@ namespace DragonSwordWorldRadar
                 return false;
             }
 
-            _lastDeliveredGeneration = newest.Generation;
-            _lastDeliveredSequence = newest.Sequence;
-            frame = newest;
+            CopyForPublication(
+                newest,
+                _publishedFrame,
+                _publishedWorldMap);
+            _lastDeliveredGeneration = _publishedFrame.Generation;
+            _lastDeliveredSequence = _publishedFrame.Sequence;
+            frame = _publishedFrame;
             return true;
-        }
-
-        private static MotionFrame Newer(
-            MotionFrame left,
-            MotionFrame right)
-        {
-            if (left == null) return right;
-            if (right == null) return left;
-            return CompareVersion(
-                right.Generation,
-                right.Sequence,
-                left.Generation,
-                left.Sequence) > 0
-                    ? right
-                    : left;
         }
 
         internal static int CompareVersion(
@@ -85,28 +80,130 @@ namespace DragonSwordWorldRadar
                 : leftSequence.CompareTo(rightSequence);
         }
 
+        private static void CopyForPublication(
+            MotionFrame source,
+            MotionFrame destination,
+            WorldMapState destinationWorldMap)
+        {
+            destination.Sequence = source.Sequence;
+            destination.Generation = source.Generation;
+            destination.Enabled = source.Enabled;
+            destination.Mode = source.Mode;
+            destination.PlayerX = source.PlayerX;
+            destination.PlayerY = source.PlayerY;
+            destination.PlayerZ = source.PlayerZ;
+            destination.HasPlayerZ = source.HasPlayerZ;
+            destination.Radius = source.Radius;
+
+            WorldMapState sourceWorldMap = source.WorldMap;
+            if (sourceWorldMap == null)
+            {
+                destination.WorldMap = null;
+                return;
+            }
+
+            destinationWorldMap.mapId = sourceWorldMap.mapId;
+            destinationWorldMap.dimensions = sourceWorldMap.dimensions;
+            destinationWorldMap.uiSize = sourceWorldMap.uiSize;
+            destinationWorldMap.left = sourceWorldMap.left;
+            destinationWorldMap.top = sourceWorldMap.top;
+            destinationWorldMap.zoom = sourceWorldMap.zoom;
+            destinationWorldMap.viewportWidth =
+                sourceWorldMap.viewportWidth;
+            destinationWorldMap.viewportHeight =
+                sourceWorldMap.viewportHeight;
+            destinationWorldMap.viewportScale =
+                sourceWorldMap.viewportScale;
+            destinationWorldMap.playerWorldX =
+                sourceWorldMap.playerWorldX;
+            destinationWorldMap.playerWorldY =
+                sourceWorldMap.playerWorldY;
+            destinationWorldMap.playerMapX = sourceWorldMap.playerMapX;
+            destinationWorldMap.playerMapY = sourceWorldMap.playerMapY;
+            destination.WorldMap = destinationWorldMap;
+        }
+
+        private static MotionFrame Newer(
+            MotionFrame left,
+            MotionFrame right)
+        {
+            if (left == null)
+            {
+                return right;
+            }
+            if (right == null)
+            {
+                return left;
+            }
+            return CompareVersion(
+                right.Generation,
+                right.Sequence,
+                left.Generation,
+                left.Sequence) > 0
+                    ? right
+                    : left;
+        }
+
         private static void Update(Slot slot)
         {
             try
             {
-                // Motion slots are tiny (well below 1 KB). Read both slots on
-                // every timer tick and trust the embedded generation/sequence
-                // pair instead of FileInfo timestamps, which can be coalesced
-                // during high-frequency writes on Windows.
-                string text = SharedBridgeFile.ReadAllText(slot.Path);
-                if (String.Equals(
-                    text,
-                    slot.LastText,
-                    StringComparison.Ordinal))
+                slot.Info.Refresh();
+                if (!slot.Info.Exists)
+                {
+                    slot.HasMetadata = false;
+                    return;
+                }
+                if (slot.HasMetadata
+                    && slot.LastWriteUtc == slot.Info.LastWriteTimeUtc
+                    && slot.Length == slot.Info.Length)
                 {
                     return;
                 }
+            }
+            catch (IOException)
+            {
+                return;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return;
+            }
 
-                MotionFrame frame;
-                if (TryParse(text, out frame))
+            try
+            {
+                // Motion slots are ASCII records under 768 bytes. Read into a
+                // reusable fixed buffer and parse in place; this removes the
+                // per-frame string, Split(), numeric substring, MotionFrame,
+                // and WorldMapState allocations from the high-frequency overlay path.
+                int length = SharedBridgeFile.ReadInto(
+                    slot.Path,
+                    slot.ReadBuffer);
+                if (SameContent(slot, length))
                 {
-                    slot.Frame = frame;
-                    slot.LastText = text;
+                    slot.LastWriteUtc = slot.Info.LastWriteTimeUtc;
+                    slot.Length = slot.Info.Length;
+                    slot.HasMetadata = true;
+                    return;
+                }
+
+                if (MotionRecordParser.TryParse(
+                    slot.ReadBuffer,
+                    length,
+                    slot.CandidateFrame,
+                    slot.CandidateWorldMap))
+                {
+                    slot.HasCandidate = true;
+                    Buffer.BlockCopy(
+                        slot.ReadBuffer,
+                        0,
+                        slot.LastBuffer,
+                        0,
+                        length);
+                    slot.LastLength = length;
+                    slot.LastWriteUtc = slot.Info.LastWriteTimeUtc;
+                    slot.Length = slot.Info.Length;
+                    slot.HasMetadata = true;
                 }
             }
             catch (FileNotFoundException)
@@ -126,155 +223,44 @@ namespace DragonSwordWorldRadar
             }
         }
 
-        internal static bool TryParse(
-            string text,
-            out MotionFrame frame)
+        private static bool SameContent(Slot slot, int length)
         {
-            frame = null;
-            if (String.IsNullOrWhiteSpace(text))
+            if (length != slot.LastLength)
             {
                 return false;
             }
-
-            string[] values = text.Trim().Split('|');
-            if (values.Length != 21)
+            for (int index = 0; index < length; index++)
             {
-                return false;
-            }
-
-            long sequence;
-            long trailingSequence;
-            int generation;
-            int enabled;
-            double playerX;
-            double playerY;
-            double playerZ;
-            int hasPlayerZ;
-            double radius;
-            int mapId;
-            double dimensions;
-            double uiSize;
-            double left;
-            double top;
-            double zoom;
-            double viewportWidth;
-            double viewportHeight;
-            double viewportScale;
-            double playerMapX;
-            double playerMapY;
-
-            if (!Int64.TryParse(values[0], NumberStyles.Integer,
-                    CultureInfo.InvariantCulture, out sequence)
-                || !Int32.TryParse(values[1], NumberStyles.Integer,
-                    CultureInfo.InvariantCulture, out generation)
-                || !Int32.TryParse(values[2], NumberStyles.Integer,
-                    CultureInfo.InvariantCulture, out enabled)
-                || !Double.TryParse(values[4], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out playerX)
-                || !Double.TryParse(values[5], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out playerY)
-                || !Double.TryParse(values[6], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out playerZ)
-                || !Int32.TryParse(values[7], NumberStyles.Integer,
-                    CultureInfo.InvariantCulture, out hasPlayerZ)
-                || !Double.TryParse(values[8], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out radius)
-                || !Int32.TryParse(values[9], NumberStyles.Integer,
-                    CultureInfo.InvariantCulture, out mapId)
-                || !Double.TryParse(values[10], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out dimensions)
-                || !Double.TryParse(values[11], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out uiSize)
-                || !Double.TryParse(values[12], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out left)
-                || !Double.TryParse(values[13], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out top)
-                || !Double.TryParse(values[14], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out zoom)
-                || !Double.TryParse(values[15], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out viewportWidth)
-                || !Double.TryParse(values[16], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out viewportHeight)
-                || !Double.TryParse(values[17], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out viewportScale)
-                || !Double.TryParse(values[18], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out playerMapX)
-                || !Double.TryParse(values[19], NumberStyles.Float,
-                    CultureInfo.InvariantCulture, out playerMapY)
-                || !Int64.TryParse(values[20], NumberStyles.Integer,
-                    CultureInfo.InvariantCulture, out trailingSequence)
-                || sequence != trailingSequence
-                || sequence < 0
-                || generation < 0)
-            {
-                return false;
-            }
-
-            string mode = values[3];
-            if (!String.Equals(mode, "radar", StringComparison.Ordinal)
-                && !String.Equals(mode, "world", StringComparison.Ordinal)
-                && !String.Equals(mode, "disabled", StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            WorldMapState map = null;
-            if (String.Equals(mode, "world", StringComparison.Ordinal))
-            {
-                if (mapId <= 0
-                    || dimensions <= 0
-                    || uiSize <= 0
-                    || zoom <= 0
-                    || viewportWidth <= 0
-                    || viewportHeight <= 0
-                    || viewportScale <= 0)
+                if (slot.ReadBuffer[index] != slot.LastBuffer[index])
                 {
                     return false;
                 }
-
-                map = new WorldMapState
-                {
-                    mapId = mapId,
-                    dimensions = dimensions,
-                    uiSize = uiSize,
-                    left = left,
-                    top = top,
-                    zoom = zoom,
-                    viewportWidth = viewportWidth,
-                    viewportHeight = viewportHeight,
-                    viewportScale = viewportScale,
-                    playerWorldX = playerX,
-                    playerWorldY = playerY,
-                    playerMapX = playerMapX,
-                    playerMapY = playerMapY
-                };
             }
-
-            frame = new MotionFrame
-            {
-                Sequence = sequence,
-                Generation = generation,
-                Enabled = enabled != 0,
-                Mode = mode,
-                PlayerX = playerX,
-                PlayerY = playerY,
-                PlayerZ = playerZ,
-                HasPlayerZ = hasPlayerZ != 0,
-                Radius = radius,
-                WorldMap = map
-            };
             return true;
         }
 
         private sealed class Slot
         {
             public readonly string Path;
-            public string LastText;
-            public MotionFrame Frame;
+            public readonly FileInfo Info;
+            public readonly byte[] ReadBuffer =
+                new byte[MotionRecordBufferSize];
+            public readonly byte[] LastBuffer =
+                new byte[MotionRecordBufferSize];
+            public int LastLength = -1;
+            public bool HasMetadata;
+            public DateTime LastWriteUtc;
+            public long Length;
+            public bool HasCandidate;
+            public readonly MotionFrame CandidateFrame =
+                new MotionFrame();
+            public readonly WorldMapState CandidateWorldMap =
+                new WorldMapState();
 
             public Slot(string path)
             {
                 Path = path;
+                Info = new FileInfo(path);
             }
         }
     }

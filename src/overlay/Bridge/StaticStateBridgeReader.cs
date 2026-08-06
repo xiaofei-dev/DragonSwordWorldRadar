@@ -29,8 +29,7 @@ namespace DragonSwordWorldRadar
         {
             get
             {
-                return File.Exists(_slotA.Path)
-                    || File.Exists(_slotB.Path);
+                return _slotA.Exists || _slotB.Exists;
             }
         }
 
@@ -74,15 +73,17 @@ namespace DragonSwordWorldRadar
 
         private void Update(Slot slot)
         {
-            FileInfo info;
+            FileInfo info = slot.Info;
             try
             {
-                info = new FileInfo(slot.Path);
                 info.Refresh();
                 if (!info.Exists)
                 {
+                    slot.Exists = false;
+                    slot.HasMetadata = false;
                     return;
                 }
+                slot.Exists = true;
                 if (slot.HasMetadata
                     && slot.LastWriteUtc == info.LastWriteTimeUtc
                     && slot.Length == info.Length)
@@ -131,6 +132,8 @@ namespace DragonSwordWorldRadar
         private sealed class Slot
         {
             public readonly string Path;
+            public readonly FileInfo Info;
+            public bool Exists;
             public bool HasMetadata;
             public DateTime LastWriteUtc;
             public long Length;
@@ -139,6 +142,7 @@ namespace DragonSwordWorldRadar
             public Slot(string path)
             {
                 Path = path;
+                Info = new FileInfo(path);
             }
         }
     }

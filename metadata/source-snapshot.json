@@ -1,13 +1,17 @@
 {
   "schema_version": 1,
-  "version": "0.4.0-dev7-stable6",
-  "generated_at_utc": "2026-08-05T18:30:16.792924Z",
-  "release_archive_sha256": "81c3f3528c3950e8d980d5b7485f2933b8b0f00b65324d01563e2b3083cc66b8",
-  "mapped_release_source_files": 54,
-  "mapped_release_source_match": "passed",
+  "version": "0.4.0-dev9-performance1.1",
+  "generated_at_utc": "2026-08-06T03:42:41.925450+00:00",
+  "tested_release_archive_sha256": "96be8ea8a54bcc2d17550ab7480c5c76917f2e86714cf7a986bfb6dac61c84ac",
+  "tested_diagnostics_archive_sha256": "479c688df62dd369f36e249e59160d5b2b917eaf5ff584c0739136fcf2fb5f4b",
+  "mapped_release_files": 73,
+  "overlay_source_files": 31,
+  "installer_source_files": 13,
+  "ue4ss_lua_files": 7,
+  "mapping_status": "normalized text and raw binary content match the tested release",
   "excluded": [
     ".git/",
-    "dist/"
-  ],
-  "file_count_before_inventory": 79
+    "dist/",
+    "runtime-generated state and logs"
+  ]
 }

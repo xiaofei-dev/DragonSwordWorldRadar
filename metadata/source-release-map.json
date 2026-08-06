@@ -1,0 +1,593 @@
+{
+  "schema_version": 1,
+  "version": "0.4.0-dev9-performance1.1",
+  "tested_release_archive": "DragonSwordWorldRadar-v0.4.0-dev9-performance1.1.zip",
+  "tested_release_sha256": "96be8ea8a54bcc2d17550ab7480c5c76917f2e86714cf7a986bfb6dac61c84ac",
+  "text_hash_rule": "UTF-8 BOM removed and CRLF/CR normalized to LF before normalized_sha256",
+  "mapped_files": [
+    {
+      "source_path": "LICENSE",
+      "release_path": "licenses/GPL-3.0.txt",
+      "source_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "release_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "normalized_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "README.md",
+      "release_path": "README.txt",
+      "source_sha256": "43289a38bacc4d10b38bab488dcdaa718bcd3958bade336150c54e9e462d98f6",
+      "release_sha256": "43289a38bacc4d10b38bab488dcdaa718bcd3958bade336150c54e9e462d98f6",
+      "normalized_sha256": "43289a38bacc4d10b38bab488dcdaa718bcd3958bade336150c54e9e462d98f6",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "THIRD_PARTY_NOTICES.txt",
+      "release_path": "THIRD_PARTY_NOTICES.txt",
+      "source_sha256": "a81b7f947d6853c466d1129a165cb93fff98e016af236864e7ba5c61fda9643c",
+      "release_sha256": "3ec7e039327acb05b38561a922a514f738bd6ee0bb9065048fb638b4cf1ea9d8",
+      "normalized_sha256": "a81b7f947d6853c466d1129a165cb93fff98e016af236864e7ba5c61fda9643c",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "licenses/APACHE-2.0.txt",
+      "release_path": "licenses/APACHE-2.0.txt",
+      "source_sha256": "5c9817c129b98e7bb966bca028c43c19107102ef8e03fe799bffb4354f4ef015",
+      "release_sha256": "5c9817c129b98e7bb966bca028c43c19107102ef8e03fe799bffb4354f4ef015",
+      "normalized_sha256": "5c9817c129b98e7bb966bca028c43c19107102ef8e03fe799bffb4354f4ef015",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "licenses/SQLCIPHER.txt",
+      "release_path": "licenses/SQLCIPHER.txt",
+      "source_sha256": "bb98d8cc6d5cc2a70f55a95b9660fb0558d5b385bbfa647f9f55b6ac5b43f843",
+      "release_sha256": "bb98d8cc6d5cc2a70f55a95b9660fb0558d5b385bbfa647f9f55b6ac5b43f843",
+      "normalized_sha256": "bb98d8cc6d5cc2a70f55a95b9660fb0558d5b385bbfa647f9f55b6ac5b43f843",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "metadata/build-validation.json",
+      "release_path": "metadata/build-validation.json",
+      "source_sha256": "22b3b983bc7252b55cae2d95fa8587c6adae107ae455ef55c6da075e228fe8d1",
+      "release_sha256": "22b3b983bc7252b55cae2d95fa8587c6adae107ae455ef55c6da075e228fe8d1",
+      "normalized_sha256": "22b3b983bc7252b55cae2d95fa8587c6adae107ae455ef55c6da075e228fe8d1",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "metadata/data-providers.json",
+      "release_path": "metadata/data-providers.json",
+      "source_sha256": "63c2bd8f784a87fca6fdc9bcca1ff560e0da4b484991f8c4be7a34235dab1d3d",
+      "release_sha256": "63c2bd8f784a87fca6fdc9bcca1ff560e0da4b484991f8c4be7a34235dab1d3d",
+      "normalized_sha256": "63c2bd8f784a87fca6fdc9bcca1ff560e0da4b484991f8c4be7a34235dab1d3d",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "metadata/release.json",
+      "release_path": "metadata/release.json",
+      "source_sha256": "208b792c6d560296479a5d39e2e102c8464444212c421a47093152d18541291f",
+      "release_sha256": "208b792c6d560296479a5d39e2e102c8464444212c421a47093152d18541291f",
+      "normalized_sha256": "208b792c6d560296479a5d39e2e102c8464444212c421a47093152d18541291f",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "resources/defaults/treasure_overrides.txt",
+      "release_path": "data/defaults/treasure_overrides.txt",
+      "source_sha256": "4e508f2aeb6fa754f3eadbcfe3095f45248c5ba391d5e11f97f6d70afaaaa2ec",
+      "release_sha256": "4e508f2aeb6fa754f3eadbcfe3095f45248c5ba391d5e11f97f6d70afaaaa2ec",
+      "normalized_sha256": "4e508f2aeb6fa754f3eadbcfe3095f45248c5ba391d5e11f97f6d70afaaaa2ec",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "resources/enabled.txt",
+      "release_path": "enabled.txt",
+      "source_sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "release_sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "normalized_sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/host/DragonSwordWorldRadar.Common.ps1",
+      "release_path": "host/DragonSwordWorldRadar.Common.ps1",
+      "source_sha256": "16b170e754902896e18113a8f382dd2df36df37ed735a194cff8e98745755b09",
+      "release_sha256": "16b170e754902896e18113a8f382dd2df36df37ed735a194cff8e98745755b09",
+      "normalized_sha256": "16b170e754902896e18113a8f382dd2df36df37ed735a194cff8e98745755b09",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/host/DragonSwordWorldRadar.Host.ps1",
+      "release_path": "host/DragonSwordWorldRadar.Host.ps1",
+      "source_sha256": "fb09cd3a90dea3fc88ce80a9c63107ddf6541cd8bd7d80d23c98907add8c27d3",
+      "release_sha256": "fb09cd3a90dea3fc88ce80a9c63107ddf6541cd8bd7d80d23c98907add8c27d3",
+      "normalized_sha256": "fb09cd3a90dea3fc88ce80a9c63107ddf6541cd8bd7d80d23c98907add8c27d3",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/host/DragonSwordWorldRadar.Watcher.ps1",
+      "release_path": "host/DragonSwordWorldRadar.Watcher.ps1",
+      "source_sha256": "d20d836e1c34a22722e17a8a927da34044e8d9cdd8c0b6a66e4d5efda05e2d41",
+      "release_sha256": "d20d836e1c34a22722e17a8a927da34044e8d9cdd8c0b6a66e4d5efda05e2d41",
+      "normalized_sha256": "d20d836e1c34a22722e17a8a927da34044e8d9cdd8c0b6a66e4d5efda05e2d41",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/host/DragonSwordWorldRadar.Watcher.vbs",
+      "release_path": "host/DragonSwordWorldRadar.Watcher.vbs",
+      "source_sha256": "f346be790f9a3de5aacdc26643565524732ce483d3539d4e10695a46518c2df6",
+      "release_sha256": "f346be790f9a3de5aacdc26643565524732ce483d3539d4e10695a46518c2df6",
+      "normalized_sha256": "f346be790f9a3de5aacdc26643565524732ce483d3539d4e10695a46518c2df6",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/installer/Core/Compression/OodleNative.cs",
+      "release_path": "src/installer/Compression/OodleNative.cs",
+      "source_sha256": "43c7c451fc8a621ad61a061af7750fb40ad07198a69abc8cfdb70714703fabde",
+      "release_sha256": "43c7c451fc8a621ad61a061af7750fb40ad07198a69abc8cfdb70714703fabde",
+      "normalized_sha256": "43c7c451fc8a621ad61a061af7750fb40ad07198a69abc8cfdb70714703fabde",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/installer/Core/DragonSwordWorldRadar.Installer.Core.csproj",
+      "release_path": "src/installer/DragonSwordWorldRadar.Installer.Core.csproj",
+      "source_sha256": "3c49e428f42c462c031a43847db21a9c5cb048b24381ead1bfbf137266afab8c",
+      "release_sha256": "3c49e428f42c462c031a43847db21a9c5cb048b24381ead1bfbf137266afab8c",
+      "normalized_sha256": "3c49e428f42c462c031a43847db21a9c5cb048b24381ead1bfbf137266afab8c",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/installer/Core/Generation/BossLuaGenerator.cs",
+      "release_path": "src/installer/Generation/BossLuaGenerator.cs",
+      "source_sha256": "1c0e9a8cb1920b5eca447565dfa73132bbaadd74cfed3b88054794b43fa26b31",
+      "release_sha256": "eb48e2c45c3149a85fa392b0998d7543031eb38663073dc9f6d70af6f8baf5e5",
+      "normalized_sha256": "1c0e9a8cb1920b5eca447565dfa73132bbaadd74cfed3b88054794b43fa26b31",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/installer/Core/Generation/TreasureLuaGenerator.cs",
+      "release_path": "src/installer/Generation/TreasureLuaGenerator.cs",
+      "source_sha256": "96ce9fc9e26323b95e8244278060e6e3fc98ae3f4b5c35bac2ad0c2311e9ca79",
+      "release_sha256": "96ce9fc9e26323b95e8244278060e6e3fc98ae3f4b5c35bac2ad0c2311e9ca79",
+      "normalized_sha256": "96ce9fc9e26323b95e8244278060e6e3fc98ae3f4b5c35bac2ad0c2311e9ca79",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/installer/Core/InstallationPipeline.cs",
+      "release_path": "src/installer/InstallationPipeline.cs",
+      "source_sha256": "269f77d1cfe458ae7873d17a3b0b3154c35dbc10be0ab505d28b5f4c85258305",
+      "release_sha256": "cde6866085e30f32e23156bf6931c6b91d8698c7e4179c04511f67033b6c9cb0",
+      "normalized_sha256": "269f77d1cfe458ae7873d17a3b0b3154c35dbc10be0ab505d28b5f4c85258305",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/installer/Core/Models/DataSetResult.cs",
+      "release_path": "src/installer/Models/DataSetResult.cs",
+      "source_sha256": "fb60b7af7e1f095be42dc2cc9c857e10b1d265bd0357c8c859f0d9756329d939",
+      "release_sha256": "fb60b7af7e1f095be42dc2cc9c857e10b1d265bd0357c8c859f0d9756329d939",
+      "normalized_sha256": "fb60b7af7e1f095be42dc2cc9c857e10b1d265bd0357c8c859f0d9756329d939",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/installer/Core/Models/InstallationContext.cs",
+      "release_path": "src/installer/Models/InstallationContext.cs",
+      "source_sha256": "dcf128c677d6bcbbef6606fb1bcf821a24ac1c5229e7c8e249b6bc191406e7f8",
+      "release_sha256": "dcf128c677d6bcbbef6606fb1bcf821a24ac1c5229e7c8e249b6bc191406e7f8",
+      "normalized_sha256": "dcf128c677d6bcbbef6606fb1bcf821a24ac1c5229e7c8e249b6bc191406e7f8",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/installer/Core/Pak/AesKeyFinder.cs",
+      "release_path": "src/installer/Pak/AesKeyFinder.cs",
+      "source_sha256": "1eeda1ec6d01977e2c1872e6a50a2eff99f4c7127d42e648366afa51538124e1",
+      "release_sha256": "1eeda1ec6d01977e2c1872e6a50a2eff99f4c7127d42e648366afa51538124e1",
+      "normalized_sha256": "1eeda1ec6d01977e2c1872e6a50a2eff99f4c7127d42e648366afa51538124e1",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/installer/Core/Pak/CustomReader.cs",
+      "release_path": "src/installer/Pak/CustomReader.cs",
+      "source_sha256": "ee2be5db7fc611f9c576c26300861a0c25cebef87364493c3fa5486c1f7a48ba",
+      "release_sha256": "ee2be5db7fc611f9c576c26300861a0c25cebef87364493c3fa5486c1f7a48ba",
+      "normalized_sha256": "ee2be5db7fc611f9c576c26300861a0c25cebef87364493c3fa5486c1f7a48ba",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/installer/Core/Pak/PakModels.cs",
+      "release_path": "src/installer/Pak/PakModels.cs",
+      "source_sha256": "71a164645626f5efc19042a6db71ee1ed03a5930d48e56ab4e9c3f8a6db48685",
+      "release_sha256": "bd312c537665b900409862d97f2d98afb62251de9019df803e527b90653bf96e",
+      "normalized_sha256": "71a164645626f5efc19042a6db71ee1ed03a5930d48e56ab4e9c3f8a6db48685",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/installer/Core/Pak/TreasurePakExtractor.cs",
+      "release_path": "src/installer/Pak/TreasurePakExtractor.cs",
+      "source_sha256": "fb9953578574c2aba834b57cb9fabb8668cb2f43b2c435f66b8b2ccdf5275813",
+      "release_sha256": "834f90cf4add8ddb75c03f87615139c310cda5fda90aba940442638f4e57050b",
+      "normalized_sha256": "fb9953578574c2aba834b57cb9fabb8668cb2f43b2c435f66b8b2ccdf5275813",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/installer/Core/Providers/BossDataProvider.cs",
+      "release_path": "src/installer/Providers/BossDataProvider.cs",
+      "source_sha256": "666a5e7683e5a03ccbf3e64e23c58a0b63847780800ce423dd6f61d3703cd9c5",
+      "release_sha256": "57ac3e6a68093027983248c94a483997eb868eb82ce8ad077058fdd98a796c29",
+      "normalized_sha256": "666a5e7683e5a03ccbf3e64e23c58a0b63847780800ce423dd6f61d3703cd9c5",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/installer/Core/Providers/IDataProvider.cs",
+      "release_path": "src/installer/Providers/IDataProvider.cs",
+      "source_sha256": "764f01c01b5cd238b9db7672eec20049b3baf7a686fb643aecda1d698bdfb67a",
+      "release_sha256": "764f01c01b5cd238b9db7672eec20049b3baf7a686fb643aecda1d698bdfb67a",
+      "normalized_sha256": "764f01c01b5cd238b9db7672eec20049b3baf7a686fb643aecda1d698bdfb67a",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/installer/Core/Providers/TreasureDataProvider.cs",
+      "release_path": "src/installer/Providers/TreasureDataProvider.cs",
+      "source_sha256": "69c062609f08f63e42bd7bad79f670acd8dfb75b9e55f218a0a45b636f6c1636",
+      "release_sha256": "69c062609f08f63e42bd7bad79f670acd8dfb75b9e55f218a0a45b636f6c1636",
+      "normalized_sha256": "69c062609f08f63e42bd7bad79f670acd8dfb75b9e55f218a0a45b636f6c1636",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/installer/Install.cmd",
+      "release_path": "Install.cmd",
+      "source_sha256": "c5e26a64a813d091d8f4c17b4cc72818f92f9e34ab780bc68e1beb741524ae50",
+      "release_sha256": "c5e26a64a813d091d8f4c17b4cc72818f92f9e34ab780bc68e1beb741524ae50",
+      "normalized_sha256": "c5e26a64a813d091d8f4c17b4cc72818f92f9e34ab780bc68e1beb741524ae50",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/installer/Install.ps1",
+      "release_path": "installer/Install.ps1",
+      "source_sha256": "6c2a7b1629900267283924a0eaf840be1fa3ce8332632bf414ad6f0a0789f00c",
+      "release_sha256": "b9c9e75a4c674b70ae5a3914c054fae83efd61b1f07e603b2040c19ce824fb76",
+      "normalized_sha256": "6c2a7b1629900267283924a0eaf840be1fa3ce8332632bf414ad6f0a0789f00c",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Bridge/MotionBridgeReader.cs",
+      "release_path": "src/overlay/Bridge/MotionBridgeReader.cs",
+      "source_sha256": "79af9fcbbee5d1ad05ac6d7c133ec7af0ce339c751443da37e2eaf726241c165",
+      "release_sha256": "79af9fcbbee5d1ad05ac6d7c133ec7af0ce339c751443da37e2eaf726241c165",
+      "normalized_sha256": "79af9fcbbee5d1ad05ac6d7c133ec7af0ce339c751443da37e2eaf726241c165",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Bridge/MotionRecordParser.cs",
+      "release_path": "src/overlay/Bridge/MotionRecordParser.cs",
+      "source_sha256": "d41d7453dc9ecc9663a7c21400d3b977d2094ec282e0ade0fdf04dd47831f582",
+      "release_sha256": "d41d7453dc9ecc9663a7c21400d3b977d2094ec282e0ade0fdf04dd47831f582",
+      "normalized_sha256": "d41d7453dc9ecc9663a7c21400d3b977d2094ec282e0ade0fdf04dd47831f582",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Bridge/SharedBridgeFile.cs",
+      "release_path": "src/overlay/Bridge/SharedBridgeFile.cs",
+      "source_sha256": "ecb4911164f69c3d2221251e9209fbd647ff9c65128ec5d5585af6836cb121c3",
+      "release_sha256": "021469a4d56b5e8aaeb9bdac64ab121a4e6129e976162170cdfa9ec7dcd04ec2",
+      "normalized_sha256": "ecb4911164f69c3d2221251e9209fbd647ff9c65128ec5d5585af6836cb121c3",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Bridge/StaticStateBridgeReader.cs",
+      "release_path": "src/overlay/Bridge/StaticStateBridgeReader.cs",
+      "source_sha256": "2c6caf0ec97740158976766d4ee63f1afeaf394c96f8b461b4288d1e82e5f5ec",
+      "release_sha256": "2c6caf0ec97740158976766d4ee63f1afeaf394c96f8b461b4288d1e82e5f5ec",
+      "normalized_sha256": "2c6caf0ec97740158976766d4ee63f1afeaf394c96f8b461b4288d1e82e5f5ec",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Configuration/DebugSettings.cs",
+      "release_path": "src/overlay/Configuration/DebugSettings.cs",
+      "source_sha256": "389af3109aac035bbc4f97bd4011fc989cb459909d29fdef608de522280bc0ad",
+      "release_sha256": "389af3109aac035bbc4f97bd4011fc989cb459909d29fdef608de522280bc0ad",
+      "normalized_sha256": "389af3109aac035bbc4f97bd4011fc989cb459909d29fdef608de522280bc0ad",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Data/TreasureIdentity.cs",
+      "release_path": "src/overlay/Data/TreasureIdentity.cs",
+      "source_sha256": "f3ad4fc6b018c70ca26aee061c6cb0647cfdea0f7033ec32fa6ec1c09a092c10",
+      "release_sha256": "f3ad4fc6b018c70ca26aee061c6cb0647cfdea0f7033ec32fa6ec1c09a092c10",
+      "normalized_sha256": "f3ad4fc6b018c70ca26aee061c6cb0647cfdea0f7033ec32fa6ec1c09a092c10",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Data/WorldTreasureCatalog.cs",
+      "release_path": "src/overlay/Data/WorldTreasureCatalog.cs",
+      "source_sha256": "92987b740d79446172a58977a551c47bf74cf0cec8486a51afe150459658ff1d",
+      "release_sha256": "92987b740d79446172a58977a551c47bf74cf0cec8486a51afe150459658ff1d",
+      "normalized_sha256": "92987b740d79446172a58977a551c47bf74cf0cec8486a51afe150459658ff1d",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Data/WorldTreasureVisibilityIndex.cs",
+      "release_path": "src/overlay/Data/WorldTreasureVisibilityIndex.cs",
+      "source_sha256": "e6ba9917de3034d064e289ece43d06903b0826355be013868484cbebf09ef043",
+      "release_sha256": "e6ba9917de3034d064e289ece43d06903b0826355be013868484cbebf09ef043",
+      "normalized_sha256": "e6ba9917de3034d064e289ece43d06903b0826355be013868484cbebf09ef043",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Diagnostics/ErrorLog.cs",
+      "release_path": "src/overlay/Diagnostics/ErrorLog.cs",
+      "source_sha256": "da529832d835d6282e90d6022194140c9e0391bba6b3904df26977388c9b2ee6",
+      "release_sha256": "d831098c476b6244d303d7091030369fbb95410667c18cc568c1955c7c6bc15d",
+      "normalized_sha256": "da529832d835d6282e90d6022194140c9e0391bba6b3904df26977388c9b2ee6",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Diagnostics/GeometryLog.cs",
+      "release_path": "src/overlay/Diagnostics/GeometryLog.cs",
+      "source_sha256": "32a041ba8cd7a3b09b64461324b0ba700659145ac1eb3fee46c21efbe0ab5095",
+      "release_sha256": "32a041ba8cd7a3b09b64461324b0ba700659145ac1eb3fee46c21efbe0ab5095",
+      "normalized_sha256": "32a041ba8cd7a3b09b64461324b0ba700659145ac1eb3fee46c21efbe0ab5095",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Diagnostics/OverlayPerformanceTracker.cs",
+      "release_path": "src/overlay/Diagnostics/OverlayPerformanceTracker.cs",
+      "source_sha256": "5766a86adcac235afbbafede91c2829adef2097fe002e001724ec113c5669f1c",
+      "release_sha256": "5766a86adcac235afbbafede91c2829adef2097fe002e001724ec113c5669f1c",
+      "normalized_sha256": "5766a86adcac235afbbafede91c2829adef2097fe002e001724ec113c5669f1c",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/DragonSwordWorldRadar.Overlay.csproj",
+      "release_path": "src/overlay/DragonSwordWorldRadar.Overlay.csproj",
+      "source_sha256": "7b19f25191b7e32d278bd87acbc10fec127a17ae43c486ce0a4ec581ccf64155",
+      "release_sha256": "7b19f25191b7e32d278bd87acbc10fec127a17ae43c486ce0a4ec581ccf64155",
+      "normalized_sha256": "7b19f25191b7e32d278bd87acbc10fec127a17ae43c486ce0a4ec581ccf64155",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/ModPath.cs",
+      "release_path": "src/overlay/ModPath.cs",
+      "source_sha256": "b6329c368e0804d273124cf48a76c60ebb5f53a98eaf70201c6cf3f6786a71d7",
+      "release_sha256": "b6329c368e0804d273124cf48a76c60ebb5f53a98eaf70201c6cf3f6786a71d7",
+      "normalized_sha256": "b6329c368e0804d273124cf48a76c60ebb5f53a98eaf70201c6cf3f6786a71d7",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Models/RadarState.cs",
+      "release_path": "src/overlay/Models/RadarState.cs",
+      "source_sha256": "c9cdc69bc7c93f6838af372032059af9030a1d020452b226cb6970e77e688f86",
+      "release_sha256": "9ce19b7be458bda5e77802d1c70812e021e1df15397e7bb60e5de3e1749ec2f6",
+      "normalized_sha256": "c9cdc69bc7c93f6838af372032059af9030a1d020452b226cb6970e77e688f86",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Models/WorldTreasure.cs",
+      "release_path": "src/overlay/Models/WorldTreasure.cs",
+      "source_sha256": "c3314b6aa6f7b1d7c33f43d49bf4cab569aec59d62bf2d56e7fafc8b3a1f6f1c",
+      "release_sha256": "c3314b6aa6f7b1d7c33f43d49bf4cab569aec59d62bf2d56e7fafc8b3a1f6f1c",
+      "normalized_sha256": "c3314b6aa6f7b1d7c33f43d49bf4cab569aec59d62bf2d56e7fafc8b3a1f6f1c",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Platform/DpiAwareness.cs",
+      "release_path": "src/overlay/Platform/DpiAwareness.cs",
+      "source_sha256": "11db78f115a5a7ef98c5d98d32fb95b4bbd8b0462afe6807547499449b18194a",
+      "release_sha256": "11db78f115a5a7ef98c5d98d32fb95b4bbd8b0462afe6807547499449b18194a",
+      "normalized_sha256": "11db78f115a5a7ef98c5d98d32fb95b4bbd8b0462afe6807547499449b18194a",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Platform/GameProcessFinder.cs",
+      "release_path": "src/overlay/Platform/GameProcessFinder.cs",
+      "source_sha256": "199d43acf78657da799dccda1122a284a1cc9cab220b34bc9432a0ff2be41965",
+      "release_sha256": "199d43acf78657da799dccda1122a284a1cc9cab220b34bc9432a0ff2be41965",
+      "normalized_sha256": "199d43acf78657da799dccda1122a284a1cc9cab220b34bc9432a0ff2be41965",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Platform/NativeMethods.cs",
+      "release_path": "src/overlay/Platform/NativeMethods.cs",
+      "source_sha256": "095158d10a1dbb092cbda0b8def731b207f3121421d75edfed8d4f9133a7530f",
+      "release_sha256": "ce32e0a2b648fb65f5c52606757854072d7db8654772688af9e59be1bf024e0c",
+      "normalized_sha256": "095158d10a1dbb092cbda0b8def731b207f3121421d75edfed8d4f9133a7530f",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Program.cs",
+      "release_path": "src/overlay/Program.cs",
+      "source_sha256": "7df4881c1312f771131220a682a7fcd2fb3917b311ceca6c9ef7109470d5ef52",
+      "release_sha256": "7df4881c1312f771131220a682a7fcd2fb3917b311ceca6c9ef7109470d5ef52",
+      "normalized_sha256": "7df4881c1312f771131220a682a7fcd2fb3917b311ceca6c9ef7109470d5ef52",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Rendering/BossMarkerRenderer.cs",
+      "release_path": "src/overlay/Rendering/BossMarkerRenderer.cs",
+      "source_sha256": "240142ea3667f9d0d5c17b4ad09283a8cd2d52aba66598e966a928913a08781a",
+      "release_sha256": "ebc9beabdaedc4a0f950b0aa2b9e53a03263dfaf2f77107467e21e71b3e62e60",
+      "normalized_sha256": "240142ea3667f9d0d5c17b4ad09283a8cd2d52aba66598e966a928913a08781a",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Rendering/HeightIndicatorRenderer.cs",
+      "release_path": "src/overlay/Rendering/HeightIndicatorRenderer.cs",
+      "source_sha256": "3fa4b431001e4881b3a5833283630e6594f0370ed31535b0a4d2f78da7b7be79",
+      "release_sha256": "eb68da1f4dc8e0a8e87fe69daf26a936abc7f62b5f1d3dd4b7290ccf13a72d43",
+      "normalized_sha256": "3fa4b431001e4881b3a5833283630e6594f0370ed31535b0a4d2f78da7b7be79",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Rendering/TreasureMarkerPalette.cs",
+      "release_path": "src/overlay/Rendering/TreasureMarkerPalette.cs",
+      "source_sha256": "b0be5e46cb051ae074826b5d7c137c645c27aba06b174e9a6660b7b67926aca5",
+      "release_sha256": "57e88d3a6e4f533f38c00c5a1e4abf5f15207539d0313f77c29917f1082dc2fa",
+      "normalized_sha256": "b0be5e46cb051ae074826b5d7c137c645c27aba06b174e9a6660b7b67926aca5",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/Rendering/WorldTreasureRenderBuffer.cs",
+      "release_path": "src/overlay/Rendering/WorldTreasureRenderBuffer.cs",
+      "source_sha256": "c739956191986d9bcb91beb299adf99a591d06553878b1151b05578f564ff4f5",
+      "release_sha256": "3edc227cf89d204bd16bdc3b116589649bca2152caaf286553dfd3b1c3a84dbf",
+      "normalized_sha256": "c739956191986d9bcb91beb299adf99a591d06553878b1151b05578f564ff4f5",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/SaveData/BossAvailabilityTracker.cs",
+      "release_path": "src/overlay/SaveData/BossAvailabilityTracker.cs",
+      "source_sha256": "f9de637268f1eec3adb4c53bcecf2772483ec7792b0c4b25ebca55e3cd03d3fa",
+      "release_sha256": "65d911cb4a21cefc9cc71b92bd1cdb83d6329c7e8fdd7412b7c76f0f88769a76",
+      "normalized_sha256": "f9de637268f1eec3adb4c53bcecf2772483ec7792b0c4b25ebca55e3cd03d3fa",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/SaveData/BossRespawnRuleResolver.cs",
+      "release_path": "src/overlay/SaveData/BossRespawnRuleResolver.cs",
+      "source_sha256": "1da6693669ba7de94bff473ac3a153a2414a220934d64999397564c322a2143e",
+      "release_sha256": "3681eb38e2982b12ae1fd3bc48889247f5fd6f767f4415843e174a5dce3dd4ae",
+      "normalized_sha256": "1da6693669ba7de94bff473ac3a153a2414a220934d64999397564c322a2143e",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/SaveData/SaveDatabaseFingerprint.cs",
+      "release_path": "src/overlay/SaveData/SaveDatabaseFingerprint.cs",
+      "source_sha256": "1948771d5412166d13ef78a36aec93430a823e7aa685adbf4db973854fafb4ea",
+      "release_sha256": "1ab62631cf2dc99abe81d93d4a4c185f2246a57bfeed6a5d9602041c6bb9b344",
+      "normalized_sha256": "1948771d5412166d13ef78a36aec93430a823e7aa685adbf4db973854fafb4ea",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/SaveData/SaveDatabaseKeyReader.cs",
+      "release_path": "src/overlay/SaveData/SaveDatabaseKeyReader.cs",
+      "source_sha256": "52dfd15567c455a856cf8deabfa4b47f660d0da81bbdcea7e5db0b143173fb38",
+      "release_sha256": "52dfd15567c455a856cf8deabfa4b47f660d0da81bbdcea7e5db0b143173fb38",
+      "normalized_sha256": "52dfd15567c455a856cf8deabfa4b47f660d0da81bbdcea7e5db0b143173fb38",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/SaveData/SaveDatabaseLocator.cs",
+      "release_path": "src/overlay/SaveData/SaveDatabaseLocator.cs",
+      "source_sha256": "f85d062caf513d1a5dfce22539017fb55043d767e1af16997d5209be3efd686d",
+      "release_sha256": "f85d062caf513d1a5dfce22539017fb55043d767e1af16997d5209be3efd686d",
+      "normalized_sha256": "f85d062caf513d1a5dfce22539017fb55043d767e1af16997d5209be3efd686d",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/SaveData/SaveSnapshotReader.cs",
+      "release_path": "src/overlay/SaveData/SaveSnapshotReader.cs",
+      "source_sha256": "2bb368bd6a9161a8eae00e98347febdbebcac38bd25396477439290e34ae0eba",
+      "release_sha256": "c230935011272d31af7e4152a48fe3f69108420e49828c0228664be3024312d8",
+      "normalized_sha256": "2bb368bd6a9161a8eae00e98347febdbebcac38bd25396477439290e34ae0eba",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/SaveData/TreasureOverrides.cs",
+      "release_path": "src/overlay/SaveData/TreasureOverrides.cs",
+      "source_sha256": "f4b6f30148517eb509153872e401190c1cb7b24e933127c3a4e8709b10c3a54a",
+      "release_sha256": "f4b6f30148517eb509153872e401190c1cb7b24e933127c3a4e8709b10c3a54a",
+      "normalized_sha256": "f4b6f30148517eb509153872e401190c1cb7b24e933127c3a4e8709b10c3a54a",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/SaveData/TreasureSaveState.cs",
+      "release_path": "src/overlay/SaveData/TreasureSaveState.cs",
+      "source_sha256": "d0062a2056607e02a157ccb87b7b6ed5e4561360f6b82103a5f38f3c54498367",
+      "release_sha256": "d0062a2056607e02a157ccb87b7b6ed5e4561360f6b82103a5f38f3c54498367",
+      "normalized_sha256": "d0062a2056607e02a157ccb87b7b6ed5e4561360f6b82103a5f38f3c54498367",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/overlay/UI/RadarForm.cs",
+      "release_path": "src/overlay/UI/RadarForm.cs",
+      "source_sha256": "41db45036172a5797102b4b33d5ae4b3b7c667a503b8e8def542cb98648426c9",
+      "release_sha256": "3a9ff2df6155f574872c531d9b59d368cf57e6292c18a7d9298d1c609cbac1d3",
+      "normalized_sha256": "41db45036172a5797102b4b33d5ae4b3b7c667a503b8e8def542cb98648426c9",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/tools/Collect-Diagnostics.cmd",
+      "release_path": "tools/Collect-Diagnostics.cmd",
+      "source_sha256": "424b8ac9bfff4dd352bab79784df9123e2d715b4147c4f9438dbf7c2fe679252",
+      "release_sha256": "424b8ac9bfff4dd352bab79784df9123e2d715b4147c4f9438dbf7c2fe679252",
+      "normalized_sha256": "424b8ac9bfff4dd352bab79784df9123e2d715b4147c4f9438dbf7c2fe679252",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/tools/Collect-Diagnostics.ps1",
+      "release_path": "tools/Collect-Diagnostics.ps1",
+      "source_sha256": "38eb05ab26d7c0a485317c4a3e63972e9000e9c44317fe071b366d4353aa80d9",
+      "release_sha256": "38eb05ab26d7c0a485317c4a3e63972e9000e9c44317fe071b366d4353aa80d9",
+      "normalized_sha256": "38eb05ab26d7c0a485317c4a3e63972e9000e9c44317fe071b366d4353aa80d9",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/ue4ss/boss_tracker.lua",
+      "release_path": "scripts/boss_tracker.lua",
+      "source_sha256": "157a52f4ef85db95732349d00d2184fb1735dcafaec1f0f485b6f951386513b3",
+      "release_sha256": "157a52f4ef85db95732349d00d2184fb1735dcafaec1f0f485b6f951386513b3",
+      "normalized_sha256": "157a52f4ef85db95732349d00d2184fb1735dcafaec1f0f485b6f951386513b3",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/ue4ss/bosses.lua",
+      "release_path": "scripts/bosses.lua",
+      "source_sha256": "8aee35b39878875d2b0d9cafb9dc494330257e35e6a5cd49d530934eeac293e6",
+      "release_sha256": "8aee35b39878875d2b0d9cafb9dc494330257e35e6a5cd49d530934eeac293e6",
+      "normalized_sha256": "8aee35b39878875d2b0d9cafb9dc494330257e35e6a5cd49d530934eeac293e6",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/ue4ss/config.default.lua",
+      "release_path": "scripts/config.default.lua",
+      "source_sha256": "43e6bd6ecdc9d77a2bbef57303b4c3126e96aa41617ff393c6410e2ec0df7aef",
+      "release_sha256": "43e6bd6ecdc9d77a2bbef57303b4c3126e96aa41617ff393c6410e2ec0df7aef",
+      "normalized_sha256": "43e6bd6ecdc9d77a2bbef57303b4c3126e96aa41617ff393c6410e2ec0df7aef",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/ue4ss/diagnostics.lua",
+      "release_path": "scripts/diagnostics.lua",
+      "source_sha256": "e434faef589d8bcc72fae6e017308370ade2da0d8babf7dbca9392aa0c719e46",
+      "release_sha256": "e434faef589d8bcc72fae6e017308370ade2da0d8babf7dbca9392aa0c719e46",
+      "normalized_sha256": "e434faef589d8bcc72fae6e017308370ade2da0d8babf7dbca9392aa0c719e46",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/ue4ss/main.lua",
+      "release_path": "scripts/main.lua",
+      "source_sha256": "b61c563d3d501fd1ef3be1d52324faf5700a43c8f2b65ad9d2d1da3856db4a97",
+      "release_sha256": "b61c563d3d501fd1ef3be1d52324faf5700a43c8f2b65ad9d2d1da3856db4a97",
+      "normalized_sha256": "b61c563d3d501fd1ef3be1d52324faf5700a43c8f2b65ad9d2d1da3856db4a97",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/ue4ss/treasures.lua",
+      "release_path": "scripts/treasures.lua",
+      "source_sha256": "e88407f8c0f977e1c4583b4a3f0e306be6df01e86c4d04349e654ca258894fb7",
+      "release_sha256": "e88407f8c0f977e1c4583b4a3f0e306be6df01e86c4d04349e654ca258894fb7",
+      "normalized_sha256": "e88407f8c0f977e1c4583b4a3f0e306be6df01e86c4d04349e654ca258894fb7",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "src/ue4ss/world_map.lua",
+      "release_path": "scripts/world_map.lua",
+      "source_sha256": "6cf24ddaf9be045a507a223646785f75c06103fa4d8c64fd792abc647016e073",
+      "release_sha256": "6cf24ddaf9be045a507a223646785f75c06103fa4d8c64fd792abc647016e073",
+      "normalized_sha256": "6cf24ddaf9be045a507a223646785f75c06103fa4d8c64fd792abc647016e073",
+      "text_normalized_to_lf": true
+    },
+    {
+      "source_path": "vendor/ooz/ooz.exe",
+      "release_path": "tools/ooz.exe",
+      "source_sha256": "271d3fd02e582175ff033d0a23dca3785b6888fa21b8cd06741ba8c19b71df41",
+      "release_sha256": "271d3fd02e582175ff033d0a23dca3785b6888fa21b8cd06741ba8c19b71df41",
+      "normalized_sha256": "271d3fd02e582175ff033d0a23dca3785b6888fa21b8cd06741ba8c19b71df41",
+      "text_normalized_to_lf": false
+    },
+    {
+      "source_path": "vendor/sqlcipher/e_sqlcipher.dll",
+      "release_path": "vendor/sqlcipher/e_sqlcipher.dll",
+      "source_sha256": "32aded22e9cbac44ad95fe3d2a1e113be5da4a1a81b65d76ece25762b1bca196",
+      "release_sha256": "32aded22e9cbac44ad95fe3d2a1e113be5da4a1a81b65d76ece25762b1bca196",
+      "normalized_sha256": "32aded22e9cbac44ad95fe3d2a1e113be5da4a1a81b65d76ece25762b1bca196",
+      "text_normalized_to_lf": false
+    }
+  ]
+}

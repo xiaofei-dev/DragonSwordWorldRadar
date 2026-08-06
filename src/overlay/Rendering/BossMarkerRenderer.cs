@@ -5,67 +5,181 @@ using System.Globalization;
 
 namespace DragonSwordWorldRadar
 {
-    internal static class BossMarkerRenderer
+    internal sealed class BossMarkerRenderer : IDisposable
     {
+        private static readonly PointF[] UnitDiamond =
+        {
+            new PointF(0f, -0.50f),
+            new PointF(0.50f, 0f),
+            new PointF(0f, 0.50f),
+            new PointF(-0.50f, 0f)
+        };
+
+        private readonly PointF[] _innerDiamond = new PointF[4];
+        private readonly GraphicsPath _unitSilhouette =
+            BuildSilhouette(0f, 0f, 0.50f);
+        private readonly Brush _shadowBrush =
+            new SolidBrush(RadarMarkerStyle.Shadow);
+        private readonly Brush _backingBrush =
+            new SolidBrush(RadarMarkerStyle.BossBacking);
+        private readonly Brush _iconBrush =
+            new SolidBrush(RadarMarkerStyle.BossIcon);
+        private readonly Brush _debugOutlineBrush =
+            new SolidBrush(Color.FromArgb(235, 0, 0, 0));
+        private readonly Brush _debugForegroundBrush =
+            new SolidBrush(Color.FromArgb(255, 210, 210, 200));
+        private readonly Pen _outerPen =
+            new Pen(RadarMarkerStyle.Outline, 1f);
+        private readonly Pen _innerPen =
+            new Pen(RadarMarkerStyle.BossInner, 1f);
+        private bool _disposed;
+
+        public BossMarkerRenderer()
+        {
+            _outerPen.LineJoin = LineJoin.Round;
+            _innerPen.LineJoin = LineJoin.Round;
+        }
+
         // The overlay cannot ask Unreal to paint a PaperSprite into an external
         // WinForms surface. This vector silhouette reproduces the game's
         // Icon_Mark_FieldBoss_Sprite role and is shared by all nine bosses.
-        public static void DrawMarker(
+        //
+        // Geometry, brushes, pens, and the silhouette path are retained for the
+        // lifetime of the form. Each marker now creates only the GraphicsState
+        // needed to compose with the caller's transform; stable6 allocated
+        // arrays, paths, brushes, pens, a matrix, and a cloned path per boss.
+        public void DrawMarker(
             Graphics graphics,
             float centerX,
             float centerY,
             float diameter,
             float displayScale)
         {
-            float half = diameter * 0.50f;
-            float inset = Math.Max(3f, 4f * displayScale);
-            float borderWidth = RadarMarkerStyle.GetBossOutlineWidth(displayScale);
-            float shadowOffset = Math.Max(1.2f, 1.8f * displayScale);
-
-            PointF[] diamond = new[]
+            if (_disposed || graphics == null || diameter <= 0f)
             {
-                new PointF(centerX, centerY - half),
-                new PointF(centerX + half, centerY),
-                new PointF(centerX, centerY + half),
-                new PointF(centerX - half, centerY),
-            };
-            PointF[] shadowDiamond = new[]
-            {
-                new PointF(centerX + shadowOffset, centerY - half + shadowOffset),
-                new PointF(centerX + half + shadowOffset, centerY + shadowOffset),
-                new PointF(centerX + shadowOffset, centerY + half + shadowOffset),
-                new PointF(centerX - half + shadowOffset, centerY + shadowOffset),
-            };
-            PointF[] innerDiamond = new[]
-            {
-                new PointF(centerX, centerY - half + inset),
-                new PointF(centerX + half - inset, centerY),
-                new PointF(centerX, centerY + half - inset),
-                new PointF(centerX - half + inset, centerY),
-            };
-
-            using (Brush shadow = new SolidBrush(RadarMarkerStyle.Shadow))
-            using (Brush backing = new SolidBrush(RadarMarkerStyle.BossBacking))
-            using (Pen outer = new Pen(RadarMarkerStyle.Outline, borderWidth))
-            using (Pen inner = new Pen(RadarMarkerStyle.BossInner, RadarMarkerStyle.GetBossInnerWidth(displayScale)))
-            using (GraphicsPath silhouette = BuildSilhouette(centerX, centerY, diameter * 0.50f))
-            using (Brush iconShadow = new SolidBrush(RadarMarkerStyle.Shadow))
-            using (Brush icon = new SolidBrush(RadarMarkerStyle.BossIcon))
-            using (Matrix iconShadowTransform = new Matrix())
-            using (GraphicsPath iconShadowPath = (GraphicsPath)silhouette.Clone())
-            {
-                outer.LineJoin = LineJoin.Round;
-                inner.LineJoin = LineJoin.Round;
-                graphics.FillPolygon(shadow, shadowDiamond);
-                graphics.FillPolygon(backing, diamond);
-                graphics.DrawPolygon(outer, diamond);
-                graphics.DrawPolygon(inner, innerDiamond);
-
-                iconShadowTransform.Translate(shadowOffset, shadowOffset);
-                iconShadowPath.Transform(iconShadowTransform);
-                graphics.FillPath(iconShadow, iconShadowPath);
-                graphics.FillPath(icon, silhouette);
+                return;
             }
+
+            float inverseDiameter = 1f / diameter;
+            float inset = Math.Max(3f, 4f * displayScale);
+            float insetUnit = Math.Min(
+                0.49f,
+                inset * inverseDiameter);
+            float shadowOffset = Math.Max(
+                1.2f,
+                1.8f * displayScale) * inverseDiameter;
+
+            _outerPen.Width = Math.Max(
+                0.001f,
+                RadarMarkerStyle.GetBossOutlineWidth(displayScale)
+                    * inverseDiameter);
+            _innerPen.Width = Math.Max(
+                0.001f,
+                RadarMarkerStyle.GetBossInnerWidth(displayScale)
+                    * inverseDiameter);
+
+            _innerDiamond[0] = new PointF(0f, -0.50f + insetUnit);
+            _innerDiamond[1] = new PointF(0.50f - insetUnit, 0f);
+            _innerDiamond[2] = new PointF(0f, 0.50f - insetUnit);
+            _innerDiamond[3] = new PointF(-0.50f + insetUnit, 0f);
+
+            GraphicsState saved = graphics.Save();
+            try
+            {
+                // Default GDI+ transform order prepends each operation. Calling
+                // Translate then Scale therefore maps unit geometry to
+                // (center + diameter * point), which matches the old absolute
+                // coordinate implementation.
+                graphics.TranslateTransform(centerX, centerY);
+                graphics.ScaleTransform(diameter, diameter);
+
+                graphics.TranslateTransform(
+                    shadowOffset,
+                    shadowOffset);
+                graphics.FillPolygon(_shadowBrush, UnitDiamond);
+                graphics.TranslateTransform(
+                    -shadowOffset,
+                    -shadowOffset);
+
+                graphics.FillPolygon(_backingBrush, UnitDiamond);
+                graphics.DrawPolygon(_outerPen, UnitDiamond);
+                graphics.DrawPolygon(_innerPen, _innerDiamond);
+
+                graphics.TranslateTransform(
+                    shadowOffset,
+                    shadowOffset);
+                graphics.FillPath(_shadowBrush, _unitSilhouette);
+                graphics.TranslateTransform(
+                    -shadowOffset,
+                    -shadowOffset);
+                graphics.FillPath(_iconBrush, _unitSilhouette);
+            }
+            finally
+            {
+                graphics.Restore(saved);
+            }
+        }
+
+        public void DrawDebugLabel(
+            Graphics graphics,
+            BossPoint boss,
+            float x,
+            float y,
+            float diameter,
+            float textScale,
+            float displayScale)
+        {
+            if (_disposed || graphics == null || boss == null)
+            {
+                return;
+            }
+
+            string text = String.Format(
+                CultureInfo.InvariantCulture,
+                "B_{0} {1}",
+                boss.bossId,
+                boss.status ?? "unknown");
+            float size = Math.Max(
+                8f,
+                10f * textScale * displayScale);
+            using (Font font = new Font(
+                FontFamily.GenericSansSerif,
+                size,
+                FontStyle.Bold,
+                GraphicsUnit.Pixel))
+            {
+                float left = x + diameter * 0.55f;
+                float top = y - size * 0.55f;
+                graphics.DrawString(
+                    text,
+                    font,
+                    _debugOutlineBrush,
+                    left + 1,
+                    top + 1);
+                graphics.DrawString(
+                    text,
+                    font,
+                    _debugForegroundBrush,
+                    left,
+                    top);
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
+            _unitSilhouette.Dispose();
+            _shadowBrush.Dispose();
+            _backingBrush.Dispose();
+            _iconBrush.Dispose();
+            _debugOutlineBrush.Dispose();
+            _debugForegroundBrush.Dispose();
+            _outerPen.Dispose();
+            _innerPen.Dispose();
         }
 
         private static GraphicsPath BuildSilhouette(
@@ -89,7 +203,7 @@ namespace DragonSwordWorldRadar
                 Point(left, top, width, height, 0.16f, 0.30f),
                 Point(left, top, width, height, 0.02f, 0.22f),
                 Point(left, top, width, height, 0.17f, 0.47f),
-                Point(left, top, width, height, 0.35f, 0.58f),
+                Point(left, top, width, height, 0.35f, 0.58f)
             });
             path.AddPolygon(new[]
             {
@@ -98,7 +212,7 @@ namespace DragonSwordWorldRadar
                 Point(left, top, width, height, 0.84f, 0.30f),
                 Point(left, top, width, height, 0.98f, 0.22f),
                 Point(left, top, width, height, 0.83f, 0.47f),
-                Point(left, top, width, height, 0.65f, 0.58f),
+                Point(left, top, width, height, 0.65f, 0.58f)
             });
 
             // Lower hooked wings/arms.
@@ -110,7 +224,7 @@ namespace DragonSwordWorldRadar
                 Point(left, top, width, height, 0.18f, 0.66f),
                 Point(left, top, width, height, 0.13f, 0.92f),
                 Point(left, top, width, height, 0.29f, 0.78f),
-                Point(left, top, width, height, 0.34f, 0.63f),
+                Point(left, top, width, height, 0.34f, 0.63f)
             });
             path.AddPolygon(new[]
             {
@@ -120,7 +234,7 @@ namespace DragonSwordWorldRadar
                 Point(left, top, width, height, 0.82f, 0.66f),
                 Point(left, top, width, height, 0.87f, 0.92f),
                 Point(left, top, width, height, 0.71f, 0.78f),
-                Point(left, top, width, height, 0.66f, 0.63f),
+                Point(left, top, width, height, 0.66f, 0.63f)
             });
 
             // Crown, head, tapered torso and base.
@@ -144,7 +258,7 @@ namespace DragonSwordWorldRadar
                 Point(left, top, width, height, 0.32f, 0.94f),
                 Point(left, top, width, height, 0.42f, 0.94f),
                 Point(left, top, width, height, 0.39f, 0.58f),
-                Point(left, top, width, height, 0.33f, 0.42f),
+                Point(left, top, width, height, 0.33f, 0.42f)
             });
 
             return path;
@@ -161,40 +275,6 @@ namespace DragonSwordWorldRadar
             return new PointF(
                 left + width * x,
                 top + height * y);
-        }
-
-        public static void DrawDebugLabel(
-            Graphics graphics,
-            BossPoint boss,
-            float x,
-            float y,
-            float diameter,
-            float textScale,
-            float displayScale)
-        {
-            string text = String.Format(
-                CultureInfo.InvariantCulture,
-                "B_{0} {1}",
-                boss.bossId,
-                boss.status ?? "unknown");
-            float size = Math.Max(
-                8f,
-                10f * textScale * displayScale);
-            using (Font font = new Font(
-                FontFamily.GenericSansSerif,
-                size,
-                FontStyle.Bold,
-                GraphicsUnit.Pixel))
-            using (Brush outline = new SolidBrush(
-                Color.FromArgb(235, 0, 0, 0)))
-            using (Brush foreground = new SolidBrush(
-                Color.FromArgb(255, 210, 210, 200)))
-            {
-                float left = x + diameter * 0.55f;
-                float top = y - size * 0.55f;
-                graphics.DrawString(text, font, outline, left + 1, top + 1);
-                graphics.DrawString(text, font, foreground, left, top);
-            }
         }
     }
 }

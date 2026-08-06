@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "name": "DragonSwordWorldRadar",
-  "version": "0.4.0-dev7-stable6",
-  "stage": "stable-graphics-outline-and-overlap-fix",
+  "version": "0.4.0-dev9-performance1.1",
+  "stage": "performance-bridge-render-scheduler",
   "mod_folder": "DragonSwordWorldRadar",
   "renderer": "WinForms source compiled in memory by Windows PowerShell 5.1",
   "custom_executable_count": 0,
   "automatic_start": "hidden WScript watcher using a TEMP working directory; transient PowerShell host only while the game is running",
-  "world_map_producer_interval_ms": 8,
-  "minimap_motion_interval_ms": 16,
+  "world_map_producer_interval_ms": 24,
+  "minimap_motion_interval_ms": 24,
   "data_installation": "local game PAK extraction through in-memory C# and the ooz.exe decoder",
   "game_update_detection": "stored executable/PAK fingerprint checked on each game launch",
   "implemented_layers": [
@@ -43,10 +43,10 @@
   "bridge_protocol": "alternating static JSON plus compact sequence-validated motion slots",
   "save_fingerprint_poll_ms": 500,
   "save_slot_discovery_seconds": 5,
-  "treasure_marker_outline": "DrawEllipse and GraphicsPath outlines retained; outline color equals each treasure marker fill color",
+  "treasure_marker_outline": "DrawEllipse and reusable GraphicsPath outlines use the shared neutral dark RadarMarkerStyle.Outline",
   "background_visibility": "overlay remains active and visible after F7 until F8; no foreground, overlap, or minimized-window visibility polling",
   "runtime_probe_hooks": "none; exploration probes are isolated in DragonSwordWorldDataProbe",
-  "installer_overlay_validation": "Install.ps1 compiles the exact complete overlay source set used by the F7 host",
+  "installer_overlay_validation": "Install.ps1 and the Windows CI gate compile the exact complete overlay source set used by the F7 host under Windows PowerShell 5.1",
   "config_validation": "malformed preserved config.lua is archived and replaced by a validated complete default",
   "marker_style": {
     "shared_outline": "opaque dark navy-charcoal",
@@ -60,6 +60,51 @@
     "world_map_path_fill": "FillMode.Winding",
     "world_map_pixel_dedupe": true,
     "boss_visual_style_changed": false,
-    "runtime_or_bridge_changes": false
+    "runtime_or_bridge_changes": true
+  },
+  "refactor": {
+    "baseline_tag": "v0.4.0-dev7-stable6",
+    "motion_parser": "reusable per-slot candidate buffers/models with direct 21-field ASCII parsing and isolated reusable published MotionFrame/WorldMapState instances",
+    "world_rendering": "single projection pass with reusable winding paths, pixel dedupe, projected-marker storage, and transactional double-buffered per-map visibility indexes",
+    "save_state_publication": "immutable copy-on-write treasure, boss, alias, and ignore snapshots; consistent opened-state capture; native SQLCipher callback exception containment; load-token invalidation",
+    "save_components": [
+      "SaveDatabaseLocator",
+      "SaveSnapshotReader"
+    ],
+    "runtime_hooks_added": false,
+    "bridge_protocol_changed": false,
+    "producer_intervals_changed": true,
+    "render_resources": "retained boss and height-indicator GDI resources plus one shared neutral treasure-outline pen",
+    "boss_availability": "maintenance-cached next-availability deadlines with deadline-transition invalidation"
+  },
+  "reliability": {
+    "compile_gate": "Windows PowerShell 5.1 Add-Type compilation is mandatory in Verify-Source.ps1 and Install.ps1",
+    "module_fault_isolation": "save state, catalog, visibility index, boss availability, diagnostics, and renderer failures are isolated and rate-limited in the overlay log",
+    "catalog_publication": "catalog and override replacements publish only after before/after file stamp consistency checks",
+    "visibility_index_publication": "replacement per-map index is built in staging and swapped only after a complete successful rebuild",
+    "native_callback_boundary": "managed SQLCipher row callback exceptions are captured before returning through sqlite3",
+    "motion_stale_fallback_ms": 2500,
+    "adaptive_scheduler": "active/idle timer transitions are driven only by published visual changes; no protocol fields were added",
+    "codedom_scope_compatibility": "local variables use unique names across nested method scopes for Windows PowerShell 5.1 CodeDOM"
+  },
+  "performance": {
+    "motion_sampling": "24 ms in minimap and world-map modes; compact records are written only after a visual delta or a 1000 ms heartbeat",
+    "motion_thresholds": {
+      "player_xy_game_units": 20,
+      "player_z_game_units": 10,
+      "world_map_pan_units": 0.1,
+      "world_map_player_units": 0.1,
+      "world_map_zoom_relative": 0.0001
+    },
+    "overlay_timer_ms": {
+      "active": 24,
+      "world_idle": 50,
+      "radar_idle": 75,
+      "disabled": 125
+    },
+    "bridge_reads": "FileInfo stamp gates prevent opening unchanged motion and static slots",
+    "redraw_policy": "heartbeat-only motion frames and visually equivalent static states do not invalidate the form",
+    "render_batching": "non-nearest minimap and world-map treasure markers are grouped into four retained GraphicsPath batches with one smoothing-state scope",
+    "process_tracking": "overlay geometry, lifetime checks, and save polling reuse a validated tracked PID before enumerating processes"
   }
 }

@@ -15,7 +15,7 @@ namespace DragonSwordWorldRadar
 
         private readonly object _sync = new object();
         private DateTime _nextScanUtc;
-        private BossRespawnRule _rule =
+        private volatile BossRespawnRule _rule =
             BossRespawnRule.Daily(9, 0, "built-in-original");
         private string _lastSummary;
 
@@ -57,12 +57,10 @@ namespace DragonSwordWorldRadar
         public DateTime NextAvailableUtc(
             DateTime destroyTimeUtc)
         {
-            BossRespawnRule rule;
-            lock (_sync)
-            {
-                rule = _rule;
-            }
-            return rule.NextAvailableUtc(destroyTimeUtc);
+            // BossRespawnRule is immutable. Refresh publishes a complete rule
+            // reference, so paint-time availability reads do not need to take
+            // the scan-state monitor for every boss marker.
+            return _rule.NextAvailableUtc(destroyTimeUtc);
         }
 
         public bool IsAvailable(DateTime destroyTimeUtc)
@@ -73,11 +71,7 @@ namespace DragonSwordWorldRadar
 
         public string Describe(DateTime destroyTimeUtc)
         {
-            BossRespawnRule rule;
-            lock (_sync)
-            {
-                rule = _rule;
-            }
+            BossRespawnRule rule = _rule;
             DateTime next = rule.NextAvailableUtc(
                 destroyTimeUtc);
             return String.Format(
@@ -91,13 +85,7 @@ namespace DragonSwordWorldRadar
 
         public string RuleSummary
         {
-            get
-            {
-                lock (_sync)
-                {
-                    return _rule.ToString();
-                }
-            }
+            get { return _rule.ToString(); }
         }
 
         private static bool TryDetectReadableOverride(

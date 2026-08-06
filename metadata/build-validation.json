@@ -1,125 +1,105 @@
 {
   "schema_version": 1,
-  "version": "0.4.0-dev7-stable6",
-  "generated_at_utc": "2026-08-05T18:26:01.137358Z",
-  "source_verification": "passed",
-  "bridge": {
-    "static_slots": [
-      "runtime/bridge/radar_state_a.json",
-      "runtime/bridge/radar_state_b.json"
-    ],
-    "motion_slots": [
-      "runtime/bridge/radar_motion_a.dat",
-      "runtime/bridge/radar_motion_b.dat"
-    ],
+  "version": "0.4.0-dev9-performance1.1",
+  "generated_at_utc": "2026-08-06T01:28:30.301010Z",
+  "baseline": {
+    "tag": "v0.4.0-dev7-stable6",
+    "commit": "27e796b3ebda155e548a1624abd37090f648b704"
+  },
+  "preparation_environment": {
+    "platform": "Linux container",
+    "windows_powershell_5_1_add_type": "not executable in this environment; mandatory compile gate added to Windows CI, source verification, and installation",
+    "in_game_validation": "not executed",
+    "authoritative_runtime_gate": "Install.cmd must print OVERLAY_COMPILE_OK"
+  },
+  "compatibility": {
+    "bridge_protocol_changed": false,
     "motion_field_count": 21,
-    "minimap_interval_ms": 16,
-    "world_interval_ms": 8,
-    "unchanged_motion_write_suppression": true,
-    "world_marker_batching": "GraphicsPath"
+    "static_state_interval_ms": 250,
+    "minimap_motion_interval_ms": 24,
+    "world_map_motion_interval_ms": 24,
+    "producer_intervals_changed": true,
+    "save_schema_changed": false,
+    "generated_lua_schema_changed": false,
+    "runtime_hooks_added": false,
+    "character_enumeration_added": false,
+    "f7_f8_behavior_intended_changed": false,
+    "marker_style_intended_changed": false
   },
-  "save_state": {
-    "fingerprint_sidecars": [
-      "-wal",
-      "-shm",
-      "-journal"
+  "optimizations": {
+    "motion_bridge": [
+      "24 ms producer sampling with cumulative visual-delta filtering and a 1000 ms liveness heartbeat",
+      "direct fixed 21-field ASCII parsing from reusable byte buffers",
+      "retained MotionFrame and WorldMapState per alternating slot",
+      "FileInfo timestamp/length gates prevent opening unchanged alternating slots",
+      "no ReadAllText, Split, numeric substring, or per-frame model allocation"
     ],
-    "consistent_db_and_bak_snapshots": true,
-    "boss_table": "tb_actor_respawn",
-    "character_enumeration": false,
-    "version_changes_only_on_semantic_state_changes": true
-  },
-  "required_release_entries": "passed",
-  "backup_artifacts": 0,
-  "validation_environment_note": "Package/static validation completed in Linux. Install.cmd now performs the authoritative Windows PowerShell 5.1 compile gate before installation completes.",
-  "source_baseline": "DragonSwordWorldRadar-0.4.0-dev7-bridge-save-event-fix-release.zip",
-  "minimal_diff_policy": {
-    "radar_form_restored_from_dev7": true,
-    "removed_methods": [
-      "UpdateForegroundVisibility",
-      "RectanglesOverlap"
+    "world_map": [
+      "single projection pass per visible treasure",
+      "reused projected-marker list and projected-pixel HashSet",
+      "four retained FillMode.Winding GraphicsPath instances",
+      "pooled per-map visible treasure lists"
     ],
-    "preserved_methods": [
-      "GetTreasureBrush",
-      "DrawHeightIndicator",
-      "DrawNearestLabel",
-      "DrawOutlinedLabelLine",
-      "DrawTreasureMarker"
+    "rendering": [
+      "adaptive 24/50/75/125 ms active, world-idle, radar-idle, and disabled timer cadence",
+      "visually equivalent static frames and heartbeat-only motion frames do not invalidate the form",
+      "minimap and world-map non-nearest treasure markers use four retained GraphicsPath batches",
+      "one smoothing-mode transition covers all four treasure batches",
+      "retained boss marker, height indicator, brushes, pens, and point arrays"
     ],
-    "added_rendering_utility": "TreasureMarkerPalette"
-  },
-  "treasure_rendering": {
-    "draw_ellipse_retained": true,
-    "graphics_path_outlines_retained": true,
-    "outline_color_matches_fill": true,
-    "cached_outline_pens": true,
-    "per_frame_pen_allocation": false
-  },
-  "visibility": {
-    "foreground_poll_removed": true,
-    "overlap_poll_removed": true,
-    "minimized_window_hide_removed": true,
-    "control": "F7 enable / F8 disable"
-  },
-  "process_working_directory": {
-    "host": "TEMP/DragonSwordWorldRadar",
-    "watcher_host": "TEMP/DragonSwordWorldRadar",
-    "wscript": "TEMP",
-    "startup_shortcut": "TEMP/DragonSwordWorldRadar"
-  },
-  "runtime_hooks": {
-    "event_probe_removed": true,
-    "register_hook_in_main_package": false,
-    "separate_probe_mod": "DragonSwordWorldDataProbe"
-  },
-  "config_repair": {
-    "complete_default": true,
-    "validate_before_preserve": true,
-    "archive_invalid": true,
-    "validate_after_merge": true
-  },
-  "windows_compile_gate": {
-    "installer_compiles_exact_overlay_source_set": true,
-    "host_recompiles_exact_overlay_source_set_on_F7": true,
-    "local_linux_windows_powershell_compile": "unavailable"
-  },
-  "baseline_sha256": "71be8fc280619f6b2d51741093b3f135990f87e930139e7a34c1e1865b3eb49f",
-  "overlay_source_count": 24,
-  "static_validation": {
-    "csharp_delimiter_scan": "passed",
-    "radarform_method_preservation": "passed",
-    "private_field_reference_scan": "passed",
-    "powershell_delimiter_scan": "passed",
-    "json_parse": "passed",
-    "lua_config_shape": "passed",
-    "package_probe_hook_scan": "passed"
-  },
-  "expected_file_delta": {
-    "added": [
-      "src/overlay/Rendering/TreasureMarkerPalette.cs"
-    ],
-    "removed": [
-      "scripts/treasure_event_probe.lua"
-    ],
-    "radarform_removed_methods": [
-      "UpdateForegroundVisibility",
-      "RectanglesOverlap"
+    "save_state": [
+      "lock-free immutable opened-treasure and boss-respawn snapshot reads",
+      "lock-free immutable alias and ignored-ID snapshot reads",
+      "active-slot discovery isolated in SaveDatabaseLocator",
+      "consistent-copy SQLCipher queries isolated in SaveSnapshotReader",
+      "load-token invalidation prevents stale worker publication",
+      "boss deadline cache preserves maintenance-cadence transition invalidation",
+      "validated tracked process IDs are reused before process enumeration in save, lifetime, and geometry polling"
     ]
   },
-  "important_note": "The package is not claimed to have been compiled in Linux. Install.cmd performs the authoritative Windows PowerShell 5.1 overlay compile and aborts before watcher installation on any error or warning.",
-  "marker_style": {
-    "shared_style_class": "RadarMarkerStyle",
-    "treasure_outline_uses_shared_dark_color": true,
-    "boss_outline_uses_shared_dark_color": true,
-    "treasure_type_fills_preserved": true,
-    "boss_vector_silhouette_preserved": true,
-    "runtime_hooks_added": false
+  "removed": [
+    "src/overlay/SaveData/BossCooldownProbe.cs"
+  ],
+  "static_validation": {
+    "json_parse": "passed",
+    "csharp_lexer_and_delimiter_scan": "passed",
+    "csharp_5_compatibility_scan": "passed",
+    "required_and_forbidden_file_scan": "passed",
+    "unexpected_executable_scan": "passed; only tools/ooz.exe",
+    "binary_hash_scan": "passed for ooz.exe and e_sqlcipher.dll",
+    "runtime_hook_and_character_enumeration_scan": "passed",
+    "motion_protocol_and_parser_semantic_tests": "passed",
+    "transactional_publication_invariants": "passed",
+    "installer_core_diff_from_stable6": "none",
+    "installer_script_diff_from_stable6": "none",
+    "ue4ss_behavior_diff_from_stable6": "performance scheduling only: 24 ms motion sampling, visual-delta write filtering, a 1000 ms heartbeat, and unchanged 250 ms static updates; bridge fields and layer semantics unchanged",
+    "git_whitespace_scan": "passed",
+    "release_manifest_revalidation": "passed"
   },
-  "graphics_fix": {
-    "treasure_outline_pen_uses_shared_outline": true,
-    "world_paths_use_winding_fill": 4,
-    "projected_pixel_dedupe": true,
-    "boss_renderer_unchanged_from_stable5": true,
-    "experimental_hooks_added": false
-  }
+  "important_note": "No in-game pass or Windows PowerShell 5.1 Add-Type execution is claimed in this Linux preparation environment. Install.cmd still performs the authoritative complete-source compile gate and must print OVERLAY_COMPILE_OK.",
+  "source_inventory": {
+    "schema_version": 2,
+    "hash_mode": "raw file bytes; manifest excludes metadata/build-manifest.json itself"
+  },
+  "repairs": [
+    "C# 7.3-incompatible RadarPoint conditional expression removed",
+    "motion candidates isolated from published frame/map objects",
+    "transactional world-treasure visibility index and consistent opened-state capture",
+    "catalog and override consistent-read publication guards",
+    "managed SQLCipher callback exception containment and corrupt timestamp handling",
+    "per-module maintenance and renderer fault isolation with rate-limited logs",
+    "graphics state and timer-resolution cleanup hardening",
+    "host source-count gate aligned with installer",
+    "Windows PowerShell 5.1 compile gate added to source verification and CI",
+    "PowerShell 5.1 CodeDOM local-variable shadowing in MotionVisualSnapshot.Update removed"
+  ],
+  "performance_changes": [
+    "producer motion file writes are decoupled from sampling frequency",
+    "failed motion publications remain pending and retry on the next producer loop",
+    "unchanged bridge slots are metadata-checked but not opened",
+    "static and motion frames are compared before UI invalidation",
+    "timer polling backs off after 300 ms without a visual motion change",
+    "treasure marker GDI calls are batched",
+    "tracked game processes are reused instead of repeatedly enumerated"
+  ]
 }

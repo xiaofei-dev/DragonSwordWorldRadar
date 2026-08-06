@@ -12,7 +12,6 @@
 /scripts/config.lua
 
 # Diagnostics
+DragonSwordWorldRadar-Diagnostics-*.zip
 EventRadar-Diagnostics-*.zip
 *.log
-
-vendor/ooz/ooz.exe

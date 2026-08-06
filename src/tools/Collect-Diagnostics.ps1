@@ -27,7 +27,7 @@ function Copy-IfExists([string]$Source,[string]$RelativeDestination) {
 
 $success = $false
 try {
-    Write-CollectorLog "COLLECT_START version=0.4.0-dev7-stable6; modRoot=$modRoot"
+    Write-CollectorLog "COLLECT_START version=0.4.0-dev9-performance1.1; modRoot=$modRoot"
 
     $logsPath = Join-Path $runtime 'logs'
     if (Test-Path -LiteralPath $logsPath) {

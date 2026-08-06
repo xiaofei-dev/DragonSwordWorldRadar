@@ -1,8 +1,29 @@
+#requires -Version 5.1
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version 2.0
+
 $root = Split-Path -Parent $PSScriptRoot
+$windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+if (-not (Test-Path -LiteralPath $windowsPowerShell -PathType Leaf)) {
+    throw 'Windows PowerShell 5.1 is required to build a release.'
+}
+
+function Invoke-Gate([string]$ScriptName) {
+    $scriptPath = Join-Path $PSScriptRoot $ScriptName
+    & $windowsPowerShell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $scriptPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Validation gate failed: $ScriptName (exit=$LASTEXITCODE)"
+    }
+}
+
 & (Join-Path $PSScriptRoot 'Verify-Source.ps1')
+Invoke-Gate 'Compile-Source.ps1'
+Invoke-Gate 'Test-Refactor.ps1'
+
 $release = Get-Content -LiteralPath (Join-Path $root 'metadata\release.json') -Raw | ConvertFrom-Json
 $version = [string]$release.version
+if ([string]::IsNullOrWhiteSpace($version)) { throw 'metadata/release.json has no version.' }
+
 $dist = Join-Path $root 'dist'
 $stage = Join-Path $dist ("DragonSwordWorldRadar-$version")
 $mod = Join-Path $stage 'DragonSwordWorldRadar'
@@ -10,10 +31,12 @@ if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -F
 New-Item -ItemType Directory -Force -Path $mod | Out-Null
 
 function Copy-Tree([string]$Source,[string]$Destination) {
+    if (-not (Test-Path -LiteralPath $Source -PathType Container)) { throw "Missing source directory: $Source" }
     New-Item -ItemType Directory -Force -Path $Destination | Out-Null
     Copy-Item -Path (Join-Path $Source '*') -Destination $Destination -Recurse -Force
 }
 function Copy-One([string]$Source,[string]$Destination) {
+    if (-not (Test-Path -LiteralPath $Source -PathType Leaf)) { throw "Missing source file: $Source" }
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Destination) | Out-Null
     Copy-Item -LiteralPath $Source -Destination $Destination -Force
 }
@@ -36,12 +59,15 @@ Copy-One (Join-Path $root 'licenses\APACHE-2.0.txt') (Join-Path $mod 'licenses\A
 Copy-One (Join-Path $root 'licenses\SQLCIPHER.txt') (Join-Path $mod 'licenses\SQLCIPHER.txt')
 Copy-One (Join-Path $root 'THIRD_PARTY_NOTICES.txt') (Join-Path $mod 'THIRD_PARTY_NOTICES.txt')
 Copy-One (Join-Path $root 'README.md') (Join-Path $mod 'README.txt')
-[IO.File]::WriteAllText((Join-Path $mod 'enabled.txt'),"1`n",[Text.UTF8Encoding]::new($false))
+
+$utf8 = New-Object Text.UTF8Encoding($false)
+Copy-One (Join-Path $root 'resources\enabled.txt') (Join-Path $mod 'enabled.txt')
 New-Item -ItemType Directory -Force -Path (Join-Path $mod 'data\generated'),(Join-Path $mod 'runtime\bridge'),(Join-Path $mod 'runtime\logs') | Out-Null
 
 $manifestFiles = @()
 foreach ($file in @(Get-ChildItem -LiteralPath $mod -Recurse -File | Sort-Object FullName)) {
-    $relative = $file.FullName.Substring($mod.Length).TrimStart('\')
+    $relative = $file.FullName.Substring($mod.Length).TrimStart('\').Replace('\','/')
+    if ($relative -eq 'metadata/build-manifest.json') { continue }
     $manifestFiles += [ordered]@{
         path = $relative
         size = [int64]$file.Length
@@ -53,11 +79,33 @@ $manifest = [ordered]@{
     version = $version
     generated_at_utc = [DateTime]::UtcNow.ToString('O')
     custom_executable_count = 0
+    bundled_tool_executable_count = 1
     files = $manifestFiles
 }
-$manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $mod 'metadata\build-manifest.json') -Encoding UTF8
+[IO.File]::WriteAllText((Join-Path $mod 'metadata\build-manifest.json'),($manifest | ConvertTo-Json -Depth 6),$utf8)
 
 $archive = Join-Path $dist ("DragonSwordWorldRadar-v$version.zip")
 if (Test-Path -LiteralPath $archive) { Remove-Item -LiteralPath $archive -Force }
-Compress-Archive -LiteralPath $mod -DestinationPath $archive -CompressionLevel Optimal
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$stream = [IO.File]::Open($archive,[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+try {
+    $zip = New-Object IO.Compression.ZipArchive($stream,[IO.Compression.ZipArchiveMode]::Create,$true)
+    try {
+        foreach ($file in @(Get-ChildItem -LiteralPath $stage -Recurse -File | Sort-Object FullName)) {
+            $relative = $file.FullName.Substring($stage.Length).TrimStart('\').Replace('\','/')
+            $entry = $zip.CreateEntry($relative,[IO.Compression.CompressionLevel]::Optimal)
+            $input = [IO.File]::OpenRead($file.FullName)
+            $output = $entry.Open()
+            try { $input.CopyTo($output) }
+            finally { $output.Dispose(); $input.Dispose() }
+        }
+    }
+    finally { $zip.Dispose() }
+}
+finally { $stream.Dispose() }
+
+if (-not (Test-Path -LiteralPath $archive -PathType Leaf) -or (Get-Item -LiteralPath $archive).Length -lt 1000000) {
+    throw 'Release archive was not created or is unexpectedly small.'
+}
 Write-Host "Built: $archive"
