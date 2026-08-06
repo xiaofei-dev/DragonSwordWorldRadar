@@ -10,6 +10,8 @@ if ([string]::IsNullOrWhiteSpace($version)) {
 }
 
 $required = @(
+    'Apply-Patch-And-Deploy.cmd',
+    'build\Apply-Patch-And-Deploy.ps1',
     'src\ue4ss\main.lua',
     'src\ue4ss\world_map.lua',
     'src\ue4ss\diagnostics.lua',

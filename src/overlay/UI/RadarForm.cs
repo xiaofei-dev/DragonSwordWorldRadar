@@ -24,6 +24,7 @@ namespace DragonSwordWorldRadar
         private const int WorldIdleTimerIntervalMs = 50;
         private const int RadarIdleTimerIntervalMs = 75;
         private const int DisabledTimerIntervalMs = 125;
+        private const int BackgroundTimerIntervalMs = 500;
         private const int StaticStatePollIntervalMs = 200;
         private const int MaintenanceIntervalMs = 500;
         private const int GeometryCheckIntervalMs = 1000;
@@ -79,6 +80,9 @@ namespace DragonSwordWorldRadar
         private string _lastSaveFilterLog;
         private DateTime _nextSaveFilterLogUtc;
         private int _gameProcessId;
+        private IntPtr _gameWindowHandle;
+        private bool _overlaySuppressed;
+        private string _overlaySuppressionReason = "initial";
         private bool _hasSeenGameProcess;
         private DateTime _gameProcessMissingSinceUtc;
         private DateTime _nextGameLifetimeCheckUtc;
@@ -788,6 +792,7 @@ namespace DragonSwordWorldRadar
                     return;
                 }
                 RefreshState();
+                UpdateOverlayVisibility();
                 ClearModuleFailure("timer");
             }
             catch (Exception exception)
@@ -1303,7 +1308,11 @@ namespace DragonSwordWorldRadar
                         MotionActivityWindowMs);
 
             int interval;
-            if (String.Equals(
+            if (_overlaySuppressed)
+            {
+                interval = BackgroundTimerIntervalMs;
+            }
+            else if (String.Equals(
                     mode,
                     "world",
                     StringComparison.Ordinal))
@@ -1500,7 +1509,8 @@ namespace DragonSwordWorldRadar
                 MoveOverGameWindow();
             }
             UpdateTimerInterval(now);
-            if (redraw || geometryChanged)
+            if ((redraw || geometryChanged)
+                && !_overlaySuppressed)
             {
                 _performance.RecordInvalidate();
                 Invalidate();
@@ -2075,6 +2085,75 @@ namespace DragonSwordWorldRadar
             Close();
         }
 
+
+        private void UpdateOverlayVisibility()
+        {
+            string reason = null;
+            IntPtr gameWindow = _gameWindowHandle;
+            if (_gameProcessId <= 0 || gameWindow == IntPtr.Zero)
+            {
+                reason = "game-window-unavailable";
+            }
+            else if (!NativeMethods.IsWindowVisible(gameWindow))
+            {
+                reason = "game-window-hidden";
+            }
+            else if (NativeMethods.IsIconic(gameWindow))
+            {
+                reason = "game-window-minimized";
+            }
+            else
+            {
+                IntPtr foregroundWindow = NativeMethods.GetForegroundWindow();
+                uint foregroundProcessId = 0;
+                if (foregroundWindow != IntPtr.Zero)
+                {
+                    NativeMethods.GetWindowThreadProcessId(
+                        foregroundWindow,
+                        out foregroundProcessId);
+                }
+                if (foregroundProcessId != (uint)_gameProcessId)
+                {
+                    reason = "game-not-foreground";
+                }
+            }
+
+            bool shouldSuppress = reason != null;
+            if (shouldSuppress == _overlaySuppressed)
+            {
+                return;
+            }
+
+            _overlaySuppressed = shouldSuppress;
+            _overlaySuppressionReason = shouldSuppress
+                ? reason
+                : "visible";
+            if (!IsHandleCreated)
+            {
+                return;
+            }
+
+            if (shouldSuppress)
+            {
+                NativeMethods.ShowWindow(
+                    Handle,
+                    NativeMethods.SwHide);
+            }
+            else
+            {
+                MoveOverGameWindow();
+                NativeMethods.ShowWindow(
+                    Handle,
+                    NativeMethods.SwShowNoActivate);
+                _performance.RecordInvalidate();
+                Invalidate();
+            }
+            UpdateTimerInterval(DateTime.UtcNow);
+            ErrorLog.WriteDebug(
+                "Overlay visibility changed: " +
+                _overlaySuppressionReason);
+        }
+
         private void MoveOverGameWindow()
         {
             Rectangle primaryBounds = Screen.PrimaryScreen.Bounds;
@@ -2110,6 +2189,7 @@ namespace DragonSwordWorldRadar
                             gameWindow = FindLargestVisibleWindow(
                                 process.Id);
                         }
+                        _gameWindowHandle = gameWindow;
 
                         NativeRect rectangle;
                         if (gameWindow != IntPtr.Zero

@@ -68,3 +68,12 @@ Installation stores a fingerprint of the game executable and generated-data PAK 
 ## License
 
 GPL-3.0. See `THIRD_PARTY_NOTICES.txt` and `licenses/` for third-party components.
+## Apply a patch, build, and deploy
+
+Place one `.patch` or `.diff` file in the repository root and run:
+
+```text
+Apply-Patch-And-Deploy.cmd
+```
+
+The workflow requires a clean Git work tree, confirms the current and target release versions, runs all validation gates, builds the release, lets you select `DSClient-Win64-Shipping.exe`, deploys the Mod, and runs the normal installer. Patch changes remain staged for review and commit. Logs are written under `runtime/patch-deploy`.
