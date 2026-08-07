@@ -8,6 +8,38 @@ namespace DragonSwordWorldRadar
         private const string ProcessName =
             "DSClient-Win64-Shipping";
 
+        public static Process OpenExact(int processId)
+        {
+            if (processId <= 0)
+            {
+                return null;
+            }
+
+            Process process = null;
+            try
+            {
+                process = Process.GetProcessById(processId);
+                if (!process.HasExited
+                    && String.Equals(
+                        process.ProcessName,
+                        ProcessName,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return process;
+                }
+            }
+            catch
+            {
+                // The exact game process may have exited between checks.
+            }
+
+            if (process != null)
+            {
+                process.Dispose();
+            }
+            return null;
+        }
+
         public static Process OpenTracked(int processId)
         {
             if (processId > 0)

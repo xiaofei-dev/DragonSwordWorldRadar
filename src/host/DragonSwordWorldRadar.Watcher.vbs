@@ -30,7 +30,24 @@ Function Quote(value)
     Quote = Chr(34) & Replace(value, Chr(34), Chr(34) & Chr(34)) & Chr(34)
 End Function
 
-LogLine "WATCHER_START version=0.4.0-dev9-performance1.1 host=wscript pidless=true"
+Function NormalizeStamp(value)
+    Dim normalized, index, character
+    normalized = Trim(Replace(Replace(Replace(CStr(value), vbCr, ""), vbLf, ""), vbTab, ""))
+    If Len(normalized) = 0 Or Len(normalized) > 32 Then
+        NormalizeStamp = ""
+        Exit Function
+    End If
+    For index = 1 To Len(normalized)
+        character = Mid(normalized, index, 1)
+        If character < "0" Or character > "9" Then
+            NormalizeStamp = ""
+            Exit Function
+        End If
+    Next
+    NormalizeStamp = normalized
+End Function
+
+LogLine "WATCHER_START version=0.4.0-dev9-performance1.3-mapinstant-hiddenhost1 host=wscript pidless=true"
 Do
     If fso.FileExists(stopPath) Then
         On Error Resume Next
@@ -44,7 +61,7 @@ Do
         On Error Resume Next
         Dim input
         Set input = fso.OpenTextFile(requestPath, 1, False, 0)
-        currentStamp = Trim(input.ReadAll)
+        currentStamp = NormalizeStamp(input.ReadAll)
         input.Close
         If Err.Number <> 0 Then
             Err.Clear

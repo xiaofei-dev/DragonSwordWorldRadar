@@ -16,9 +16,17 @@ return {
     show_treasure_types = false,
     text_scale = 1.0,
 
-    -- Low-overhead diagnostics. No per-frame disk writes are performed.
+    -- Normal use log: startup, mode-independent lifecycle messages, warnings,
+    -- and errors only. No periodic performance counters are collected.
+    use_logging = true,
+
+    -- Debug log: producer timings, bridge rates, Overlay frame pacing,
+    -- CPU/memory samples, geometry transitions, and save/Boss diagnostics.
+    -- Keep false for normal play.
+    debug_logging = false,
+    diagnostic_perf_interval_seconds = 5,
+
+    -- Backward-compatible aliases retained for existing user config files.
     diagnostic_logging = true,
     diagnostic_verbose = false,
-    diagnostic_perf_interval_seconds = 5,
-    debug_logging = false,
 }

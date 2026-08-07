@@ -3,10 +3,11 @@ local Diagnostics = {}
 local MOD = "[DragonSwordWorldRadar]"
 local version = "unknown"
 local generation = 0
-local enabled = true
-local verbose = false
+local use_enabled = true
+local debug_enabled = false
 local interval_seconds = 5
-local log_path = nil
+local use_log_path = nil
+local debug_log_path = nil
 local configured = false
 local line_sequence = 0
 local last_perf_wall = os.time()
@@ -45,6 +46,12 @@ local function reset_counters()
         total_max_ms = 0.0,
         queue_total_ms = 0.0,
         queue_max_ms = 0.0,
+        queue_over_50_ms = 0,
+        queue_over_100_ms = 0,
+        queue_over_250_ms = 0,
+        total_over_50_ms = 0,
+        total_over_100_ms = 0,
+        total_over_250_ms = 0,
         world_input_changed = 0,
         world_input_unchanged = 0,
         max_pan_delta = 0.0,
@@ -57,9 +64,9 @@ local function reset_counters()
 end
 reset_counters()
 
-local function resolve_log_path()
-    if log_path ~= nil then
-        return log_path
+local function resolve_log_paths()
+    if use_log_path ~= nil and debug_log_path ~= nil then
+        return use_log_path, debug_log_path
     end
     local source = debug.getinfo(1, "S").source
     if type(source) == "string" and string.sub(source, 1, 1) == "@" then
@@ -71,10 +78,14 @@ local function resolve_log_path()
         local mod_directory = scripts_directory
             and string.match(scripts_directory, "^(.*)[/\\][^/\\]+$")
         if mod_directory ~= nil then
-            log_path = mod_directory .. "\\runtime\\logs\\DragonSwordWorldRadar.Lua.log"
+            local log_directory = mod_directory .. "\\runtime\\logs"
+            use_log_path = log_directory
+                .. "\\DragonSwordWorldRadar.Lua.Use.log"
+            debug_log_path = log_directory
+                .. "\\DragonSwordWorldRadar.Lua.Debug.log"
         end
     end
-    return log_path
+    return use_log_path, debug_log_path
 end
 
 local function token(value)
@@ -110,28 +121,23 @@ local function sorted_keys(fields)
     return keys
 end
 
-local function append_line(line)
-    if not enabled then
-        return
-    end
-    local path = resolve_log_path()
+local function append_line(path, line)
     if path == nil then
-        return
+        return false
     end
     local file = io.open(path, "a")
     if file == nil then
-        return
+        return false
     end
     local ok = pcall(function()
         file:write(line)
         file:write("\n")
-        file:flush()
     end)
     pcall(function() file:close() end)
     return ok
 end
 
-function Diagnostics.event(level, event, message, fields, file_only)
+local function build_line(level, event, message, fields)
     line_sequence = line_sequence + 1
     local parts = {
         "[" .. os.date("!%Y-%m-%dT%H:%M:%SZ") .. "]",
@@ -147,29 +153,83 @@ function Diagnostics.event(level, event, message, fields, file_only)
         table.insert(parts, key .. "=" .. token(fields[key]))
     end
     table.insert(parts, "monoMs=" .. token(os.clock() * 1000.0))
-    local line = table.concat(parts, " ")
-    append_line(line)
+    return table.concat(parts, " ")
+end
+
+local function emit_use(level, event, message, fields, file_only)
+    local line = build_line(level, event, message, fields)
+    if use_enabled then
+        local path = resolve_log_paths()
+        append_line(path, line)
+    end
     if not file_only then
         print(string.format("%s %s", MOD, line))
     end
 end
 
-function Diagnostics.info(event, message, fields)
-    Diagnostics.event("INFO", event, message, fields, false)
+local function emit_debug(level, event, message, fields)
+    if not debug_enabled then
+        return
+    end
+    local _, path = resolve_log_paths()
+    append_line(path, build_line(level, event, message, fields))
 end
 
-function Diagnostics.debug(event, message, fields)
-    if verbose then
-        Diagnostics.event("DEBUG", event, message, fields, false)
+local function prepare_log(path, label)
+    if path == nil then
+        return
+    end
+    local open_mode = "w"
+    local existing = io.open(path, "r")
+    if existing ~= nil then
+        existing:close()
+        local archived = false
+        local directory = string.match(
+            path,
+            "^(.*)[/\\][^/\\]+$"
+        )
+        if directory ~= nil then
+            local archive_path = directory
+                .. "\\" .. label .. "."
+                .. os.date("!%Y%m%d-%H%M%S")
+                .. ".g" .. tostring(generation) .. ".log"
+            local call_ok, rename_ok = pcall(
+                os.rename,
+                path,
+                archive_path
+            )
+            archived = call_ok and rename_ok ~= nil
+        end
+        -- Preserve the previous file when rotation is unavailable.
+        if not archived then
+            open_mode = "a"
+        end
+    end
+    local file = io.open(path, open_mode)
+    if file ~= nil then
+        file:close()
     end
 end
 
+-- Compatibility entry point: general events belong to the low-volume use log.
+function Diagnostics.event(level, event, message, fields, file_only)
+    emit_use(level, event, message, fields, file_only == true)
+end
+
+function Diagnostics.info(event, message, fields)
+    emit_use("INFO", event, message, fields, false)
+end
+
+function Diagnostics.debug(event, message, fields)
+    emit_debug("DEBUG", event, message, fields)
+end
+
 function Diagnostics.warn(event, message, fields)
-    Diagnostics.event("WARN", event, message, fields, false)
+    emit_use("WARN", event, message, fields, false)
 end
 
 function Diagnostics.error(event, message, fields)
-    Diagnostics.event("ERROR", event, message, fields, false)
+    emit_use("ERROR", event, message, fields, false)
 end
 
 function Diagnostics.error_rate_limited(key, seconds, event, message, fields)
@@ -196,56 +256,55 @@ function Diagnostics.configure(options)
     options = options or {}
     version = tostring(options.version or version)
     generation = tonumber(options.generation) or generation
-    enabled = options.enabled ~= false
-    verbose = options.verbose == true
+    use_enabled = options.use_enabled ~= false
+        and options.enabled ~= false
+    debug_enabled = options.debug_enabled == true
+        or options.verbose == true
     interval_seconds = math.max(
         3,
         math.min(30, tonumber(options.interval_seconds) or 5)
     )
-    local path = resolve_log_path()
-    if path ~= nil and not configured then
-        local open_mode = "w"
-        local existing = io.open(path, "r")
-        if existing ~= nil then
-            existing:close()
-            local archived = false
-            local runtime_directory = string.match(
-                path,
-                "^(.*)[/\\][^/\\]+$"
+
+    local use_path, debug_path = resolve_log_paths()
+    if not configured then
+        if use_enabled then
+            prepare_log(
+                use_path,
+                "DragonSwordWorldRadar.Lua.Use"
             )
-            if runtime_directory ~= nil then
-                local archive_path = runtime_directory
-                    .. "\\logs\\archive\\DragonSwordWorldRadar.Lua."
-                    .. os.date("!%Y%m%d-%H%M%S")
-                    .. ".g" .. tostring(generation) .. ".log"
-                local call_ok, rename_ok = pcall(
-                    os.rename,
-                    path,
-                    archive_path
-                )
-                archived = call_ok and rename_ok ~= nil
-            end
-            -- If rotation fails, append rather than destroying the previous log.
-            if not archived then
-                open_mode = "a"
-            end
         end
-        local file = io.open(path, open_mode)
-        if file ~= nil then
-            file:close()
+        if debug_enabled then
+            prepare_log(
+                debug_path,
+                "DragonSwordWorldRadar.Lua.Debug"
+            )
         end
     end
     configured = true
     last_perf_wall = os.time()
     reset_counters()
+
     Diagnostics.info("SESSION_START", nil, {
         version = version,
         generation = generation,
-        diagnostics_enabled = enabled,
-        verbose = verbose,
-        interval_seconds = interval_seconds,
-        log_path = path,
+        use_logging = use_enabled,
+        debug_logging = debug_enabled,
     })
+    Diagnostics.debug("DEBUG_SESSION_START", nil, {
+        version = version,
+        generation = generation,
+        interval_seconds = interval_seconds,
+        use_log_path = use_path,
+        debug_log_path = debug_path,
+    })
+end
+
+function Diagnostics.is_debug_enabled()
+    return debug_enabled
+end
+
+function Diagnostics.is_use_enabled()
+    return use_enabled
 end
 
 function Diagnostics.now_ms()
@@ -253,9 +312,13 @@ function Diagnostics.now_ms()
 end
 
 function Diagnostics.set_mode(mode, sequence)
+    if not debug_enabled then
+        current_mode = tostring(mode or "unknown")
+        return
+    end
     mode = tostring(mode or "unknown")
     if mode ~= current_mode then
-        Diagnostics.info("MODE_CHANGE", nil, {
+        Diagnostics.debug("MODE_CHANGE", nil, {
             previous = current_mode,
             current = mode,
             state_sequence = sequence,
@@ -265,10 +328,15 @@ function Diagnostics.set_mode(mode, sequence)
 end
 
 function Diagnostics.record_queue_request()
-    counters.queue_requests = counters.queue_requests + 1
+    if debug_enabled then
+        counters.queue_requests = counters.queue_requests + 1
+    end
 end
 
 function Diagnostics.record_queue_skip(reason)
+    if not debug_enabled then
+        return
+    end
     if reason == "pending" then
         counters.queue_pending_skips = counters.queue_pending_skips + 1
     else
@@ -277,14 +345,21 @@ function Diagnostics.record_queue_skip(reason)
 end
 
 function Diagnostics.record_motion_sample()
-    counters.motion_samples = counters.motion_samples + 1
+    if debug_enabled then
+        counters.motion_samples = counters.motion_samples + 1
+    end
 end
 
 function Diagnostics.record_motion_skip()
-    counters.motion_write_skips = counters.motion_write_skips + 1
+    if debug_enabled then
+        counters.motion_write_skips = counters.motion_write_skips + 1
+    end
 end
 
 function Diagnostics.record_motion_write(duration_ms, ok)
+    if not debug_enabled then
+        return
+    end
     counters.motion_writes = counters.motion_writes + 1
     if not ok then
         counters.motion_write_failures = counters.motion_write_failures + 1
@@ -302,11 +377,18 @@ end
 
 local function add_metric(prefix, value)
     value = tonumber(value) or 0.0
-    counters[prefix .. "_total_ms"] = counters[prefix .. "_total_ms"] + value
-    counters[prefix .. "_max_ms"] = math.max(counters[prefix .. "_max_ms"], value)
+    counters[prefix .. "_total_ms"] =
+        counters[prefix .. "_total_ms"] + value
+    counters[prefix .. "_max_ms"] = math.max(
+        counters[prefix .. "_max_ms"],
+        value
+    )
 end
 
 function Diagnostics.record_update(metrics)
+    if not debug_enabled then
+        return
+    end
     metrics = metrics or {}
     counters.updates = counters.updates + 1
     counters.last_state_sequence = tonumber(metrics.state_sequence)
@@ -336,6 +418,27 @@ function Diagnostics.record_update(metrics)
     add_metric("total", metrics.total_ms)
     add_metric("queue", metrics.queue_delay_ms)
 
+    local queue_delay_ms = tonumber(metrics.queue_delay_ms) or 0.0
+    local total_ms = tonumber(metrics.total_ms) or 0.0
+    if queue_delay_ms >= 50.0 then
+        counters.queue_over_50_ms = counters.queue_over_50_ms + 1
+    end
+    if queue_delay_ms >= 100.0 then
+        counters.queue_over_100_ms = counters.queue_over_100_ms + 1
+    end
+    if queue_delay_ms >= 250.0 then
+        counters.queue_over_250_ms = counters.queue_over_250_ms + 1
+    end
+    if total_ms >= 50.0 then
+        counters.total_over_50_ms = counters.total_over_50_ms + 1
+    end
+    if total_ms >= 100.0 then
+        counters.total_over_100_ms = counters.total_over_100_ms + 1
+    end
+    if total_ms >= 250.0 then
+        counters.total_over_250_ms = counters.total_over_250_ms + 1
+    end
+
     if mode == "world" and metrics.left ~= nil
         and metrics.top ~= nil and metrics.zoom ~= nil
     then
@@ -356,9 +459,11 @@ function Diagnostics.record_update(metrics)
                 ) * 100.0
             end
             if pan_delta > 0.01 or zoom_delta_percent > 0.001 then
-                counters.world_input_changed = counters.world_input_changed + 1
+                counters.world_input_changed =
+                    counters.world_input_changed + 1
             else
-                counters.world_input_unchanged = counters.world_input_unchanged + 1
+                counters.world_input_unchanged =
+                    counters.world_input_unchanged + 1
             end
             counters.max_pan_delta = math.max(
                 counters.max_pan_delta,
@@ -385,7 +490,7 @@ local function average(total, count)
 end
 
 function Diagnostics.maybe_report(mode, state_sequence)
-    if not enabled then
+    if not debug_enabled then
         return
     end
     local now = os.time()
@@ -405,7 +510,7 @@ function Diagnostics.maybe_report(mode, state_sequence)
     local motion_sample_count = math.max(1, counters.motion_samples)
     local motion_skip_percent = counters.motion_write_skips
         * 100.0 / motion_sample_count
-    Diagnostics.event("INFO", "LUA_PERF", nil, {
+    emit_debug("DEBUG", "LUA_PERF", nil, {
         window_seconds = elapsed,
         mode = mode,
         state_sequence = state_sequence,
@@ -432,12 +537,19 @@ function Diagnostics.maybe_report(mode, state_sequence)
         total_max_ms = counters.total_max_ms,
         queue_avg_ms = average(counters.queue_total_ms, count),
         queue_max_ms = counters.queue_max_ms,
+        queue_over_50_ms = counters.queue_over_50_ms,
+        queue_over_100_ms = counters.queue_over_100_ms,
+        queue_over_250_ms = counters.queue_over_250_ms,
+        total_over_50_ms = counters.total_over_50_ms,
+        total_over_100_ms = counters.total_over_100_ms,
+        total_over_250_ms = counters.total_over_250_ms,
         world_input_changed = counters.world_input_changed,
         world_input_unchanged = counters.world_input_unchanged,
         world_input_change_hz = counters.world_input_changed / elapsed,
         world_input_changed_percent = world_input_changed_percent,
         max_pan_delta = counters.max_pan_delta,
         max_zoom_delta_percent = counters.max_zoom_delta_percent,
+        motion_sample_hz = counters.motion_samples / elapsed,
         motion_samples = counters.motion_samples,
         motion_write_skips = counters.motion_write_skips,
         motion_skip_percent = motion_skip_percent,
@@ -449,7 +561,7 @@ function Diagnostics.maybe_report(mode, state_sequence)
             math.max(1, counters.motion_writes)
         ),
         motion_write_max_ms = counters.motion_write_max_ms,
-    }, true)
+    })
     last_perf_wall = now
     reset_counters()
 end

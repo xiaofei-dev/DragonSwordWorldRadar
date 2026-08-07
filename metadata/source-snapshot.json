@@ -8,10 +8,13 @@
   "overlay_source_files": 31,
   "installer_source_files": 13,
   "ue4ss_lua_files": 7,
-  "mapping_status": "normalized text and raw binary content match the tested release",
+  "mapping_status": "normalized text and raw binary content match the historical tested performance1.1 release",
   "excluded": [
     ".git/",
     "dist/",
     "runtime-generated state and logs"
-  ]
+  ],
+  "record_type": "historical_tested_baseline",
+  "current_source_version": "0.4.0-dev9-performance1.3-mapinstant-hiddenhost1",
+  "current_source_validation": "static-only instant-map-transition and hidden-launch revision; no Windows PowerShell 5.1 Add-Type or in-game pass claimed"
 }

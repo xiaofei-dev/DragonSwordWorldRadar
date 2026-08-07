@@ -1,8 +1,15 @@
 {
   "schema_version": 1,
-  "version": "0.4.0-dev9-performance1.1",
-  "generated_at_utc": "2026-08-06T03:43:55.957596+00:00",
-  "file_count": 92,
+  "version": "0.4.0-dev9-performance1.3-mapinstant-hiddenhost1",
+  "generated_at_utc": "2026-08-06T20:22:21.329511Z",
+  "hash_mode": "sha256_raw_file_bytes",
+  "excludes": [
+    "metadata/source-manifest.json",
+    ".git/",
+    "dist/",
+    "runtime/"
+  ],
+  "file_count": 93,
   "files": [
     {
       "path": ".gitattributes",
@@ -10,19 +17,19 @@
       "sha256": "ab0967b6c3351696cb9d684502b5fca8795cbf9f06dd90b5c1c527bf4c6766ba"
     },
     {
-      "path": ".github/workflows/validate.yml",
-      "size": 702,
-      "sha256": "48ffb43e56612e7391158772ee8c56598b0ec029100a90d6b01951216209e830"
+      "path": ".gitignore",
+      "size": 293,
+      "sha256": "8873862ae3a81aa88f599d9b07e8ce9162a4c34529c3ee33fe2996cd6faf838a"
     },
     {
-      "path": ".gitignore",
-      "size": 276,
-      "sha256": "27fb0f13c5a597e283491785f6ab25a1ac72f0496b12b36f95c6bc52854e2ef0"
+      "path": "Apply-Patch-And-Deploy.cmd",
+      "size": 393,
+      "sha256": "33be51d7fd86377a782f82b34506e3ffba43be9ef076852012a127add4ee9195"
     },
     {
       "path": "CHANGELOG.md",
-      "size": 4369,
-      "sha256": "b43c8bb4c8608bb6b061c2a25086e59f84740a8aa90a42745fef84cba4d808bc"
+      "size": 9483,
+      "sha256": "78caa45fbdd22f2c68faa4a0a21ecda2234ab05cf7e24d618da9c97c20315099"
     },
     {
       "path": "CONTRIBUTING.md",
@@ -41,13 +48,13 @@
     },
     {
       "path": "README.md",
-      "size": 4746,
-      "sha256": "43289a38bacc4d10b38bab488dcdaa718bcd3958bade336150c54e9e462d98f6"
+      "size": 7756,
+      "sha256": "71455f96477d11123ab78bd57167f495aad8ea5a92ca783b0074cf77c2c134df"
     },
     {
       "path": "SOURCE_PACKAGE.md",
-      "size": 1994,
-      "sha256": "64ef0967218783e99b0b8be413cdb27d7c2873589b83d1558cefb770c0996b46"
+      "size": 3651,
+      "sha256": "dcdd74511a8fc06f0386061398c213f457d27cac60128c376e831299a215650c"
     },
     {
       "path": "THIRD_PARTY_NOTICES.txt",
@@ -55,34 +62,39 @@
       "sha256": "a81b7f947d6853c466d1129a165cb93fff98e016af236864e7ba5c61fda9643c"
     },
     {
+      "path": "build/Apply-Patch-And-Deploy.ps1",
+      "size": 18554,
+      "sha256": "64c3b39d9f3d4c0ae9b4d99025844c4a943187ebe528cba36f1df7177b417ac7"
+    },
+    {
       "path": "build/Build-Release.ps1",
-      "size": 5870,
-      "sha256": "666f5a00e4c9990354bf9eefd5c22fb5b0d89f31a8a7a84cbe33fd536149bff6"
+      "size": 5981,
+      "sha256": "c74898471a6fc0e8fb07d6ebc4ba4116abf0859a1a6f8aa88532a7710c5cd898"
     },
     {
       "path": "build/Compile-Source.ps1",
-      "size": 2031,
-      "sha256": "eeb5271d223a11eb8672a96d5773188e78757d21c58d5afbffeed5c335444461"
+      "size": 2073,
+      "sha256": "93b138fc497b613772c0119c98862900a7be17fb860c87762394c48b1553c9b8"
     },
     {
       "path": "build/Test-Refactor.ps1",
-      "size": 1806,
-      "sha256": "8e78e98576085514d47b70593523f33ccc6d756a00c87fa6d51148bfe4e427b1"
+      "size": 1846,
+      "sha256": "9ba5eb55fda8c99d63370823854e5c57d5df59d351e860f3346e5ec3c8892446"
     },
     {
       "path": "build/ValidationHarness.cs",
-      "size": 7800,
-      "sha256": "716cfa4c0302f1d8159f7d52fd470b94591dba0fe7a5fc173fa611035c60e0cf"
+      "size": 8623,
+      "sha256": "68f0dc44d068c83e451a455e0b4efb8a8c51083571f39bdcd3b75b1b3c05f2b3"
     },
     {
       "path": "build/Verify-Source.ps1",
-      "size": 7708,
-      "sha256": "f42d81ae033d2f897f224863b8764b892b885a011b85a89acb9ed00de62615f2"
+      "size": 15992,
+      "sha256": "2c01261b3188ff067386213b7aa9f96d8d04c65aebba882348019f1e9be9ca8c"
     },
     {
       "path": "docs/ARCHITECTURE.md",
-      "size": 2129,
-      "sha256": "5f27d05f0c0dab91c24c38c0f2c86ba31737df4541a3a106579c0e9c4fd8ad72"
+      "size": 3764,
+      "sha256": "cba25c6f232b42167c6078e3f0a658e0976fbefa909e7c7fd662d33df7e8fdec"
     },
     {
       "path": "docs/DATA_PROVIDERS.md",
@@ -91,8 +103,8 @@
     },
     {
       "path": "docs/PERFORMANCE_BASELINE.md",
-      "size": 1131,
-      "sha256": "ab79eec95fd16464fc6bab7612f965c218e88684d112185c1933243b9d77e363"
+      "size": 4200,
+      "sha256": "e90e466ce858f93fdd847544d9e4d4a5ef63b1e8ad31f981ad615ce6aa23017f"
     },
     {
       "path": "docs/UPDATE_DETECTION.md",
@@ -116,8 +128,8 @@
     },
     {
       "path": "metadata/build-validation.json",
-      "size": 5488,
-      "sha256": "22b3b983bc7252b55cae2d95fa8587c6adae107ae455ef55c6da075e228fe8d1"
+      "size": 10691,
+      "sha256": "41e36b255c92be0380be63fcbb54e5b8ef18b6558aadb8aa49c8e544a26c6e02"
     },
     {
       "path": "metadata/data-providers.json",
@@ -126,8 +138,8 @@
     },
     {
       "path": "metadata/release.json",
-      "size": 6178,
-      "sha256": "208b792c6d560296479a5d39e2e102c8464444212c421a47093152d18541291f"
+      "size": 10163,
+      "sha256": "558cea5b98845541fd6210c1a27db43ecda12aa138ef06129035866a10fd3aa1"
     },
     {
       "path": "metadata/source-release-map.json",
@@ -136,8 +148,8 @@
     },
     {
       "path": "metadata/source-snapshot.json",
-      "size": 625,
-      "sha256": "d12904cec1ddb823e0d1de6331a66cb1b82b7e936f91fea582fcea444b455c3e"
+      "size": 934,
+      "sha256": "cd73eb01ded514751d56e735f3c4283e75e95859020913e8b142aaefa46d2046"
     },
     {
       "path": "resources/defaults/treasure_overrides.txt",
@@ -146,8 +158,8 @@
     },
     {
       "path": "resources/enabled.txt",
-      "size": 2,
-      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+      "size": 3,
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04"
     },
     {
       "path": "src/host/DragonSwordWorldRadar.Common.ps1",
@@ -156,18 +168,18 @@
     },
     {
       "path": "src/host/DragonSwordWorldRadar.Host.ps1",
-      "size": 3364,
-      "sha256": "fb09cd3a90dea3fc88ce80a9c63107ddf6541cd8bd7d80d23c98907add8c27d3"
+      "size": 3963,
+      "sha256": "cd6a33e1cfb676eee877e46aa8e2fecf63d69f6d12f288aff091504e66870331"
     },
     {
       "path": "src/host/DragonSwordWorldRadar.Watcher.ps1",
-      "size": 2929,
-      "sha256": "d20d836e1c34a22722e17a8a927da34044e8d9cdd8c0b6a66e4d5efda05e2d41"
+      "size": 4069,
+      "sha256": "2eef5bd9f720f3991b36534d6fd85fe113a9f8bf5c763d3a140cc9c78267a6b9"
     },
     {
       "path": "src/host/DragonSwordWorldRadar.Watcher.vbs",
-      "size": 2655,
-      "sha256": "f346be790f9a3de5aacdc26643565524732ce483d3539d4e10695a46518c2df6"
+      "size": 3228,
+      "sha256": "8317e8752d02e0ad28379b9f7b06cf76fad317553a565bf0412fd9bcac8a3353"
     },
     {
       "path": "src/installer/Core/Compression/OodleNative.cs",
@@ -246,33 +258,33 @@
     },
     {
       "path": "src/installer/Install.ps1",
-      "size": 22507,
-      "sha256": "6c2a7b1629900267283924a0eaf840be1fa3ce8332632bf414ad6f0a0789f00c"
+      "size": 22986,
+      "sha256": "4daafa38ffeac38dc7f7ad9b6cb8d267d8ab87285b874942e9350c66d33be228"
     },
     {
       "path": "src/overlay/Bridge/MotionBridgeReader.cs",
-      "size": 8931,
-      "sha256": "79af9fcbbee5d1ad05ac6d7c133ec7af0ce339c751443da37e2eaf726241c165"
+      "size": 9198,
+      "sha256": "6fe282a5495c268c7edf632c3ae12a5f64d70178f1c2a9b3b3b76bf40565a966"
     },
     {
       "path": "src/overlay/Bridge/MotionRecordParser.cs",
-      "size": 13184,
-      "sha256": "d41d7453dc9ecc9663a7c21400d3b977d2094ec282e0ade0fdf04dd47831f582"
+      "size": 13585,
+      "sha256": "ebbdfe3c7fc79f8fe749f0e40a8eff0ab592f354725b6208cfb0bdfa79d27bba"
     },
     {
       "path": "src/overlay/Bridge/SharedBridgeFile.cs",
-      "size": 2055,
-      "sha256": "ecb4911164f69c3d2221251e9209fbd647ff9c65128ec5d5585af6836cb121c3"
+      "size": 2119,
+      "sha256": "021469a4d56b5e8aaeb9bdac64ab121a4e6129e976162170cdfa9ec7dcd04ec2"
     },
     {
       "path": "src/overlay/Bridge/StaticStateBridgeReader.cs",
-      "size": 4348,
-      "sha256": "2c6caf0ec97740158976766d4ee63f1afeaf394c96f8b461b4288d1e82e5f5ec"
+      "size": 4497,
+      "sha256": "86c48fc85c2971418b99e288de7a082c9ea4e21cb82f2be8ca866c1698069e9a"
     },
     {
       "path": "src/overlay/Configuration/DebugSettings.cs",
-      "size": 2464,
-      "sha256": "389af3109aac035bbc4f97bd4011fc989cb459909d29fdef608de522280bc0ad"
+      "size": 3113,
+      "sha256": "0f39c9a68565d386e96828614373e9540ddc601ff79c12b26195f18698e82f50"
     },
     {
       "path": "src/overlay/Data/TreasureIdentity.cs",
@@ -281,28 +293,28 @@
     },
     {
       "path": "src/overlay/Data/WorldTreasureCatalog.cs",
-      "size": 8299,
-      "sha256": "92987b740d79446172a58977a551c47bf74cf0cec8486a51afe150459658ff1d"
+      "size": 8549,
+      "sha256": "b3a274094242506a12d41238d8567f9e728d880f7c94cdbb1078a42f486b8846"
     },
     {
       "path": "src/overlay/Data/WorldTreasureVisibilityIndex.cs",
-      "size": 3870,
-      "sha256": "e6ba9917de3034d064e289ece43d06903b0826355be013868484cbebf09ef043"
+      "size": 3990,
+      "sha256": "40ac271ad0df349fe8f79469c70fccb059ad57dc9dbd941f01ad8371a3d25d3d"
     },
     {
       "path": "src/overlay/Diagnostics/ErrorLog.cs",
-      "size": 1628,
-      "sha256": "da529832d835d6282e90d6022194140c9e0391bba6b3904df26977388c9b2ee6"
+      "size": 3581,
+      "sha256": "fae995af8020bf4403caea481bfcd3deeab5c7e9887cfc0f32654ec0bba72abc"
     },
     {
       "path": "src/overlay/Diagnostics/GeometryLog.cs",
-      "size": 825,
-      "sha256": "32a041ba8cd7a3b09b64461324b0ba700659145ac1eb3fee46c21efbe0ab5095"
+      "size": 197,
+      "sha256": "3e580409d28cc87ddd06262f0aeae9a38afb9759ce415657d9e51b197f25c633"
     },
     {
       "path": "src/overlay/Diagnostics/OverlayPerformanceTracker.cs",
-      "size": 4118,
-      "sha256": "5766a86adcac235afbbafede91c2829adef2097fe002e001724ec113c5669f1c"
+      "size": 14531,
+      "sha256": "55e949068d86ee557d07ac08e6065c30826f642b4ec20ba862950f804aa0966e"
     },
     {
       "path": "src/overlay/DragonSwordWorldRadar.Overlay.csproj",
@@ -331,28 +343,28 @@
     },
     {
       "path": "src/overlay/Platform/GameProcessFinder.cs",
-      "size": 2154,
-      "sha256": "199d43acf78657da799dccda1122a284a1cc9cab220b34bc9432a0ff2be41965"
+      "size": 3104,
+      "sha256": "e3a546746a049bdad6b1fbd97431b0c2b7d483633c66cc712a168b7f57b1b7f2"
     },
     {
       "path": "src/overlay/Platform/NativeMethods.cs",
-      "size": 5261,
-      "sha256": "095158d10a1dbb092cbda0b8def731b207f3121421d75edfed8d4f9133a7530f"
+      "size": 5311,
+      "sha256": "22c38d70220be6522dbca9fc81508dab0569cad06231bce87161e7ae1aeb02b8"
     },
     {
       "path": "src/overlay/Program.cs",
-      "size": 2864,
-      "sha256": "7df4881c1312f771131220a682a7fcd2fb3917b311ceca6c9ef7109470d5ef52"
+      "size": 2927,
+      "sha256": "1f3ea35f98b0d22ee8a9bf9d1cb90faa276c32b17aee1945ef27fd0c99aef41d"
     },
     {
       "path": "src/overlay/Rendering/BossMarkerRenderer.cs",
-      "size": 10594,
-      "sha256": "240142ea3667f9d0d5c17b4ad09283a8cd2d52aba66598e966a928913a08781a"
+      "size": 10874,
+      "sha256": "ebc9beabdaedc4a0f950b0aa2b9e53a03263dfaf2f77107467e21e71b3e62e60"
     },
     {
       "path": "src/overlay/Rendering/HeightIndicatorRenderer.cs",
-      "size": 6179,
-      "sha256": "3fa4b431001e4881b3a5833283630e6594f0370ed31535b0a4d2f78da7b7be79"
+      "size": 6365,
+      "sha256": "eb68da1f4dc8e0a8e87fe69daf26a936abc7f62b5f1d3dd4b7290ccf13a72d43"
     },
     {
       "path": "src/overlay/Rendering/TreasureMarkerPalette.cs",
@@ -361,18 +373,18 @@
     },
     {
       "path": "src/overlay/Rendering/WorldTreasureRenderBuffer.cs",
-      "size": 2826,
-      "sha256": "c739956191986d9bcb91beb299adf99a591d06553878b1151b05578f564ff4f5"
+      "size": 2933,
+      "sha256": "3edc227cf89d204bd16bdc3b116589649bca2152caaf286553dfd3b1c3a84dbf"
     },
     {
       "path": "src/overlay/SaveData/BossAvailabilityTracker.cs",
-      "size": 3059,
-      "sha256": "f9de637268f1eec3adb4c53bcecf2772483ec7792b0c4b25ebca55e3cd03d3fa"
+      "size": 3159,
+      "sha256": "65d911cb4a21cefc9cc71b92bd1cdb83d6329c7e8fdd7412b7c76f0f88769a76"
     },
     {
       "path": "src/overlay/SaveData/BossRespawnRuleResolver.cs",
-      "size": 13234,
-      "sha256": "1da6693669ba7de94bff473ac3a153a2414a220934d64999397564c322a2143e"
+      "size": 1641,
+      "sha256": "dce6892c0bd42d6a9f0cf076bbc538c24578d527dfd588f4a90d9091be8df3ce"
     },
     {
       "path": "src/overlay/SaveData/SaveDatabaseFingerprint.cs",
@@ -381,33 +393,33 @@
     },
     {
       "path": "src/overlay/SaveData/SaveDatabaseKeyReader.cs",
-      "size": 8865,
-      "sha256": "52dfd15567c455a856cf8deabfa4b47f660d0da81bbdcea7e5db0b143173fb38"
+      "size": 12512,
+      "sha256": "42cc7476bff3841695199d2bcd4a0a1ebed60849043c5bb68b26e57001084112"
     },
     {
       "path": "src/overlay/SaveData/SaveDatabaseLocator.cs",
-      "size": 8752,
-      "sha256": "f85d062caf513d1a5dfce22539017fb55043d767e1af16997d5209be3efd686d"
+      "size": 9024,
+      "sha256": "eeb5b961995511c80f39aed434d9d860e3291fc93c00d033a591fd9180401b10"
     },
     {
       "path": "src/overlay/SaveData/SaveSnapshotReader.cs",
-      "size": 12434,
-      "sha256": "2bb368bd6a9161a8eae00e98347febdbebcac38bd25396477439290e34ae0eba"
+      "size": 12805,
+      "sha256": "c230935011272d31af7e4152a48fe3f69108420e49828c0228664be3024312d8"
     },
     {
       "path": "src/overlay/SaveData/TreasureOverrides.cs",
-      "size": 12313,
-      "sha256": "f4b6f30148517eb509153872e401190c1cb7b24e933127c3a4e8709b10c3a54a"
+      "size": 12676,
+      "sha256": "12f1b2b2b27994d7a6947bac41407b467a40e1fd0b40f4345f9e7abf07b5a8d3"
     },
     {
       "path": "src/overlay/SaveData/TreasureSaveState.cs",
-      "size": 24703,
-      "sha256": "d0062a2056607e02a157ccb87b7b6ed5e4561360f6b82103a5f38f3c54498367"
+      "size": 26169,
+      "sha256": "4d9d0670fe447d38bf618c8300c33272d181c2d3ff11475fdd7db4cfcaa0f41a"
     },
     {
       "path": "src/overlay/UI/RadarForm.cs",
-      "size": 87952,
-      "sha256": "41db45036172a5797102b4b33d5ae4b3b7c667a503b8e8def542cb98648426c9"
+      "size": 100604,
+      "sha256": "454110aee63ae6dd84e93d75e7ab8b958c80337ecc695fbef616bd09f0d1169f"
     },
     {
       "path": "src/tools/Collect-Diagnostics.cmd",
@@ -416,8 +428,8 @@
     },
     {
       "path": "src/tools/Collect-Diagnostics.ps1",
-      "size": 6445,
-      "sha256": "38eb05ab26d7c0a485317c4a3e63972e9000e9c44317fe071b366d4353aa80d9"
+      "size": 6956,
+      "sha256": "c487195cc310a5ba8aa53efad3280be49f3956b275c021dfd88f906021b82d8d"
     },
     {
       "path": "src/ue4ss/boss_tracker.lua",
@@ -431,18 +443,18 @@
     },
     {
       "path": "src/ue4ss/config.default.lua",
-      "size": 665,
-      "sha256": "43e6bd6ecdc9d77a2bbef57303b4c3126e96aa41617ff393c6410e2ec0df7aef"
+      "size": 1028,
+      "sha256": "c80c9bcde7fd78a36c2574ed38a4bdc44ad3404610e4f467ecb9412487b91f4e"
     },
     {
       "path": "src/ue4ss/diagnostics.lua",
-      "size": 15112,
-      "sha256": "e434faef589d8bcc72fae6e017308370ade2da0d8babf7dbca9392aa0c719e46"
+      "size": 18295,
+      "sha256": "47d7ec9542d113ff9b812b5ab5a5360ae66abdf9ab6ef6be60ac558d5711a0dc"
     },
     {
       "path": "src/ue4ss/main.lua",
-      "size": 47075,
-      "sha256": "b61c563d3d501fd1ef3be1d52324faf5700a43c8f2b65ad9d2d1da3856db4a97"
+      "size": 55585,
+      "sha256": "57256e9d522eb546c74ab4ac51f78f43b5ae194056cd9ce198bac60493d5075b"
     },
     {
       "path": "src/ue4ss/treasures.lua",

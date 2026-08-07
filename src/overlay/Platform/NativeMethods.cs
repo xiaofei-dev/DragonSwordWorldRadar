@@ -15,6 +15,7 @@ namespace DragonSwordWorldRadar
         public const int SwHide = 0;
         public const int SwShowNoActivate = 4;
         public const uint SwpNoActivate = 0x0010;
+        public const uint SwpNoCopyBits = 0x0100;
         public static readonly IntPtr HwndTopmost =
             new IntPtr(-1);
 

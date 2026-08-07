@@ -1,105 +1,167 @@
 {
-  "schema_version": 1,
-  "version": "0.4.0-dev9-performance1.1",
-  "generated_at_utc": "2026-08-06T01:28:30.301010Z",
-  "baseline": {
-    "tag": "v0.4.0-dev7-stable6",
-    "commit": "27e796b3ebda155e548a1624abd37090f648b704"
+  "schema_version": 2,
+  "version": "0.4.0-dev9-performance1.3-mapinstant-hiddenhost1",
+  "generated_at_utc": "2026-08-06T20:22:20.622746Z",
+  "comparison": {
+    "optimized_baseline_archive": "DragonSwordWorldRadar-main.zip",
+    "latest_input_archive": "DragonSwordWorldRadar_New.zip",
+    "historical_baseline_tag": "v0.4.0-dev7-stable6",
+    "scope": "map lifecycle repair, instant no-copy map transition, hidden resident launch restoration, whole-source reliability/performance audit, normal/debug logging split, and removal of obsolete runtime polling/scanning"
   },
   "preparation_environment": {
     "platform": "Linux container",
-    "windows_powershell_5_1_add_type": "not executable in this environment; mandatory compile gate added to Windows CI, source verification, and installation",
+    "windows_powershell_5_1_add_type": "not executable in this environment",
     "in_game_validation": "not executed",
-    "authoritative_runtime_gate": "Install.cmd must print OVERLAY_COMPILE_OK"
+    "authoritative_runtime_gate": "After deployment, Install.cmd must complete Windows PowerShell 5.1 Add-Type compilation and log OVERLAY_COMPILE_OK, INSTALLER_COMPILE_OK, RESIDENT_WATCHER_READY, and INSTALL_COMPLETE."
   },
   "compatibility": {
     "bridge_protocol_changed": false,
     "motion_field_count": 21,
     "static_state_interval_ms": 250,
     "minimap_motion_interval_ms": 24,
-    "world_map_motion_interval_ms": 24,
-    "producer_intervals_changed": true,
+    "active_world_map_motion_interval_ms": 24,
+    "world_map_entry_detection_interval_ms": 250,
     "save_schema_changed": false,
     "generated_lua_schema_changed": false,
     "runtime_hooks_added": false,
     "character_enumeration_added": false,
-    "f7_f8_behavior_intended_changed": false,
-    "marker_style_intended_changed": false
+    "f7_f8_behavior_changed": false,
+    "marker_style_changed": false,
+    "window_lifecycle_changed": true
   },
-  "optimizations": {
-    "motion_bridge": [
-      "24 ms producer sampling with cumulative visual-delta filtering and a 1000 ms liveness heartbeat",
-      "direct fixed 21-field ASCII parsing from reusable byte buffers",
-      "retained MotionFrame and WorldMapState per alternating slot",
-      "FileInfo timestamp/length gates prevent opening unchanged alternating slots",
-      "no ReadAllText, Split, numeric substring, or per-frame model allocation"
+  "root_cause": [
+    "The latest input kept the transparent layered Overlay at full game-client size even in radar mode, forcing continuous full-surface DWM composition.",
+    "The 24 ms radar producer path indirectly performed world-map UObject probing through a 96 ms detector and retained map-exit hysteresis/re-entry blocking.",
+    "High-detail Overlay performance logging ran during normal use instead of being debug-only."
+  ],
+  "repairs": {
+    "world_map_lifecycle": [
+      "Radar mode uses an actual small top-right window instead of a transparent full-client surface.",
+      "The Overlay is hidden before every radar/world geometry transition.",
+      "Map transitions have no timed reveal delay: SetWindowPos uses SWP_NOCOPYBITS, the newly sized hidden surface is repainted synchronously, paint completion is confirmed by a sequence counter, and a redundant post-show full-screen invalidate is skipped only when that hidden paint actually ran.",
+      "On the first missing active-map sample the producer clears map state, publishes radar motion when player coordinates are available, stops the world loop, and restarts the radar loop.",
+      "The 24 ms radar loop never probes world-map UObjects; entry detection remains in the 250 ms static loop, and active-map transforms are reused by the static publisher."
     ],
-    "world_map": [
-      "single projection pass per visible treasure",
-      "reused projected-marker list and projected-pixel HashSet",
-      "four retained FillMode.Winding GraphicsPath instances",
-      "pooled per-map visible treasure lists"
+    "normal_mode_performance": [
+      "Lua producer timing/counter collection is not instantiated unless debug logging is enabled.",
+      "Overlay Stopwatch timing, paint/timer counters, CPU/memory sampling, and periodic performance lines are disabled in normal mode.",
+      "The old no-op Boss tracker call was removed from the 250 ms state build.",
+      "mods.txt polling was reduced to 5000 ms while F7/F8 behavior remains unchanged.",
+      "Debug settings are parsed once at Overlay startup; normal Timer ticks and debug-log guards perform no recurring config-file stat/read work.",
+      "Runtime Boss rule PAK enumeration/decoding/regex parsing was removed; cooldowns use the verified fixed daily 09:00 local schedule.",
+      "Overlay static-state polling remains at 200 ms so removing the fixed reveal delay does not add another full producer-period of presentation latency.",
+      "Save-key lookup tries known RVAs before a delayed one-time worker-thread full-executable scan; transient key-initialization states neither trigger it early nor disable the fallback.",
+      "Launch request stamps contain digits only, have no trailing newline, and are validated before command construction."
     ],
-    "rendering": [
-      "adaptive 24/50/75/125 ms active, world-idle, radar-idle, and disabled timer cadence",
-      "visually equivalent static frames and heartbeat-only motion frames do not invalidate the form",
-      "minimap and world-map non-nearest treasure markers use four retained GraphicsPath batches",
-      "one smoothing-mode transition covers all four treasure batches",
-      "retained boss marker, height indicator, brushes, pens, and point arrays"
-    ],
-    "save_state": [
-      "lock-free immutable opened-treasure and boss-respawn snapshot reads",
-      "lock-free immutable alias and ignored-ID snapshot reads",
-      "active-slot discovery isolated in SaveDatabaseLocator",
-      "consistent-copy SQLCipher queries isolated in SaveSnapshotReader",
-      "load-token invalidation prevents stale worker publication",
-      "boss deadline cache preserves maintenance-cadence transition invalidation",
-      "validated tracked process IDs are reused before process enumeration in save, lifetime, and geometry polling"
+    "logging_split": {
+      "normal_use": [
+        "runtime/logs/DragonSwordWorldRadar.Lua.Use.log",
+        "runtime/logs/DragonSwordWorldRadar.Overlay.Use.log"
+      ],
+      "debug": [
+        "runtime/logs/DragonSwordWorldRadar.Lua.Debug.log",
+        "runtime/logs/DragonSwordWorldRadar.Overlay.Debug.log"
+      ],
+      "normal_mode_policy": "startup, key/lifecycle state, warnings, and errors only; no periodic performance records",
+      "debug_mode_policy": "producer queue/update latency and 50/100/250 ms stalls, bridge sample/write rates, Overlay timer/paint pacing, normalized process CPU, working set, geometry, MAP_SURFACE_PREPARED transition timing, save, and Boss diagnostics",
+      "fps_semantics": "overlayPaintFps is the WinForms paint rate, not the game's Present FPS"
+    },
+    "reliability": [
+      "All Lua game-thread queue and callback paths release pending gates after failure so later samples can recover.",
+      "Install.cmd starts and validates a resident hidden WScript watcher; game-time Lua writes only launch.request and creates no shell process.",
+      "The hidden PowerShell host binds to the exact game PID and exits with that process while the WScript watcher remains ready for later sessions.",
+      "A transient Process API failure no longer starts the game-exit shutdown countdown when a tracked PID exists.",
+      "SetWindowPos and module failures are isolated and rate-limited.",
+      "Expected pre-login save-key readiness is Debug-only; actionable save failures remain in the Use log.",
+      "Debug-mode configuration is startup-only; malformed or locked config falls back to normal mode without preventing Overlay startup.",
+      "Boss availability no longer depends on runtime filesystem scanning; the fixed rule-106 daily schedule is allocation-free and immutable."
     ]
   },
-  "removed": [
-    "src/overlay/SaveData/BossCooldownProbe.cs"
-  ],
   "static_validation": {
-    "json_parse": "passed",
-    "csharp_lexer_and_delimiter_scan": "passed",
-    "csharp_5_compatibility_scan": "passed",
-    "required_and_forbidden_file_scan": "passed",
-    "unexpected_executable_scan": "passed; only tools/ooz.exe",
+    "validator_result": "passed: 134/134 source semantic/inventory checks in the source tree and 134/134 in the extracted ZIP",
+    "required_and_forbidden_source_inventory": "passed",
+    "source_counts": {
+      "overlay_cs": 31,
+      "ue4ss_lua": 7,
+      "installer_cs": 13
+    },
+    "metadata_json_parse": "passed",
+    "project_metadata": "passed: .NET Framework 4.8 and C# 7.3",
+    "csharp_validation": "45 files passed lexical, string/comment, delimiter, and Windows PowerShell CodeDOM compatibility pattern scans; this is not a compiler pass",
+    "powershell_validation": "10 files passed lexical and delimiter scans; PowerShell execution was unavailable",
+    "lua_validation": "passed: 7/7 source Lua files and 7/7 extracted-ZIP Lua files loaded successfully through LuaTeX syntax execution",
+    "map_lifecycle_assertions": "passed: no 24 ms radar map probe, hidden-before-resize, no timed reveal state, conditional SWP_NOCOPYBITS plus synchronous prepaint, successful-paint confirmation, true small radar geometry, and immediate active-map exit path",
+    "logging_assertions": "passed: separate Use/Debug paths, expected startup readiness Debug-only, debug-only high-detail instrumentation including MAP_SURFACE_PREPARED timing, and startup-only Overlay Debug configuration",
+    "boss_assertions": "passed: fixed daily 09:00 local schedule, expanded boundary tests in ValidationHarness.cs, no runtime PAK enumeration/parser, and no save-worker refresh call",
+    "installer_compile_gate_assertions": "passed static assertions: resident hidden watcher installation, digits-only newline-free request, and source compile markers; Windows execution remains deployment gate",
+    "unexpected_executable_scan": "passed; only vendor/ooz/ooz.exe",
     "binary_hash_scan": "passed for ooz.exe and e_sqlcipher.dll",
-    "runtime_hook_and_character_enumeration_scan": "passed",
-    "motion_protocol_and_parser_semantic_tests": "passed",
-    "transactional_publication_invariants": "passed",
-    "installer_core_diff_from_stable6": "none",
-    "installer_script_diff_from_stable6": "none",
-    "ue4ss_behavior_diff_from_stable6": "performance scheduling only: 24 ms motion sampling, visual-delta write filtering, a 1000 ms heartbeat, and unchanged 250 ms static updates; bridge fields and layer semantics unchanged",
-    "git_whitespace_scan": "passed",
-    "release_manifest_revalidation": "passed"
+    "git_whitespace_scan": "passed through git diff --no-index --check",
+    "source_manifest_revalidation": "passed: 93/93 manifest entries; 94/94 source-package files matched byte-for-byte after extraction",
+    "zip_validation": "passed: ZIP CRC/integrity, relative forward-slash paths, duplicate-free names, excluded-directory scan, JSON parse, executable inventory, and binary hash checks"
   },
-  "important_note": "No in-game pass or Windows PowerShell 5.1 Add-Type execution is claimed in this Linux preparation environment. Install.cmd still performs the authoritative complete-source compile gate and must print OVERLAY_COMPILE_OK.",
   "source_inventory": {
-    "schema_version": 2,
-    "hash_mode": "raw file bytes; manifest excludes metadata/build-manifest.json itself"
+    "schema_version": 1,
+    "hash_mode": "SHA-256 of raw file bytes",
+    "manifest_path": "metadata/source-manifest.json",
+    "manifest_excludes": [
+      "metadata/source-manifest.json",
+      ".git/",
+      "dist/",
+      "runtime/"
+    ],
+    "expected_manifest_file_count": 93
   },
-  "repairs": [
-    "C# 7.3-incompatible RadarPoint conditional expression removed",
-    "motion candidates isolated from published frame/map objects",
-    "transactional world-treasure visibility index and consistent opened-state capture",
-    "catalog and override consistent-read publication guards",
-    "managed SQLCipher callback exception containment and corrupt timestamp handling",
-    "per-module maintenance and renderer fault isolation with rate-limited logs",
-    "graphics state and timer-resolution cleanup hardening",
-    "host source-count gate aligned with installer",
-    "Windows PowerShell 5.1 compile gate added to source verification and CI",
-    "PowerShell 5.1 CodeDOM local-variable shadowing in MotionVisualSnapshot.Update removed"
-  ],
-  "performance_changes": [
-    "producer motion file writes are decoupled from sampling frequency",
-    "failed motion publications remain pending and retry on the next producer loop",
-    "unchanged bridge slots are metadata-checked but not opened",
-    "static and motion frames are compared before UI invalidation",
-    "timer polling backs off after 300 ms without a visual motion change",
-    "treasure marker GDI calls are batched",
-    "tracked game processes are reused instead of repeatedly enumerated"
-  ]
+  "important_note": "No in-game pass or Windows PowerShell 5.1 Add-Type execution is claimed for this revision in the Linux preparation environment. Rebuild and re-run Install.cmd because this revision changes the hidden watcher installation; deployment is valid only after Install.log contains OVERLAY_COMPILE_OK, INSTALLER_COMPILE_OK, RESIDENT_WATCHER_READY, and INSTALL_COMPLETE. Debug mode is read once per Overlay process; restart the process after changing config.lua.",
+  "cleanup": {
+    "debug_configuration": {
+      "removed": [
+        "one-second FileInfo polling",
+        "UI Timer RefreshDebugMode path",
+        "cross-thread config refresh lock/state"
+      ],
+      "retained": [
+        "debug_logging",
+        "diagnostic_verbose compatibility alias",
+        "Use/Debug log split"
+      ],
+      "new_behavior": "parsed once when the Overlay process starts; process restart required to change mode"
+    },
+    "boss_respawn_rule": {
+      "removed": [
+        "runtime PAK directory enumeration",
+        "small-PAK binary reads",
+        "UTF-8 binary decoding",
+        "regex rule-106 parsing",
+        "30-second debug rescan",
+        "scan locks and mutable publication state"
+      ],
+      "retained": [
+        "tb_actor_respawn availability input",
+        "daily 09:00 local reset semantics",
+        "RuleSummary and diagnostic descriptions"
+      ],
+      "source_reduction": {
+        "BossRespawnRuleResolver_lines_before": 461,
+        "BossRespawnRuleResolver_lines_after": 57
+      }
+    }
+  },
+  "launcher": {
+    "game_time_shell_creation": false,
+    "watcher": "resident user Startup WScript with //B //NoLogo",
+    "powershell_window_style": 0,
+    "host_lifetime": "exact game process",
+    "watcher_lifetime": "user session",
+    "request_format": "1-32 ASCII digits; no trailing newline; validated by WScript"
+  },
+  "save_key_startup": {
+    "known_rvas_first": true,
+    "fallback_scan_delay_seconds": 30,
+    "fallback_scan_once": true,
+    "transient_key_pending_triggers_early_scan": false,
+    "transient_key_pending_disables_fallback": false,
+    "expected_preload_error_log": "Debug only",
+    "fallback_scan_thread": "background worker; never the Overlay UI thread"
+  }
 }

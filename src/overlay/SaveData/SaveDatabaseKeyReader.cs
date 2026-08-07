@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace DragonSwordWorldRadar
 {
@@ -30,12 +31,20 @@ namespace DragonSwordWorldRadar
         private int _processId;
         private ulong _ownerPointerRva;
         private string _key;
+        private DateTime _fallbackScanAfterUtc;
+        private bool _fallbackScanAttempted;
+        private Task<ulong> _fallbackScanTask;
+        private int _fallbackScanProcessId;
 
         public void Reset()
         {
             _processId = 0;
             _ownerPointerRva = 0;
             _key = null;
+            _fallbackScanAfterUtc = DateTime.MinValue;
+            _fallbackScanAttempted = false;
+            _fallbackScanTask = null;
+            _fallbackScanProcessId = 0;
         }
 
         public string Read(Process game)
@@ -97,8 +106,13 @@ namespace DragonSwordWorldRadar
             if (_processId != game.Id)
             {
                 _processId = game.Id;
-                _ownerPointerRva = DetectOwnerPointerRva(
-                    game.MainModule.FileName);
+                _ownerPointerRva = 0;
+                _key = null;
+                _fallbackScanAfterUtc =
+                    DateTime.UtcNow.AddSeconds(30);
+                _fallbackScanAttempted = false;
+                _fallbackScanTask = null;
+                _fallbackScanProcessId = 0;
             }
 
             if (_ownerPointerRva != 0)
@@ -106,6 +120,9 @@ namespace DragonSwordWorldRadar
                 yield return _ownerPointerRva;
             }
 
+            // The installed build has stable known RVAs. Try them before the
+            // expensive signature fallback so normal startup never reads and
+            // scans the complete game executable on the UI thread.
             if (CurrentOwnerPointerRva != _ownerPointerRva)
             {
                 yield return CurrentOwnerPointerRva;
@@ -113,6 +130,77 @@ namespace DragonSwordWorldRadar
             if (LegacyOwnerPointerRva != _ownerPointerRva)
             {
                 yield return LegacyOwnerPointerRva;
+            }
+
+            // Keep update resilience without turning a normal early
+            // "key not ready" state into a large startup read on the Overlay
+            // UI thread. If both known locations are still unresolved after
+            // thirty seconds, scan once on a worker and publish only the
+            // completed result for the same game process.
+            if (_fallbackScanAttempted)
+            {
+                yield break;
+            }
+
+            if (_fallbackScanTask == null)
+            {
+                if (DateTime.UtcNow < _fallbackScanAfterUtc)
+                {
+                    yield break;
+                }
+
+                string executablePath = null;
+                Exception pathError = null;
+                try
+                {
+                    executablePath = game.MainModule.FileName;
+                }
+                catch (Exception exception)
+                {
+                    pathError = exception;
+                }
+                if (pathError != null
+                    || String.IsNullOrEmpty(executablePath))
+                {
+                    _fallbackScanAttempted = true;
+                    ErrorLog.WriteDebug(
+                        "Save-key fallback path lookup failed: " +
+                        (pathError == null
+                            ? "empty executable path"
+                            : pathError.Message));
+                    yield break;
+                }
+
+                _fallbackScanProcessId = game.Id;
+                _fallbackScanTask = Task.Run(
+                    delegate
+                    {
+                        return TryDetectOwnerPointerRva(
+                            executablePath);
+                    });
+                yield break;
+            }
+
+            if (!_fallbackScanTask.IsCompleted)
+            {
+                yield break;
+            }
+
+            Task<ulong> completedScan = _fallbackScanTask;
+            int completedProcessId = _fallbackScanProcessId;
+            _fallbackScanTask = null;
+            _fallbackScanProcessId = 0;
+            _fallbackScanAttempted = true;
+            ulong detected = completedScan.Result;
+            if (completedProcessId == game.Id
+                && _processId == game.Id
+                && detected != 0
+                && detected != _ownerPointerRva
+                && detected != CurrentOwnerPointerRva
+                && detected != LegacyOwnerPointerRva)
+            {
+                _ownerPointerRva = detected;
+                yield return detected;
             }
         }
 
@@ -157,6 +245,19 @@ namespace DragonSwordWorldRadar
                     "Save database key is not ready.");
             }
             return key;
+        }
+
+        private static ulong TryDetectOwnerPointerRva(
+            string executablePath)
+        {
+            try
+            {
+                return DetectOwnerPointerRva(executablePath);
+            }
+            catch
+            {
+                return 0;
+            }
         }
 
         private static ulong DetectOwnerPointerRva(

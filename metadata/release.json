@@ -1,14 +1,17 @@
 {
   "schema_version": 1,
   "name": "DragonSwordWorldRadar",
-  "version": "0.4.0-dev9-performance1.1",
-  "stage": "performance-bridge-render-scheduler",
+  "version": "0.4.0-dev9-performance1.3-mapinstant-hiddenhost1",
+  "stage": "performance-map-instant-transition-hidden-host",
   "mod_folder": "DragonSwordWorldRadar",
   "renderer": "WinForms source compiled in memory by Windows PowerShell 5.1",
   "custom_executable_count": 0,
-  "automatic_start": "hidden WScript watcher using a TEMP working directory; transient PowerShell host only while the game is running",
+  "automatic_start": "resident hidden WScript watcher started and validated by Install.cmd and registered in the current user Startup folder; game-time Lua writes only a launch request; the hidden PowerShell host and Overlay bind to and exit with the exact game process",
   "world_map_producer_interval_ms": 24,
+  "world_map_entry_detection_interval_ms": 250,
   "minimap_motion_interval_ms": 24,
+  "static_state_interval_ms": 250,
+  "overlay_timer_resolution_ms": 1,
   "data_installation": "local game PAK extraction through in-memory C# and the ooz.exe decoder",
   "game_update_detection": "stored executable/PAK fingerprint checked on each game launch",
   "implemented_layers": [
@@ -37,16 +40,27 @@
   ],
   "pawn_tracking": "Current PlayerController.Pawn sampled directly; no Lua-wrapper identity comparison",
   "diagnostics_output": "runtime/diagnostics",
+  "logging": {
+    "use_logs": [
+      "runtime/logs/DragonSwordWorldRadar.Lua.Use.log",
+      "runtime/logs/DragonSwordWorldRadar.Overlay.Use.log"
+    ],
+    "debug_logs": [
+      "runtime/logs/DragonSwordWorldRadar.Lua.Debug.log",
+      "runtime/logs/DragonSwordWorldRadar.Overlay.Debug.log"
+    ],
+    "normal_mode": "startup, shutdown, actionable errors, and key state changes only; expected pre-login save-key readiness and periodic performance counters are Debug-only",
+    "debug_mode": "producer queue/update latency, 50/100/250 ms stalls, sampling/write rates, Overlay timer/paint gaps, normalized process CPU, working set, overlay geometry, and MAP_SURFACE_PREPARED hidden-prepaint timing",
+    "fps_metric": "overlayPaintFps is the WinForms paint rate and is not the game Present FPS"
+  },
   "player_z_reference_offset": -150,
-  "static_state_interval_ms": 250,
-  "overlay_timer_resolution_ms": 1,
-  "bridge_protocol": "alternating static JSON plus compact sequence-validated motion slots",
+  "bridge_protocol": "alternating static JSON plus compact sequence-validated fixed 21-field motion slots",
   "save_fingerprint_poll_ms": 500,
   "save_slot_discovery_seconds": 5,
   "treasure_marker_outline": "DrawEllipse and reusable GraphicsPath outlines use the shared neutral dark RadarMarkerStyle.Outline",
-  "background_visibility": "overlay remains active and visible after F7 until F8; no foreground, overlap, or minimized-window visibility polling",
+  "background_visibility": "overlay hides when the game is minimized or not foreground, restores without activation, and remains hidden while disabled",
   "runtime_probe_hooks": "none; exploration probes are isolated in DragonSwordWorldDataProbe",
-  "installer_overlay_validation": "Install.ps1 and the Windows CI gate compile the exact complete overlay source set used by the F7 host under Windows PowerShell 5.1",
+  "installer_overlay_validation": "Install.ps1 compiles the exact complete overlay source set under Windows PowerShell 5.1; installation stops on compile failure",
   "config_validation": "malformed preserved config.lua is archived and replaced by a validated complete default",
   "marker_style": {
     "shared_outline": "opaque dark navy-charcoal",
@@ -78,17 +92,25 @@
     "boss_availability": "maintenance-cached next-availability deadlines with deadline-transition invalidation"
   },
   "reliability": {
-    "compile_gate": "Windows PowerShell 5.1 Add-Type compilation is mandatory in Verify-Source.ps1 and Install.ps1",
-    "module_fault_isolation": "save state, catalog, visibility index, boss availability, diagnostics, and renderer failures are isolated and rate-limited in the overlay log",
+    "compile_gate": "Build-Release.ps1, Compile-Source.ps1, and Install.ps1 require Windows PowerShell 5.1 Add-Type compilation; Install.cmd must print OVERLAY_COMPILE_OK",
+    "module_fault_isolation": "save state, catalog, visibility index, boss availability, diagnostics, timer, renderer, and game-thread callback failures are isolated and rate-limited",
     "catalog_publication": "catalog and override replacements publish only after before/after file stamp consistency checks",
     "visibility_index_publication": "replacement per-map index is built in staging and swapped only after a complete successful rebuild",
     "native_callback_boundary": "managed SQLCipher row callback exceptions are captured before returning through sqlite3",
     "motion_stale_fallback_ms": 2500,
     "adaptive_scheduler": "active/idle timer transitions are driven only by published visual changes; no protocol fields were added",
-    "codedom_scope_compatibility": "local variables use unique names across nested method scopes for Windows PowerShell 5.1 CodeDOM"
+    "codedom_scope_compatibility": "local variables use unique names across nested method scopes for Windows PowerShell 5.1 CodeDOM",
+    "mods_txt_switch": "installer preserves an existing DragonSwordWorldRadar 0/1 value; Lua and Overlay stop when the value becomes 0",
+    "world_map_state_machine": "entry is detected by the 250 ms static update; while active, map motion is sampled at 24 ms; the first missing active-map read exits immediately with no stale re-entry hysteresis",
+    "world_map_window_lifecycle": "the form is hidden before radar/world geometry changes; SetWindowPos discards old client bits, the newly sized hidden surface is repainted synchronously, and it shows without activation in the same timer cycle; a successful hidden prepaint suppresses the redundant post-show invalidate; no timed reveal delay remains",
+    "async_pending_recovery": "all Lua game-thread queue and callback failures clear their pending gates so the next loop can recover",
+    "boss_respawn_schedule": "fixed RespawnCycle rule 106: daily 09:00 local reset; no runtime PAK discovery",
+    "debug_config_load": "read once at Overlay process startup; changing mode requires process restart",
+    "overlay_launch": "Install.cmd validates a resident console-free WScript watcher; game-time Lua writes a digits-only runtime/launch.request and never invokes cmd.exe, wscript.exe, or powershell.exe",
+    "save_key_startup": "expected owner/key-not-ready states before the first successful save load are Debug-only; later failures remain actionable Use-log errors"
   },
   "performance": {
-    "motion_sampling": "24 ms in minimap and world-map modes; compact records are written only after a visual delta or a 1000 ms heartbeat",
+    "motion_sampling": "24 ms in minimap and active world-map modes; compact records are written only after a visual delta or a 1000 ms heartbeat",
     "motion_thresholds": {
       "player_xy_game_units": 20,
       "player_z_game_units": 10,
@@ -100,11 +122,23 @@
       "active": 24,
       "world_idle": 50,
       "radar_idle": 75,
-      "disabled": 125
+      "disabled": 125,
+      "background": 500
     },
     "bridge_reads": "FileInfo stamp gates prevent opening unchanged motion and static slots",
     "redraw_policy": "heartbeat-only motion frames and visually equivalent static states do not invalidate the form",
     "render_batching": "non-nearest minimap and world-map treasure markers are grouped into four retained GraphicsPath batches with one smoothing-state scope",
-    "process_tracking": "overlay geometry, lifetime checks, and save polling reuse a validated tracked PID before enumerating processes"
+    "process_tracking": "overlay geometry, lifetime checks, and save polling reuse a validated tracked PID before enumerating processes",
+    "radar_geometry": "actual small top-right layered window; no transparent full-client radar surface",
+    "world_map_geometry": "actual game-client-sized layered window only while the world map is active",
+    "world_map_probe_policy": "the 24 ms radar motion loop does not read world-map UObjects; active map state is reused by the static publisher instead of read twice",
+    "mod_switch_poll_ms": 5000,
+    "debug_mode_policy": "startup-only configuration; restart Overlay process to change mode",
+    "boss_respawn_schedule": "immutable fixed daily 09:00 local reset; no filesystem scan or parser",
+    "debug_config_policy": "startup-only configuration; no Timer-driven file polling",
+    "world_map_transition": "hide, SWP_NOCOPYBITS resize, synchronous hidden-surface repaint, and SW_SHOWNOACTIVATE occur without a fixed delay and only when geometry changes; paint-sequence confirmation prevents a second full-screen invalidate when prepaint succeeded",
+    "static_state_poll_ms": 200,
+    "save_key_discovery": "cached/current/legacy RVAs are attempted before a delayed one-time worker-thread full-executable signature fallback; transient owner/key-not-ready states do not trigger an early scan and do not disable the fallback",
+    "launcher_policy": "resident WScript watcher validates a digits-only request stamp and performs no game-time shell creation from Lua; the PowerShell host is hidden and game-bound"
   }
 }

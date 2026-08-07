@@ -17,11 +17,37 @@ function Log([string]$message) {
     try { Add-Content -LiteralPath $log -Encoding UTF8 -Value ("[{0:O}] {1}" -f [DateTime]::UtcNow,$message) } catch {}
 }
 
+function Test-RadarEnabled {
+    $modsPath = Join-Path (Split-Path -Parent $ModDir) 'mods.txt'
+    if (-not (Test-Path -LiteralPath $modsPath -PathType Leaf)) {
+        return $true
+    }
+
+    try {
+        $modsText = [IO.File]::ReadAllText($modsPath)
+        $match = [regex]::Match(
+            $modsText,
+            '(?m)^[ \t]*DragonSwordWorldRadar[ \t]*:[ \t]*([01])')
+        if ($match.Success) {
+            return $match.Groups[1].Value -eq '1'
+        }
+    }
+    catch {
+        Log ("MOD_SWITCH_READ_FAILED " + ($_ | Out-String))
+    }
+    return $true
+}
+
 $createdNew = $false
 $mutex = New-Object Threading.Mutex($true, 'Local\DragonSwordWorldRadar.TransientHost', [ref]$createdNew)
 if (-not $createdNew) { Log "HOST_ALREADY_RUNNING stamp=$RequestStamp pid=$PID"; exit 0 }
 try {
-    Log "HOST_START version=0.4.0-dev9-performance1.1 stamp=$RequestStamp pid=$PID"
+    Log "HOST_START version=0.4.0-dev9-performance1.3-mapinstant-hiddenhost1 stamp=$RequestStamp pid=$PID"
+    if (-not (Test-RadarEnabled)) {
+        Log "MOD_DISABLED DragonSwordWorldRadar=0 stamp=$RequestStamp"
+        exit 0
+    }
+
     $layout = Resolve-DragonSwordWorldRadarGameLayout -ModDir $ModDir
     $compatibility = Test-DragonSwordWorldRadarInstalledGame -ModDir $ModDir -Layout $layout
     if (-not $compatibility.Compatible) {
@@ -43,6 +69,15 @@ try {
         exit 2
     }
     Remove-Item -LiteralPath (Join-Path $runtime 'reinstall-required.json') -Force -ErrorAction SilentlyContinue
+    $gameProcess = Get-Process -Name 'DSClient-Win64-Shipping' -ErrorAction SilentlyContinue |
+        Sort-Object StartTime -Descending |
+        Select-Object -First 1
+    if (-not $gameProcess) {
+        Log "GAME_SESSION_NOT_FOUND stamp=$RequestStamp"
+        exit 0
+    }
+    $env:EVENTRADAR_GAME_PID = [string]$gameProcess.Id
+    Log ("GAME_SESSION_BOUND stamp={0} gamePid={1}" -f $RequestStamp,$gameProcess.Id)
     & (Join-Path $PSScriptRoot 'DragonSwordWorldRadar.Host.ps1') -ModDir $ModDir
     Log "HOST_RETURN stamp=$RequestStamp pid=$PID"
 } catch {

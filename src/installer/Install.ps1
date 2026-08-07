@@ -357,12 +357,15 @@ try {
         $modsEncoding = $utf8
     }
 
-    $modPattern = '(?m)^([ \t]*DragonSwordWorldRadar[ \t]*:[ \t]*)(?:0|1)([ \t]*(?:#.*)?)$'
-    $updatedModsText = [regex]::Replace($modsText,$modPattern,'${1}1${2}')
-    if (
-        $updatedModsText -eq $modsText -and
-        $modsText -notmatch '(?m)^[ \t]*DragonSwordWorldRadar[ \t]*:'
-    ) {
+    $modPattern = '(?m)^[ \t]*DragonSwordWorldRadar[ \t]*:[ \t]*([01])'
+    $existingModMatch = [regex]::Match($modsText,$modPattern)
+    $updatedModsText = $modsText
+    $configuredModValue = $null
+    if ($existingModMatch.Success) {
+        $configuredModValue = $existingModMatch.Groups[1].Value
+        Log ("MOD_SETTING_PRESERVED DragonSwordWorldRadar={0}; all mods.txt bytes preserved" -f $configuredModValue)
+    }
+    else {
         $newline = if ($modsText -match "`r`n") { "`r`n" } else { "`n" }
         if (
             $updatedModsText.Length -gt 0 -and
@@ -372,11 +375,10 @@ try {
             $updatedModsText += $newline
         }
         $updatedModsText += 'DragonSwordWorldRadar : 1' + $newline
-    }
-    if ($updatedModsText -ne $modsText -or -not (Test-Path -LiteralPath $modsFile)) {
+        $configuredModValue = '1'
         [IO.File]::WriteAllText($modsFile,$updatedModsText,$modsEncoding)
+        Log 'MOD_SETTING_CREATED DragonSwordWorldRadar=1'
     }
-    Log 'MOD_ENABLED DragonSwordWorldRadar=1; all other mods.txt bytes preserved'
 
 
     # Remove stale experimental coordinate rules. The supported override
@@ -412,6 +414,11 @@ try {
     foreach ($oldShortcut in @('EventRadarWatcher.lnk','EventRadar.lnk','DragonSwordWorldRadarWatcher.lnk','DragonSwordWorldRadar.lnk')) {
         Remove-Item -LiteralPath (Join-Path $startupDirectory $oldShortcut) -Force -ErrorAction SilentlyContinue
     }
+    Stop-ExistingWatcher
+
+    # Keep process creation out of the game process. The resident WScript host
+    # has no console window and starts the game-bound PowerShell host with
+    # window style 0 only after Lua writes runtime\launch.request.
     $shortcutPath = Join-Path $startupDirectory 'DragonSwordWorldRadar.lnk'
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($shortcutPath)
@@ -426,6 +433,7 @@ try {
 
     $watcherLog = Join-Path $logDir 'DragonSwordWorldRadar.Watcher.log'
     Remove-Item -LiteralPath $watcherLog -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $runtime 'launch.request') -Force -ErrorAction SilentlyContinue
     $watcherProcess = Start-Process -FilePath $shortcut.TargetPath -ArgumentList $watcherArguments -WindowStyle Hidden -PassThru
     $ready = $false
     for ($attempt = 0; $attempt -lt 40; $attempt++) {
@@ -437,7 +445,7 @@ try {
         if ($watcherProcess.HasExited) { break }
     }
     if (-not $ready) { throw 'The hidden DragonSwordWorldRadar WScript watcher did not become ready. Check runtime\logs\DragonSwordWorldRadar.Watcher.log.' }
-    Log 'WATCHER_READY host=wscript powershell_lifetime=game-only'
+    Log 'RESIDENT_WATCHER_READY mode=startup-wscript shell=hidden powershell_lifetime=game-only'
 
     $allExecutables = @(Get-ChildItem -LiteralPath $modRoot -Filter '*.exe' -File -Recurse -ErrorAction SilentlyContinue)
     $unexpectedExecutables = @($allExecutables | Where-Object { [IO.Path]::GetFullPath($_.FullName) -ne [IO.Path]::GetFullPath($bundledOozPath) })
@@ -446,7 +454,7 @@ try {
     }
     if ($allExecutables.Count -ne 1) { throw "Expected exactly one bundled tool executable, found $($allExecutables.Count)." }
 
-    Log ("INSTALL_COMPLETE version={0} customExe=0 bundledToolExe=1 watcher=wscript transientPowerShell=true" -f $releaseVersion)
+    Log ("INSTALL_COMPLETE version={0} customExe=0 bundledToolExe=1 watcher=resident-hidden-wscript powershellWindow=hidden powershellLifetime=game-only" -f $releaseVersion)
     Write-Host ("DragonSwordWorldRadar {0} installed. Generated {1} treasure records and {2} world-boss records for game version {3}." -f $releaseVersion,$recordCount,$bossRecordCount,$identity.display_version)
     Write-Host 'Start the game normally. F7 enables the radar; F8 disables it.'
 } catch {

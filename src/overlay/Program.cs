@@ -21,11 +21,10 @@ namespace DragonSwordWorldRadar
             {
                 if (!isFirstInstance)
                 {
-                    ErrorLog.WriteDebug(
-                        "Duplicate overlay launch ignored.");
                     return;
                 }
 
+                ErrorLog.StartSession();
                 try
                 {
                     RunApplication();
@@ -71,8 +70,8 @@ namespace DragonSwordWorldRadar
 
             try
             {
-                ErrorLog.WriteDebug(
-                    "Overlay started: processId=" +
+                ErrorLog.WriteMessage(
+                    "Overlay session started: processId=" +
                     Process.GetCurrentProcess().Id);
                 Application.Run(new RadarForm());
             }
@@ -88,6 +87,10 @@ namespace DragonSwordWorldRadar
                     "DragonSwordWorldRadar",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
+            }
+            finally
+            {
+                ErrorLog.WriteMessage("Overlay session stopped.");
             }
         }
     }

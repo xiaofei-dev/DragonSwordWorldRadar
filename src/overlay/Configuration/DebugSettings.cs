@@ -6,31 +6,16 @@ namespace DragonSwordWorldRadar
     internal static class DebugSettings
     {
         private const string SettingName = "debug_logging";
-        private static readonly TimeSpan RefreshInterval =
-            TimeSpan.FromSeconds(1);
-
-        private static DateTime _nextRefreshUtc;
-        private static bool _enabled;
+        private const string LegacySettingName = "diagnostic_verbose";
+        private static readonly bool StartupEnabled = LoadAtStartup();
 
         public static bool Enabled
         {
-            get
-            {
-                Refresh();
-                return _enabled;
-            }
+            get { return StartupEnabled; }
         }
 
-        private static void Refresh()
+        private static bool LoadAtStartup()
         {
-            if (DateTime.UtcNow < _nextRefreshUtc)
-            {
-                return;
-            }
-
-            _nextRefreshUtc = DateTime.UtcNow.Add(RefreshInterval);
-            _enabled = false;
-
             try
             {
                 string path = Path.Combine(
@@ -39,21 +24,30 @@ namespace DragonSwordWorldRadar
                     "config.lua");
                 if (!File.Exists(path))
                 {
-                    return;
+                    return false;
                 }
 
+                bool primaryEnabled = false;
+                bool legacyEnabled = false;
                 foreach (string sourceLine in File.ReadLines(path))
                 {
                     string line = RemoveComment(sourceLine).Trim();
-                    if (!line.StartsWith(
-                        SettingName,
-                        StringComparison.OrdinalIgnoreCase))
+                    int equals = line.IndexOf('=');
+                    if (equals < 0)
                     {
                         continue;
                     }
 
-                    int equals = line.IndexOf('=');
-                    if (equals < 0)
+                    string name = line.Substring(0, equals).Trim();
+                    bool isPrimary = string.Equals(
+                        name,
+                        SettingName,
+                        StringComparison.OrdinalIgnoreCase);
+                    bool isLegacy = string.Equals(
+                        name,
+                        LegacySettingName,
+                        StringComparison.OrdinalIgnoreCase);
+                    if (!isPrimary && !isLegacy)
                     {
                         continue;
                     }
@@ -61,20 +55,35 @@ namespace DragonSwordWorldRadar
                     string value = line.Substring(equals + 1)
                         .Trim()
                         .TrimEnd(',');
-                    _enabled = string.Equals(
+                    bool valueEnabled = string.Equals(
                         value,
                         "true",
                         StringComparison.OrdinalIgnoreCase);
-                    return;
+                    if (isPrimary)
+                    {
+                        primaryEnabled = valueEnabled;
+                    }
+                    else
+                    {
+                        legacyEnabled = valueEnabled;
+                    }
                 }
+
+                return primaryEnabled || legacyEnabled;
             }
             catch (IOException)
             {
-                _enabled = false;
+                return false;
             }
             catch (UnauthorizedAccessException)
             {
-                _enabled = false;
+                return false;
+            }
+            catch
+            {
+                // Debug mode is optional. A malformed or temporarily locked
+                // config must never prevent the Overlay from starting.
+                return false;
             }
         }
 

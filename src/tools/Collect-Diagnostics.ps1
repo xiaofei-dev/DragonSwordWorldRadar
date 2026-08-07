@@ -7,6 +7,19 @@ $timestamp = [DateTime]::Now.ToString('yyyyMMdd-HHmmss')
 $work = Join-Path $diagnosticsRoot ("work-$timestamp-$PID")
 $output = Join-Path $diagnosticsRoot ("DragonSwordWorldRadar-Diagnostics-$timestamp.zip")
 $collectorLog = Join-Path $diagnosticsRoot 'DragonSwordWorldRadar.Diagnostics.log'
+$releaseVersion = 'unknown'
+$releasePath = Join-Path $modRoot 'metadata\release.json'
+if (Test-Path -LiteralPath $releasePath -PathType Leaf) {
+    try {
+        $releaseMetadata = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json -ErrorAction Stop
+        if (-not [string]::IsNullOrWhiteSpace([string]$releaseMetadata.version)) {
+            $releaseVersion = [string]$releaseMetadata.version
+        }
+    }
+    catch {
+        # Diagnostics collection must still proceed when metadata is damaged.
+    }
+}
 
 New-Item -ItemType Directory -Force -Path $diagnosticsRoot | Out-Null
 New-Item -ItemType Directory -Force -Path $work | Out-Null
@@ -27,7 +40,7 @@ function Copy-IfExists([string]$Source,[string]$RelativeDestination) {
 
 $success = $false
 try {
-    Write-CollectorLog "COLLECT_START version=0.4.0-dev9-performance1.1; modRoot=$modRoot"
+    Write-CollectorLog "COLLECT_START version=$releaseVersion; modRoot=$modRoot"
 
     $logsPath = Join-Path $runtime 'logs'
     if (Test-Path -LiteralPath $logsPath) {

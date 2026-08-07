@@ -148,13 +148,31 @@ namespace DragonSwordWorldRadar
         private static void TestBossRuleDefault()
         {
             BossRespawnRuleResolver resolver = new BossRespawnRuleResolver();
-            DateTime destroyedLocal = new DateTime(
+
+            DateTime beforeReset = new DateTime(
                 2026, 8, 5, 8, 0, 0, DateTimeKind.Local);
-            DateTime expectedLocal = new DateTime(
+            DateTime sameDayReset = new DateTime(
                 2026, 8, 5, 9, 0, 0, DateTimeKind.Local);
-            Assert(resolver.NextAvailableUtc(destroyedLocal.ToUniversalTime()) ==
-                expectedLocal.ToUniversalTime(),
-                "default daily 09:00 boss respawn rule");
+            Assert(resolver.NextAvailableUtc(beforeReset.ToUniversalTime()) ==
+                sameDayReset.ToUniversalTime(),
+                "daily 09:00 reset before boundary");
+
+            DateTime atReset = new DateTime(
+                2026, 8, 5, 9, 0, 0, DateTimeKind.Local);
+            DateTime nextDayReset = new DateTime(
+                2026, 8, 6, 9, 0, 0, DateTimeKind.Local);
+            Assert(resolver.NextAvailableUtc(atReset.ToUniversalTime()) ==
+                nextDayReset.ToUniversalTime(),
+                "daily 09:00 reset at boundary");
+
+            DateTime afterReset = new DateTime(
+                2026, 8, 5, 18, 30, 0, DateTimeKind.Local);
+            Assert(resolver.NextAvailableUtc(afterReset.ToUniversalTime()) ==
+                nextDayReset.ToUniversalTime(),
+                "daily 09:00 reset after boundary");
+            Assert(resolver.RuleSummary ==
+                "type=DAILY; localReset=09:00; source=built-in-original",
+                "fixed boss rule summary");
         }
 
         private static void TestSaveSnapshotShape()
