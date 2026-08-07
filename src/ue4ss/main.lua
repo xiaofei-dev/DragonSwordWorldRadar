@@ -1,5 +1,6 @@
 local MOD = "[DragonSwordWorldRadar]"
 local diagnostics = nil
+local perf_diagnostics = nil
 local diagnostics_ok, diagnostics_module = pcall(require, "diagnostics")
 if diagnostics_ok and type(diagnostics_module) == "table" then
     diagnostics = diagnostics_module
@@ -49,12 +50,19 @@ local start_key = config.start_key or config.refresh_key or "F7"
 local stop_key = config.stop_key or config.toggle_key or "F8"
 if diagnostics ~= nil then
     diagnostics.configure({
-        version = "0.4.0-dev9-performance1.1",
+        version = "0.4.0-dev9-performance1.3-mapinstant-hiddenhost1",
         generation = generation,
-        enabled = config.diagnostic_logging ~= false,
-        verbose = config.diagnostic_verbose == true,
+        use_enabled = config.use_logging ~= false
+            and config.diagnostic_logging ~= false,
+        debug_enabled = config.debug_logging == true
+            or config.diagnostic_verbose == true,
         interval_seconds = tonumber(config.diagnostic_perf_interval_seconds) or 5,
     })
+    if diagnostics.is_debug_enabled ~= nil
+        and diagnostics.is_debug_enabled()
+    then
+        perf_diagnostics = diagnostics
+    end
 end
 local mod_directory = nil
 local resolve_mod_directory
@@ -89,6 +97,7 @@ local MAX_RADAR_POINTS = 80
 -- jitter and idle writes before touching the filesystem.
 local WORLD_MAP_ACTIVE_INTERVAL_MS = 24
 local MAP_LOAD_RESUME_DELAY_MS = 3000
+local MOD_SWITCH_CHECK_INTERVAL_MS = 5000
 local MINIMAP_UPDATE_INTERVAL_MS = 250
 local FAST_MOTION_INTERVAL_MS = 24
 local FAST_MOTION_RECORD_SIZE = 768
@@ -140,6 +149,7 @@ local last_world_left = nil
 local last_world_top = nil
 local last_world_zoom = nil
 local map_resume_delay_remaining_ms = 0
+local mod_switch_elapsed_ms = 0
 local state_sequence = 0
 local previous_state_write_ms = 0.0
 local queued_update_started_ms = nil
@@ -297,6 +307,8 @@ resolve_mod_directory = function()
     return mod_directory
 end
 
+local write_disabled_state
+
 local function file_exists(path)
     local file = io.open(path, "rb")
     if file == nil then
@@ -306,11 +318,51 @@ local function file_exists(path)
     return true
 end
 
+local function is_mod_enabled_in_mods_file()
+    local directory = resolve_mod_directory()
+    if directory == nil then
+        return true
+    end
+
+    local mods_path = directory .. "\\..\\mods.txt"
+    local file = io.open(mods_path, "rb")
+    if file == nil then
+        return true
+    end
+
+    local content = file:read("*a") or ""
+    file:close()
+
+    for line in string.gmatch(content, "[^\r\n]+") do
+        local value = string.match(
+            line,
+            "^%s*DragonSwordWorldRadar%s*:%s*([01])"
+        )
+        if value ~= nil then
+            return value == "1"
+        end
+    end
+
+    return true
+end
+
+local function disable_for_mod_switch()
+    if enabled then
+        enabled = false
+        latest_motion_sample = 0
+        written_motion_sample = 0
+        latest_motion_map_state = nil
+        world_map_was_active = false
+        write_disabled_state()
+        log("World radar disabled because mods.txt is set to 0.")
+    end
+    overlay_start_requested = false
+end
+
 local function start_overlay()
     if overlay_start_requested or not auto_start_overlay then
         return
     end
-    overlay_start_requested = true
 
     local directory = resolve_mod_directory()
     if directory == nil then
@@ -325,9 +377,15 @@ local function start_overlay()
         log("Could not write overlay launch request: " .. request_path)
         return
     end
-    request:write(tostring(os.time()), "\n")
+    request:write(tostring(os.time()))
     request:close()
-    log("PowerShell overlay launch requested through hidden watcher: " .. request_path)
+    -- Install.cmd starts a resident WScript watcher with window style 0 and
+    -- registers the same hidden watcher for the current user's next sign-in.
+    -- Game-time Lua only writes this request; it never invokes cmd.exe or
+    -- powershell.exe, so no transient console window can be created here.
+    overlay_start_requested = true
+    log("Overlay launch requested through hidden resident watcher: "
+        .. request_path)
 end
 
 local function resolve_state_paths()
@@ -525,8 +583,8 @@ local function write_fast_motion(
     map_state,
     force
 )
-    local diagnostic_start = diagnostics ~= nil
-        and diagnostics.now_ms() or 0.0
+    local diagnostic_start = perf_diagnostics ~= nil
+        and perf_diagnostics.now_ms() or 0.0
     local heartbeat_epoch = os.time()
     local heartbeat_due = last_written_motion == nil
         or os.difftime(
@@ -544,17 +602,17 @@ local function write_fast_motion(
         map_state
     )
     if not force and not visual_change and not heartbeat_due then
-        if diagnostics ~= nil then
-            diagnostics.record_motion_skip()
+        if perf_diagnostics ~= nil then
+            perf_diagnostics.record_motion_skip()
         end
         return true
     end
 
     local path_a, path_b = resolve_motion_paths()
     if path_a == nil or path_b == nil then
-        if diagnostics ~= nil then
-            diagnostics.record_motion_write(
-                diagnostics.now_ms() - diagnostic_start,
+        if perf_diagnostics ~= nil then
+            perf_diagnostics.record_motion_write(
+                perf_diagnostics.now_ms() - diagnostic_start,
                 false
             )
         end
@@ -593,9 +651,9 @@ local function write_fast_motion(
             log("Fast motion record exceeded its fixed size.")
             motion_write_error_logged = true
         end
-        if diagnostics ~= nil then
-            diagnostics.record_motion_write(
-                diagnostics.now_ms() - diagnostic_start,
+        if perf_diagnostics ~= nil then
+            perf_diagnostics.record_motion_write(
+                perf_diagnostics.now_ms() - diagnostic_start,
                 false
             )
         end
@@ -609,9 +667,9 @@ local function write_fast_motion(
             log("Could not open fast motion bridge: " .. tostring(open_error))
             motion_write_error_logged = true
         end
-        if diagnostics ~= nil then
-            diagnostics.record_motion_write(
-                diagnostics.now_ms() - diagnostic_start,
+        if perf_diagnostics ~= nil then
+            perf_diagnostics.record_motion_write(
+                perf_diagnostics.now_ms() - diagnostic_start,
                 false
             )
         end
@@ -645,9 +703,9 @@ local function write_fast_motion(
             motion_write_error_logged = false
         end
     end
-    if diagnostics ~= nil then
-        diagnostics.record_motion_write(
-            diagnostics.now_ms() - diagnostic_start,
+    if perf_diagnostics ~= nil then
+        perf_diagnostics.record_motion_write(
+            perf_diagnostics.now_ms() - diagnostic_start,
             ok and result == true
         )
     end
@@ -713,12 +771,12 @@ local function publish_motion_sample(
     latest_motion_radius = radar_radius
     latest_motion_map_state = map_state
     latest_motion_sample = latest_motion_sample + 1
-    if diagnostics ~= nil then
-        diagnostics.record_motion_sample()
+    if perf_diagnostics ~= nil then
+        perf_diagnostics.record_motion_sample()
     end
 end
 
-local function write_disabled_state()
+write_disabled_state = function()
     state_sequence = state_sequence + 1
     local written, write_error = write_static_state(
         string.format(
@@ -737,8 +795,8 @@ local function write_disabled_state()
         )
     end
     write_fast_motion(false, "disabled", 0, 0, nil, radar_radius, nil, true)
-    if diagnostics ~= nil then
-        diagnostics.set_mode("disabled", state_sequence)
+    if perf_diagnostics ~= nil then
+        perf_diagnostics.set_mode("disabled", state_sequence)
     end
     return written
 end
@@ -876,18 +934,13 @@ local function update_radar_radius()
     end
 end
 
-local function current_time_ms()
-    if diagnostics ~= nil then
-        return diagnostics.now_ms()
-    end
-    return os.clock() * 1000.0
-end
-
 local function build_boss_json(player_x, player_y, nearby_only, current_map_id)
     if not show_bosses or boss_tracker == nil then
         return "[]"
     end
-    boss_tracker.update(player_x, player_y, current_time_ms(), current_map_id)
+    -- Boss visibility is save-cooldown-driven. The old runtime tracker update
+    -- is deliberately skipped because it is a no-op and would add a clock and
+    -- Lua call to every 250 ms static-state rebuild.
     local snapshot = boss_tracker.snapshot()
     local radius_squared = radar_radius * radar_radius
     local parts = { "[" }
@@ -1045,6 +1098,14 @@ local function build_world_map_json(map, player_x, player_y, player_z)
 end
 
 local function inject_state_diagnostics(json, metrics)
+    if perf_diagnostics == nil then
+        return string.format(
+            '{"stateSequence":%d,"producerGeneration":%d,%s',
+            metrics.state_sequence,
+            generation,
+            string.sub(json, 2)
+        )
+    end
     return string.format(
         '{"stateSequence":%d,"producerGeneration":%d,'
             .. '"producerQueueDelayMs":%.3f,'
@@ -1066,23 +1127,24 @@ local function inject_state_diagnostics(json, metrics)
 end
 
 local function update_radar_state(queue_delay_ms)
-    local update_started_ms = diagnostics ~= nil
-        and diagnostics.now_ms() or 0.0
+    local update_started_ms = perf_diagnostics ~= nil
+        and perf_diagnostics.now_ms() or 0.0
     if not enabled or not ensure_layers_loaded() then
         return
     end
 
-    local player_started_ms = diagnostics ~= nil
-        and diagnostics.now_ms() or 0.0
+    local player_started_ms = perf_diagnostics ~= nil
+        and perf_diagnostics.now_ms() or 0.0
     local player_x, player_y, player_z = get_player_location()
-    local player_ms = diagnostics ~= nil
-        and (diagnostics.now_ms() - player_started_ms) or 0.0
+    local player_ms = perf_diagnostics ~= nil
+        and (perf_diagnostics.now_ms() - player_started_ms) or 0.0
     if player_x == nil or player_y == nil then
         engine = nil
         player_pawn = nil
         minimap_layer = nil
         minimap_mode = nil
         world_map_was_active = false
+        latest_motion_map_state = nil
 
         if world_map_markers_enabled then
             world_map.set_suspended(true)
@@ -1091,8 +1153,8 @@ local function update_radar_state(queue_delay_ms)
         end
 
         local disabled_state_written = write_disabled_state()
-        if diagnostics ~= nil then
-            diagnostics.record_update({
+        if perf_diagnostics ~= nil then
+            perf_diagnostics.record_update({
                 mode = "disabled",
                 state_sequence = state_sequence,
                 queue_delay_ms = queue_delay_ms or 0.0,
@@ -1100,7 +1162,7 @@ local function update_radar_state(queue_delay_ms)
                 world_ms = 0.0,
                 build_ms = 0.0,
                 write_ms = 0.0,
-                total_ms = diagnostics.now_ms() - update_started_ms,
+                total_ms = perf_diagnostics.now_ms() - update_started_ms,
                 player_missing = true,
                 failed = true,
                 write_ok = disabled_state_written,
@@ -1110,18 +1172,27 @@ local function update_radar_state(queue_delay_ms)
     end
 
     local map_state = nil
-    local world_started_ms = diagnostics ~= nil
-        and diagnostics.now_ms() or 0.0
+    local world_started_ms = perf_diagnostics ~= nil
+        and perf_diagnostics.now_ms() or 0.0
     if world_map_markers_enabled then
-        map_state = world_map.read_state()
+        -- World-map entry is detected only by the low-frequency 250 ms state
+        -- loop. Once active, reuse the transform already sampled by the 24 ms
+        -- world loop instead of performing a duplicate UObject traversal here.
+        -- The 24 ms radar motion loop never probes map UObjects.
+        if world_map_was_active and latest_motion_map_state ~= nil then
+            map_state = latest_motion_map_state
+        else
+            map_state = world_map.read_state()
+        end
     end
-    local world_ms = diagnostics ~= nil
-        and (diagnostics.now_ms() - world_started_ms) or 0.0
+
+    local world_ms = perf_diagnostics ~= nil
+        and (perf_diagnostics.now_ms() - world_started_ms) or 0.0
 
     local output
     local mode
-    local build_started_ms = diagnostics ~= nil
-        and diagnostics.now_ms() or 0.0
+    local build_started_ms = perf_diagnostics ~= nil
+        and perf_diagnostics.now_ms() or 0.0
     if map_state ~= nil then
         world_map_was_active = true
         last_world_left = map_state.left or 0
@@ -1143,6 +1214,7 @@ local function update_radar_state(queue_delay_ms)
         )
     else
         world_map_was_active = false
+        latest_motion_map_state = nil
         last_world_left = nil
         last_world_top = nil
         last_world_zoom = nil
@@ -1172,12 +1244,12 @@ local function update_radar_state(queue_delay_ms)
             nil
         )
     end
-    local build_ms = diagnostics ~= nil
-        and (diagnostics.now_ms() - build_started_ms) or 0.0
+    local build_ms = perf_diagnostics ~= nil
+        and (perf_diagnostics.now_ms() - build_started_ms) or 0.0
 
     state_sequence = state_sequence + 1
-    local before_write_ms = diagnostics ~= nil
-        and (diagnostics.now_ms() - update_started_ms) or 0.0
+    local before_write_ms = perf_diagnostics ~= nil
+        and (perf_diagnostics.now_ms() - update_started_ms) or 0.0
     output = inject_state_diagnostics(output, {
         state_sequence = state_sequence,
         queue_delay_ms = queue_delay_ms or 0.0,
@@ -1187,11 +1259,11 @@ local function update_radar_state(queue_delay_ms)
         before_write_ms = before_write_ms,
     })
 
-    local write_started_ms = diagnostics ~= nil
-        and diagnostics.now_ms() or 0.0
+    local write_started_ms = perf_diagnostics ~= nil
+        and perf_diagnostics.now_ms() or 0.0
     local written, write_error = write_static_state(output)
-    local write_ms = diagnostics ~= nil
-        and (diagnostics.now_ms() - write_started_ms) or 0.0
+    local write_ms = perf_diagnostics ~= nil
+        and (perf_diagnostics.now_ms() - write_started_ms) or 0.0
     previous_state_write_ms = write_ms
     if not written then
         if not write_error_logged then
@@ -1203,8 +1275,8 @@ local function update_radar_state(queue_delay_ms)
         write_error_logged = false
     end
 
-    if diagnostics ~= nil then
-        diagnostics.record_update({
+    if perf_diagnostics ~= nil then
+        perf_diagnostics.record_update({
             mode = mode,
             state_sequence = state_sequence,
             queue_delay_ms = queue_delay_ms or 0.0,
@@ -1212,12 +1284,35 @@ local function update_radar_state(queue_delay_ms)
             world_ms = world_ms,
             build_ms = build_ms,
             write_ms = write_ms,
-            total_ms = diagnostics.now_ms() - update_started_ms,
+            total_ms = perf_diagnostics.now_ms() - update_started_ms,
             write_ok = written,
             left = map_state ~= nil and map_state.left or nil,
             top = map_state ~= nil and map_state.top or nil,
             zoom = map_state ~= nil and map_state.zoom or nil,
         })
+    end
+end
+
+local ensure_world_map_loop_started
+local ensure_motion_loop_started
+
+local function report_async_failure(
+    key,
+    event,
+    fallback_prefix,
+    failure,
+    fields
+)
+    if diagnostics ~= nil then
+        diagnostics.error_rate_limited(
+            key,
+            10,
+            event,
+            tostring(failure),
+            fields or {}
+        )
+    else
+        log(fallback_prefix .. tostring(failure))
     end
 end
 
@@ -1232,43 +1327,83 @@ local function queue_world_motion_update()
     end
 
     world_motion_update_pending = true
-    ExecuteInGameThread(function()
-        if is_current_generation()
-            and enabled
-            and world_map_was_active
-            and map_resume_delay_remaining_ms <= 0
-        then
-            local player_x, player_y, player_z = get_player_location()
-            local map_state = world_map.read_state()
-            if player_x ~= nil and player_y ~= nil and map_state ~= nil then
-                last_world_left = map_state.left or 0
-                last_world_top = map_state.top or 0
-                last_world_zoom = map_state.zoom or 0
-                publish_motion_sample(
-                    "world",
-                    player_x,
-                    player_y,
-                    player_z,
-                    map_state
-                )
-            elseif map_state == nil then
-                world_map_was_active = false
-                last_world_left = nil
-                last_world_top = nil
-                last_world_zoom = nil
-                if player_x ~= nil and player_y ~= nil then
-                    publish_motion_sample(
-                        "radar",
-                        player_x,
-                        player_y,
-                        player_z,
-                        nil
-                    )
+    local queue_ok, queue_error = pcall(function()
+        ExecuteInGameThread(function()
+            local callback_ok, callback_error = pcall(function()
+                if is_current_generation()
+                    and enabled
+                    and world_map_was_active
+                    and map_resume_delay_remaining_ms <= 0
+                then
+                    local player_x, player_y, player_z =
+                        get_player_location()
+                    local map_state = world_map.read_state()
+                    if player_x ~= nil
+                        and player_y ~= nil
+                        and map_state ~= nil
+                    then
+                        last_world_left = map_state.left or 0
+                        last_world_top = map_state.top or 0
+                        last_world_zoom = map_state.zoom or 0
+                        publish_motion_sample(
+                            "world",
+                            player_x,
+                            player_y,
+                            player_z,
+                            map_state
+                        )
+                    elseif map_state == nil then
+                        -- A closed map must stop the fullscreen producer
+                        -- immediately. Do not retain a stale transform or wait
+                        -- for missing samples.
+                        world_map_was_active = false
+                        latest_motion_map_state = nil
+                        last_world_left = nil
+                        last_world_top = nil
+                        last_world_zoom = nil
+                        if player_x ~= nil and player_y ~= nil then
+                            publish_motion_sample(
+                                "radar",
+                                player_x,
+                                player_y,
+                                player_z,
+                                nil
+                            )
+                        end
+                        ensure_motion_loop_started()
+                    end
                 end
+            end)
+            -- Always release the gate. Otherwise one failed UObject read would
+            -- permanently stop all later map samples for this session.
+            world_motion_update_pending = false
+            if not callback_ok then
+                report_async_failure(
+                    "world_motion_callback",
+                    "WORLD_MOTION_UPDATE_FAILED",
+                    "World-map motion update failed: ",
+                    callback_error,
+                    {
+                        world_map_active = world_map_was_active,
+                        state_sequence = state_sequence,
+                    }
+                )
             end
-        end
-        world_motion_update_pending = false
+        end)
     end)
+    if not queue_ok then
+        world_motion_update_pending = false
+        report_async_failure(
+            "world_motion_queue",
+            "WORLD_MOTION_QUEUE_FAILED",
+            "Could not queue world-map motion update: ",
+            queue_error,
+            {
+                world_map_active = world_map_was_active,
+                state_sequence = state_sequence,
+            }
+        )
+    end
 end
 
 local function queue_motion_update()
@@ -1282,28 +1417,60 @@ local function queue_motion_update()
     end
 
     motion_update_pending = true
-    ExecuteInGameThread(function()
-        if is_current_generation()
-            and enabled
-            and not world_map_was_active
-            and map_resume_delay_remaining_ms <= 0
-        then
-            local player_x, player_y, player_z = get_player_location()
-            if player_x ~= nil and player_y ~= nil then
-                publish_motion_sample(
-                    "radar",
-                    player_x,
-                    player_y,
-                    player_z,
-                    nil
+    local queue_ok, queue_error = pcall(function()
+        ExecuteInGameThread(function()
+            local callback_ok, callback_error = pcall(function()
+                if is_current_generation()
+                    and enabled
+                    and not world_map_was_active
+                    and map_resume_delay_remaining_ms <= 0
+                then
+                    local player_x, player_y, player_z =
+                        get_player_location()
+                    if player_x ~= nil and player_y ~= nil then
+                        publish_motion_sample(
+                            "radar",
+                            player_x,
+                            player_y,
+                            player_z,
+                            nil
+                        )
+                    end
+                end
+            end)
+            -- Release the gate even when an engine read fails. The next 24 ms
+            -- loop iteration can then recover without restarting the mod.
+            motion_update_pending = false
+            if not callback_ok then
+                report_async_failure(
+                    "radar_motion_callback",
+                    "RADAR_MOTION_UPDATE_FAILED",
+                    "Radar motion update failed: ",
+                    callback_error,
+                    {
+                        world_map_active = world_map_was_active,
+                        state_sequence = state_sequence,
+                    }
                 )
             end
-        end
-        motion_update_pending = false
+        end)
     end)
+    if not queue_ok then
+        motion_update_pending = false
+        report_async_failure(
+            "radar_motion_queue",
+            "RADAR_MOTION_QUEUE_FAILED",
+            "Could not queue radar motion update: ",
+            queue_error,
+            {
+                world_map_active = world_map_was_active,
+                state_sequence = state_sequence,
+            }
+        )
+    end
 end
 
-local function ensure_motion_loop_started()
+ensure_motion_loop_started = function()
     if motion_loop_started then
         return
     end
@@ -1329,67 +1496,100 @@ local function ensure_motion_loop_started()
     end)
 end
 
-local ensure_world_map_loop_started
-
 local function queue_radar_update()
-    if diagnostics ~= nil then
-        diagnostics.record_queue_request()
+    if perf_diagnostics ~= nil then
+        perf_diagnostics.record_queue_request()
     end
     if not is_current_generation() or not enabled
         or map_resume_delay_remaining_ms > 0
     then
-        if diagnostics ~= nil then
-            diagnostics.record_queue_skip("generation_or_disabled")
+        if perf_diagnostics ~= nil then
+            perf_diagnostics.record_queue_skip("generation_or_disabled")
         end
         return
     end
     if update_pending then
-        if diagnostics ~= nil then
-            diagnostics.record_queue_skip("pending")
+        if perf_diagnostics ~= nil then
+            perf_diagnostics.record_queue_skip("pending")
         end
         return
     end
 
     update_pending = true
-    queued_update_started_ms = diagnostics ~= nil
-        and diagnostics.now_ms() or nil
-    ExecuteInGameThread(function()
-        local queue_delay_ms = diagnostics ~= nil
-            and queued_update_started_ms ~= nil
-            and (diagnostics.now_ms() - queued_update_started_ms)
-            or 0.0
-        if is_current_generation()
-            and map_resume_delay_remaining_ms <= 0
-        then
-            local ok, update_error = pcall(
-                update_radar_state,
-                queue_delay_ms
-            )
-            if not ok and diagnostics ~= nil then
-                diagnostics.error_rate_limited(
-                    "update_radar_state",
-                    10,
-                    "UPDATE_FAILED",
-                    tostring(update_error),
+    queued_update_started_ms = perf_diagnostics ~= nil
+        and perf_diagnostics.now_ms() or nil
+    local queue_ok, queue_error = pcall(function()
+        ExecuteInGameThread(function()
+            local queue_delay_ms = perf_diagnostics ~= nil
+                and queued_update_started_ms ~= nil
+                and (perf_diagnostics.now_ms() - queued_update_started_ms)
+                or 0.0
+            local callback_ok, callback_error = pcall(function()
+                if is_current_generation()
+                    and map_resume_delay_remaining_ms <= 0
+                then
+                    local update_ok, update_error = pcall(
+                        update_radar_state,
+                        queue_delay_ms
+                    )
+                    if not update_ok then
+                        report_async_failure(
+                            "update_radar_state",
+                            "UPDATE_FAILED",
+                            "Radar state update failed: ",
+                            update_error,
+                            {
+                                queue_delay_ms = queue_delay_ms,
+                                world_map_active = world_map_was_active,
+                                state_sequence = state_sequence,
+                            }
+                        )
+                    end
+                end
+
+                if is_current_generation() and enabled then
+                    if world_map_was_active then
+                        ensure_world_map_loop_started()
+                    else
+                        -- Restart the fast radar bridge after the world map
+                        -- closes.
+                        ensure_motion_loop_started()
+                    end
+                end
+            end)
+            -- This cleanup is deliberately outside the protected body so an
+            -- unexpected callback failure cannot permanently suppress updates.
+            queued_update_started_ms = nil
+            update_pending = false
+            if not callback_ok then
+                report_async_failure(
+                    "radar_update_callback",
+                    "UPDATE_CALLBACK_FAILED",
+                    "Radar update callback failed: ",
+                    callback_error,
                     {
                         queue_delay_ms = queue_delay_ms,
                         world_map_active = world_map_was_active,
                         state_sequence = state_sequence,
                     }
                 )
-            elseif not ok then
-                log("Radar state update failed: " .. tostring(update_error))
             end
-        end
+        end)
+    end)
+    if not queue_ok then
         queued_update_started_ms = nil
         update_pending = false
-        if world_map_was_active then
-            ensure_world_map_loop_started()
-        else
-            -- Restart the fast radar bridge after the world map closes.
-            ensure_motion_loop_started()
-        end
-    end)
+        report_async_failure(
+            "radar_update_queue",
+            "UPDATE_QUEUE_FAILED",
+            "Could not queue radar state update: ",
+            queue_error,
+            {
+                world_map_active = world_map_was_active,
+                state_sequence = state_sequence,
+            }
+        )
+    end
 end
 
 ensure_world_map_loop_started = function()
@@ -1425,6 +1625,18 @@ local function ensure_loop_started()
         if not is_current_generation() then
             return true
         end
+
+        mod_switch_elapsed_ms =
+            mod_switch_elapsed_ms + MINIMAP_UPDATE_INTERVAL_MS
+        if mod_switch_elapsed_ms >= MOD_SWITCH_CHECK_INTERVAL_MS then
+            mod_switch_elapsed_ms = 0
+            if not is_mod_enabled_in_mods_file() then
+                disable_for_mod_switch()
+                loop_started = false
+                return true
+            end
+        end
+
         if not enabled then
             loop_started = false
             return true
@@ -1458,6 +1670,12 @@ RegisterKeyBind(Key[start_key], function()
     if not is_current_generation() then
         return
     end
+    if not is_mod_enabled_in_mods_file() then
+        disable_for_mod_switch()
+        log("F7 ignored because DragonSwordWorldRadar is 0 in mods.txt.")
+        return
+    end
+    start_overlay()
     if not show_treasures and not show_bosses then
         log("All radar layers are disabled in config.lua.")
         return
@@ -1480,6 +1698,10 @@ RegisterKeyBind(Key[stop_key], function()
     latest_motion_sample = 0
     written_motion_sample = 0
     latest_motion_map_state = nil
+    world_map_was_active = false
+    last_world_left = nil
+    last_world_top = nil
+    last_world_zoom = nil
     write_disabled_state()
     log("World radar disabled; all producer loops will stop.")
 end)
@@ -1487,4 +1709,4 @@ end)
 reset_bridge_files()
 start_overlay()
 write_disabled_state()
-log("Ready. F7 enables configured radar layers; F8 disables them. Static state uses 250 ms double buffering. Motion is sampled at 24 ms, written only on visual change or a 1 second heartbeat, and consumed by an adaptive Overlay timer. Diagnostics: runtime/logs/DragonSwordWorldRadar.Lua.log and Collect-Diagnostics.cmd.")
+log("Ready. F7 enables configured radar layers; F8 disables them. Static state uses 250 ms double buffering. Radar motion is sampled at 24 ms without world-map probing; world-map motion runs only while the map is open. Use log: runtime/logs/DragonSwordWorldRadar.Lua.Use.log. Debug log: runtime/logs/DragonSwordWorldRadar.Lua.Debug.log.")

@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -20,7 +21,7 @@ namespace DragonSwordWorldRadar
         private const int ReferenceRightMargin = 40;
         private const int ReferenceTopMargin = 37;
         private const float ReferenceRadarRadius = 170f;
-        private const int ActiveTimerIntervalMs = 24;
+        private const int ActiveTimerIntervalMs = 33;
         private const int WorldIdleTimerIntervalMs = 50;
         private const int RadarIdleTimerIntervalMs = 75;
         private const int DisabledTimerIntervalMs = 125;
@@ -86,6 +87,11 @@ namespace DragonSwordWorldRadar
         private bool _hasSeenGameProcess;
         private DateTime _gameProcessMissingSinceUtc;
         private DateTime _nextGameLifetimeCheckUtc;
+        private string _presentedMode = "disabled";
+        private bool _overlayWindowVisible;
+        private int _paintSequence;
+        private bool _hiddenSurfacePreparedForCurrentTick;
+        private readonly bool _debugEnabled;
 
         public RadarForm()
         {
@@ -102,6 +108,8 @@ namespace DragonSwordWorldRadar
             _saveState = new TreasureSaveState();
             _worldTreasures = new WorldTreasureCatalog();
             _performance = new OverlayPerformanceTracker();
+            _debugEnabled = DebugSettings.Enabled;
+            _performance.SetEnabled(_debugEnabled);
             _bossAvailability = new BossAvailabilityTracker();
             _worldTreasureIndex = new WorldTreasureVisibilityIndex();
             _worldTreasureRenderBuffer =
@@ -144,6 +152,27 @@ namespace DragonSwordWorldRadar
                 Text = "DragonSwordWorldRadar",
                 ContextMenuStrip = _trayMenu,
                 Visible = true
+            };
+
+            int configuredGameProcessId;
+            if (Int32.TryParse(
+                    Environment.GetEnvironmentVariable(
+                        "EVENTRADAR_GAME_PID"),
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out configuredGameProcessId)
+                && configuredGameProcessId > 0)
+            {
+                _gameProcessId = configuredGameProcessId;
+                _hasSeenGameProcess = true;
+            }
+
+            Shown += delegate
+            {
+                NativeMethods.ShowWindow(
+                    Handle,
+                    NativeMethods.SwHide);
+                _overlayWindowVisible = false;
             };
 
             _timer = new Timer
@@ -190,6 +219,7 @@ namespace DragonSwordWorldRadar
             _worldTreasureRenderBuffer.Dispose();
             _bossMarkerRenderer.Dispose();
             _heightIndicatorRenderer.Dispose();
+            ClearSessionBridgeFiles();
             if (_highResolutionTimerEnabled)
             {
                 try
@@ -208,7 +238,7 @@ namespace DragonSwordWorldRadar
         protected override void OnPaint(PaintEventArgs eventArgs)
         {
             base.OnPaint(eventArgs);
-            long paintStarted = Stopwatch.GetTimestamp();
+            long paintStarted = _performance.BeginTiming();
             bool paintFailed = false;
             try
             {
@@ -223,11 +253,9 @@ namespace DragonSwordWorldRadar
 
                 eventArgs.Graphics.SmoothingMode =
                     SmoothingMode.AntiAlias;
-                bool showDebugCoordinates = DebugSettings.Enabled;
+                bool showDebugCoordinates = _debugEnabled;
                 float textScale = NormalizeTextScale(state.textScale);
-                string mode = motion == null
-                    ? state.mode
-                    : motion.Mode;
+                string mode = _presentedMode;
                 double playerX = motion == null
                     ? state.playerX
                     : motion.PlayerX;
@@ -397,9 +425,12 @@ namespace DragonSwordWorldRadar
             {
                 if (!paintFailed)
                 {
+                    _paintSequence++;
                     ClearModuleFailure("renderer");
                 }
-                _performance.RecordPaint(paintStarted);
+                _performance.RecordPaint(
+                    paintStarted,
+                    DateTime.UtcNow);
             }
         }
 
@@ -783,7 +814,9 @@ namespace DragonSwordWorldRadar
             object sender,
             EventArgs eventArgs)
         {
-            long refreshStarted = Stopwatch.GetTimestamp();
+            DateTime tickStartedUtc = DateTime.UtcNow;
+            int expectedIntervalMs = _timer.Interval;
+            long refreshStarted = _performance.BeginTiming();
             try
             {
                 CheckGameLifetime();
@@ -791,6 +824,7 @@ namespace DragonSwordWorldRadar
                 {
                     return;
                 }
+                _hiddenSurfacePreparedForCurrentTick = false;
                 RefreshState();
                 UpdateOverlayVisibility();
                 ClearModuleFailure("timer");
@@ -803,11 +837,17 @@ namespace DragonSwordWorldRadar
             }
             finally
             {
-                _performance.RecordTimerTick(refreshStarted);
+                _performance.RecordTimerTick(
+                    refreshStarted,
+                    tickStartedUtc,
+                    expectedIntervalMs);
                 _performance.LogIfDue(
                     GetEffectiveMode(),
                     _timer.Interval,
-                    _worldTreasureIndex.Count);
+                    _worldTreasureIndex.Count,
+                    _gameProcessId,
+                    _overlayWindowVisible,
+                    Bounds);
             }
         }
 
@@ -1296,7 +1336,7 @@ namespace DragonSwordWorldRadar
 
         private void UpdateTimerInterval(DateTime now)
         {
-            string mode = GetEffectiveMode();
+            string mode = _presentedMode;
             DateTime activityUtc = _lastMotionVisualChangeUtc;
             if (_lastModeTransitionUtc > activityUtc)
             {
@@ -1345,7 +1385,6 @@ namespace DragonSwordWorldRadar
             DateTime now = DateTime.UtcNow;
             bool redraw = false;
             bool geometryChanged = false;
-            string previousMode = GetEffectiveMode();
 
             if (now >= _nextStaticStatePollUtc)
             {
@@ -1403,7 +1442,8 @@ namespace DragonSwordWorldRadar
                 bool motionVisualChange =
                     _motionVisualSnapshot.Update(motion);
                 _performance.RecordMotionFrame(
-                    motionVisualChange);
+                    motionVisualChange,
+                    now);
                 _motion = motion;
                 _lastMotionFrameUtc = now;
                 if (motionVisualChange)
@@ -1492,11 +1532,8 @@ namespace DragonSwordWorldRadar
                 }
             }
 
-            string currentMode = GetEffectiveMode();
-            geometryChanged = !String.Equals(
-                previousMode,
-                currentMode,
-                StringComparison.Ordinal);
+            string rawMode = GetEffectiveMode();
+            geometryChanged = AdvancePresentedMode(rawMode);
             if (geometryChanged)
             {
                 _lastModeTransitionUtc = now;
@@ -1510,7 +1547,7 @@ namespace DragonSwordWorldRadar
             }
             UpdateTimerInterval(now);
             if ((redraw || geometryChanged)
-                && !_overlaySuppressed)
+                && _overlayWindowVisible)
             {
                 _performance.RecordInvalidate();
                 Invalidate();
@@ -1730,7 +1767,7 @@ namespace DragonSwordWorldRadar
 
         private void LogSaveFilterStatus()
         {
-            if (!DebugSettings.Enabled
+            if (!_debugEnabled
                 || DateTime.UtcNow < _nextSaveFilterLogUtc)
             {
                 return;
@@ -2025,6 +2062,78 @@ namespace DragonSwordWorldRadar
                 <= 250.0 * 250.0;
         }
 
+        private bool AdvancePresentedMode(string rawMode)
+        {
+            string normalizedMode = String.IsNullOrEmpty(rawMode)
+                ? "disabled"
+                : rawMode;
+            if (String.Equals(
+                    normalizedMode,
+                    _presentedMode,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            string previousMode = _presentedMode;
+
+            // Hide before changing between the small radar window and the
+            // full-client world-map window. Resizing a visible layered window
+            // is what produced the black edge/tear during map transitions.
+            SetOverlayWindowVisible(false, false);
+            _presentedMode = normalizedMode;
+            ErrorLog.WriteDebug(
+                "Overlay mode changed: " +
+                previousMode + " -> " + _presentedMode);
+            return true;
+        }
+
+        private static void ClearSessionBridgeFiles()
+        {
+            try
+            {
+                string bridgeDirectory = Path.Combine(
+                    ModPath.BaseDirectory,
+                    "runtime",
+                    "bridge");
+                if (!Directory.Exists(bridgeDirectory))
+                {
+                    return;
+                }
+                string[] patterns =
+                {
+                    "radar_state_*.json",
+                    "radar_motion_*.dat"
+                };
+                for (int patternIndex = 0;
+                    patternIndex < patterns.Length;
+                    patternIndex++)
+                {
+                    string[] files = Directory.GetFiles(
+                        bridgeDirectory,
+                        patterns[patternIndex],
+                        SearchOption.TopDirectoryOnly);
+                    for (int fileIndex = 0;
+                        fileIndex < files.Length;
+                        fileIndex++)
+                    {
+                        try
+                        {
+                            File.Delete(files[fileIndex]);
+                        }
+                        catch
+                        {
+                            // Session cleanup is best effort.
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Form shutdown must not fail because stale bridge cleanup failed.
+            }
+        }
+
         private void CheckGameLifetime()
         {
             DateTime now = DateTime.UtcNow;
@@ -2035,11 +2144,21 @@ namespace DragonSwordWorldRadar
             _nextGameLifetimeCheckUtc = now.AddMilliseconds(
                 GameLifetimeCheckIntervalMs);
 
+            if (!IsEnabledInModsFile())
+            {
+                ErrorLog.WriteDebug(
+                    "mods.txt disabled DragonSwordWorldRadar; closing overlay.");
+                Close();
+                return;
+            }
+
             bool gamePresent = false;
             try
             {
                 using (Process process =
-                    GameProcessFinder.OpenTracked(_gameProcessId))
+                    _hasSeenGameProcess
+                        ? GameProcessFinder.OpenExact(_gameProcessId)
+                        : GameProcessFinder.OpenTracked(_gameProcessId))
                 {
                     gamePresent = process != null;
                     if (gamePresent)
@@ -2051,12 +2170,17 @@ namespace DragonSwordWorldRadar
                         _gameProcessId = 0;
                     }
                 }
+                ClearModuleFailure("game-lifetime");
             }
-            catch
+            catch (Exception exception)
             {
-                // Treat transient process enumeration failures as presence
-                // when a game process was already observed.
+                // Treat an enumeration failure as transient when a tracked
+                // PID already exists. A one-off Process API failure must not
+                // start the three-second shutdown countdown.
                 gamePresent = _gameProcessId > 0;
+                ReportModuleFailure(
+                    "game-lifetime",
+                    exception);
             }
 
             if (gamePresent)
@@ -2086,8 +2210,53 @@ namespace DragonSwordWorldRadar
         }
 
 
+        private static bool IsEnabledInModsFile()
+        {
+            try
+            {
+                string modsPath = Path.GetFullPath(
+                    Path.Combine(
+                        ModPath.BaseDirectory,
+                        "..",
+                        "mods.txt"));
+                if (!File.Exists(modsPath))
+                {
+                    return true;
+                }
+
+                string[] lines = File.ReadAllLines(modsPath);
+                for (int index = 0; index < lines.Length; index++)
+                {
+                    string line = lines[index].Trim();
+                    if (!line.StartsWith(
+                            "DragonSwordWorldRadar",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    int colon = line.IndexOf(':');
+                    if (colon < 0 || colon + 1 >= line.Length)
+                    {
+                        continue;
+                    }
+
+                    string value = line.Substring(colon + 1).TrimStart();
+                    return value.StartsWith(
+                        "1",
+                        StringComparison.Ordinal);
+                }
+            }
+            catch
+            {
+                // A transient read failure must not terminate a valid session.
+            }
+            return true;
+        }
+
         private void UpdateOverlayVisibility()
         {
+            DateTime now = DateTime.UtcNow;
             string reason = null;
             IntPtr gameWindow = _gameWindowHandle;
             if (_gameProcessId <= 0 || gameWindow == IntPtr.Zero)
@@ -2119,39 +2288,69 @@ namespace DragonSwordWorldRadar
             }
 
             bool shouldSuppress = reason != null;
-            if (shouldSuppress == _overlaySuppressed)
-            {
-                return;
-            }
-
             _overlaySuppressed = shouldSuppress;
-            _overlaySuppressionReason = shouldSuppress
+            bool disabled = String.Equals(
+                _presentedMode,
+                "disabled",
+                StringComparison.Ordinal);
+            bool shouldShow = !shouldSuppress
+                && !disabled;
+            string visibilityReason = shouldSuppress
                 ? reason
-                : "visible";
+                : disabled
+                    ? "disabled"
+                    : "visible";
+            bool reasonChanged = !String.Equals(
+                visibilityReason,
+                _overlaySuppressionReason,
+                StringComparison.Ordinal);
+            bool visibilityChanged =
+                shouldShow != _overlayWindowVisible;
+            _overlaySuppressionReason = visibilityReason;
+
+            SetOverlayWindowVisible(
+                shouldShow,
+                shouldShow && visibilityChanged);
+            UpdateTimerInterval(now);
+
+            if (reasonChanged || visibilityChanged)
+            {
+                ErrorLog.WriteDebug(
+                    "Overlay visibility changed: reason=" +
+                    _overlaySuppressionReason +
+                    "; visible=" + _overlayWindowVisible +
+                    "; mode=" + _presentedMode);
+            }
+        }
+
+        private void SetOverlayWindowVisible(
+            bool visible,
+            bool invalidate)
+        {
             if (!IsHandleCreated)
             {
+                _overlayWindowVisible = false;
+                return;
+            }
+            if (visible == _overlayWindowVisible)
+            {
                 return;
             }
 
-            if (shouldSuppress)
+            bool needsInvalidate = visible
+                && invalidate
+                && !_hiddenSurfacePreparedForCurrentTick;
+            NativeMethods.ShowWindow(
+                Handle,
+                visible
+                    ? NativeMethods.SwShowNoActivate
+                    : NativeMethods.SwHide);
+            _overlayWindowVisible = visible;
+            if (needsInvalidate)
             {
-                NativeMethods.ShowWindow(
-                    Handle,
-                    NativeMethods.SwHide);
-            }
-            else
-            {
-                MoveOverGameWindow();
-                NativeMethods.ShowWindow(
-                    Handle,
-                    NativeMethods.SwShowNoActivate);
                 _performance.RecordInvalidate();
                 Invalidate();
             }
-            UpdateTimerInterval(DateTime.UtcNow);
-            ErrorLog.WriteDebug(
-                "Overlay visibility changed: " +
-                _overlaySuppressionReason);
         }
 
         private void MoveOverGameWindow()
@@ -2177,7 +2376,9 @@ namespace DragonSwordWorldRadar
             try
             {
                 using (Process process =
-                    GameProcessFinder.OpenTracked(_gameProcessId))
+                    _gameProcessId > 0
+                        ? GameProcessFinder.OpenExact(_gameProcessId)
+                        : GameProcessFinder.OpenTracked(_gameProcessId))
                 {
                     if (process != null)
                     {
@@ -2218,6 +2419,8 @@ namespace DragonSwordWorldRadar
                             targetY = rectangle.Top
                                 + ScalePixels(
                                     ReferenceTopMargin);
+                            targetWidth = _overlaySize;
+                            targetHeight = _overlaySize;
                             if (IsWorldMapMode())
                             {
                                 targetX = rectangle.Left;
@@ -2227,14 +2430,16 @@ namespace DragonSwordWorldRadar
                             }
                         }
                     }
+                    else
+                    {
+                        _gameWindowHandle = IntPtr.Zero;
+                    }
                 }
+                ClearModuleFailure("game-window");
             }
             catch (Exception exception)
             {
-                ErrorLog.Write(
-                    "Game window detection failed; " +
-                    "using desktop position",
-                    exception);
+                ReportModuleFailure("game-window", exception);
             }
 
             if (IsWorldMapMode() && !hasGameRectangle)
@@ -2266,7 +2471,7 @@ namespace DragonSwordWorldRadar
         private bool IsWorldMapMode()
         {
             return String.Equals(
-                GetEffectiveMode(),
+                _presentedMode,
                 "world",
                 StringComparison.Ordinal);
         }
@@ -2277,17 +2482,27 @@ namespace DragonSwordWorldRadar
             int targetWidth,
             int targetHeight)
         {
-            NativeRect current;
-            bool alreadyPositioned =
-                IsHandleCreated
-                && NativeMethods.GetWindowRect(Handle, out current)
+            NativeRect current = new NativeRect();
+            bool hasCurrentRectangle = IsHandleCreated
+                && NativeMethods.GetWindowRect(Handle, out current);
+            bool alreadyPositioned = hasCurrentRectangle
                 && current.Left == targetX
                 && current.Top == targetY
                 && current.Width == targetWidth
                 && current.Height == targetHeight;
             if (alreadyPositioned)
             {
+                ClearModuleFailure("set-window-position");
                 return;
+            }
+
+            bool sizeChanged = !hasCurrentRectangle
+                || current.Width != targetWidth
+                || current.Height != targetHeight;
+            uint positionFlags = NativeMethods.SwpNoActivate;
+            if (!_overlayWindowVisible && sizeChanged)
+            {
+                positionFlags |= NativeMethods.SwpNoCopyBits;
             }
 
             if (!NativeMethods.SetWindowPos(
@@ -2297,11 +2512,57 @@ namespace DragonSwordWorldRadar
                 targetY,
                 targetWidth,
                 targetHeight,
-                NativeMethods.SwpNoActivate))
+                positionFlags))
             {
-                ErrorLog.WriteMessage(
-                    "Overlay SetWindowPos failed: Win32 error " +
-                    Marshal.GetLastWin32Error());
+                int error = Marshal.GetLastWin32Error();
+                ReportModuleFailure(
+                    "set-window-position",
+                    new Win32Exception(error));
+                return;
+            }
+            ClearModuleFailure("set-window-position");
+
+            // A layered TransparencyKey window can briefly expose stale or
+            // uninitialized pixels when it changes from the compact radar
+            // rectangle to the full game client. Discard the old backing bits
+            // during SetWindowPos, then synchronously paint the new hidden
+            // surface before ShowWindow makes it visible. This adds no timed
+            // warm-up and runs only when the hidden window size changes.
+            if (!_overlayWindowVisible
+                && sizeChanged
+                && IsHandleCreated)
+            {
+                int paintSequenceBeforeUpdate = _paintSequence;
+                long prepaintStarted = _debugEnabled
+                    ? Stopwatch.GetTimestamp()
+                    : 0L;
+                _performance.RecordInvalidate();
+                Invalidate();
+                Update();
+                _hiddenSurfacePreparedForCurrentTick =
+                    _paintSequence != paintSequenceBeforeUpdate;
+                if (_debugEnabled)
+                {
+                    double prepaintMilliseconds =
+                        (Stopwatch.GetTimestamp() - prepaintStarted)
+                        * 1000.0 / Stopwatch.Frequency;
+                    ErrorLog.WriteDebug(String.Format(
+                        CultureInfo.InvariantCulture,
+                        "MAP_SURFACE_PREPARED mode={0}; size={1}x{2}; painted={3}; elapsedMs={4:F3}",
+                        _presentedMode,
+                        targetWidth,
+                        targetHeight,
+                        _hiddenSurfacePreparedForCurrentTick,
+                        prepaintMilliseconds));
+                }
+            }
+            else if (_overlayWindowVisible && sizeChanged)
+            {
+                // A live resolution/client-size change is not a map-mode
+                // transition. Keep the copied surface visible and request one
+                // normal repaint instead of discarding the client bits.
+                _performance.RecordInvalidate();
+                Invalidate();
             }
         }
 
@@ -2314,7 +2575,7 @@ namespace DragonSwordWorldRadar
             int targetWidth,
             int targetHeight)
         {
-            if (!DebugSettings.Enabled)
+            if (!_debugEnabled)
             {
                 return;
             }

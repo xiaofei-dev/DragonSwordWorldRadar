@@ -1,258 +1,783 @@
 #requires -Version 5.1
+
 $ErrorActionPreference = 'Stop'
+
 Set-StrictMode -Version 2.0
 
-$root = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
-$logDirectory = Join-Path $root 'runtime\patch-deploy'
-New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
-$logPath = Join-Path $logDirectory ('PatchDeploy-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss') + '.log')
-$utf8 = New-Object Text.UTF8Encoding($false)
+
+
+$RepositoryRoot = Split-Path -Parent $PSScriptRoot
+
+$RuntimeRoot = Join-Path $RepositoryRoot 'runtime\patch-deploy'
+
+New-Item -ItemType Directory -Force -Path $RuntimeRoot | Out-Null
+
+$SessionStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+
+$LogPath = Join-Path $RuntimeRoot ("PatchDeploy-{0}.log" -f $SessionStamp)
+
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+
 
 function Write-Log([string]$Message) {
-    $line = '[{0:yyyy-MM-dd HH:mm:ss.fff}] {1}' -f [DateTime]::Now,$Message
+
+    $line = "[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'), $Message
+
     Write-Host $line
-    [IO.File]::AppendAllText($logPath,$line + [Environment]::NewLine,$utf8)
+
+    [IO.File]::AppendAllText($LogPath, $line + [Environment]::NewLine, $Utf8NoBom)
+
 }
 
-function Read-ReleaseVersion {
-    $releasePath = Join-Path $root 'metadata\release.json'
-    if (-not (Test-Path -LiteralPath $releasePath -PathType Leaf)) {
-        throw 'metadata\release.json is missing.'
-    }
-    $release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
-    $version = [string]$release.version
-    if ([string]::IsNullOrWhiteSpace($version)) {
-        throw 'metadata\release.json does not define a version.'
-    }
-    return $version.Trim()
-}
 
-function Invoke-Native {
-    param(
-        [Parameter(Mandatory=$true)][string]$FilePath,
-        [Parameter(Mandatory=$true)][string[]]$Arguments,
-        [string]$WorkingDirectory = $root
-    )
-    Write-Log ('RUN ' + $FilePath + ' ' + ($Arguments -join ' '))
-    Push-Location -LiteralPath $WorkingDirectory
-    try {
-        $output = @(& $FilePath @Arguments 2>&1)
-        $exitCode = $LASTEXITCODE
-    } finally {
-        Pop-Location
-    }
-    foreach ($line in $output) {
-        $text = [string]$line
-        Write-Host $text
-        [IO.File]::AppendAllText($logPath,$text + [Environment]::NewLine,$utf8)
-    }
+
+function Invoke-External([string]$FilePath, [string[]]$Arguments) {
+
+    Write-Log ("RUN {0} {1}" -f $FilePath, ($Arguments -join ' '))
+
+    & $FilePath @Arguments
+
+    $exitCode = $LASTEXITCODE
+
     if ($exitCode -ne 0) {
+
         throw ("Command failed with exit code {0}: {1}" -f $exitCode, $FilePath)
+
     }
+
 }
 
-function Invoke-WindowsPowerShellScript([string]$RelativePath) {
-    $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    if (-not (Test-Path -LiteralPath $windowsPowerShell -PathType Leaf)) {
-        throw 'Windows PowerShell 5.1 is required.'
+
+
+
+
+function Remove-StalePatchArtifacts {
+
+    $sourceRoot = Join-Path $RepositoryRoot 'src'
+
+    if (-not (Test-Path -LiteralPath $sourceRoot)) {
+
+        return
+
     }
-    $scriptPath = Join-Path $root $RelativePath
-    if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
-        throw "Required script is missing: $RelativePath"
+
+
+
+    $artifacts = @(
+
+        Get-ChildItem -LiteralPath $sourceRoot -Recurse -Force -File -ErrorAction SilentlyContinue |
+
+            Where-Object {
+
+                $_.Name.EndsWith('.orig', [StringComparison]::OrdinalIgnoreCase) -or
+
+                $_.Name.EndsWith('.rej', [StringComparison]::OrdinalIgnoreCase)
+
+            }
+
+    )
+
+
+
+    foreach ($artifact in $artifacts) {
+
+        Remove-Item -LiteralPath $artifact.FullName -Force
+
+        Write-Log ("STALE_PATCH_ARTIFACT_REMOVED path={0}" -f $artifact.FullName)
+
     }
-    & $windowsPowerShell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $scriptPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "Validation/build script failed: $RelativePath (exit=$LASTEXITCODE)"
-    }
+
 }
+
+
+
+
+
+function Get-CurrentVersion {
+
+    $releasePath = Join-Path $RepositoryRoot 'metadata\release.json'
+
+    if (-not (Test-Path -LiteralPath $releasePath -PathType Leaf)) { return '(unknown)' }
+
+    try {
+
+        $release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
+
+        $value = [string]$release.version
+
+        if ([string]::IsNullOrWhiteSpace($value)) { return '(unknown)' }
+
+        return $value
+
+    }
+
+    catch { return '(unreadable)' }
+
+}
+
+
+
+function Get-PatchMetadata([string]$PatchPath) {
+
+    $version = '(not declared)'
+
+    $description = '(not declared)'
+
+    $files = New-Object System.Collections.Generic.List[string]
+
+    foreach ($line in @(Get-Content -LiteralPath $PatchPath -TotalCount 200)) {
+
+        if ($line -match '^\s*#\s*PATCH_VERSION\s*:\s*(.+?)\s*$') {
+
+            $version = $Matches[1].Trim()
+
+        }
+
+        elseif ($line -match '^\s*#\s*PATCH_DESCRIPTION\s*:\s*(.+?)\s*$') {
+
+            $description = $Matches[1].Trim()
+
+        }
+
+        elseif ($line -match '^\s*#\s*PATCH_FILES\s*:\s*(.+?)\s*$') {
+
+            foreach ($item in @($Matches[1] -split ';')) {
+
+                $trimmed = $item.Trim().TrimStart('\','/')
+
+                if (-not [string]::IsNullOrWhiteSpace($trimmed)) { $files.Add($trimmed) }
+
+            }
+
+        }
+
+    }
+
+    return [pscustomobject]@{ Version=$version; Description=$description; Files=$files.ToArray() }
+
+}
+
+
 
 function Select-PatchFile {
-    $patches = @(
-        Get-ChildItem -LiteralPath $root -File |
-            Where-Object { $_.Extension -in @('.patch','.diff') } |
-            Sort-Object Name
-    )
-    if ($patches.Count -eq 0) {
-        throw 'No .patch or .diff file was found in the repository root.'
-    }
+
+    $patches = @(Get-ChildItem -LiteralPath $RepositoryRoot -File -Filter '*.patch' | Sort-Object Name)
+
+    if ($patches.Count -eq 0) { throw 'No .patch file was found in the repository root.' }
+
     if ($patches.Count -eq 1) { return $patches[0] }
 
+
+
     Write-Host ''
-    Write-Host 'Available patches:'
-    for ($index = 0; $index -lt $patches.Count; $index++) {
-        Write-Host ('  [{0}] {1}' -f ($index + 1),$patches[$index].Name)
+
+    Write-Host 'PATCH FILES'
+
+    for ($i = 0; $i -lt $patches.Count; $i++) {
+
+        Write-Host ("  [{0}] {1}" -f ($i + 1), $patches[$i].Name)
+
     }
+
     while ($true) {
-        $raw = Read-Host 'Select patch number'
-        $selection = 0
-        if ([Int32]::TryParse($raw,[ref]$selection) -and
-            $selection -ge 1 -and $selection -le $patches.Count) {
-            return $patches[$selection - 1]
+
+        $answer = Read-Host 'Select patch number'
+
+        $number = 0
+
+        if ([int]::TryParse($answer, [ref]$number) -and $number -ge 1 -and $number -le $patches.Count) {
+
+            return $patches[$number - 1]
+
         }
-        Write-Host 'Invalid selection.' -ForegroundColor Yellow
+
+        Write-Host 'Invalid selection.'
+
     }
+
 }
 
-function Select-GameExecutable {
-    Add-Type -AssemblyName System.Windows.Forms
-    $dialog = New-Object Windows.Forms.OpenFileDialog
-    $dialog.Title = 'Select DSClient-Win64-Shipping.exe'
-    $dialog.Filter = 'Dragon Sword executable (DSClient-Win64-Shipping.exe)|DSClient-Win64-Shipping.exe|Executable files (*.exe)|*.exe'
-    $dialog.CheckFileExists = $true
-    $dialog.Multiselect = $false
-    if ($dialog.ShowDialog() -ne [Windows.Forms.DialogResult]::OK) {
-        throw 'Game executable selection was cancelled.'
+
+
+function Backup-DeclaredFiles([string[]]$RelativePaths) {
+
+    $backupRoot = Join-Path $RuntimeRoot ("source-backup-{0}" -f (Get-Date -Format 'yyyyMMdd-HHmmssfff'))
+
+    New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
+
+    $manifest = New-Object System.Collections.Generic.List[object]
+
+
+
+    foreach ($relative in @($RelativePaths)) {
+
+        if ([string]::IsNullOrWhiteSpace($relative)) { continue }
+
+        $normalized = $relative.Replace('/','\').TrimStart('\')
+
+        if ($normalized -match '(^|\\)\.\.($|\\)') { throw ("Unsafe PATCH_FILES path: {0}" -f $relative) }
+
+        $source = Join-Path $RepositoryRoot $normalized
+
+        $backup = Join-Path $backupRoot $normalized
+
+        $existed = Test-Path -LiteralPath $source
+
+        if ($existed) {
+
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $backup) | Out-Null
+
+            if (Test-Path -LiteralPath $source -PathType Container) {
+
+                Copy-Item -LiteralPath $source -Destination $backup -Recurse -Force
+
+            }
+
+            else {
+
+                Copy-Item -LiteralPath $source -Destination $backup -Force
+
+            }
+
+        }
+
+        $manifest.Add([pscustomobject]@{ Relative=$normalized; Existed=$existed })
+
     }
-    $selected = [IO.Path]::GetFullPath($dialog.FileName)
-    if ([IO.Path]::GetFileName($selected) -ine 'DSClient-Win64-Shipping.exe') {
-        throw 'The selected file is not DSClient-Win64-Shipping.exe.'
+
+    return [pscustomobject]@{ Root=$backupRoot; Items=$manifest.ToArray() }
+
+}
+
+
+
+function Restore-DeclaredFiles($Backup) {
+
+    if ($null -eq $Backup) { return }
+
+    foreach ($item in @($Backup.Items)) {
+
+        $target = Join-Path $RepositoryRoot $item.Relative
+
+        $stored = Join-Path $Backup.Root $item.Relative
+
+        if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+
+        if ($item.Existed -and (Test-Path -LiteralPath $stored)) {
+
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+
+            Copy-Item -LiteralPath $stored -Destination $target -Recurse -Force
+
+        }
+
     }
-    $win64 = Split-Path -Parent $selected
-    $ds = Split-Path -Parent (Split-Path -Parent $win64)
-    if ([IO.Path]::GetFileName($ds) -ine 'DS') {
-        throw 'The selected executable is not in the expected DS\Binaries\Win64 layout.'
+
+}
+
+
+
+function Invoke-RepositoryScript([string]$RelativePath) {
+
+    $scriptPath = Join-Path $RepositoryRoot $RelativePath
+
+    if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+
+        throw ("Required script is missing: {0}" -f $RelativePath)
+
     }
-    $gameRoot = Split-Path -Parent $ds
-    $pakPath = Join-Path $gameRoot 'DS\Content\Paks\pakchunk109-WindowsClient.pak'
+
+    $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+
+    Invoke-External $windowsPowerShell @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$scriptPath)
+
+}
+
+
+
+function Resolve-GameLayout([string]$SelectedPath) {
+
+    $current = [IO.Path]::GetFullPath($SelectedPath)
+
+    for ($i = 0; $i -lt 6; $i++) {
+
+        $nestedDs = Join-Path $current 'DS'
+
+        if ((Test-Path -LiteralPath (Join-Path $nestedDs 'Binaries\Win64\DSClient-Win64-Shipping.exe') -PathType Leaf) -and
+
+            (Test-Path -LiteralPath (Join-Path $nestedDs 'Content\Paks\pakchunk109-WindowsClient.pak') -PathType Leaf)) {
+
+            return [pscustomobject]@{ GameRoot=$current; DsRoot=$nestedDs }
+
+        }
+
+        if ((Test-Path -LiteralPath (Join-Path $current 'Binaries\Win64\DSClient-Win64-Shipping.exe') -PathType Leaf) -and
+
+            (Test-Path -LiteralPath (Join-Path $current 'Content\Paks\pakchunk109-WindowsClient.pak') -PathType Leaf)) {
+
+            return [pscustomobject]@{ GameRoot=(Split-Path -Parent $current); DsRoot=$current }
+
+        }
+
+        $parent = Split-Path -Parent $current
+
+        if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $current) { break }
+
+        $current = $parent
+
+    }
+
+    return $null
+
+}
+
+
+
+
+
+function Get-LocalDeployModsPath {
+
+    $configDirectory = Join-Path $RepositoryRoot 'runtime\local-config'
+
+    $configPath = Join-Path $configDirectory 'deploy-mods-path.txt'
+
+    $defaultPath = 'G:\SteamLibrary\steamapps\common\DragonSword  Awakening\DS\Binaries\Win64\Mods'
+
+
+
+    if (-not (Test-Path -LiteralPath $configDirectory)) {
+
+        New-Item -ItemType Directory -Path $configDirectory -Force | Out-Null
+
+    }
+
+
+
+    
+    $gitInfoExclude = Join-Path $RepositoryRoot '.git\info\exclude'
+    $gitInfoDirectory = Split-Path -Parent $gitInfoExclude
+    if (Test-Path -LiteralPath $gitInfoDirectory -PathType Container) {
+        $excludeEntry = 'runtime/local-config/'
+        $existingExclude = ''
+        if (Test-Path -LiteralPath $gitInfoExclude -PathType Leaf) {
+            $existingExclude = [IO.File]::ReadAllText($gitInfoExclude)
+        }
+        if ($existingExclude -notmatch '(?m)^runtime/local-config/\s*$') {
+            [IO.File]::AppendAllText(
+                $gitInfoExclude,
+                [Environment]::NewLine + $excludeEntry + [Environment]::NewLine,
+                (New-Object Text.UTF8Encoding($false))
+            )
+            Write-Log ("LOCAL_GIT_EXCLUDE_ADDED path={0}" -f $gitInfoExclude)
+        }
+    }
+
+    if (-not (Test-Path -LiteralPath $configPath)) {
+
+        [IO.File]::WriteAllText(
+
+            $configPath,
+
+            $defaultPath + [Environment]::NewLine,
+
+            (New-Object Text.UTF8Encoding($false))
+
+        )
+
+        Write-Log ("LOCAL_DEPLOY_CONFIG_CREATED path={0}" -f $configPath)
+
+    }
+
+
+
+    $modsPath = ([IO.File]::ReadAllText($configPath)).Trim()
+
+    if ([string]::IsNullOrWhiteSpace($modsPath)) {
+
+        throw ("Local deploy path is empty: {0}" -f $configPath)
+
+    }
+
+
+
+    $modsPath = [IO.Path]::GetFullPath($modsPath)
+
+    $expectedSuffix = '\DS\Binaries\Win64\Mods'
+
+    if (-not $modsPath.EndsWith($expectedSuffix, [StringComparison]::OrdinalIgnoreCase)) {
+
+        throw ("Configured path must end with {0}: {1}" -f $expectedSuffix, $modsPath)
+
+    }
+
+
+
+    $win64Path = Split-Path -Parent $modsPath
+
+    $dsPath = [IO.Path]::GetFullPath((Join-Path $win64Path '..\..'))
+
+    $exePath = Join-Path $win64Path 'DSClient-Win64-Shipping.exe'
+
+    $pakPath = Join-Path $dsPath 'Content\Paks\pakchunk109-WindowsClient.pak'
+
+
+
+    if (-not (Test-Path -LiteralPath $modsPath -PathType Container)) {
+
+        throw ("Configured Mods directory does not exist: {0}" -f $modsPath)
+
+    }
+
+    if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
+
+        throw ("Game executable was not found beside the configured Mods directory: {0}" -f $exePath)
+
+    }
+
     if (-not (Test-Path -LiteralPath $pakPath -PathType Leaf)) {
-        throw 'The selected game installation does not contain pakchunk109-WindowsClient.pak.'
+
+        throw ("Game PAK was not found for the configured Mods directory: {0}" -f $pakPath)
+
     }
+
+
+
+    $gameRoot = Split-Path -Parent $dsPath
+
+    Write-Log ("LOCAL_DEPLOY_CONFIG_OK path={0}" -f $configPath)
+    Write-Log ("DEPLOY_MODS_PATH path={0}" -f $modsPath)
+
     return [pscustomobject]@{
-        Executable = $selected
-        Win64 = $win64
         GameRoot = $gameRoot
-        ModsRoot = Join-Path $win64 'Mods'
-        ModRoot = Join-Path (Join-Path $win64 'Mods') 'DragonSwordWorldRadar'
+        DsRoot = $dsPath
+        ModsRoot = $modsPath
     }
+
 }
 
-function Copy-ReleaseToGame {
-    param(
-        [Parameter(Mandatory=$true)][string]$Source,
-        [Parameter(Mandatory=$true)][string]$Destination
-    )
-    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-    $robocopy = Join-Path $env:SystemRoot 'System32\robocopy.exe'
-    & $robocopy $Source $Destination /MIR /COPY:DAT /DCOPY:DAT /R:2 /W:1 /XF 'config.lua' 'treasure_overrides.txt' /XD 'runtime' /NFL /NDL /NJH /NJS /NP
-    $code = $LASTEXITCODE
-    if ($code -ge 8) {
-        throw "Deployment copy failed. robocopy exit code=$code"
+
+
+function Select-GameLayout {
+
+    Add-Type -AssemblyName System.Windows.Forms
+
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+
+    $dialog.Description = 'Select Dragon Sword Awakening, DS, or DS\Binaries\Win64 folder'
+
+    $dialog.ShowNewFolderButton = $false
+
+    try {
+
+        if ($dialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
+
+            throw 'Game folder selection was cancelled.'
+
+        }
+
+        $layout = Resolve-GameLayout $dialog.SelectedPath
+
+        if ($null -eq $layout) {
+
+            throw 'The selected folder does not contain the expected Dragon Sword Awakening DS layout.'
+
+        }
+
+        return $layout
+
     }
+
+    finally { $dialog.Dispose() }
+
 }
+
+
+
+function Copy-DirectoryContents([string]$Source, [string]$Destination) {
+
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+
+    $items = @(Get-ChildItem -LiteralPath $Source -Force)
+
+    foreach ($item in $items) {
+
+        Copy-Item -LiteralPath $item.FullName -Destination $Destination -Recurse -Force
+
+    }
+
+}
+
+
+
+function Deploy-Release([string]$DsRoot) {
+
+    $version = Get-CurrentVersion
+
+    if ($version -eq '(unknown)' -or $version -eq '(unreadable)') { throw 'Cannot resolve the built release version.' }
+
+    $stageMod = Join-Path $RepositoryRoot ("dist\DragonSwordWorldRadar-{0}\DragonSwordWorldRadar" -f $version)
+
+    if (-not (Test-Path -LiteralPath $stageMod -PathType Container)) {
+
+        throw ("Built release staging directory is missing: {0}" -f $stageMod)
+
+    }
+
+
+
+    $gameProcesses = @(Get-Process -Name 'DSClient-Win64-Shipping' -ErrorAction SilentlyContinue)
+
+    if ($gameProcesses.Count -gt 0) { throw 'Close Dragon Sword before deployment.' }
+
+
+
+    $modsRoot = Join-Path $DsRoot 'Binaries\Win64\Mods'
+
+    $target = Join-Path $modsRoot 'DragonSwordWorldRadar'
+
+    New-Item -ItemType Directory -Force -Path $modsRoot | Out-Null
+
+
+
+    $deployBackup = Join-Path $RuntimeRoot ("game-mod-backup-{0}" -f (Get-Date -Format 'yyyyMMdd-HHmmssfff'))
+
+    $hadTarget = Test-Path -LiteralPath $target -PathType Container
+
+    if ($hadTarget) { Copy-Item -LiteralPath $target -Destination $deployBackup -Recurse -Force }
+
+
+
+    try {
+
+        $preserveRoot = Join-Path $RuntimeRoot ("preserve-{0}" -f (Get-Date -Format 'yyyyMMdd-HHmmssfff'))
+
+        New-Item -ItemType Directory -Force -Path $preserveRoot | Out-Null
+
+        $preserve = @('scripts\config.lua','data\treasure_overrides.txt','runtime')
+
+        foreach ($relative in $preserve) {
+
+            $existing = Join-Path $target $relative
+
+            if (Test-Path -LiteralPath $existing) {
+
+                $saved = Join-Path $preserveRoot $relative
+
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $saved) | Out-Null
+
+                Copy-Item -LiteralPath $existing -Destination $saved -Recurse -Force
+
+            }
+
+        }
+
+
+
+        if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+
+        New-Item -ItemType Directory -Force -Path $target | Out-Null
+
+        Copy-DirectoryContents $stageMod $target
+
+
+
+        foreach ($relative in $preserve) {
+
+            $saved = Join-Path $preserveRoot $relative
+
+            if (Test-Path -LiteralPath $saved) {
+
+                $destination = Join-Path $target $relative
+
+                if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Recurse -Force }
+
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+
+                Copy-Item -LiteralPath $saved -Destination $destination -Recurse -Force
+
+            }
+
+        }
+
+
+
+        $installCmd = Join-Path $target 'Install.cmd'
+
+        if (-not (Test-Path -LiteralPath $installCmd -PathType Leaf)) { throw 'Deployed Install.cmd is missing.' }
+
+        Invoke-External $env:ComSpec @('/d','/c','call',('"{0}"' -f $installCmd))
+
+        Write-Log ("DEPLOY_OK target={0}" -f $target)
+
+    }
+
+    catch {
+
+        Write-Log ("DEPLOY_ROLLBACK reason={0}" -f $_.Exception.Message)
+
+        if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue }
+
+        if ($hadTarget -and (Test-Path -LiteralPath $deployBackup)) {
+
+            Copy-Item -LiteralPath $deployBackup -Destination $target -Recurse -Force
+
+        }
+
+        throw
+
+    }
+
+}
+
+
+
+$patchFile = $null
+
+$sourceBackup = $null
 
 try {
-    Set-Location -LiteralPath $root
-    Write-Log ('START root=' + $root)
 
-    $git = (Get-Command git.exe -ErrorAction Stop).Source
-    $inside = (& $git -C $root rev-parse --is-inside-work-tree 2>$null).Trim()
-    if ($inside -ne 'true') { throw 'Repository root is not a Git work tree.' }
-    $patch = Select-PatchFile
-    $allowedPatchNames = @(
-        Get-ChildItem -LiteralPath $root -File |
-            Where-Object { $_.Extension -in @('.patch','.diff') } |
-            ForEach-Object { $_.Name }
-    )
-    $status = @(& $git -C $root status --porcelain)
-    $blockingStatus = @($status | Where-Object {
-        $line = [string]$_
-        if (-not $line.StartsWith('?? ')) { return $true }
-        $relative = $line.Substring(3).Trim('"')
-        return -not ($allowedPatchNames -contains $relative)
-    })
-    if ($blockingStatus.Count -ne 0) {
-        throw "The Git working tree is not clean. Commit, stash, or remove current changes before applying a patch.`n$($blockingStatus -join [Environment]::NewLine)"
-    }
+    Write-Log ("START root={0}" -f $RepositoryRoot)
 
-    $baseVersion = Read-ReleaseVersion
-    $baseCommit = (& $git -C $root rev-parse --short HEAD).Trim()
-    $patchHash = (Get-FileHash -LiteralPath $patch.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    $patchFile = Select-PatchFile
+
+    $metadata = Get-PatchMetadata $patchFile.FullName
+
+    $currentVersion = Get-CurrentVersion
+
+    $hash = (Get-FileHash -LiteralPath $patchFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+
+
 
     Write-Host ''
-    Write-Host 'PATCH CONFIRMATION' -ForegroundColor Cyan
-    Write-Host ('  Current version : {0}' -f $baseVersion)
-    Write-Host ('  Current commit  : {0}' -f $baseCommit)
-    Write-Host ('  Patch file      : {0}' -f $patch.Name)
-    Write-Host ('  Patch SHA-256   : {0}' -f $patchHash)
-    Write-Host ''
-    $baseConfirmation = Read-Host "Type the current version exactly to apply this patch"
-    if ($baseConfirmation -cne $baseVersion) {
-        throw 'Base version confirmation did not match. No patch was applied.'
-    }
 
-    Invoke-Native -FilePath $git -Arguments @('-C',$root,'apply','--check','--whitespace=error-all','--',$patch.FullName)
-    Invoke-Native -FilePath $git -Arguments @('-C',$root,'apply','--index','--whitespace=fix','--',$patch.FullName)
+    Write-Host 'PATCH FOUND'
 
-    $targetVersion = Read-ReleaseVersion
-    $changed = @(& $git -C $root diff --cached --name-status)
-    Write-Host ''
-    Write-Host 'PATCH APPLIED TO INDEX' -ForegroundColor Green
-    Write-Host ('  Base version   : {0}' -f $baseVersion)
-    Write-Host ('  Target version : {0}' -f $targetVersion)
-    Write-Host '  Changed files:'
-    foreach ($line in $changed) { Write-Host ('    ' + $line) }
-    Write-Host ''
-    $targetConfirmation = Read-Host "Type the target version exactly to validate, build, and deploy"
-    if ($targetConfirmation -cne $targetVersion) {
-        throw 'Target version confirmation did not match. Patch remains staged, but nothing was built or deployed.'
-    }
+    Write-Host ("  Current version : {0}" -f $currentVersion)
 
-    Invoke-WindowsPowerShellScript 'build\Verify-Source.ps1'
-    Invoke-WindowsPowerShellScript 'build\Compile-Source.ps1'
-    Invoke-WindowsPowerShellScript 'build\Test-Refactor.ps1'
-    Invoke-WindowsPowerShellScript 'build\Build-Release.ps1'
+    Write-Host ("  Patch version   : {0}" -f $metadata.Version)
 
-    $stageMod = Join-Path $root ('dist\DragonSwordWorldRadar-' + $targetVersion + '\DragonSwordWorldRadar')
-    $archive = Join-Path $root ('dist\DragonSwordWorldRadar-v' + $targetVersion + '.zip')
-    if (-not (Test-Path -LiteralPath $stageMod -PathType Container)) {
-        throw "Built release staging directory is missing: $stageMod"
-    }
-    if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) {
-        throw "Built release archive is missing: $archive"
-    }
-    $archiveHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-    Write-Log ('BUILD_OK archive=' + $archive + '; sha256=' + $archiveHash)
+    Write-Host ("  Description     : {0}" -f $metadata.Description)
 
-    if (Get-Process -Name 'DSClient-Win64-Shipping' -ErrorAction SilentlyContinue) {
-        throw 'Close Dragon Sword Awakening before deployment.'
-    }
-    $game = Select-GameExecutable
-    Write-Host ''
-    Write-Host 'DEPLOYMENT CONFIRMATION' -ForegroundColor Cyan
-    Write-Host ('  Version       : {0}' -f $targetVersion)
-    Write-Host ('  Game EXE      : {0}' -f $game.Executable)
-    Write-Host ('  Mod directory : {0}' -f $game.ModRoot)
-    $deployConfirmation = Read-Host 'Type DEPLOY to copy and run the installer'
-    if ($deployConfirmation -cne 'DEPLOY') {
-        throw 'Deployment was cancelled. Patch remains staged and the release remains built.'
-    }
+    Write-Host ("  Patch file      : {0}" -f $patchFile.Name)
 
-    Copy-ReleaseToGame -Source $stageMod -Destination $game.ModRoot
-    $install = Join-Path $game.ModRoot 'Install.cmd'
-    if (-not (Test-Path -LiteralPath $install -PathType Leaf)) {
-        throw 'Deployment completed, but Install.cmd is missing from the target Mod directory.'
-    }
-    Write-Log ('DEPLOY_COPY_OK target=' + $game.ModRoot)
-    & $install
-    if ($LASTEXITCODE -ne 0) {
-        throw "The deployed installer failed with exit code $LASTEXITCODE."
-    }
+    Write-Host ("  Patch SHA-256   : {0}" -f $hash)
 
     Write-Host ''
-    Write-Host 'PATCH_BUILD_DEPLOY_COMPLETE' -ForegroundColor Green
-    Write-Host ('Version:       {0}' -f $targetVersion)
-    Write-Host ('Release ZIP:   {0}' -f $archive)
-    Write-Host ('ZIP SHA-256:   {0}' -f $archiveHash)
-    Write-Host ('Game Mod path: {0}' -f $game.ModRoot)
-    Write-Host ('Log:           {0}' -f $logPath)
+
+    $confirmation = Read-Host 'Install this patch and deploy? [Y/N]'
+
+    if ($confirmation -notmatch '^(?i)y(?:es)?$') {
+
+        Write-Log 'CANCELLED user declined patch installation'
+
+        exit 0
+
+    }
+
+
+
+    if ($metadata.Files.Count -gt 0) {
+
+        $sourceBackup = Backup-DeclaredFiles $metadata.Files
+
+        Write-Log ("PATCH_BACKUP_OK files={0}; path={1}" -f $metadata.Files.Count, $sourceBackup.Root)
+
+    }
+
+    else {
+
+        Write-Log 'PATCH_BACKUP_SKIPPED reason=PATCH_FILES metadata not declared'
+
+    }
+
+
+
+    $patchText = Get-Content -LiteralPath $patchFile.FullName -Raw
+
+    $scriptBlock = [scriptblock]::Create($patchText)
+
+    $env:DSWR_REPOSITORY_ROOT = $RepositoryRoot
+
+    Write-Log ("PATCH_EXECUTE file={0}" -f $patchFile.Name)
+
+    & $scriptBlock
+
+    Write-Log 'PATCH_EXECUTE_OK'
+
+
+
+    Remove-StalePatchArtifacts
+
+    Invoke-RepositoryScript 'build\Verify-Source.ps1'
+
+    Invoke-RepositoryScript 'build\Compile-Source.ps1'
+
+    Invoke-RepositoryScript 'build\Test-Refactor.ps1'
+
+    Invoke-RepositoryScript 'build\Build-Release.ps1'
+
+    Write-Log 'BUILD_OK'
+
+
+
+$layout = Get-LocalDeployModsPath
+
+    Write-Log ("GAME_FOLDER_SELECTED game_root={0}; ds_root={1}" -f $layout.GameRoot, $layout.DsRoot)
+
+    Deploy-Release $layout.DsRoot
+
+
+
+    Remove-Item -LiteralPath $patchFile.FullName -Force
+
+    Write-Log ("PATCH_DELETED file={0}" -f $patchFile.Name)
+
     Write-Host ''
-    Write-Host 'The patch changes are staged in Git. Review and commit them when ready.'
+
+    Write-Host 'Patch applied, validated, built, and deployed successfully.'
+
+    Write-Host ("Log: {0}" -f $LogPath)
+
     exit 0
-} catch {
-    Write-Log ('FAILED ' + $_.Exception.Message)
+
+}
+
+catch {
+
+    $message = $_.Exception.Message
+
+    Write-Log ("FAILED {0}" -f $message)
+
+    if ($null -ne $sourceBackup) {
+
+        try {
+
+            Restore-DeclaredFiles $sourceBackup
+
+            Write-Log 'SOURCE_ROLLBACK_OK'
+
+        }
+
+        catch { Write-Log ("SOURCE_ROLLBACK_FAILED {0}" -f $_.Exception.Message) }
+
+    }
+
     Write-Host ''
+
     Write-Host 'Patch/deployment failed.' -ForegroundColor Red
-    Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-Host ('Log: ' + $logPath)
+
+    Write-Host $message -ForegroundColor Red
+
+    Write-Host ("Log: {0}" -f $LogPath)
+
     exit 1
+
+}
+
+finally {
+
+    Remove-Item Env:DSWR_REPOSITORY_ROOT -ErrorAction SilentlyContinue
+
 }

@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.4.0-dev9-performance1.3-mapinstant-hiddenhost1
+
+- Removed the 1000 ms world-map reveal delay and all associated warm-up state; map entry and exit now restore the Overlay in the same timer cycle.
+- Kept hide-before-resize, added `SWP_NOCOPYBITS`, and synchronously repaints the newly sized hidden surface before `SW_SHOWNOACTIVATE`. A paint-sequence check skips the second full-screen invalidate only when hidden prepaint actually completed. Debug mode records `MAP_SURFACE_PREPARED` timing. This is a zero-timer attempt to suppress stale layered-window pixels without retaining a full-screen surface outside map mode.
+- Restored the proven resident hidden WScript launcher used by the stable baseline. Game-time Lua now writes only `runtime\launch.request` and no longer invokes `cmd.exe`, `wscript.exe`, or PowerShell, eliminating the transient console-window path.
+- The installer recreates and validates the hidden user Startup watcher; the game-bound PowerShell host remains hidden and exits with the exact game process.
+- Classified the expected pre-login save-key-not-ready state as Debug-only instead of writing a normal-use stack trace.
+- The diagnostic game executable is 162,551,704 bytes; normal startup no longer reads it before the known RVAs have had 30 seconds to resolve.
+- Launch request stamps are digits-only and newline-free; WScript validates them before command construction, fixing the observed broken WatcherHost log lines and reducing parameter-injection surface.
+- Changed save-key discovery to try cached/current/legacy RVAs first. A full game-EXE signature scan is now a one-time worker-thread fallback after 30 seconds; transient owner/key-not-ready states neither trigger it early nor disable it, and the Overlay UI thread is never blocked by that scan.
+- No bridge fields, treasure/Boss semantics, save schema, marker style, F7/F8 behavior, or active map-producer intervals changed.
+
+## 0.4.0-dev9-performance1.2-mapfix-debug1-cleanup1
+
+- Removed Overlay runtime polling for `debug_logging`/`diagnostic_verbose`; the setting is parsed once at process startup, so normal Timer ticks and debug-log guards perform no config-file stat/read work.
+- Removed runtime Boss RespawnCycle PAK enumeration, binary-to-text decoding, regex parsing, the 30-second debug rescan path, and the associated locks/state.
+- Preserved Boss availability semantics with the verified fixed rule-106 schedule: daily reset at 09:00 local time.
+- Removed the save-worker call that existed only to refresh the optional Boss rule scanner.
+- Added source-verifier assertions that reject reintroduction of Debug hot-reload polling and runtime Boss PAK scanning.
+- No bridge schema, save-table interpretation, marker behavior, F7/F8 behavior, or map lifecycle logic changed.
+
+## 0.4.0-dev9-performance1.2-mapfix-debug1
+
+- Removed the always-full-client radar window introduced after `performance1.1`; radar mode again uses an actual small top-right layered window.
+- Changed world-map lifecycle handling to hide the Overlay before resizing, keep it hidden for 1000 ms after every map entry, and restore the small radar immediately on the first confirmed map-close read.
+- Removed the 96 ms always-on map UObject detector, three-miss exit confirmation, and 250 ms stale re-entry block from the 24 ms radar motion path.
+- Restricted 24 ms world-map UObject sampling to the period in which the world map is actually active, and reused the active transform in the 250 ms static publisher.
+- Made Lua game-thread queue/callback gates recover after scheduling or callback exceptions instead of remaining permanently pending.
+- Split Lua and Overlay output into low-volume `Use` logs and opt-in `Debug` logs. Normal mode no longer computes or writes periodic performance diagnostics.
+- Expanded debug diagnostics with producer queue/update latency, 50/100/250 ms stall counts, motion sample/write rates, Overlay timer/paint gaps, normalized process CPU, working set, visibility, and geometry. `overlayPaintFps` is explicitly labeled as an Overlay metric rather than game Present FPS.
+- Reduced optional Boss respawn-rule PAK discovery to one scan per Overlay process in normal mode; periodic rescans remain available only in debug mode. PAK enumeration failures now preserve the daily 09:00 fallback and cannot abort save-state refresh.
+- Added transient game-process and game-window failure recovery, log-session rotation, and exact source-verifier rules for the repaired map lifecycle.
+- Hardened Overlay launch retry and serialized, before/after-consistent debug-config reads across UI/save worker threads; the normal timer checks for debug-mode changes only once per second.
+- Removed the no-op Boss tracker call from the 250 ms static-state build.
+- Excluded generated `runtime`/patch-deployment backups from the source-only unexpected-EXE scan while retaining SHA-256 enforcement for the single bundled `ooz.exe`.
+- Static validation was completed in Linux. Windows PowerShell 5.1 `Add-Type` compilation and in-game FPS/transition validation remain mandatory deployment checks; `Install.cmd` must print `OVERLAY_COMPILE_OK`.
+
 ## 0.4.0-dev9-performance1.1
 
 - Reduced compact-motion bridge writes through cumulative visual-delta filtering while retaining a one-second liveness heartbeat.
@@ -11,8 +48,6 @@
 - Added scheduler/write-suppression counters to Lua and Overlay diagnostics.
 - Fixed the Windows PowerShell 5.1 CodeDOM local-variable shadowing error in `MotionVisualSnapshot.Update`.
 - In-game diagnostics confirmed normal operation, adaptive timer transitions, zero bridge/write failures, and materially lower idle/active work.
-
-# Changelog
 
 ## 0.4.0-dev8-refactor2
 

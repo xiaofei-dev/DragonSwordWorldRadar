@@ -375,8 +375,6 @@ namespace DragonSwordWorldRadar
                 (SaveLoadRequest)state;
             try
             {
-                // Rule scanning and all database I/O stay on the worker thread.
-                _bossRuleResolver.Refresh();
                 SaveSnapshot snapshot = SaveSnapshotReader.Read(
                     request.Slot,
                     request.Key);
@@ -480,6 +478,11 @@ namespace DragonSwordWorldRadar
             IDictionary<int, BossRespawnRecord> current,
             SaveSlotFingerprint slot)
         {
+            if (!DebugSettings.Enabled)
+            {
+                return;
+            }
+
             foreach (int bossId in WorldBossIds)
             {
                 BossRespawnRecord record;
@@ -524,7 +527,7 @@ namespace DragonSwordWorldRadar
                 }
                 if (changed)
                 {
-                    ErrorLog.WriteMessage(
+                    ErrorLog.WriteDebug(
                         "World-boss save state: " + messageState);
                 }
             }
@@ -594,19 +597,65 @@ namespace DragonSwordWorldRadar
 
         private void LogRefreshError(Exception exception)
         {
-            string message =
-                exception.GetType().FullName + ": " +
-                exception.Message;
+            string message = BuildExceptionSignature(exception);
             lock (_sync)
             {
-                if (message != _lastError)
+                if (message == _lastError)
                 {
-                    _lastError = message;
-                    ErrorLog.Write(
-                        "Save-state refresh failed",
-                        exception);
+                    return;
                 }
+
+                _lastError = message;
+                if (!_hasLoadedSaveState
+                    && IsExpectedStartupNotReady(exception))
+                {
+                    ErrorLog.WriteDebug(
+                        "Save-state initialization pending: " +
+                        message);
+                    return;
+                }
+
+                ErrorLog.Write(
+                    "Save-state refresh failed",
+                    exception);
             }
+        }
+
+        private static string BuildExceptionSignature(
+            Exception exception)
+        {
+            List<string> parts = new List<string>();
+            Exception current = exception;
+            while (current != null)
+            {
+                parts.Add(
+                    current.GetType().FullName + ": " +
+                    current.Message);
+                current = current.InnerException;
+            }
+            return String.Join(" --> ", parts.ToArray());
+        }
+
+        private static bool IsExpectedStartupNotReady(
+            Exception exception)
+        {
+            Exception current = exception;
+            while (current != null)
+            {
+                if (String.Equals(
+                        current.Message,
+                        "Save database owner is not ready.",
+                        StringComparison.Ordinal)
+                    || String.Equals(
+                        current.Message,
+                        "Save database key is not ready.",
+                        StringComparison.Ordinal))
+                {
+                    return true;
+                }
+                current = current.InnerException;
+            }
+            return false;
         }
 
         private void ResetForGameProcess(int processId)
