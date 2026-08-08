@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "providers": [
     {
       "id": "treasures",
@@ -7,7 +7,9 @@
       "source_pak": "pakchunk109-WindowsClient.pak",
       "source_entry": "SectionTreasureBoxData.xml",
       "output": "data/generated/treasures.lua",
-      "runtime_module": "scripts/treasures.lua"
+      "runtime_owner": "src/overlay/Data/WorldTreasureCatalog.cs",
+      "compatibility_wrapper": "scripts/treasures.lua",
+      "lua_runtime_catalog_load": false
     },
     {
       "id": "bosses",
@@ -15,7 +17,9 @@
       "source_pak": "pakchunk109-WindowsClient.pak",
       "source_entry": "SectionMonsterData.xml (CID-matched fixed world-boss definitions)",
       "output": "data/generated/bosses.lua",
-      "runtime_module": "scripts/bosses.lua",
+      "runtime_owner": "src/overlay/Data/WorldBossCatalog.cs",
+      "compatibility_wrapper": "scripts/bosses.lua",
+      "lua_runtime_catalog_load": false,
       "record_count": 9
     }
   ]

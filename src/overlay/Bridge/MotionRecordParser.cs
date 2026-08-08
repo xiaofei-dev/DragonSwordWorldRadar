@@ -4,9 +4,12 @@ namespace DragonSwordWorldRadar
 {
     internal static class MotionRecordParser
     {
-        // Parses the fixed 21-field compact ASCII motion record directly from
-        // a reusable byte buffer. The leading and trailing sequence values
-        // must match before a frame is published.
+        private const int SupportedProtocolVersion = 2;
+
+        // Parses the fixed 27-field compact ASCII motion/control record directly
+        // from a reusable byte buffer. The explicit protocol version prevents a
+        // mixed old/new deployment from interpreting shifted fields, and the
+        // leading/trailing sequence values reject partial slot rewrites.
         public static bool TryParse(
             byte[] buffer,
             int length,
@@ -24,9 +27,15 @@ namespace DragonSwordWorldRadar
             FieldReader reader = new FieldReader(buffer, length);
 
             long sequence;
+            int protocolVersion;
             int generation;
             int enabled;
             string mode;
+            int showHeight;
+            int showTreasureTypes;
+            int showTreasures;
+            int showBosses;
+            double textScale;
             double playerX;
             double playerY;
             double playerZ;
@@ -46,9 +55,15 @@ namespace DragonSwordWorldRadar
             long trailingSequence;
 
             if (!reader.TryReadInt64(out sequence)
+                || !reader.TryReadInt32(out protocolVersion)
                 || !reader.TryReadInt32(out generation)
                 || !reader.TryReadInt32(out enabled)
                 || !reader.TryReadMode(out mode)
+                || !reader.TryReadInt32(out showHeight)
+                || !reader.TryReadInt32(out showTreasureTypes)
+                || !reader.TryReadInt32(out showTreasures)
+                || !reader.TryReadInt32(out showBosses)
+                || !reader.TryReadDouble(out textScale)
                 || !reader.TryReadDouble(out playerX)
                 || !reader.TryReadDouble(out playerY)
                 || !reader.TryReadDouble(out playerZ)
@@ -69,7 +84,29 @@ namespace DragonSwordWorldRadar
                 || !reader.AtEnd
                 || sequence != trailingSequence
                 || sequence < 0
-                || generation < 0)
+                || protocolVersion != SupportedProtocolVersion
+                || generation < 0
+                || (enabled != 0 && enabled != 1)
+                || (showHeight != 0 && showHeight != 1)
+                || (showTreasureTypes != 0 && showTreasureTypes != 1)
+                || (showTreasures != 0 && showTreasures != 1)
+                || (showBosses != 0 && showBosses != 1)
+                || (hasPlayerZ != 0 && hasPlayerZ != 1)
+                || (enabled == 0
+                    && !String.Equals(
+                        mode,
+                        "disabled",
+                        StringComparison.Ordinal))
+                || (enabled != 0
+                    && String.Equals(
+                        mode,
+                        "disabled",
+                        StringComparison.Ordinal))
+                || (enabled != 0 && radius <= 0)
+                || Double.IsNaN(textScale)
+                || Double.IsInfinity(textScale)
+                || textScale < 0.5
+                || textScale > 2.0)
             {
                 return false;
             }
@@ -105,9 +142,15 @@ namespace DragonSwordWorldRadar
             }
 
             frame.Sequence = sequence;
+            frame.ProtocolVersion = protocolVersion;
             frame.Generation = generation;
             frame.Enabled = enabled != 0;
             frame.Mode = mode;
+            frame.ShowHeight = showHeight != 0;
+            frame.ShowTreasureTypes = showTreasureTypes != 0;
+            frame.ShowTreasures = showTreasures != 0;
+            frame.ShowBosses = showBosses != 0;
+            frame.TextScale = textScale;
             frame.PlayerX = playerX;
             frame.PlayerY = playerY;
             frame.PlayerZ = playerZ;

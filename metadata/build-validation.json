@@ -1,167 +1,176 @@
 {
-  "schema_version": 2,
-  "version": "0.4.0-dev9-performance1.3-mapinstant-hiddenhost1",
-  "generated_at_utc": "2026-08-06T20:22:20.622746Z",
+  "schema_version": 3,
+  "version": "0.4.0-dev9-performance1.8-singlebridge1",
+  "generated_at_utc": "2026-08-08T03:29:46.424873Z",
   "comparison": {
-    "optimized_baseline_archive": "DragonSwordWorldRadar-main.zip",
-    "latest_input_archive": "DragonSwordWorldRadar_New.zip",
-    "historical_baseline_tag": "v0.4.0-dev7-stable6",
-    "scope": "map lifecycle repair, instant no-copy map transition, hidden resident launch restoration, whole-source reliability/performance audit, normal/debug logging split, and removal of obsolete runtime polling/scanning"
+    "source_baseline": "0.4.0-dev9-performance1.7-stablecore1",
+    "scope": "Remove active JSON Static Bridge while retaining the accepted 1.7 scheduler, motion thresholds, treasure hot-path offload, save behavior, and immediate one-time world-map prepaint.",
+    "expected_effect": "Lower periodic Lua JSON/file work, remove Overlay static-file polling and JSON parsing, eliminate duplicate state reconciliation, and reduce architecture complexity. No numeric FPS gain is claimed."
   },
   "preparation_environment": {
     "platform": "Linux container",
     "windows_powershell_5_1_add_type": "not executable in this environment",
     "in_game_validation": "not executed",
-    "authoritative_runtime_gate": "After deployment, Install.cmd must complete Windows PowerShell 5.1 Add-Type compilation and log OVERLAY_COMPILE_OK, INSTALLER_COMPILE_OK, RESIDENT_WATCHER_READY, and INSTALL_COMPLETE."
+    "authoritative_windows_gate": "Install.cmd must print OVERLAY_COMPILE_OK, INSTALLER_COMPILE_OK, SESSION_WATCHER_READY, and INSTALL_COMPLETE"
   },
   "compatibility": {
-    "bridge_protocol_changed": false,
-    "motion_field_count": 21,
-    "static_state_interval_ms": 250,
-    "minimap_motion_interval_ms": 24,
-    "active_world_map_motion_interval_ms": 24,
-    "world_map_entry_detection_interval_ms": 250,
+    "runtime_bridge_schema_changed": true,
+    "motion_protocol_version": 2,
+    "motion_field_count": 27,
+    "old_motion_protocol_version": 1,
+    "old_motion_field_count": 21,
+    "old_protocol_frames_accepted": false,
+    "active_runtime_bridge_count": 1,
+    "active_runtime_slots": [
+      "runtime/bridge/radar_motion_a.dat",
+      "runtime/bridge/radar_motion_b.dat"
+    ],
+    "static_bridge_removed": true,
+    "legacy_static_files": "cleanup-only; never read or written as live state",
     "save_schema_changed": false,
     "generated_lua_schema_changed": false,
     "runtime_hooks_added": false,
-    "character_enumeration_added": false,
     "f7_f8_behavior_changed": false,
     "marker_style_changed": false,
-    "window_lifecycle_changed": true
-  },
-  "root_cause": [
-    "The latest input kept the transparent layered Overlay at full game-client size even in radar mode, forcing continuous full-surface DWM composition.",
-    "The 24 ms radar producer path indirectly performed world-map UObject probing through a 96 ms detector and retained map-exit hysteresis/re-entry blocking.",
-    "High-detail Overlay performance logging ran during normal use instead of being debug-only."
-  ],
-  "repairs": {
-    "world_map_lifecycle": [
-      "Radar mode uses an actual small top-right window instead of a transparent full-client surface.",
-      "The Overlay is hidden before every radar/world geometry transition.",
-      "Map transitions have no timed reveal delay: SetWindowPos uses SWP_NOCOPYBITS, the newly sized hidden surface is repainted synchronously, paint completion is confirmed by a sequence counter, and a redundant post-show full-screen invalidate is skipped only when that hidden paint actually ran.",
-      "On the first missing active-map sample the producer clears map state, publishes radar motion when player coordinates are available, stops the world loop, and restarts the radar loop.",
-      "The 24 ms radar loop never probes world-map UObjects; entry detection remains in the 250 ms static loop, and active-map transforms are reused by the static publisher."
-    ],
-    "normal_mode_performance": [
-      "Lua producer timing/counter collection is not instantiated unless debug logging is enabled.",
-      "Overlay Stopwatch timing, paint/timer counters, CPU/memory sampling, and periodic performance lines are disabled in normal mode.",
-      "The old no-op Boss tracker call was removed from the 250 ms state build.",
-      "mods.txt polling was reduced to 5000 ms while F7/F8 behavior remains unchanged.",
-      "Debug settings are parsed once at Overlay startup; normal Timer ticks and debug-log guards perform no recurring config-file stat/read work.",
-      "Runtime Boss rule PAK enumeration/decoding/regex parsing was removed; cooldowns use the verified fixed daily 09:00 local schedule.",
-      "Overlay static-state polling remains at 200 ms so removing the fixed reveal delay does not add another full producer-period of presentation latency.",
-      "Save-key lookup tries known RVAs before a delayed one-time worker-thread full-executable scan; transient key-initialization states neither trigger it early nor disable the fallback.",
-      "Launch request stamps contain digits only, have no trailing newline, and are validated before command construction."
-    ],
-    "logging_split": {
-      "normal_use": [
-        "runtime/logs/DragonSwordWorldRadar.Lua.Use.log",
-        "runtime/logs/DragonSwordWorldRadar.Overlay.Use.log"
-      ],
-      "debug": [
-        "runtime/logs/DragonSwordWorldRadar.Lua.Debug.log",
-        "runtime/logs/DragonSwordWorldRadar.Overlay.Debug.log"
-      ],
-      "normal_mode_policy": "startup, key/lifecycle state, warnings, and errors only; no periodic performance records",
-      "debug_mode_policy": "producer queue/update latency and 50/100/250 ms stalls, bridge sample/write rates, Overlay timer/paint pacing, normalized process CPU, working set, geometry, MAP_SURFACE_PREPARED transition timing, save, and Boss diagnostics",
-      "fps_semantics": "overlayPaintFps is the WinForms paint rate, not the game's Present FPS"
-    },
-    "reliability": [
-      "All Lua game-thread queue and callback paths release pending gates after failure so later samples can recover.",
-      "Install.cmd starts and validates a resident hidden WScript watcher; game-time Lua writes only launch.request and creates no shell process.",
-      "The hidden PowerShell host binds to the exact game PID and exits with that process while the WScript watcher remains ready for later sessions.",
-      "A transient Process API failure no longer starts the game-exit shutdown countdown when a tracked PID exists.",
-      "SetWindowPos and module failures are isolated and rate-limited.",
-      "Expected pre-login save-key readiness is Debug-only; actionable save failures remain in the Use log.",
-      "Debug-mode configuration is startup-only; malformed or locked config falls back to normal mode without preventing Overlay startup.",
-      "Boss availability no longer depends on runtime filesystem scanning; the fixed rule-106 daily schedule is allocation-free and immutable."
+    "window_lifecycle_changed": false,
+    "source_only_upgrade_required": false,
+    "full_folder_overwrite_supported": true,
+    "installer_removes_known_1_7_obsolete_sources": [
+      "scripts/boss_tracker.lua",
+      "src/overlay/Bridge/StaticStateBridgeReader.cs",
+      "src/overlay/Models/RadarState.cs"
     ]
   },
-  "static_validation": {
-    "validator_result": "passed: 134/134 source semantic/inventory checks in the source tree and 134/134 in the extracted ZIP",
-    "required_and_forbidden_source_inventory": "passed",
-    "source_counts": {
-      "overlay_cs": 31,
-      "ue4ss_lua": 7,
-      "installer_cs": 13
+  "preserved_1_7_invariants": [
+    "24 ms radar motion sampling",
+    "24 ms active world-map motion sampling",
+    "250 ms low-frequency control sampling",
+    "24/50/75/125/500 ms Overlay active/world-idle/radar-idle/disabled/background timing",
+    "20 XY and 10 Z movement thresholds",
+    "exactly three textual LoopAsync registrations with radar/world motion mutually exclusive",
+    "cached Pawn fast path and 250 ms full context recovery",
+    "Overlay-owned treasure selection and save filtering",
+    "serial save refresh; no QueueRefresh ThreadPool polling chain",
+    "no Flush(true)",
+    "one hidden Invalidate()+Update() world-map prepaint and no fixed reveal delay"
+  ],
+  "removed_runtime_components": [
+    "scripts/boss_tracker.lua",
+    "src/overlay/Bridge/StaticStateBridgeReader.cs",
+    "src/overlay/Models/RadarState.cs and obsolete RadarPoint model",
+    "Lua static JSON construction, Boss serialization, signatures, and heartbeat writes",
+    "Overlay 200 ms static-file metadata checks and JSON deserialization",
+    "System.Web.Extensions / JavaScriptSerializer dependency",
+    "Static/Motion generation compatibility and fallback merge logic"
+  ],
+  "new_runtime_components": [
+    "protocol-v2 27-field Motion/control record with explicit version",
+    "src/overlay/Data/WorldBossCatalog.cs for direct local nine-record catalog ownership",
+    "src/overlay/Models/OverlayModels.cs containing only BossPoint and WorldMapState",
+    "2500 ms Motion stale timeout that hides obsolete coordinates"
+  ],
+  "validation": {
+    "lua_syntax": {
+      "status": "passed",
+      "files": 6,
+      "engine": "LuaTeX loadfile"
     },
-    "metadata_json_parse": "passed",
-    "project_metadata": "passed: .NET Framework 4.8 and C# 7.3",
-    "csharp_validation": "45 files passed lexical, string/comment, delimiter, and Windows PowerShell CodeDOM compatibility pattern scans; this is not a compiler pass",
-    "powershell_validation": "10 files passed lexical and delimiter scans; PowerShell execution was unavailable",
-    "lua_validation": "passed: 7/7 source Lua files and 7/7 extracted-ZIP Lua files loaded successfully through LuaTeX syntax execution",
-    "map_lifecycle_assertions": "passed: no 24 ms radar map probe, hidden-before-resize, no timed reveal state, conditional SWP_NOCOPYBITS plus synchronous prepaint, successful-paint confirmation, true small radar geometry, and immediate active-map exit path",
-    "logging_assertions": "passed: separate Use/Debug paths, expected startup readiness Debug-only, debug-only high-detail instrumentation including MAP_SURFACE_PREPARED timing, and startup-only Overlay Debug configuration",
-    "boss_assertions": "passed: fixed daily 09:00 local schedule, expanded boundary tests in ValidationHarness.cs, no runtime PAK enumeration/parser, and no save-worker refresh call",
-    "installer_compile_gate_assertions": "passed static assertions: resident hidden watcher installation, digits-only newline-free request, and source compile markers; Windows execution remains deployment gate",
-    "unexpected_executable_scan": "passed; only vendor/ooz/ooz.exe",
-    "binary_hash_scan": "passed for ooz.exe and e_sqlcipher.dll",
-    "git_whitespace_scan": "passed through git diff --no-index --check",
-    "source_manifest_revalidation": "passed: 93/93 manifest entries; 94/94 source-package files matched byte-for-byte after extraction",
-    "zip_validation": "passed: ZIP CRC/integrity, relative forward-slash paths, duplicate-free names, excluded-directory scan, JSON parse, executable inventory, and binary hash checks"
+    "lua_stubbed_execution": {
+      "status": "passed",
+      "loopasync_registrations": 3,
+      "records_generated": 4,
+      "modes": [
+        "disabled",
+        "radar",
+        "world",
+        "disabled"
+      ],
+      "field_count_each": 27,
+      "largest_record_bytes": 201,
+      "checks": [
+        "protocol=2",
+        "monotonic sequence",
+        "leading/trailing sequence equality",
+        "display controls carried",
+        "radar world fields zero",
+        "world transform carried",
+        "alternating slots",
+        "record <= 768 bytes"
+      ]
+    },
+    "protocol_vectors": {
+      "status": "passed",
+      "positive_cases": 3,
+      "negative_cases": 7,
+      "rejections": [
+        "protocol v1",
+        "wrong field count",
+        "sequence mismatch",
+        "invalid boolean",
+        "enabled/mode contradiction",
+        "text scale out of range",
+        "invalid world transform"
+      ]
+    },
+    "csharp_lexical": {
+      "status": "passed",
+      "files": 31,
+      "lines": 8847,
+      "checks": [
+        "string/comment-aware delimiter balance",
+        "Pygments lexer error scan",
+        "common PowerShell CodeDOM-incompatible syntax patterns",
+        "required/forbidden symbol invariants"
+      ]
+    },
+    "powershell_lexical": {
+      "status": "passed",
+      "files": 5,
+      "lines": 904,
+      "checks": [
+        "string/comment/here-string-aware delimiter balance"
+      ]
+    },
+    "semantic_assertions": {
+      "status": "passed",
+      "count": 93
+    },
+    "actual_1_7_boss_catalog": {
+      "status": "passed",
+      "source": "DragonSwordWorldRadar-Diagnostics-20260807-193157.zip",
+      "records": 9,
+      "unique_ids": 9,
+      "map_ids": [
+        100,
+        200
+      ]
+    },
+    "json_xml_structure": "passed",
+    "git_diff_check": "passed",
+    "windows_compilation": "not executed; Install.cmd is authoritative",
+    "in_game_performance": "not executed"
   },
-  "source_inventory": {
-    "schema_version": 1,
-    "hash_mode": "SHA-256 of raw file bytes",
-    "manifest_path": "metadata/source-manifest.json",
-    "manifest_excludes": [
-      "metadata/source-manifest.json",
-      ".git/",
-      "dist/",
-      "runtime/"
+  "package_validation": {
+    "status": "passed",
+    "manifest_entries": 72,
+    "package_files_including_manifest": 73,
+    "zip_members_including_empty_directories": 77,
+    "empty_directory_entries": [
+      "data/generated/",
+      "runtime/bridge/",
+      "runtime/diagnostics/",
+      "runtime/logs/"
     ],
-    "expected_manifest_file_count": 93
+    "manifest_hash_and_size_verification": "passed",
+    "zip_crc": "passed",
+    "duplicate_paths": "none",
+    "path_traversal": "none",
+    "absolute_paths": "none",
+    "extracted_byte_comparison": "passed",
+    "runtime_and_generated_payloads": "empty",
+    "bundled_executable_hash": "passed",
+    "only_bundled_executable": "tools/ooz.exe",
+    "only_bundled_dll": "vendor/sqlcipher/e_sqlcipher.dll"
   },
-  "important_note": "No in-game pass or Windows PowerShell 5.1 Add-Type execution is claimed for this revision in the Linux preparation environment. Rebuild and re-run Install.cmd because this revision changes the hidden watcher installation; deployment is valid only after Install.log contains OVERLAY_COMPILE_OK, INSTALLER_COMPILE_OK, RESIDENT_WATCHER_READY, and INSTALL_COMPLETE. Debug mode is read once per Overlay process; restart the process after changing config.lua.",
-  "cleanup": {
-    "debug_configuration": {
-      "removed": [
-        "one-second FileInfo polling",
-        "UI Timer RefreshDebugMode path",
-        "cross-thread config refresh lock/state"
-      ],
-      "retained": [
-        "debug_logging",
-        "diagnostic_verbose compatibility alias",
-        "Use/Debug log split"
-      ],
-      "new_behavior": "parsed once when the Overlay process starts; process restart required to change mode"
-    },
-    "boss_respawn_rule": {
-      "removed": [
-        "runtime PAK directory enumeration",
-        "small-PAK binary reads",
-        "UTF-8 binary decoding",
-        "regex rule-106 parsing",
-        "30-second debug rescan",
-        "scan locks and mutable publication state"
-      ],
-      "retained": [
-        "tb_actor_respawn availability input",
-        "daily 09:00 local reset semantics",
-        "RuleSummary and diagnostic descriptions"
-      ],
-      "source_reduction": {
-        "BossRespawnRuleResolver_lines_before": 461,
-        "BossRespawnRuleResolver_lines_after": 57
-      }
-    }
-  },
-  "launcher": {
-    "game_time_shell_creation": false,
-    "watcher": "resident user Startup WScript with //B //NoLogo",
-    "powershell_window_style": 0,
-    "host_lifetime": "exact game process",
-    "watcher_lifetime": "user session",
-    "request_format": "1-32 ASCII digits; no trailing newline; validated by WScript"
-  },
-  "save_key_startup": {
-    "known_rvas_first": true,
-    "fallback_scan_delay_seconds": 30,
-    "fallback_scan_once": true,
-    "transient_key_pending_triggers_early_scan": false,
-    "transient_key_pending_disables_fallback": false,
-    "expected_preload_error_log": "Debug only",
-    "fallback_scan_thread": "background worker; never the Overlay UI thread"
-  }
+  "important_note": "This is a deliberate IPC architecture change. Mixed 1.7/1.8 Motion records are rejected by protocol version, and Install.cmd removes the exact obsolete 1.7 source files that a Windows folder overwrite would otherwise leave behind. Windows compilation and in-game behavior must still be confirmed after running the installer."
 }

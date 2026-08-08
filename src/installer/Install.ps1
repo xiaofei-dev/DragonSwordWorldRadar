@@ -153,7 +153,29 @@ try {
     $release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
     $releaseVersion = [string]$release.version
     if ([string]::IsNullOrWhiteSpace($releaseVersion)) { throw 'metadata\release.json does not define a release version.' }
-    Log ("INSTALL_START version={0} mode=stable-double-buffer-no-runtime-probes" -f $releaseVersion)
+    Log ("INSTALL_START version={0} mode=single-motion-bridge-v2" -f $releaseVersion)
+
+    # A normal Windows folder overwrite does not remove files that were
+    # deleted from the new release. Remove the exact 1.7 sources retired by
+    # the single-Bridge architecture before recursive Add-Type discovery, or
+    # stale duplicate models/readers would make an otherwise valid upgrade
+    # fail to compile. User config, overrides, logs, and generated data are not
+    # touched.
+    $obsoleteRelativePaths = @(
+        'scripts\boss_tracker.lua',
+        'src\overlay\Bridge\StaticStateBridgeReader.cs',
+        'src\overlay\Models\RadarState.cs'
+    )
+    foreach ($obsoleteRelativePath in $obsoleteRelativePaths) {
+        $obsoletePath = Join-Path $modRoot $obsoleteRelativePath
+        if (Test-Path -LiteralPath $obsoletePath -PathType Leaf) {
+            Remove-Item -LiteralPath $obsoletePath -Force -ErrorAction Stop
+            if (Test-Path -LiteralPath $obsoletePath) {
+                throw "Could not remove obsolete 1.7 file: $obsoleteRelativePath"
+            }
+            Log ("REMOVED_OBSOLETE path={0}" -f $obsoleteRelativePath)
+        }
+    }
 
     $layout = Resolve-DragonSwordWorldRadarGameLayout -ModDir $modRoot
     Log ("GAME_LAYOUT root={0}; exe={1}; pak={2}; oodle={3}" -f $layout.GameRoot,$layout.ExecutablePath,$layout.PakPath,$layout.OodleLibraryPath)
@@ -222,7 +244,6 @@ try {
     # installation failures instead of a silent no-overlay runtime.
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
-    Add-Type -AssemblyName System.Web.Extensions
     $overlaySourceRoot = Join-Path $modRoot 'src\overlay'
     $overlaySources = @(Get-ChildItem -LiteralPath $overlaySourceRoot -Recurse -Filter '*.cs' -File |
         Sort-Object FullName | Select-Object -ExpandProperty FullName)
@@ -232,7 +253,6 @@ try {
     $overlayReferences = @(
         [System.Windows.Forms.Form].Assembly.Location,
         [System.Drawing.Graphics].Assembly.Location,
-        [System.Web.Script.Serialization.JavaScriptSerializer].Assembly.Location,
         [System.Linq.Enumerable].Assembly.Location,
         [System.Uri].Assembly.Location
     ) | Select-Object -Unique
@@ -415,37 +435,7 @@ try {
         Remove-Item -LiteralPath (Join-Path $startupDirectory $oldShortcut) -Force -ErrorAction SilentlyContinue
     }
     Stop-ExistingWatcher
-
-    # Keep process creation out of the game process. The resident WScript host
-    # has no console window and starts the game-bound PowerShell host with
-    # window style 0 only after Lua writes runtime\launch.request.
-    $shortcutPath = Join-Path $startupDirectory 'DragonSwordWorldRadar.lnk'
-    $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = "$env:SystemRoot\System32\wscript.exe"
-    $watcherArguments = '//B //NoLogo "' + $watcherScript.Replace('"','""') + '" "' + $modRoot.Replace('"','""') + '"'
-    $shortcut.Arguments = $watcherArguments
-    $processWorkDir = Join-Path ([IO.Path]::GetTempPath()) 'DragonSwordWorldRadar'
-    New-Item -ItemType Directory -Force -Path $processWorkDir | Out-Null
-    $shortcut.WorkingDirectory = $processWorkDir
-    $shortcut.WindowStyle = 7
-    $shortcut.Save()
-
-    $watcherLog = Join-Path $logDir 'DragonSwordWorldRadar.Watcher.log'
-    Remove-Item -LiteralPath $watcherLog -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath (Join-Path $runtime 'launch.request') -Force -ErrorAction SilentlyContinue
-    $watcherProcess = Start-Process -FilePath $shortcut.TargetPath -ArgumentList $watcherArguments -WindowStyle Hidden -PassThru
-    $ready = $false
-    for ($attempt = 0; $attempt -lt 40; $attempt++) {
-        Start-Sleep -Milliseconds 100
-        if (Test-Path -LiteralPath $watcherLog) {
-            $text = [IO.File]::ReadAllText($watcherLog)
-            if ($text -match 'WATCHER_START') { $ready = $true; break }
-        }
-        if ($watcherProcess.HasExited) { break }
-    }
-    if (-not $ready) { throw 'The hidden DragonSwordWorldRadar WScript watcher did not become ready. Check runtime\logs\DragonSwordWorldRadar.Watcher.log.' }
-    Log 'RESIDENT_WATCHER_READY mode=startup-wscript shell=hidden powershell_lifetime=game-only'
+    Log 'SESSION_WATCHER_READY mode=ue4ss-launched lifetime=game-process'
 
     $allExecutables = @(Get-ChildItem -LiteralPath $modRoot -Filter '*.exe' -File -Recurse -ErrorAction SilentlyContinue)
     $unexpectedExecutables = @($allExecutables | Where-Object { [IO.Path]::GetFullPath($_.FullName) -ne [IO.Path]::GetFullPath($bundledOozPath) })
@@ -454,7 +444,7 @@ try {
     }
     if ($allExecutables.Count -ne 1) { throw "Expected exactly one bundled tool executable, found $($allExecutables.Count)." }
 
-    Log ("INSTALL_COMPLETE version={0} customExe=0 bundledToolExe=1 watcher=resident-hidden-wscript powershellWindow=hidden powershellLifetime=game-only" -f $releaseVersion)
+    Log ("INSTALL_COMPLETE version={0} customExe=0 bundledToolExe=1 watcher=per-session-wscript transientPowerShell=true" -f $releaseVersion)
     Write-Host ("DragonSwordWorldRadar {0} installed. Generated {1} treasure records and {2} world-boss records for game version {3}." -f $releaseVersion,$recordCount,$bossRecordCount,$identity.display_version)
     Write-Host 'Start the game normally. F7 enables the radar; F8 disables it.'
 } catch {

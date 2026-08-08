@@ -10,7 +10,6 @@ if ($PSVersionTable.PSVersion.Major -ne 5 -or
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Web.Extensions
 $overlaySources = @(Get-ChildItem -LiteralPath (Join-Path $root 'src\overlay') -Recurse -Filter '*.cs' -File |
     Sort-Object FullName | Select-Object -ExpandProperty FullName)
 if ($overlaySources.Count -ne 31) {
@@ -19,7 +18,6 @@ if ($overlaySources.Count -ne 31) {
 $overlayReferences = @(
     [System.Windows.Forms.Form].Assembly.Location,
     [System.Drawing.Graphics].Assembly.Location,
-    [System.Web.Script.Serialization.JavaScriptSerializer].Assembly.Location,
     [System.Linq.Enumerable].Assembly.Location,
     [System.Uri].Assembly.Location
 ) | Select-Object -Unique

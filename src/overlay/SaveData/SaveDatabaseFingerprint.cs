@@ -121,7 +121,11 @@ namespace DragonSwordWorldRadar
                 FileShare.Read))
             {
                 input.CopyTo(output);
-                output.Flush(true);
+                // Consistency is verified by comparing the source fingerprint
+                // before and after the copy. A forced physical-device flush is
+                // unnecessary for this temporary reader snapshot and can
+                // contend with the game's own WAL/save writes.
+                output.Flush();
             }
         }
 

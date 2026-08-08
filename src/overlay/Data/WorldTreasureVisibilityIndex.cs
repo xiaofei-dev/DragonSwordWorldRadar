@@ -17,10 +17,16 @@ namespace DragonSwordWorldRadar
         private int _catalogVersion = -1;
         private int _saveVersion = -1;
         private int _count;
+        private int _version;
 
         public int Count
         {
             get { return _count; }
+        }
+
+        public int Version
+        {
+            get { return _version; }
         }
 
         public bool Refresh(
@@ -45,27 +51,34 @@ namespace DragonSwordWorldRadar
             RecycleMapLists(_stagingByMap);
             try
             {
-                foreach (WorldTreasure treasure in catalog.Points)
+                // An unopened treasure cannot be determined until the first
+                // SQLCipher snapshot is available. Publish an empty index
+                // during that short UNKNOWN phase instead of flashing every
+                // catalog point and hiding opened records a few seconds later.
+                if (hasSave)
                 {
-                    if (hasSave && saveState.IsOpened(
-                            treasure.SaveId,
-                            opened))
+                    foreach (WorldTreasure treasure in catalog.Points)
                     {
-                        continue;
-                    }
+                        if (saveState.IsOpened(
+                                treasure.SaveId,
+                                opened))
+                        {
+                            continue;
+                        }
 
-                    replacementCount++;
-                    List<WorldTreasure> mapPoints;
-                    if (!_stagingByMap.TryGetValue(
-                            treasure.MapId,
-                            out mapPoints))
-                    {
-                        mapPoints = _listPool.Count == 0
-                            ? new List<WorldTreasure>()
-                            : _listPool.Pop();
-                        _stagingByMap[treasure.MapId] = mapPoints;
+                        replacementCount++;
+                        List<WorldTreasure> mapPoints;
+                        if (!_stagingByMap.TryGetValue(
+                                treasure.MapId,
+                                out mapPoints))
+                        {
+                            mapPoints = _listPool.Count == 0
+                                ? new List<WorldTreasure>()
+                                : _listPool.Pop();
+                            _stagingByMap[treasure.MapId] = mapPoints;
+                        }
+                        mapPoints.Add(treasure);
                     }
-                    mapPoints.Add(treasure);
                 }
             }
             catch
@@ -86,6 +99,7 @@ namespace DragonSwordWorldRadar
             _count = replacementCount;
             _catalogVersion = catalogVersion;
             _saveVersion = saveVersion;
+            _version++;
             return true;
         }
 
@@ -102,6 +116,7 @@ namespace DragonSwordWorldRadar
             _catalogVersion = -1;
             _saveVersion = -1;
             _count = 0;
+            _version++;
             RecycleMapLists(_byMap);
             RecycleMapLists(_stagingByMap);
         }

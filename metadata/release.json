@@ -1,19 +1,71 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "name": "DragonSwordWorldRadar",
-  "version": "0.4.0-dev9-performance1.3-mapinstant-hiddenhost1",
-  "stage": "performance-map-instant-transition-hidden-host",
+  "version": "0.4.0-dev9-performance1.8-singlebridge1",
+  "stage": "stable-core-single-motion-bridge-v2-candidate",
   "mod_folder": "DragonSwordWorldRadar",
+  "source_baseline": "0.4.0-dev9-performance1.7-stablecore1",
   "renderer": "WinForms source compiled in memory by Windows PowerShell 5.1",
-  "custom_executable_count": 0,
-  "automatic_start": "resident hidden WScript watcher started and validated by Install.cmd and registered in the current user Startup folder; game-time Lua writes only a launch request; the hidden PowerShell host and Overlay bind to and exit with the exact game process",
-  "world_map_producer_interval_ms": 24,
-  "world_map_entry_detection_interval_ms": 250,
-  "minimap_motion_interval_ms": 24,
-  "static_state_interval_ms": 250,
-  "overlay_timer_resolution_ms": 1,
-  "data_installation": "local game PAK extraction through in-memory C# and the ooz.exe decoder",
-  "game_update_detection": "stored executable/PAK fingerprint checked on each game launch",
+  "custom_runtime_executable_count": 0,
+  "automatic_start": "per-session hidden WScript watcher launched by the UE4SS mod; host, overlay, and watcher bind to and exit with the exact game process",
+  "scheduler": {
+    "minimap_motion_interval_ms": 24,
+    "active_world_map_motion_interval_ms": 24,
+    "control_sampling_interval_ms": 250,
+    "overlay_active_timer_ms": 24,
+    "overlay_world_idle_timer_ms": 50,
+    "overlay_radar_idle_timer_ms": 75,
+    "overlay_disabled_timer_ms": 125,
+    "overlay_background_timer_ms": 500,
+    "overlay_maintenance_interval_ms": 500,
+    "overlay_geometry_interval_ms": 1000,
+    "overlay_game_lifetime_interval_ms": 1000,
+    "motion_xy_threshold_game_units": 20,
+    "motion_z_threshold_game_units": 10,
+    "lua_loopasync_textual_registrations": 3,
+    "policy": "1.7 Stable Core cadence retained; no new LoopAsync worker, prime-number staggering, or asynchronous save polling chain"
+  },
+  "runtime_ipc": {
+    "active_channel_count": 1,
+    "channel": "Motion/control bridge",
+    "protocol_version": 2,
+    "field_count": 27,
+    "encoding": "compact ASCII pipe-delimited record",
+    "slots": [
+      "runtime/bridge/radar_motion_a.dat",
+      "runtime/bridge/radar_motion_b.dat"
+    ],
+    "integrity": [
+      "explicit protocol version",
+      "Lua generation",
+      "leading/trailing sequence equality",
+      "alternating slots",
+      "strict field validation"
+    ],
+    "heartbeat_ms": 1000,
+    "overlay_stale_timeout_ms": 2500,
+    "static_bridge_status": "removed from active runtime; legacy radar_state*.json is cleanup-only",
+    "static_bridge_removed_work": [
+      "Lua JSON construction and heartbeat writes",
+      "Overlay 200 ms static-file polling",
+      "JavaScriptSerializer parsing",
+      "static/motion state merge and fallback logic",
+      "Lua fixed-Boss serialization"
+    ]
+  },
+  "catalog_ownership": {
+    "treasures": "Overlay loads data/generated/treasures.lua and applies save filtering locally",
+    "bosses": "Overlay loads data/generated/bosses.lua, requires exactly nine unique Boss IDs, and applies tb_actor_respawn availability locally",
+    "lua_role": "publishes only live UObject/control data through protocol-v2 Motion Bridge"
+  },
+  "world_map": {
+    "entry": "hide, resize with SWP_NOCOPYBITS, one hidden Invalidate()+Update(), then reveal immediately",
+    "fixed_reveal_delay_ms": 0,
+    "recurring_prepaint": false,
+    "exit": "first missing active-map sample stops world-map production and restores radar mode"
+  },
+  "data_installation": "local game PAK extraction through in-memory C# and the bundled ooz.exe decoder",
+  "game_update_detection": "stored executable/PAK fingerprint checked on launch",
   "implemented_layers": [
     "treasures",
     "bosses"
@@ -24,7 +76,12 @@
   ],
   "boss_record_count": 9,
   "boss_runtime_tracking": "tb_actor_respawn read from consistent .db/.bak plus WAL/SHM/journal snapshots; no Character enumeration",
-  "boss_marker": "single enlarged vector marker modeled on Icon_Mark_FieldBoss_Sprite and shared by all bosses",
+  "save_behavior": {
+    "initial_visibility": "treasures hidden until first complete save-state snapshot",
+    "snapshot_flush": "normal buffered Flush(); no Flush(true)",
+    "consistency": "source fingerprints checked before and after snapshot copying",
+    "key_discovery": "verified current and legacy RVAs first; one full-image scan allowed only after 30 seconds of unresolved reads"
+  },
   "bundled_tool_executable_count": 1,
   "bundled_tools": [
     {
@@ -38,107 +95,7 @@
     "ignore",
     "alias"
   ],
-  "pawn_tracking": "Current PlayerController.Pawn sampled directly; no Lua-wrapper identity comparison",
   "diagnostics_output": "runtime/diagnostics",
-  "logging": {
-    "use_logs": [
-      "runtime/logs/DragonSwordWorldRadar.Lua.Use.log",
-      "runtime/logs/DragonSwordWorldRadar.Overlay.Use.log"
-    ],
-    "debug_logs": [
-      "runtime/logs/DragonSwordWorldRadar.Lua.Debug.log",
-      "runtime/logs/DragonSwordWorldRadar.Overlay.Debug.log"
-    ],
-    "normal_mode": "startup, shutdown, actionable errors, and key state changes only; expected pre-login save-key readiness and periodic performance counters are Debug-only",
-    "debug_mode": "producer queue/update latency, 50/100/250 ms stalls, sampling/write rates, Overlay timer/paint gaps, normalized process CPU, working set, overlay geometry, and MAP_SURFACE_PREPARED hidden-prepaint timing",
-    "fps_metric": "overlayPaintFps is the WinForms paint rate and is not the game Present FPS"
-  },
-  "player_z_reference_offset": -150,
-  "bridge_protocol": "alternating static JSON plus compact sequence-validated fixed 21-field motion slots",
-  "save_fingerprint_poll_ms": 500,
-  "save_slot_discovery_seconds": 5,
-  "treasure_marker_outline": "DrawEllipse and reusable GraphicsPath outlines use the shared neutral dark RadarMarkerStyle.Outline",
-  "background_visibility": "overlay hides when the game is minimized or not foreground, restores without activation, and remains hidden while disabled",
-  "runtime_probe_hooks": "none; exploration probes are isolated in DragonSwordWorldDataProbe",
-  "installer_overlay_validation": "Install.ps1 compiles the exact complete overlay source set under Windows PowerShell 5.1; installation stops on compile failure",
-  "config_validation": "malformed preserved config.lua is archived and replaced by a validated complete default",
-  "marker_style": {
-    "shared_outline": "opaque dark navy-charcoal",
-    "treasure_fill": "semantic type colors",
-    "boss_fill": "warm red with ivory icon",
-    "nearest_marker": "larger diameter; no purple selection ring",
-    "anti_aliasing": "disabled only for treasure geometry to avoid transparency-key fringe"
-  },
-  "graphics_fix": {
-    "treasure_outline": "shared neutral dark RadarMarkerStyle.Outline",
-    "world_map_path_fill": "FillMode.Winding",
-    "world_map_pixel_dedupe": true,
-    "boss_visual_style_changed": false,
-    "runtime_or_bridge_changes": true
-  },
-  "refactor": {
-    "baseline_tag": "v0.4.0-dev7-stable6",
-    "motion_parser": "reusable per-slot candidate buffers/models with direct 21-field ASCII parsing and isolated reusable published MotionFrame/WorldMapState instances",
-    "world_rendering": "single projection pass with reusable winding paths, pixel dedupe, projected-marker storage, and transactional double-buffered per-map visibility indexes",
-    "save_state_publication": "immutable copy-on-write treasure, boss, alias, and ignore snapshots; consistent opened-state capture; native SQLCipher callback exception containment; load-token invalidation",
-    "save_components": [
-      "SaveDatabaseLocator",
-      "SaveSnapshotReader"
-    ],
-    "runtime_hooks_added": false,
-    "bridge_protocol_changed": false,
-    "producer_intervals_changed": true,
-    "render_resources": "retained boss and height-indicator GDI resources plus one shared neutral treasure-outline pen",
-    "boss_availability": "maintenance-cached next-availability deadlines with deadline-transition invalidation"
-  },
-  "reliability": {
-    "compile_gate": "Build-Release.ps1, Compile-Source.ps1, and Install.ps1 require Windows PowerShell 5.1 Add-Type compilation; Install.cmd must print OVERLAY_COMPILE_OK",
-    "module_fault_isolation": "save state, catalog, visibility index, boss availability, diagnostics, timer, renderer, and game-thread callback failures are isolated and rate-limited",
-    "catalog_publication": "catalog and override replacements publish only after before/after file stamp consistency checks",
-    "visibility_index_publication": "replacement per-map index is built in staging and swapped only after a complete successful rebuild",
-    "native_callback_boundary": "managed SQLCipher row callback exceptions are captured before returning through sqlite3",
-    "motion_stale_fallback_ms": 2500,
-    "adaptive_scheduler": "active/idle timer transitions are driven only by published visual changes; no protocol fields were added",
-    "codedom_scope_compatibility": "local variables use unique names across nested method scopes for Windows PowerShell 5.1 CodeDOM",
-    "mods_txt_switch": "installer preserves an existing DragonSwordWorldRadar 0/1 value; Lua and Overlay stop when the value becomes 0",
-    "world_map_state_machine": "entry is detected by the 250 ms static update; while active, map motion is sampled at 24 ms; the first missing active-map read exits immediately with no stale re-entry hysteresis",
-    "world_map_window_lifecycle": "the form is hidden before radar/world geometry changes; SetWindowPos discards old client bits, the newly sized hidden surface is repainted synchronously, and it shows without activation in the same timer cycle; a successful hidden prepaint suppresses the redundant post-show invalidate; no timed reveal delay remains",
-    "async_pending_recovery": "all Lua game-thread queue and callback failures clear their pending gates so the next loop can recover",
-    "boss_respawn_schedule": "fixed RespawnCycle rule 106: daily 09:00 local reset; no runtime PAK discovery",
-    "debug_config_load": "read once at Overlay process startup; changing mode requires process restart",
-    "overlay_launch": "Install.cmd validates a resident console-free WScript watcher; game-time Lua writes a digits-only runtime/launch.request and never invokes cmd.exe, wscript.exe, or powershell.exe",
-    "save_key_startup": "expected owner/key-not-ready states before the first successful save load are Debug-only; later failures remain actionable Use-log errors"
-  },
-  "performance": {
-    "motion_sampling": "24 ms in minimap and active world-map modes; compact records are written only after a visual delta or a 1000 ms heartbeat",
-    "motion_thresholds": {
-      "player_xy_game_units": 20,
-      "player_z_game_units": 10,
-      "world_map_pan_units": 0.1,
-      "world_map_player_units": 0.1,
-      "world_map_zoom_relative": 0.0001
-    },
-    "overlay_timer_ms": {
-      "active": 24,
-      "world_idle": 50,
-      "radar_idle": 75,
-      "disabled": 125,
-      "background": 500
-    },
-    "bridge_reads": "FileInfo stamp gates prevent opening unchanged motion and static slots",
-    "redraw_policy": "heartbeat-only motion frames and visually equivalent static states do not invalidate the form",
-    "render_batching": "non-nearest minimap and world-map treasure markers are grouped into four retained GraphicsPath batches with one smoothing-state scope",
-    "process_tracking": "overlay geometry, lifetime checks, and save polling reuse a validated tracked PID before enumerating processes",
-    "radar_geometry": "actual small top-right layered window; no transparent full-client radar surface",
-    "world_map_geometry": "actual game-client-sized layered window only while the world map is active",
-    "world_map_probe_policy": "the 24 ms radar motion loop does not read world-map UObjects; active map state is reused by the static publisher instead of read twice",
-    "mod_switch_poll_ms": 5000,
-    "debug_mode_policy": "startup-only configuration; restart Overlay process to change mode",
-    "boss_respawn_schedule": "immutable fixed daily 09:00 local reset; no filesystem scan or parser",
-    "debug_config_policy": "startup-only configuration; no Timer-driven file polling",
-    "world_map_transition": "hide, SWP_NOCOPYBITS resize, synchronous hidden-surface repaint, and SW_SHOWNOACTIVATE occur without a fixed delay and only when geometry changes; paint-sequence confirmation prevents a second full-screen invalidate when prepaint succeeded",
-    "static_state_poll_ms": 200,
-    "save_key_discovery": "cached/current/legacy RVAs are attempted before a delayed one-time worker-thread full-executable signature fallback; transient owner/key-not-ready states do not trigger an early scan and do not disable the fallback",
-    "launcher_policy": "resident WScript watcher validates a digits-only request stamp and performs no game-time shell creation from Lua; the PowerShell host is hidden and game-bound"
-  }
+  "validation_status": "Source/protocol/package validation in Linux preparation environment; Windows PowerShell 5.1 Add-Type compilation and in-game FPS/frame-time testing are not claimed",
+  "performance_claim": "No fixed FPS gain is claimed. Intended effect: remove redundant periodic JSON/file/parser work and simplify runtime state ownership without changing the accepted 1.7 motion cadence."
 }

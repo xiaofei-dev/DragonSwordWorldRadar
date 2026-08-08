@@ -62,7 +62,7 @@ Copy-One (Join-Path $root 'README.md') (Join-Path $mod 'README.txt')
 
 $utf8 = New-Object Text.UTF8Encoding($false)
 Copy-One (Join-Path $root 'resources\enabled.txt') (Join-Path $mod 'enabled.txt')
-New-Item -ItemType Directory -Force -Path (Join-Path $mod 'data\generated'),(Join-Path $mod 'runtime\bridge'),(Join-Path $mod 'runtime\logs') | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $mod 'data\generated'),(Join-Path $mod 'runtime\bridge'),(Join-Path $mod 'runtime\diagnostics'),(Join-Path $mod 'runtime\logs') | Out-Null
 
 $manifestFiles = @()
 foreach ($file in @(Get-ChildItem -LiteralPath $mod -Recurse -File | Sort-Object FullName)) {
@@ -92,13 +92,23 @@ $stream = [IO.File]::Open($archive,[IO.FileMode]::CreateNew,[IO.FileAccess]::Rea
 try {
     $zip = New-Object IO.Compression.ZipArchive($stream,[IO.Compression.ZipArchiveMode]::Create,$true)
     try {
+        # Preserve the intentionally empty generated/runtime directories in the
+        # release ZIP. Windows extraction then creates the complete writable
+        # layout before the first game session or diagnostics collection.
+        foreach ($directory in @(Get-ChildItem -LiteralPath $stage -Recurse -Directory | Sort-Object FullName)) {
+            $child = Get-ChildItem -LiteralPath $directory.FullName -Force | Select-Object -First 1
+            if ($null -eq $child) {
+                $relativeDirectory = $directory.FullName.Substring($stage.Length).TrimStart('\').Replace('\','/').TrimEnd('/') + '/'
+                $null = $zip.CreateEntry($relativeDirectory)
+            }
+        }
         foreach ($file in @(Get-ChildItem -LiteralPath $stage -Recurse -File | Sort-Object FullName)) {
             $relative = $file.FullName.Substring($stage.Length).TrimStart('\').Replace('\','/')
             $entry = $zip.CreateEntry($relative,[IO.Compression.CompressionLevel]::Optimal)
-            $input = [IO.File]::OpenRead($file.FullName)
-            $output = $entry.Open()
-            try { $input.CopyTo($output) }
-            finally { $output.Dispose(); $input.Dispose() }
+            $inputStream = [IO.File]::OpenRead($file.FullName)
+            $outputStream = $entry.Open()
+            try { $inputStream.CopyTo($outputStream) }
+            finally { $outputStream.Dispose(); $inputStream.Dispose() }
         }
     }
     finally { $zip.Dispose() }

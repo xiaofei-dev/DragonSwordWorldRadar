@@ -1,48 +1,70 @@
 # Source package status
 
-This archive contains the repaired successor **DragonSwordWorldRadar 0.4.0-dev9-performance1.3-mapinstant-hiddenhost1**.
+This archive contains the **complete repository snapshot** for
+**DragonSwordWorldRadar 0.4.0-dev9-performance1.8-singlebridge1**. It follows
+the same project structure as the owner-provided source archive; it is not the
+installable Mod folder with binaries removed.
 
-The repository also retains exact provenance for the last owner-tested baseline:
+## Included
 
-- Historical tested release: `DragonSwordWorldRadar-v0.4.0-dev9-performance1.1.zip`
-- Historical tested release SHA-256: `96be8ea8a54bcc2d17550ab7480c5c76917f2e86714cf7a986bfb6dac61c84ac`
-- Functional baseline: `0.4.0-dev8-refactor2`
-- Accepted performance baseline: `0.4.0-dev9-performance1.1`
-- Current repaired successor: `0.4.0-dev9-performance1.3-mapinstant-hiddenhost1`
-- Overlay source files: 31
-- Installer Core source files: 13
-- UE4SS Lua modules: 7
-- Motion protocol: fixed 21 fields
+- existing `.git` history and `dev` branch metadata from the owner-provided repository;
+- `DragonSwordWorldRadar.sln`;
+- `src/ue4ss`, `src/overlay`, `src/installer`, `src/host`, and `src/tools`;
+- `build`, `docs`, `resources`, `metadata`, licenses, and vendor dependencies;
+- historical `dist` output from the supplied repository;
+- the exact tested installable archive:
+  `dist/DragonSwordWorldRadar-v0.4.0-dev9-performance1.8-singlebridge1.zip`;
+- its extracted release staging folder under `dist/`.
 
-`metadata/source-release-map.json` and `metadata/source-snapshot.json` remain historical baseline records. They intentionally keep the `performance1.1` version and hashes; they do not claim that the repaired successor has already been tested in game.
+Runtime logs and generated user state are not included.
 
-## Current repair scope
+## Repository-to-release mapping
 
-The current source removes the later always-full-client radar window and high-frequency map detector, restores a real small radar window outside map mode, removes the fixed map reveal delay, performs a hidden no-copy resize plus synchronous prepaint, and immediately restores radar mode on the first missing active-map read. It also separates low-volume Use logs from opt-in Debug logs, restores the stable resident hidden watcher so game-time Lua creates no shell process, removes runtime Debug-config polling and Boss PAK-rule scanning, and preserves the fixed daily 09:00 Boss cooldown behavior.
-
-The current repair received Linux-side static validation, including JSON/XML parsing, Lua syntax checks, C#/PowerShell lexical and delimiter scans, source-inventory checks, semantic lifecycle assertions, unexpected-binary checks, and bundled binary hashes. This environment cannot execute Windows PowerShell 5.1 `Add-Type` or the game.
-
-Therefore:
-
-- No in-game FPS improvement is claimed by this source package alone.
-- No in-game map-transition pass is claimed.
-- No Windows PowerShell compile pass is claimed here.
-- The authoritative deployment gate remains `Install.cmd`; it must print `OVERLAY_COMPILE_OK` before installation is accepted.
-
-## Updating an existing repository
-
-Copy the **contents** of this directory into the repository root while preserving the existing `.git` directory. Remove obsolete tracked files that are absent from this snapshot. Do not retain experimental probes, backup source files, previous `dist/` output, or generated runtime state as source.
-
-A safe Git workflow is:
-
-```powershell
-git status --short
-# Copy this snapshot over the repository root.
-git add -A
-git diff --cached --stat
+```text
+src/ue4ss/*          -> scripts/*
+src/host/*           -> host/*
+src/installer/Install.ps1 -> installer/Install.ps1
+src/installer/Core/* -> src/installer/*
+src/overlay/*        -> src/overlay/*
+src/tools/*          -> tools/*
+resources/defaults/* -> data/defaults/*
 ```
 
-## Validation and build
+The repository README contains source/build guidance in addition to runtime
+instructions, so it intentionally differs from the tested release's
+`README.txt`. All mapped production code and runtime script files are
+byte-identical to the tested 1.8 release.
+
+## Current architecture
+
+- one protocol-v2 Motion/control Bridge;
+- 27 fixed ASCII fields and two alternating slots;
+- no active JSON Static Bridge;
+- 6 UE4SS Lua modules;
+- 31 Overlay C# files;
+- 13 Installer Core C# files;
+- 24 ms minimap/world-map motion sampling;
+- 250 ms low-frequency control sampling;
+- 20 XY and 10 Z publication thresholds;
+- Overlay-owned treasure and nine-Boss catalogs with save filtering.
+
+The retired files are intentionally deleted in the working tree:
+
+```text
+src/ue4ss/boss_tracker.lua
+src/overlay/Bridge/StaticStateBridgeReader.cs
+src/overlay/Models/RadarState.cs
+```
+
+The new files are intentionally untracked relative to the older included Git
+commit until reviewed and committed:
+
+```text
+src/overlay/Data/WorldBossCatalog.cs
+src/overlay/Models/OverlayModels.cs
+```
+
+## Validation and release build
 
 Run from Windows PowerShell 5.1:
 
@@ -53,6 +75,8 @@ Run from Windows PowerShell 5.1:
 & .\build\Build-Release.ps1
 ```
 
-`Compile-Source.ps1` uses the same Windows PowerShell 5.1 `Add-Type` compiler path as installation and the runtime host. `Build-Release.ps1` performs all validation gates before producing `dist/DragonSwordWorldRadar-v0.4.0-dev9-performance1.3-mapinstant-hiddenhost1.zip`.
-
-The source verifier now rejects the obsolete 96 ms always-on map detector, map-exit hysteresis, fixed-fullscreen radar helpers, timed map warm-up state, game-time shell launch, runtime Debug-config polling, and runtime Boss PAK scanning. It requires actual small radar geometry, hidden no-copy transition repaint, the resident hidden watcher, split logs, debug-only performance counters, recoverable async pending gates, and the fixed daily 09:00 Boss rule.
+`Compile-Source.ps1` and installation use the same Windows PowerShell 5.1
+CodeDOM compiler path. Linux-side preparation validates source/release byte
+mapping, Lua syntax, C#/PowerShell structure, metadata, Git object integrity,
+manifest hashes, package paths, CRC, and bundled binary hashes. Windows
+compilation and in-game behavior remain authoritative.

@@ -1,20 +1,20 @@
 {
-  "schema_version": 1,
-  "version": "0.4.0-dev9-performance1.1",
-  "generated_at_utc": "2026-08-06T03:42:41.925450+00:00",
-  "tested_release_archive_sha256": "96be8ea8a54bcc2d17550ab7480c5c76917f2e86714cf7a986bfb6dac61c84ac",
-  "tested_diagnostics_archive_sha256": "479c688df62dd369f36e249e59160d5b2b917eaf5ff584c0739136fcf2fb5f4b",
-  "mapped_release_files": 73,
+  "schema_version": 2,
+  "current_source_version": "0.4.0-dev9-performance1.8-singlebridge1",
+  "source_layout": "repository",
+  "runtime_baseline": "0.4.0-dev9-performance1.7-stablecore1",
+  "runtime_ipc": "protocol-v2 single Motion/control Bridge",
+  "motion_protocol_version": 2,
+  "motion_field_count": 27,
   "overlay_source_files": 31,
-  "installer_source_files": 13,
-  "ue4ss_lua_files": 7,
-  "mapping_status": "normalized text and raw binary content match the historical tested performance1.1 release",
-  "excluded": [
-    ".git/",
-    "dist/",
-    "runtime-generated state and logs"
-  ],
-  "record_type": "historical_tested_baseline",
-  "current_source_version": "0.4.0-dev9-performance1.3-mapinstant-hiddenhost1",
-  "current_source_validation": "static-only instant-map-transition and hidden-launch revision; no Windows PowerShell 5.1 Add-Type or in-game pass claimed"
+  "installer_core_source_files": 13,
+  "ue4ss_lua_modules": 6,
+  "windows_compile_status": "not executed in preparation environment; run build/Compile-Source.ps1",
+  "in_game_status": "user reported clear FPS improvement for the 1.8 release runtime; repository packaging does not alter runtime bytes",
+  "package_type": "complete Git repository snapshot",
+  "git_history_included": true,
+  "historical_dist_included": true,
+  "tested_1_8_release_included": true,
+  "tested_1_8_release_sha256": "fefc338792c015b8e6a379d42dc393c25311e3f580aa08c75c5638eecb1082cb",
+  "working_tree_status": "1.8 changes left visible against included dev HEAD for owner review; no synthetic commit created"
 }

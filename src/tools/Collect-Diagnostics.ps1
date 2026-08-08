@@ -53,11 +53,8 @@ try {
         Copy-IfExists (Join-Path $runtime $name) (Join-Path 'runtime' $name)
     }
     foreach ($name in @(
-        'radar_state_a.json',
-        'radar_state_b.json',
         'radar_motion_a.dat',
-        'radar_motion_b.dat',
-        'radar_state.json')) {
+        'radar_motion_b.dat')) {
         Copy-IfExists (Join-Path $runtime ('bridge\' + $name)) (Join-Path 'bridge' $name)
     }
     foreach ($name in @('release.json','install-state.json','datasets.json','build-manifest.json')) {
@@ -101,9 +98,10 @@ try {
         'scripts\main.lua',
         'scripts\world_map.lua',
         'scripts\treasures.lua',
-        'scripts\bosses.lua',
         'src\overlay\Bridge\MotionBridgeReader.cs',
-        'src\overlay\Bridge\StaticStateBridgeReader.cs',
+        'src\overlay\Bridge\MotionRecordParser.cs',
+        'src\overlay\Data\WorldBossCatalog.cs',
+        'src\overlay\Models\OverlayModels.cs',
         'src\overlay\Rendering\TreasureMarkerPalette.cs',
         'src\overlay\UI\RadarForm.cs',
         'src\overlay\SaveData\SaveDatabaseFingerprint.cs',

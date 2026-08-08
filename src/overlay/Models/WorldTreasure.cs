@@ -2,6 +2,11 @@ namespace DragonSwordWorldRadar
 {
     internal sealed class WorldTreasure
     {
+        private bool _kindResolved;
+        private TreasureKind _kind;
+        private bool _debugNameResolved;
+        private string _debugName;
+
         public long SaveId { get; set; }
         public int MapId { get; set; }
         public double X { get; set; }
@@ -13,16 +18,29 @@ namespace DragonSwordWorldRadar
 
         public TreasureKind Kind
         {
-            get { return TreasureIdentity.GetKind(UidName); }
+            get
+            {
+                if (!_kindResolved)
+                {
+                    _kind = TreasureIdentity.GetKind(UidName);
+                    _kindResolved = true;
+                }
+                return _kind;
+            }
         }
 
         public string DebugName
         {
             get
             {
-                return TreasureIdentity.GetDebugName(
-                    UidName,
-                    SaveId);
+                if (!_debugNameResolved)
+                {
+                    _debugName = TreasureIdentity.GetDebugName(
+                        UidName,
+                        SaveId);
+                    _debugNameResolved = true;
+                }
+                return _debugName;
             }
         }
     }
