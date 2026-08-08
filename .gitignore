@@ -1,20 +1,40 @@
-/dist/
-*.user
-*.suo
-.vs/
+# IDE and local editor state
+**/.vs/
+**/*.user
+**/*.suo
 
-# Installed/runtime state
-/runtime/
-/metadata/install-state.json
-/metadata/datasets.json
-/data/generated/*.lua
-/data/treasure_overrides.txt
-/scripts/config.lua
+# Local development snapshots. These are intentionally excluded from the
+# shared repository and must never be staged or published.
+/DragonSwordWorldRadar-Dev/
+/DragonSwordWorldRadar-Mole/
 
-# Diagnostics
-DragonSwordWorldRadar-Diagnostics-*.zip
-EventRadar-Diagnostics-*.zip
-*.log
+# Per-project build and release output
+**/bin/
+**/obj/
+**/dist/
 
-# Local release-build tool; bundled in source archives but not committed.
-/vendor/ooz/ooz.exe
+# Installed/runtime state and diagnostics
+**/runtime/
+**/*.log
+**/*-Diagnostics-*.zip
+**/metadata/install-state.json
+**/metadata/datasets.json
+**/data/generated/*.lua
+**/data/treasure_overrides.txt
+
+# Local archive snapshots are not repository source.
+/*.zip
+/*/*.zip
+
+# Local release-build tool copies excluded by individual project policy.
+DragonSwordWorldRadar/vendor/ooz/ooz.exe
+
+# Local game data, extracted packages, databases, dumps, and credentials.
+**/*.pak
+**/*.ucas
+**/*.utoc
+**/*.db
+**/*.sqlite
+**/*.dmp
+**/*.key
+**/CrashContext.runtime-xml

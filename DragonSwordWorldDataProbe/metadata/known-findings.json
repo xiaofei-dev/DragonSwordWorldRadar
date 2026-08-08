@@ -1,0 +1,44 @@
+{
+  "boss_status": "complete_unchanged",
+  "assault_static_tables": [
+    "UnexpectedMissionWorldData",
+    "UnexpectedMissionPlaceData",
+    "UnexpectedMissionKindData"
+  ],
+  "support_tables_extracted": [
+    "SectionMonsterData",
+    "SpawnMonsterGroupData",
+    "ActorSpawnConditionData",
+    "NPCSpawnConditionData",
+    "MonsterCharacterData",
+    "ActorPositionData"
+  ],
+  "dynamic_state_tables": [
+    "tb_actor_respawn",
+    "tb_spawn_condition_actor",
+    "tb_unexpected_switch_day",
+    "tb_unexpected_switch_week",
+    "tb_unexpected_switch_first"
+  ],
+  "treasure_runtime_findings": [
+    "Treasure runtime research is archived and disabled as of 1.0.38",
+    "1692 exact Section-to-Prop joins and 11 exact TreasureBox generated classes are build-pinned",
+    "loaded exact-class Actor coordinates can be mapped to nearest same-class static identities",
+    "Actor presence-to-absence is diagnostic evidence and still requires save-database ground-truth correlation",
+    "64-bit Treasure UIDs must remain canonical strings"
+  ],
+  "assault_runtime_findings": [
+    "40 exact Place/Kind/Actor targets are build-pinned",
+    "CUnexpectedMissionInStandAlone is player-in-zone evidence, not global availability or persistent completion",
+    "CUnexpectedMissionInStandAlone polling is archived and disabled as of 1.0.39",
+    "all 40 MONSTER_ALIVE conditions name their unique target actor in AcceptConditionValue3",
+    "weather or time can gate a mission indirectly by controlling local target existence",
+    "global coverage of target existence across unloaded world-partition regions is not proven"
+  ],
+  "remaining_validation": [
+    "compare conditioned PlaceID 104 and control PlaceID 126 while each region is loaded and unloaded",
+    "compare one weather/time-bound target while its region is loaded and unloaded using a bounded non-Actor-scan source",
+    "confirm whether target-existence state already incorporates weather and time",
+    "confirm the DAILY reset boundary used by RespawnCycleID 105"
+  ]
+}

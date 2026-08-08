@@ -1,0 +1,162 @@
+local source = debug.getinfo(1, "S").source
+local script_file = type(source) == "string" and source:sub(1, 1) == "@" and source:sub(2) or nil
+local module_dir = script_file and script_file:match("^(.*)[/\\][^/\\]+$") or "."
+local scripts_dir = module_dir:match("^(.*)[/\\][^/\\]+$") or "."
+local mod_dir = scripts_dir:match("^(.*)[/\\][^/\\]+$") or "."
+
+local report_path = mod_dir .. "\\runtime\\reports\\mole-completion-state.tsv"
+local canary_path = mod_dir .. "\\runtime\\state\\mole-completion-canary-1.0.7.ok"
+
+-- A marker must never survive into a new Lua session. It exists only to gate the
+-- remaining 39 calls behind one successful canary call in the current process.
+pcall(os.remove, canary_path)
+
+local cached = {}
+local canary_ok = false
+
+local function ensure_parent(path)
+    local parent = path:match("^(.*)[/\\][^/\\]+$")
+    if parent then
+        os.execute('if not exist "' .. parent .. '" mkdir "' .. parent .. '" >nul 2>nul')
+    end
+end
+
+local function append_result(id, clear)
+    ensure_parent(report_path)
+    local file = io.open(report_path, "a")
+    if not file then return end
+    if file:seek("end") == 0 then
+        file:write("MiniGameID\tCompleted\tSource\n")
+    end
+    file:write(tostring(id), "\t", clear and "true" or "false",
+        "\tDETUtil.CIsClearMiniGameInStandAlone\n")
+    file:close()
+end
+
+local function valid(obj)
+    if obj == nil then return false end
+    local ok, result = pcall(function() return obj:IsValid() end)
+    return ok and result == true
+end
+
+local function query_mole(id, ctx)
+    if cached[id] ~= nil then
+        local value = cached[id]
+        return {
+            status = "ok",
+            value_type = "bool",
+            value = value and "true" or "false",
+            fingerprint = "mole:" .. tostring(id) .. ":" .. tostring(value),
+        }
+    end
+
+    if id ~= 12001 and not canary_ok then
+        return {
+            status = "deferred",
+            value_type = "safety_gate",
+            value = "waiting_for_12001_canary",
+            fingerprint = "mole:" .. tostring(id) .. ":deferred",
+        }
+    end
+
+    ctx.phase("find_world_context")
+    local world_context = FindFirstOf("DClientQuestSystem")
+    if not valid(world_context) then
+        return {
+            status = "unavailable",
+            value_type = "world_context",
+            value = "DClientQuestSystem_not_available",
+            fingerprint = "mole:" .. tostring(id) .. ":no_world_context",
+        }
+    end
+
+    ctx.phase("find_detutil_cdo")
+    local util = StaticFindObject("/Script/DS.Default__DETUtil")
+    if not valid(util) then
+        return {
+            status = "unsupported",
+            value_type = "uobject",
+            value = "Default__DETUtil_not_found",
+            fingerprint = "mole:" .. tostring(id) .. ":no_detutil",
+        }
+    end
+
+    ctx.phase("find_clear_function")
+    local fn = StaticFindObject("/Script/DS.DETUtil:CIsClearMiniGameInStandAlone")
+    if not valid(fn) then
+        return {
+            status = "unsupported",
+            value_type = "ufunction",
+            value = "CIsClearMiniGameInStandAlone_not_found",
+            fingerprint = "mole:" .. tostring(id) .. ":no_function",
+        }
+    end
+
+    ctx.phase("call_clear_function")
+    ctx.log("MOLE_CLEAR_QUERY_BEGIN", {
+        mini_game_id = id,
+        function_path = "/Script/DS.DETUtil:CIsClearMiniGameInStandAlone",
+        mutation = false,
+    })
+
+    -- UE4SS UFunction objects found without a bound context require the UObject
+    -- context as argument #1. Function params are WorldContextObject, ID.
+    local clear = fn(util, world_context, id)
+
+    ctx.log("MOLE_CLEAR_QUERY_RETURN", {
+        mini_game_id = id,
+        completed = clear == true,
+    })
+
+    if type(clear) ~= "boolean" then
+        return {
+            status = "unsupported",
+            value_type = type(clear),
+            value = "unexpected_return_type",
+            fingerprint = "mole:" .. tostring(id) .. ":bad_return",
+        }
+    end
+
+    cached[id] = clear
+    append_result(id, clear)
+
+    if id == 12001 then
+        canary_ok = true
+        ensure_parent(canary_path)
+        local f = io.open(canary_path, "w")
+        if f then
+            f:write("1.0.7\n")
+            f:close()
+        end
+    end
+
+    return {
+        status = "ok",
+        value_type = "bool",
+        value = clear and "true" or "false",
+        fingerprint = "mole:" .. tostring(id) .. ":" .. tostring(clear),
+    }
+end
+
+local steps = {}
+for id = 12001, 12040 do
+    local mole_id = id
+    steps[#steps + 1] = {
+        kind = "custom",
+        name = "mole_completion_" .. tostring(mole_id),
+        class = "<DETUtil>",
+        role = "mole_completion_state",
+        purpose = "read_only_persistent_completion_query",
+        cadence = 1,
+        run = function(ctx)
+            return query_mole(mole_id, ctx)
+        end,
+    }
+end
+
+return {
+    id = "mole_completion_state",
+    enabled = true,
+    description = "Read-only completion query for MiniGame_Mole_12001-12040.",
+    steps = steps,
+}

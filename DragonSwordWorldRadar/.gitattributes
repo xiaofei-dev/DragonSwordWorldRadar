@@ -2,15 +2,8 @@
 *.ps1 text eol=crlf
 *.cmd text eol=crlf
 *.cs text eol=crlf
-*.cpp text eol=crlf
-*.hpp text eol=crlf
 *.lua text eol=lf
-*.py text eol=lf
 *.json text eol=lf
 *.md text eol=lf
-*.txt text eol=lf
-*.tsv text eol=lf
-*.csv text eol=lf
 *.dll binary
-*.exe binary
 *.zip binary

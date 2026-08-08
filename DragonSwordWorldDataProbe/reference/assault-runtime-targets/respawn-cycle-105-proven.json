@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "source": "RespawnCycleData.xml extracted in 1.0.30 crash diagnostic",
+  "ID": 105,
+  "Memo": "Source memo was not recoverable from the preserved mojibake text.",
+  "RespawnType": "DAILY",
+  "RespawnRealTime": "0",
+  "ConditionType": "",
+  "ConditionValue1": "",
+  "ConditionValue2": "",
+  "ConditionValue3": "",
+  "interpretation": {
+    "proven": "the 40 assault target actors use a DAILY respawn cycle",
+    "not_yet_proven": "the local clock/reset boundary that DAILY uses for assault availability"
+  }
+}

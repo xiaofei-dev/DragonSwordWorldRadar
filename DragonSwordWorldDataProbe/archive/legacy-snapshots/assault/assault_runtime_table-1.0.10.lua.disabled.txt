@@ -1,0 +1,524 @@
+local source = debug.getinfo(1, "S").source
+local script_file = type(source) == "string" and source:sub(1, 1) == "@" and source:sub(2) or nil
+local module_dir = script_file and script_file:match("^(.*)[/\\][^/\\]+$") or "."
+local scripts_dir = module_dir:match("^(.*)[/\\][^/\\]+$") or "."
+local mod_dir = scripts_dir:match("^(.*)[/\\][^/\\]+$") or "."
+local report_dir = mod_dir .. "\\runtime\\reports"
+
+local place_path = report_dir .. "\\assault-runtime-place.tsv"
+local kind_path = report_dir .. "\\assault-runtime-kind.tsv"
+local condition_path = report_dir .. "\\assault-runtime-condition.tsv"
+local summary_path = report_dir .. "\\assault-runtime-table-summary.tsv"
+
+local place_rows = {}
+local kind_rows = {}
+local table_object = nil
+local table_full_name = ""
+local place_done = false
+local kind_done = false
+local condition_done = false
+
+local function valid(obj)
+    if obj == nil then return false end
+    local ok, result = pcall(function() return obj:IsValid() end)
+    return ok and result == true
+end
+
+local function unwrap(value)
+    if value == nil then return nil end
+    local ok, result = pcall(function() return value:get() end)
+    if ok then return result end
+    return value
+end
+
+local function field(obj, name)
+    obj = unwrap(obj)
+    if obj == nil then return nil end
+    local ok, result = pcall(function() return obj[name] end)
+    if not ok then return nil end
+    return unwrap(result)
+end
+
+local function scalar(value)
+    value = unwrap(value)
+    if value == nil then return "" end
+
+    local value_type = type(value)
+    if value_type == "string" or value_type == "number" or value_type == "boolean" then
+        return tostring(value)
+    end
+
+    local ok, result = pcall(function() return tostring(value) end)
+    if ok and result ~= nil then
+        return result
+    end
+    return ""
+end
+
+local function clean(value)
+    value = tostring(value or "")
+    value = value:gsub("\t", " ")
+    value = value:gsub("\r", " ")
+    value = value:gsub("\n", " ")
+    return value
+end
+
+local function write_tsv(path, headers, rows)
+    local file = io.open(path, "w")
+    if not file then return false end
+
+    file:write(table.concat(headers, "\t"), "\n")
+    for _, row in ipairs(rows) do
+        local values = {}
+        for _, header in ipairs(headers) do
+            values[#values + 1] = clean(row[header])
+        end
+        file:write(table.concat(values, "\t"), "\n")
+    end
+
+    file:close()
+    return true
+end
+
+local function choose_table_object(ctx)
+    if valid(table_object) then return table_object end
+
+    ctx.phase("find_unexpected_mission_table_instances")
+    local objects = FindAllOf("DUnexpectedMissionTable")
+    if type(objects) ~= "table" then return nil end
+
+    local fallback = nil
+    for _, obj in ipairs(objects) do
+        if valid(obj) then
+            local name = ""
+            pcall(function() name = obj:GetFullName() end)
+            if fallback == nil then fallback = obj end
+            if name:find("GameDBTableManager_Singleton.DUnexpectedMissionTable", 1, true) then
+                table_object = obj
+                table_full_name = name
+                return table_object
+            end
+        end
+    end
+
+    if valid(fallback) then
+        local name = ""
+        pcall(function() name = fallback:GetFullName() end)
+        -- Never accept the CDO as the data source.
+        if not name:find("Default__DUnexpectedMissionTable", 1, true) then
+            table_object = fallback
+            table_full_name = name
+            return table_object
+        end
+    end
+
+    return nil
+end
+
+local function foreach_map(map_value, callback)
+    local map = unwrap(map_value)
+    if map == nil then return false, "nil_map" end
+
+    local ok, err = pcall(function()
+        map:ForEach(function(key_param, value_param)
+            callback(unwrap(key_param), unwrap(value_param))
+        end)
+    end)
+
+    if not ok then
+        return false, tostring(err)
+    end
+    return true, ""
+end
+
+local function snapshot_place(ctx)
+    if place_done then
+        return {
+            status = "complete",
+            value_type = "row_count",
+            value = tostring(#place_rows),
+            fingerprint = "assault_place:" .. tostring(#place_rows),
+        }
+    end
+
+    local obj = choose_table_object(ctx)
+    if not valid(obj) then
+        return {
+            status = "unavailable",
+            value_type = "uobject",
+            value = "DUnexpectedMissionTable_singleton_not_ready",
+            fingerprint = "assault_place:no_table",
+        }
+    end
+
+    ctx.phase("read_place_container")
+    local container = field(obj, "UnexpectedMissionPlaceDataMap")
+    local outer = field(container, "Data")
+    if outer == nil then
+        return {
+            status = "unavailable",
+            value_type = "tmap",
+            value = "UnexpectedMissionPlaceDataMap.Data_not_ready",
+            fingerprint = "assault_place:no_outer_map",
+        }
+    end
+
+    local rows = {}
+    local ok, err = foreach_map(outer, function(outer_key, wrap)
+        local wrap_map_id = scalar(field(wrap, "MapID"))
+        local inner = field(wrap, "Data")
+        if inner == nil then return end
+
+        foreach_map(inner, function(inner_key, record)
+            rows[#rows + 1] = {
+                OuterMapID = scalar(outer_key),
+                WrapMapID = wrap_map_id,
+                InnerKey = scalar(inner_key),
+                ID = scalar(field(record, "ID")),
+                MapID = scalar(field(record, "MapID")),
+                UpdateTarget = scalar(field(record, "UpdateTarget")),
+                MissionPlaceWeight = scalar(field(record, "MissionPlaceWeight")),
+                MissionKindData = scalar(field(record, "MissionKindData")),
+                MissionRange = scalar(field(record, "MissionRange")),
+                SortOrder = scalar(field(record, "SortOrder")),
+            }
+        end)
+    end)
+
+    if not ok then
+        return {
+            status = "unavailable",
+            value_type = "tmap",
+            value = "place_map_iteration_failed:" .. clean(err),
+            fingerprint = "assault_place:iteration_failed",
+        }
+    end
+
+    table.sort(rows, function(a, b)
+        local aa = tonumber(a.ID) or 0
+        local bb = tonumber(b.ID) or 0
+        return aa < bb
+    end)
+
+    place_rows = rows
+    local wrote = write_tsv(
+        place_path,
+        {
+            "OuterMapID", "WrapMapID", "InnerKey", "ID", "MapID",
+            "UpdateTarget", "MissionPlaceWeight", "MissionKindData",
+            "MissionRange", "SortOrder"
+        },
+        rows
+    )
+
+    if wrote and #rows > 0 then
+        place_done = true
+    end
+
+    ctx.log("ASSAULT_RUNTIME_PLACE_SNAPSHOT", {
+        table_object = table_full_name,
+        row_count = #rows,
+        report_written = wrote,
+    })
+
+    return {
+        status = (#rows > 0) and "ok" or "unavailable",
+        value_type = "row_count",
+        value = tostring(#rows),
+        fingerprint = "assault_place:" .. tostring(#rows),
+    }
+end
+
+local function snapshot_kind(ctx)
+    if kind_done then
+        return {
+            status = "complete",
+            value_type = "row_count",
+            value = tostring(#kind_rows),
+            fingerprint = "assault_kind:" .. tostring(#kind_rows),
+        }
+    end
+
+    local obj = choose_table_object(ctx)
+    if not valid(obj) then
+        return {
+            status = "unavailable",
+            value_type = "uobject",
+            value = "DUnexpectedMissionTable_singleton_not_ready",
+            fingerprint = "assault_kind:no_table",
+        }
+    end
+
+    ctx.phase("read_kind_container")
+    local container = field(obj, "UnexpectedMissionKindDataMap")
+    local outer = field(container, "Data")
+    if outer == nil then
+        return {
+            status = "unavailable",
+            value_type = "tmap",
+            value = "UnexpectedMissionKindDataMap.Data_not_ready",
+            fingerprint = "assault_kind:no_outer_map",
+        }
+    end
+
+    local rows = {}
+    local ok, err = foreach_map(outer, function(outer_key, wrap)
+        local wrap_group_id = scalar(field(wrap, "GroupID"))
+        local inner = field(wrap, "Data")
+        if inner == nil then return end
+
+        foreach_map(inner, function(inner_key, record)
+            rows[#rows + 1] = {
+                OuterGroupID = scalar(outer_key),
+                WrapGroupID = wrap_group_id,
+                InnerKey = scalar(inner_key),
+                ID = scalar(field(record, "ID")),
+                GroupID = scalar(field(record, "GroupID")),
+                MissionType = scalar(field(record, "MissionType")),
+                MissionValue1 = scalar(field(record, "MissionValue1")),
+                MissionValue2 = scalar(field(record, "MissionValue2")),
+                MissionValue3 = scalar(field(record, "MissionValue3")),
+                MissionCount = scalar(field(record, "MissionCount")),
+                MissionKindWeight = scalar(field(record, "MissionKindWeight")),
+                MissionLimitTime = scalar(field(record, "MissionLimitTime")),
+                MissionNoticeDescription = scalar(field(record, "MissionNoticeDescription")),
+                AcceptConditionType = scalar(field(record, "AcceptConditionType")),
+                AcceptConditionValue1 = scalar(field(record, "AcceptConditionValue1")),
+                AcceptConditionValue2 = scalar(field(record, "AcceptConditionValue2")),
+                AcceptConditionValue3 = scalar(field(record, "AcceptConditionValue3")),
+                Reward_ID = scalar(field(record, "Reward_ID")),
+                DataLayer = scalar(field(record, "DataLayer")),
+                MissionAreaSize = scalar(field(record, "MissionAreaSize")),
+                MapInfoImgName = scalar(field(record, "MapInfoImgName")),
+            }
+        end)
+    end)
+
+    if not ok then
+        return {
+            status = "unavailable",
+            value_type = "tmap",
+            value = "kind_map_iteration_failed:" .. clean(err),
+            fingerprint = "assault_kind:iteration_failed",
+        }
+    end
+
+    table.sort(rows, function(a, b)
+        local ga = tonumber(a.GroupID) or 0
+        local gb = tonumber(b.GroupID) or 0
+        if ga ~= gb then return ga < gb end
+        return (tonumber(a.ID) or 0) < (tonumber(b.ID) or 0)
+    end)
+
+    kind_rows = rows
+    local wrote = write_tsv(
+        kind_path,
+        {
+            "OuterGroupID", "WrapGroupID", "InnerKey", "ID", "GroupID",
+            "MissionType", "MissionValue1", "MissionValue2", "MissionValue3",
+            "MissionCount", "MissionKindWeight", "MissionLimitTime",
+            "MissionNoticeDescription", "AcceptConditionType",
+            "AcceptConditionValue1", "AcceptConditionValue2",
+            "AcceptConditionValue3", "Reward_ID", "DataLayer",
+            "MissionAreaSize", "MapInfoImgName"
+        },
+        rows
+    )
+
+    if wrote and #rows > 0 then
+        kind_done = true
+    end
+
+    ctx.log("ASSAULT_RUNTIME_KIND_SNAPSHOT", {
+        table_object = table_full_name,
+        row_count = #rows,
+        report_written = wrote,
+    })
+
+    return {
+        status = (#rows > 0) and "ok" or "unavailable",
+        value_type = "row_count",
+        value = tostring(#rows),
+        fingerprint = "assault_kind:" .. tostring(#rows),
+    }
+end
+
+local function probe_condition_function(ctx)
+    if condition_done then
+        return {
+            status = "complete",
+            value_type = "row_count",
+            value = tostring(#place_rows),
+            fingerprint = "assault_condition:" .. tostring(#place_rows),
+        }
+    end
+
+    if not place_done or #place_rows == 0 then
+        return {
+            status = "deferred",
+            value_type = "dependency",
+            value = "waiting_for_place_snapshot",
+            fingerprint = "assault_condition:deferred",
+        }
+    end
+
+    ctx.phase("find_condition_handles")
+    local world_context = FindFirstOf("DClientQuestSystem")
+    if not valid(world_context) then
+        return {
+            status = "unavailable",
+            value_type = "world_context",
+            value = "DClientQuestSystem_not_ready",
+            fingerprint = "assault_condition:no_world",
+        }
+    end
+
+    local util = StaticFindObject("/Script/DS.Default__DETUtil")
+    local fn = StaticFindObject("/Script/DS.DETUtil:CUnexpectedMissionInStandAlone")
+    if not valid(util) or not valid(fn) then
+        return {
+            status = "unsupported",
+            value_type = "ufunction",
+            value = "CUnexpectedMissionInStandAlone_not_found",
+            fingerprint = "assault_condition:no_function",
+        }
+    end
+
+    local unique_ids = {}
+    local seen = {}
+    for _, row in ipairs(place_rows) do
+        local id = tonumber(row.ID)
+        if id and not seen[id] then
+            seen[id] = true
+            unique_ids[#unique_ids + 1] = id
+        end
+    end
+    table.sort(unique_ids)
+
+    if #unique_ids == 0 then
+        return {
+            status = "unavailable",
+            value_type = "ids",
+            value = "no_place_ids",
+            fingerprint = "assault_condition:no_ids",
+        }
+    end
+
+    -- Safety canary: both variants must return booleans for the first real Place ID.
+    ctx.phase("condition_canary")
+    local canary_id = unique_ids[1]
+    local a = fn(util, world_context, canary_id, false)
+    local b = fn(util, world_context, canary_id, true)
+    if type(a) ~= "boolean" or type(b) ~= "boolean" then
+        return {
+            status = "unsupported",
+            value_type = "return_type",
+            value = "condition_canary_not_boolean",
+            fingerprint = "assault_condition:bad_canary",
+        }
+    end
+
+    ctx.phase("condition_bulk")
+    local rows = {}
+    local max_rows = math.min(#unique_ids, 256)
+
+    for index = 1, max_rows do
+        local id = unique_ids[index]
+        local false_value
+        local true_value
+
+        if id == canary_id then
+            false_value = a
+            true_value = b
+        else
+            false_value = fn(util, world_context, id, false)
+            true_value = fn(util, world_context, id, true)
+        end
+
+        if type(false_value) ~= "boolean" or type(true_value) ~= "boolean" then
+            break
+        end
+
+        rows[#rows + 1] = {
+            MissionID = tostring(id),
+            ISAllFalse = tostring(false_value),
+            ISAllTrue = tostring(true_value),
+            Source = "DETUtil.CUnexpectedMissionInStandAlone",
+            Semantics = "raw_uninterpreted",
+        }
+    end
+
+    local wrote = write_tsv(
+        condition_path,
+        {"MissionID", "ISAllFalse", "ISAllTrue", "Source", "Semantics"},
+        rows
+    )
+
+    condition_done = wrote and #rows > 0
+
+    write_tsv(
+        summary_path,
+        {"TableObject", "PlaceRows", "KindRows", "ConditionRows", "Interpretation"},
+        {{
+            TableObject = table_full_name,
+            PlaceRows = tostring(#place_rows),
+            KindRows = tostring(#kind_rows),
+            ConditionRows = tostring(#rows),
+            Interpretation = "raw_only_no_semantic_assumption",
+        }}
+    )
+
+    ctx.log("ASSAULT_RUNTIME_CONDITION_SNAPSHOT", {
+        place_rows = #place_rows,
+        kind_rows = #kind_rows,
+        condition_rows = #rows,
+        canary_id = canary_id,
+        report_written = wrote,
+        semantics = "raw_uninterpreted",
+    })
+
+    return {
+        status = (#rows > 0) and "ok" or "partial",
+        value_type = "row_count",
+        value = tostring(#rows),
+        fingerprint = "assault_condition:" .. tostring(#rows),
+    }
+end
+
+return {
+    id = "assault_runtime_table",
+    enabled = true,
+    description = "One-session read-only snapshot of DUnexpectedMissionTable plus raw condition-function outputs.",
+    steps = {
+        {
+            kind = "custom",
+            name = "assault_place_table_snapshot",
+            class = "DUnexpectedMissionTable",
+            role = "assault_static_runtime_table",
+            purpose = "read_only_place_table_snapshot",
+            cadence = 1,
+            once_per_session = true,
+            run = snapshot_place,
+        },
+        {
+            kind = "custom",
+            name = "assault_kind_table_snapshot",
+            class = "DUnexpectedMissionTable",
+            role = "assault_static_runtime_table",
+            purpose = "read_only_kind_table_snapshot",
+            cadence = 1,
+            once_per_session = true,
+            run = snapshot_kind,
+        },
+        {
+            kind = "custom",
+            name = "assault_condition_function_snapshot",
+            class = "<DETUtil>",
+            role = "assault_condition_probe",
+            purpose = "read_only_raw_condition_snapshot",
+            cadence = 1,
+            once_per_session = true,
+            run = probe_condition_function,
+        },
+    },
+}

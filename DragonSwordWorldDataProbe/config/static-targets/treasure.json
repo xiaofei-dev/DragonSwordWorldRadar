@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "id": "treasure_native_status",
+  "static_catalog": "reference\\treasure\\treasures.lua",
+  "catalog_record_count": 1693,
+  "save_ground_truth": {
+    "table": "tb_treasure_box",
+    "columns": [
+      "CATEGORY",
+      "OPENED_BIT_FIELD"
+    ],
+    "category_formula": "save_id // 64",
+    "bit_formula": "save_id % 64"
+  },
+  "candidate_terms": [
+    "TreasureBox",
+    "Treasure",
+    "Chest",
+    "Opened",
+    "Clear",
+    "Collect",
+    "InStandAlone"
+  ],
+  "safety": {
+    "unknown_function_invocation": false,
+    "hooks": false,
+    "mutation": false,
+    "global_object_scan": false
+  },
+  "acceptance_tests": [
+    "bool return",
+    "query-shaped name",
+    "stable numeric treasure ID",
+    "matches known opened IDs",
+    "matches known unopened IDs",
+    "repeatable across restart"
+  ],
+  "goal": "find native read-only save_id -> opened state accessor/container",
+  "search_focus": [
+    "world TreasureBox Actor/Component classes",
+    "player/save/world-state containers",
+    "opened/clear/state/flag/bit accessors",
+    "TreasureBoxPropDataMap consumers"
+  ],
+  "excluded_or_penalized": [
+    "AdventureBook treasure UI",
+    "WorldMap UI",
+    "generic UI Layer/Panel/Widget functions"
+  ]
+}

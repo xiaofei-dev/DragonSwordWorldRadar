@@ -1,0 +1,854 @@
+local source = debug.getinfo(1, "S").source
+local script_file = type(source) == "string" and source:sub(1, 1) == "@" and source:sub(2) or nil
+local module_dir = script_file and script_file:match("^(.*)[/\\][^/\\]+$") or "."
+local scripts_dir = module_dir:match("^(.*)[/\\][^/\\]+$") or "."
+local mod_dir = scripts_dir:match("^(.*)[/\\][^/\\]+$") or "."
+local report_dir = mod_dir .. "\\runtime\\reports"
+
+local place_path = report_dir .. "\\assault-runtime-place.tsv"
+local kind_path = report_dir .. "\\assault-runtime-kind.tsv"
+local condition_path = report_dir .. "\\assault-runtime-condition.tsv"
+local schema_path = report_dir .. "\\assault-runtime-schema.tsv"
+local summary_path = report_dir .. "\\assault-runtime-table-summary.tsv"
+
+local table_object = nil
+local table_full_name = ""
+local place_rows = {}
+local kind_rows = {}
+local schema_rows = {}
+
+local place_done = false
+local kind_done = false
+local condition_done = false
+
+local function valid(obj)
+    if obj == nil then return false end
+    local ok, result = pcall(function() return obj:IsValid() end)
+    return ok and result == true
+end
+
+local function unwrap(value)
+    if value == nil then return nil end
+
+    local ok_type, wrapped_type = pcall(function() return value:type() end)
+    if ok_type and
+       (wrapped_type == "RemoteUnrealParam" or wrapped_type == "LocalUnrealParam") then
+        local ok_get, result = pcall(function() return value:get() end)
+        if ok_get then return result end
+    end
+
+    return value
+end
+
+local function scalar(value)
+    value = unwrap(value)
+    if value == nil then return "" end
+
+    local lua_type = type(value)
+    if lua_type == "string" or lua_type == "number" or lua_type == "boolean" then
+        return tostring(value)
+    end
+
+    local ok_fname, fname = pcall(function() return value:ToString() end)
+    if ok_fname and fname ~= nil then
+        return tostring(fname)
+    end
+
+    local ok_text, text = pcall(function() return tostring(value) end)
+    if ok_text and text ~= nil then
+        return text
+    end
+
+    return ""
+end
+
+local function clean(value)
+    value = tostring(value or "")
+    value = value:gsub("\t", " ")
+    value = value:gsub("\r", " ")
+    value = value:gsub("\n", " ")
+    return value
+end
+
+local function field(obj, name)
+    obj = unwrap(obj)
+    if obj == nil then return nil end
+
+    local ok, result = pcall(function()
+        return obj[name]
+    end)
+    if not ok then return nil end
+
+    return unwrap(result)
+end
+
+local function write_tsv(path, headers, rows)
+    local file = io.open(path, "w")
+    if not file then return false end
+
+    file:write(table.concat(headers, "\t"), "\n")
+
+    for _, row in ipairs(rows) do
+        local values = {}
+        for _, header in ipairs(headers) do
+            values[#values + 1] = clean(row[header])
+        end
+        file:write(table.concat(values, "\t"), "\n")
+    end
+
+    file:close()
+    return true
+end
+
+local function append_schema(scope, property_name, property_full_name, property_class, struct_name, note)
+    schema_rows[#schema_rows + 1] = {
+        Scope = scope or "",
+        PropertyName = property_name or "",
+        PropertyFullName = property_full_name or "",
+        PropertyClass = property_class or "",
+        StructName = struct_name or "",
+        Note = note or "",
+    }
+end
+
+local function property_name(property)
+    local name = ""
+    pcall(function()
+        local fname = property:GetFName()
+        if fname ~= nil then
+            name = fname:ToString()
+        end
+    end)
+    return tostring(name or "")
+end
+
+local function property_full_name(property)
+    local name = ""
+    pcall(function() name = property:GetFullName() end)
+    return tostring(name or "")
+end
+
+local function property_class_name(property)
+    local name = ""
+    pcall(function()
+        local cls = property:GetClass()
+        if cls ~= nil then
+            name = cls:GetFullName()
+        end
+    end)
+    return tostring(name or "")
+end
+
+local function property_struct_name(property)
+    local name = ""
+    pcall(function()
+        local struct_meta = property:GetStruct()
+        if struct_meta ~= nil then
+            name = struct_meta:GetFullName()
+        end
+    end)
+    return tostring(name or "")
+end
+
+local function class_property(obj, name)
+    if not valid(obj) then return nil end
+
+    local result = nil
+    pcall(function()
+        local cls = obj:GetClass()
+        if cls ~= nil then
+            result = cls:GetProperty(name)
+        end
+    end)
+
+    return result
+end
+
+local function struct_property_names(struct_property, scope)
+    local names = {}
+
+    if struct_property == nil then
+        append_schema(scope, "", "", "", "", "struct_property_nil")
+        return names
+    end
+
+    local ok, err = pcall(function()
+        local struct_meta = struct_property:GetStruct()
+        if struct_meta == nil then
+            append_schema(
+                scope,
+                property_name(struct_property),
+                property_full_name(struct_property),
+                property_class_name(struct_property),
+                "",
+                "GetStruct_nil"
+            )
+            return
+        end
+
+        struct_meta:ForEachProperty(function(member)
+            local member_name = property_name(member)
+            names[#names + 1] = member_name
+
+            append_schema(
+                scope,
+                member_name,
+                property_full_name(member),
+                property_class_name(member),
+                property_struct_name(member),
+                "struct_member"
+            )
+        end)
+    end)
+
+    if not ok then
+        append_schema(
+            scope,
+            property_name(struct_property),
+            property_full_name(struct_property),
+            property_class_name(struct_property),
+            property_struct_name(struct_property),
+            "ForEachProperty_failed:" .. clean(err)
+        )
+    end
+
+    return names
+end
+
+local function can_iterate_map(value)
+    value = unwrap(value)
+    if value == nil then return false end
+
+    local ok = pcall(function()
+        value:ForEach(function(_, _)
+            return true
+        end)
+    end)
+
+    return ok
+end
+
+local function find_map(container, struct_property, scope)
+    container = unwrap(container)
+    if container == nil then
+        append_schema(scope, "", "", "", "", "container_nil")
+        return nil, ""
+    end
+
+    -- Some generated table properties are already exposed as TMap.
+    if can_iterate_map(container) then
+        append_schema(scope, "<self>", "", "TMap", "", "container_is_map")
+        return container, "<self>"
+    end
+
+    local candidates = {}
+    local seen = {}
+
+    -- First use the real StructProperty metadata.
+    for _, name in ipairs(struct_property_names(struct_property, scope)) do
+        if name ~= "" and not seen[name] then
+            seen[name] = true
+            candidates[#candidates + 1] = name
+        end
+    end
+
+    -- Then a few conventional generated-table member names.
+    for _, name in ipairs({"Data", "Map", "DataMap", "Rows", "Records", "Items", "Value"}) do
+        if not seen[name] then
+            seen[name] = true
+            candidates[#candidates + 1] = name
+        end
+    end
+
+    for _, name in ipairs(candidates) do
+        local candidate = field(container, name)
+        if candidate ~= nil and can_iterate_map(candidate) then
+            append_schema(scope, name, "", "TMap", "", "selected_map_member")
+            return candidate, name
+        end
+    end
+
+    append_schema(scope, "", "", "", "", "no_iterable_map_member")
+    return nil, ""
+end
+
+local function find_inner_map(wrap, preferred_name, scope)
+    wrap = unwrap(wrap)
+    if wrap == nil then return nil, "" end
+
+    local preferred = field(wrap, preferred_name)
+    if preferred ~= nil and can_iterate_map(preferred) then
+        return preferred, preferred_name
+    end
+
+    for _, name in ipairs({"Data", "Map", "Rows", "Records", "Items"}) do
+        local candidate = field(wrap, name)
+        if candidate ~= nil and can_iterate_map(candidate) then
+            append_schema(scope, name, "", "TMap", "", "selected_inner_map_member")
+            return candidate, name
+        end
+    end
+
+    if can_iterate_map(wrap) then
+        return wrap, "<self>"
+    end
+
+    return nil, ""
+end
+
+local function foreach_map(map, callback)
+    map = unwrap(map)
+    if map == nil then return false, "nil_map" end
+
+    local ok, err = pcall(function()
+        map:ForEach(function(key_param, value_param)
+            callback(unwrap(key_param), unwrap(value_param))
+        end)
+    end)
+
+    if not ok then
+        return false, tostring(err)
+    end
+
+    return true, ""
+end
+
+local function choose_table_object(ctx)
+    if valid(table_object) then return table_object end
+
+    ctx.phase("find_unexpected_mission_table")
+    local objects = FindAllOf("DUnexpectedMissionTable")
+    if type(objects) ~= "table" then return nil end
+
+    local fallback = nil
+
+    for _, obj in ipairs(objects) do
+        if valid(obj) then
+            local name = ""
+            pcall(function() name = obj:GetFullName() end)
+
+            if not name:find("Default__DUnexpectedMissionTable", 1, true) then
+                if fallback == nil then fallback = obj end
+
+                if name:find(
+                    "GameDBTableManager_Singleton.DUnexpectedMissionTable",
+                    1,
+                    true
+                ) then
+                    table_object = obj
+                    table_full_name = name
+                    return table_object
+                end
+            end
+        end
+    end
+
+    if valid(fallback) then
+        table_object = fallback
+        pcall(function() table_full_name = fallback:GetFullName() end)
+        return table_object
+    end
+
+    return nil
+end
+
+local function place_record(row, outer_key, wrap_map_id, inner_key)
+    return {
+        OuterMapID = scalar(outer_key),
+        WrapMapID = scalar(wrap_map_id),
+        InnerKey = scalar(inner_key),
+        ID = scalar(field(row, "ID")),
+        MapID = scalar(field(row, "MapID")),
+        UpdateTarget = scalar(field(row, "UpdateTarget")),
+        MissionPlaceWeight = scalar(field(row, "MissionPlaceWeight")),
+        MissionKindData = scalar(field(row, "MissionKindData")),
+        MissionRange = scalar(field(row, "MissionRange")),
+        SortOrder = scalar(field(row, "SortOrder")),
+    }
+end
+
+local function kind_record(row, outer_key, wrap_group_id, inner_key)
+    return {
+        OuterGroupID = scalar(outer_key),
+        WrapGroupID = scalar(wrap_group_id),
+        InnerKey = scalar(inner_key),
+        ID = scalar(field(row, "ID")),
+        GroupID = scalar(field(row, "GroupID")),
+        MissionType = scalar(field(row, "MissionType")),
+        MissionValue1 = scalar(field(row, "MissionValue1")),
+        MissionValue2 = scalar(field(row, "MissionValue2")),
+        MissionValue3 = scalar(field(row, "MissionValue3")),
+        MissionCount = scalar(field(row, "MissionCount")),
+        MissionKindWeight = scalar(field(row, "MissionKindWeight")),
+        MissionLimitTime = scalar(field(row, "MissionLimitTime")),
+        MissionNoticeDescription = scalar(field(row, "MissionNoticeDescription")),
+        AcceptConditionType = scalar(field(row, "AcceptConditionType")),
+        AcceptConditionValue1 = scalar(field(row, "AcceptConditionValue1")),
+        AcceptConditionValue2 = scalar(field(row, "AcceptConditionValue2")),
+        AcceptConditionValue3 = scalar(field(row, "AcceptConditionValue3")),
+        Reward_ID = scalar(field(row, "Reward_ID")),
+        DataLayer = scalar(field(row, "DataLayer")),
+        MissionAreaSize = scalar(field(row, "MissionAreaSize")),
+        MapInfoImgName = scalar(field(row, "MapInfoImgName")),
+    }
+end
+
+local function snapshot_place(ctx)
+    if place_done then
+        return {
+            status = "complete",
+            value_type = "row_count",
+            value = tostring(#place_rows),
+            fingerprint = "assault_place:" .. tostring(#place_rows),
+        }
+    end
+
+    local obj = choose_table_object(ctx)
+    if not valid(obj) then
+        return {
+            status = "unavailable",
+            value_type = "uobject",
+            value = "DUnexpectedMissionTable_singleton_not_ready",
+            fingerprint = "assault_place:no_table",
+        }
+    end
+
+    ctx.phase("resolve_place_outer_map")
+
+    local struct_property = class_property(obj, "UnexpectedMissionPlaceDataMap")
+    local container = field(obj, "UnexpectedMissionPlaceDataMap")
+    local outer, outer_member = find_map(
+        container,
+        struct_property,
+        "DUnexpectedMissionTable.UnexpectedMissionPlaceDataMap"
+    )
+
+    if outer == nil then
+        write_tsv(
+            schema_path,
+            {"Scope", "PropertyName", "PropertyFullName", "PropertyClass", "StructName", "Note"},
+            schema_rows
+        )
+
+        return {
+            status = "unavailable",
+            value_type = "tmap",
+            value = "place_outer_map_not_resolved",
+            fingerprint = "assault_place:no_outer_map",
+        }
+    end
+
+    local rows = {}
+
+    ctx.phase("iterate_place_outer_map")
+    local ok, err = foreach_map(outer, function(outer_key, outer_value)
+        local direct_id = field(outer_value, "ID")
+        local direct_kind = field(outer_value, "MissionKindData")
+
+        -- Support either MapID -> record or MapID -> Wrap(Data -> record).
+        if direct_id ~= nil and direct_kind ~= nil then
+            rows[#rows + 1] = place_record(
+                outer_value,
+                outer_key,
+                "",
+                outer_key
+            )
+            return
+        end
+
+        local wrap_map_id = field(outer_value, "MapID")
+        local inner, inner_member = find_inner_map(
+            outer_value,
+            "Data",
+            "DUnexpectedMissionPlaceDataWrap"
+        )
+
+        if inner == nil then
+            append_schema(
+                "DUnexpectedMissionPlaceDataWrap",
+                "",
+                "",
+                "",
+                "",
+                "inner_map_not_resolved;outer_key=" .. scalar(outer_key)
+            )
+            return
+        end
+
+        foreach_map(inner, function(inner_key, record)
+            rows[#rows + 1] = place_record(
+                record,
+                outer_key,
+                wrap_map_id,
+                inner_key
+            )
+        end)
+    end)
+
+    if not ok then
+        return {
+            status = "unavailable",
+            value_type = "tmap",
+            value = "place_iteration_failed:" .. clean(err),
+            fingerprint = "assault_place:iteration_failed",
+        }
+    end
+
+    table.sort(rows, function(a, b)
+        return (tonumber(a.ID) or 0) < (tonumber(b.ID) or 0)
+    end)
+
+    place_rows = rows
+
+    local wrote = write_tsv(
+        place_path,
+        {
+            "OuterMapID", "WrapMapID", "InnerKey", "ID", "MapID",
+            "UpdateTarget", "MissionPlaceWeight", "MissionKindData",
+            "MissionRange", "SortOrder"
+        },
+        rows
+    )
+
+    write_tsv(
+        schema_path,
+        {"Scope", "PropertyName", "PropertyFullName", "PropertyClass", "StructName", "Note"},
+        schema_rows
+    )
+
+    place_done = wrote and #rows > 0
+
+    ctx.log("ASSAULT_RUNTIME_PLACE_SNAPSHOT", {
+        table_object = table_full_name,
+        outer_member = outer_member,
+        row_count = #rows,
+        report_written = wrote,
+    })
+
+    return {
+        status = place_done and "ok" or "unavailable",
+        value_type = "row_count",
+        value = tostring(#rows),
+        fingerprint = "assault_place:" .. tostring(#rows),
+    }
+end
+
+local function snapshot_kind(ctx)
+    if kind_done then
+        return {
+            status = "complete",
+            value_type = "row_count",
+            value = tostring(#kind_rows),
+            fingerprint = "assault_kind:" .. tostring(#kind_rows),
+        }
+    end
+
+    local obj = choose_table_object(ctx)
+    if not valid(obj) then
+        return {
+            status = "unavailable",
+            value_type = "uobject",
+            value = "DUnexpectedMissionTable_singleton_not_ready",
+            fingerprint = "assault_kind:no_table",
+        }
+    end
+
+    ctx.phase("resolve_kind_outer_map")
+
+    local struct_property = class_property(obj, "UnexpectedMissionKindDataMap")
+    local container = field(obj, "UnexpectedMissionKindDataMap")
+    local outer, outer_member = find_map(
+        container,
+        struct_property,
+        "DUnexpectedMissionTable.UnexpectedMissionKindDataMap"
+    )
+
+    if outer == nil then
+        write_tsv(
+            schema_path,
+            {"Scope", "PropertyName", "PropertyFullName", "PropertyClass", "StructName", "Note"},
+            schema_rows
+        )
+
+        return {
+            status = "unavailable",
+            value_type = "tmap",
+            value = "kind_outer_map_not_resolved",
+            fingerprint = "assault_kind:no_outer_map",
+        }
+    end
+
+    local rows = {}
+
+    ctx.phase("iterate_kind_outer_map")
+    local ok, err = foreach_map(outer, function(outer_key, outer_value)
+        local direct_id = field(outer_value, "ID")
+        local direct_type = field(outer_value, "MissionType")
+
+        if direct_id ~= nil and direct_type ~= nil then
+            rows[#rows + 1] = kind_record(
+                outer_value,
+                outer_key,
+                "",
+                outer_key
+            )
+            return
+        end
+
+        local wrap_group_id = field(outer_value, "GroupID")
+        local inner = find_inner_map(
+            outer_value,
+            "Data",
+            "DUnexpectedMissionKindDataWrap"
+        )
+
+        if inner == nil then
+            append_schema(
+                "DUnexpectedMissionKindDataWrap",
+                "",
+                "",
+                "",
+                "",
+                "inner_map_not_resolved;outer_key=" .. scalar(outer_key)
+            )
+            return
+        end
+
+        foreach_map(inner, function(inner_key, record)
+            rows[#rows + 1] = kind_record(
+                record,
+                outer_key,
+                wrap_group_id,
+                inner_key
+            )
+        end)
+    end)
+
+    if not ok then
+        return {
+            status = "unavailable",
+            value_type = "tmap",
+            value = "kind_iteration_failed:" .. clean(err),
+            fingerprint = "assault_kind:iteration_failed",
+        }
+    end
+
+    table.sort(rows, function(a, b)
+        local ga = tonumber(a.GroupID) or 0
+        local gb = tonumber(b.GroupID) or 0
+        if ga ~= gb then return ga < gb end
+        return (tonumber(a.ID) or 0) < (tonumber(b.ID) or 0)
+    end)
+
+    kind_rows = rows
+
+    local wrote = write_tsv(
+        kind_path,
+        {
+            "OuterGroupID", "WrapGroupID", "InnerKey", "ID", "GroupID",
+            "MissionType", "MissionValue1", "MissionValue2", "MissionValue3",
+            "MissionCount", "MissionKindWeight", "MissionLimitTime",
+            "MissionNoticeDescription", "AcceptConditionType",
+            "AcceptConditionValue1", "AcceptConditionValue2",
+            "AcceptConditionValue3", "Reward_ID", "DataLayer",
+            "MissionAreaSize", "MapInfoImgName"
+        },
+        rows
+    )
+
+    write_tsv(
+        schema_path,
+        {"Scope", "PropertyName", "PropertyFullName", "PropertyClass", "StructName", "Note"},
+        schema_rows
+    )
+
+    kind_done = wrote and #rows > 0
+
+    ctx.log("ASSAULT_RUNTIME_KIND_SNAPSHOT", {
+        table_object = table_full_name,
+        outer_member = outer_member,
+        row_count = #rows,
+        report_written = wrote,
+    })
+
+    return {
+        status = kind_done and "ok" or "unavailable",
+        value_type = "row_count",
+        value = tostring(#rows),
+        fingerprint = "assault_kind:" .. tostring(#rows),
+    }
+end
+
+local function probe_condition_function(ctx)
+    if condition_done then
+        return {
+            status = "complete",
+            value_type = "row_count",
+            value = tostring(#place_rows),
+            fingerprint = "assault_condition:complete",
+        }
+    end
+
+    if not place_done or #place_rows == 0 then
+        return {
+            status = "deferred",
+            value_type = "dependency",
+            value = "waiting_for_place_snapshot",
+            fingerprint = "assault_condition:deferred",
+        }
+    end
+
+    ctx.phase("find_condition_function")
+
+    local world_context = FindFirstOf("DClientQuestSystem")
+    local util = StaticFindObject("/Script/DS.Default__DETUtil")
+    local fn = StaticFindObject("/Script/DS.DETUtil:CUnexpectedMissionInStandAlone")
+
+    if not valid(world_context) or not valid(util) or not valid(fn) then
+        return {
+            status = "unsupported",
+            value_type = "ufunction",
+            value = "CUnexpectedMissionInStandAlone_not_ready",
+            fingerprint = "assault_condition:no_function",
+        }
+    end
+
+    local ids = {}
+    local seen = {}
+
+    for _, row in ipairs(place_rows) do
+        local id = tonumber(row.ID)
+        if id and not seen[id] then
+            seen[id] = true
+            ids[#ids + 1] = id
+        end
+    end
+
+    table.sort(ids)
+
+    if #ids == 0 then
+        return {
+            status = "unavailable",
+            value_type = "ids",
+            value = "no_place_ids",
+            fingerprint = "assault_condition:no_ids",
+        }
+    end
+
+    ctx.phase("condition_canary")
+
+    local canary_id = ids[1]
+    local false_value = fn(util, world_context, canary_id, false)
+    local true_value = fn(util, world_context, canary_id, true)
+
+    if type(false_value) ~= "boolean" or type(true_value) ~= "boolean" then
+        return {
+            status = "unsupported",
+            value_type = "return_type",
+            value = "condition_canary_not_boolean",
+            fingerprint = "assault_condition:bad_canary",
+        }
+    end
+
+    ctx.phase("condition_bulk")
+
+    local rows = {}
+
+    for index, id in ipairs(ids) do
+        local a, b
+
+        if index == 1 then
+            a, b = false_value, true_value
+        else
+            a = fn(util, world_context, id, false)
+            b = fn(util, world_context, id, true)
+        end
+
+        if type(a) ~= "boolean" or type(b) ~= "boolean" then
+            break
+        end
+
+        rows[#rows + 1] = {
+            MissionID = tostring(id),
+            ISAllFalse = tostring(a),
+            ISAllTrue = tostring(b),
+            Source = "DETUtil.CUnexpectedMissionInStandAlone",
+            Semantics = "raw_uninterpreted",
+        }
+
+        if #rows >= 256 then break end
+    end
+
+    local wrote = write_tsv(
+        condition_path,
+        {"MissionID", "ISAllFalse", "ISAllTrue", "Source", "Semantics"},
+        rows
+    )
+
+    condition_done = wrote and #rows > 0
+
+    write_tsv(
+        summary_path,
+        {"TableObject", "PlaceRows", "KindRows", "ConditionRows", "Interpretation"},
+        {{
+            TableObject = table_full_name,
+            PlaceRows = tostring(#place_rows),
+            KindRows = tostring(#kind_rows),
+            ConditionRows = tostring(#rows),
+            Interpretation = "raw_only_no_semantic_assumption",
+        }}
+    )
+
+    ctx.log("ASSAULT_RUNTIME_CONDITION_SNAPSHOT", {
+        place_rows = #place_rows,
+        kind_rows = #kind_rows,
+        condition_rows = #rows,
+        canary_id = canary_id,
+        report_written = wrote,
+    })
+
+    return {
+        status = condition_done and "ok" or "partial",
+        value_type = "row_count",
+        value = tostring(#rows),
+        fingerprint = "assault_condition:" .. tostring(#rows),
+    }
+end
+
+return {
+    id = "assault_runtime_table",
+    enabled = true,
+    description = "Reflective read-only DUnexpectedMissionTable snapshot with adaptive nested TMap discovery.",
+    steps = {
+        {
+            kind = "custom",
+            name = "assault_place_table_snapshot",
+            class = "DUnexpectedMissionTable",
+            role = "assault_static_runtime_table",
+            purpose = "reflective_read_only_place_snapshot",
+            cadence = 1,
+            once_per_session = true,
+            run = snapshot_place,
+        },
+        {
+            kind = "custom",
+            name = "assault_kind_table_snapshot",
+            class = "DUnexpectedMissionTable",
+            role = "assault_static_runtime_table",
+            purpose = "reflective_read_only_kind_snapshot",
+            cadence = 1,
+            once_per_session = true,
+            run = snapshot_kind,
+        },
+        {
+            kind = "custom",
+            name = "assault_condition_function_snapshot",
+            class = "<DETUtil>",
+            role = "assault_condition_probe",
+            purpose = "read_only_raw_condition_snapshot",
+            cadence = 1,
+            once_per_session = true,
+            run = probe_condition_function,
+        },
+    },
+}

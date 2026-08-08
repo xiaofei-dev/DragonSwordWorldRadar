@@ -1,0 +1,214 @@
+[
+  {
+    "id": "static_inventory",
+    "enabled": true,
+    "engine": "powershell",
+    "risk": "safe",
+    "triggers": [
+      "game_exit",
+      "collect"
+    ],
+    "entry": "tools\\modules\\static_inventory\\Run.ps1",
+    "timeout_seconds": 90,
+    "order": 10
+  },
+  {
+    "id": "pak_static",
+    "enabled": true,
+    "engine": "powershell",
+    "risk": "safe",
+    "triggers": [
+      "manual"
+    ],
+    "entry": "tools\\modules\\pak_static\\Run.ps1",
+    "timeout_seconds": 210,
+    "order": 90,
+    "description": "Historical/verification PAK extraction module. Manual only; never blocks normal pipeline."
+  },
+  {
+    "id": "assault_catalog",
+    "enabled": false,
+    "engine": "powershell",
+    "risk": "safe",
+    "triggers": [
+      "manual"
+    ],
+    "entry": "tools\\modules\\assault_catalog\\Run.ps1",
+    "timeout_seconds": 300,
+    "order": 20,
+    "description": "[1.0.26: assault research complete; preserved manual-only.]"
+  },
+  {
+    "id": "pak_decoder_evidence",
+    "enabled": false,
+    "engine": "powershell",
+    "risk": "safe",
+    "triggers": [
+      "monitor_start",
+      "collect"
+    ],
+    "entry": "tools\\modules\\pak_decoder_evidence\\Run.ps1",
+    "timeout_seconds": 420,
+    "order": 40,
+    "description": "Superseded by integrated exact recovery/evidence inside pak_static in 1.0.3."
+  },
+  {
+    "id": "save_snapshot",
+    "enabled": false,
+    "engine": "powershell",
+    "risk": "safe",
+    "triggers": [
+      "game_exit",
+      "collect"
+    ],
+    "entry": "tools\\modules\\save_snapshot\\Run.ps1",
+    "timeout_seconds": 120,
+    "order": 50,
+    "description": "Raw DB/WAL/BAK/SAV snapshot after game exit; no decryption."
+  },
+  {
+    "id": "object_dump",
+    "enabled": false,
+    "engine": "powershell",
+    "risk": "safe",
+    "triggers": [
+      "collect"
+    ],
+    "entry": "tools\\modules\\object_dump\\Run.ps1",
+    "timeout_seconds": 120,
+    "order": 60,
+    "description": "Targeted text extraction from UE4SS_ObjectDump.txt."
+  },
+  {
+    "id": "mole_game_discovery",
+    "enabled": false,
+    "engine": "powershell",
+    "risk": "safe",
+    "triggers": [],
+    "entry": "tools\\modules\\mole_game_discovery\\Run.ps1",
+    "timeout_seconds": 900,
+    "order": 35,
+    "description": "Frozen historical Mole static discovery. Code/tools restored and retained for future research."
+  },
+  {
+    "id": "mole_state_discovery",
+    "enabled": false,
+    "engine": "powershell",
+    "risk": "safe",
+    "triggers": [],
+    "entry": "tools\\modules\\mole_state_discovery\\Run.ps1",
+    "timeout_seconds": 120,
+    "order": 36,
+    "description": "Frozen Mole completion-state analyzer. Retained for future research."
+  },
+  {
+    "id": "assault_kind_place_fast",
+    "enabled": false,
+    "engine": "powershell",
+    "risk": "read-only",
+    "triggers": [
+      "manual"
+    ],
+    "entry": "tools\\modules\\assault_kind_place_fast\\Run.ps1",
+    "timeout_seconds": 75,
+    "order": 15,
+    "description": "Exact two-file Kind/Place fallback; real candidate match fixed in 1.0.17; 60s hard child timeout. [1.0.26: assault research complete; preserved manual-only.]"
+  },
+  {
+    "id": "treasure_discovery",
+    "enabled": false,
+    "engine": "powershell",
+    "risk": "read-only",
+    "triggers": [
+      "manual"
+    ],
+    "entry": "tools\\modules\\treasure_discovery\\Run.ps1",
+    "timeout_seconds": 180,
+    "order": 12,
+    "description": "Historical broad Treasure/ObjectDump discovery. Preserved manual-only after the state chain narrowed to live DsAnimationProp capture."
+  },
+  {
+    "id": "transition_capture_analysis",
+    "enabled": true,
+    "engine": "powershell",
+    "risk": "read-only",
+    "triggers": [
+      "game_exit",
+      "collect"
+    ],
+    "entry": "tools\\modules\\transition_capture_analysis\\Run.ps1",
+    "timeout_seconds": 90,
+    "order": 16,
+    "description": "Summarizes Treasure actor/hook transitions and Assault bool transitions."
+  },
+  {
+    "id": "treasure_blueprint_analysis",
+    "enabled": false,
+    "engine": "powershell",
+    "risk": "read-only",
+    "triggers": [
+      "game_exit",
+      "collect"
+    ],
+    "entry": "tools\\modules\\treasure_blueprint_analysis\\Run.ps1",
+    "timeout_seconds": 120,
+    "order": 13,
+    "description": "Archived Treasure Blueprint analysis. Preserved but disabled after Treasure research closure."
+  },
+  {
+    "id": "assault_respawn_cycle_fast",
+    "enabled": true,
+    "engine": "powershell",
+    "risk": "read-only",
+    "triggers": [
+      "game_exit",
+      "collect"
+    ],
+    "entry": "tools\\modules\\assault_respawn_cycle_fast\\Run.ps1",
+    "timeout_seconds": 75,
+    "order": 14,
+    "description": "Build-pinned single-table RespawnCycleData extractor for assault cycle 105."
+  },
+  {
+    "id": "assault_quest_condition_analysis",
+    "enabled": true,
+    "engine": "powershell",
+    "risk": "read-only",
+    "triggers": [
+      "game_exit",
+      "collect"
+    ],
+    "entry": "tools\\modules\\assault_quest_condition_analysis\\Run.ps1",
+    "timeout_seconds": 90,
+    "order": 17,
+    "description": "ObjectDump evidence for Quest/Trigger/Register/Weather/DaySwitch/Respawn relationships."
+  },
+  {
+    "id": "treasure_static_fast",
+    "enabled": false,
+    "engine": "powershell",
+    "risk": "read-only",
+    "triggers": [
+      "game_exit",
+      "collect"
+    ],
+    "entry": "tools\\modules\\treasure_static_fast\\Run.ps1",
+    "timeout_seconds": 75,
+    "order": 11,
+    "description": "Archived exact Treasure static extractor. Preserved but disabled after Treasure research closure."
+  },
+  {
+    "id": "treasure_static_catalog",
+    "enabled": false,
+    "engine": "powershell",
+    "risk": "read-only",
+    "triggers": [
+      "game_exit",
+      "collect"
+    ],
+    "entry": "tools\\modules\\treasure_static_catalog\\Run.ps1",
+    "timeout_seconds": 90,
+    "order": 12,
+    "description": "Archived Treasure static catalog builder. Preserved but disabled after Treasure research closure."
+  }
+]

@@ -1,0 +1,187 @@
+{
+  "id": "assault",
+  "description": "Complete static catalog for Unexpected Mission/assault targets and their generation conditions.",
+  "pak_relative_path": "DS\\Content\\Paks\\pakchunk109-WindowsClient.pak",
+  "mount_prefix": "../../../DS/Content/__GeneratedGameData__/Server/XML/GameData/",
+  "targets": [
+    {
+      "file": "UnexpectedMissionWorldData.xml",
+      "required": true,
+      "expected_root": "UnexpectedMissionWorldDataMap",
+      "role": "world_rule"
+    },
+    {
+      "file": "UnexpectedMissionPlaceData.xml",
+      "required": true,
+      "expected_root": "UnexpectedMissionPlaceDataMap",
+      "role": "place"
+    },
+    {
+      "file": "UnexpectedMissionKindData.xml",
+      "required": true,
+      "expected_root": "UnexpectedMissionKindDataMap",
+      "role": "kind"
+    },
+    {
+      "file": "SectionMonsterData.xml",
+      "required": true,
+      "expected_root": "SectionMonsterDataMap",
+      "role": "section_monster"
+    },
+    {
+      "file": "SpawnMonsterGroupData.xml",
+      "required": false,
+      "expected_root": "SpawnMonsterGroupDataMap",
+      "role": "spawn_group"
+    },
+    {
+      "file": "ActorSpawnConditionData.xml",
+      "required": false,
+      "expected_root": "ActorSpawnConditionDataMap",
+      "role": "spawn_condition"
+    },
+    {
+      "file": "NPCSpawnConditionData.xml",
+      "required": false,
+      "expected_root": "NPCSpawnConditionDataMap",
+      "role": "npc_spawn_condition"
+    },
+    {
+      "file": "MonsterCharacterData.xml",
+      "required": false,
+      "expected_root": "MonsterCharacterDataMap",
+      "role": "monster_character"
+    },
+    {
+      "file": "ActorPositionData.xml",
+      "required": false,
+      "expected_root": "ActorPositionDataMap",
+      "role": "actor_position"
+    },
+    {
+      "file": "RespawnCycleData.xml",
+      "required": false,
+      "expected_root": "RespawnCycleDataMap",
+      "role": "respawn_cycle"
+    },
+    {
+      "file": "WeatherData.xml",
+      "required": false,
+      "expected_root": "WeatherDataMap",
+      "role": "weather"
+    },
+    {
+      "file": "ClimateData.xml",
+      "required": false,
+      "expected_root": "ClimateDataMap",
+      "role": "climate"
+    }
+  ],
+  "join_policy": {
+    "never_guess_semantics": true,
+    "primary_place_link": [
+      "MissionKindData",
+      "KindID",
+      "GroupID"
+    ],
+    "kind_objective_fields": [
+      "MissionType",
+      "MissionValue1",
+      "MissionValue2",
+      "MissionValue3",
+      "MissionCount"
+    ],
+    "kind_condition_fields": [
+      "AcceptConditionType",
+      "AcceptConditionValue1",
+      "AcceptConditionValue2",
+      "AcceptConditionValue3"
+    ],
+    "monster_identity_fields": [
+      "UID",
+      "UIDName",
+      "CID",
+      "GroupID",
+      "SectionUID",
+      "LevelCID"
+    ],
+    "monster_state_fields": [
+      "SpawnConditionID",
+      "RespawnCycleID",
+      "ServerDeathCheck"
+    ],
+    "confidence_levels": [
+      "confirmed_exact_unique",
+      "candidate_multiple",
+      "unresolved"
+    ]
+  },
+  "critical_files": [
+    "UnexpectedMissionWorldData.xml",
+    "UnexpectedMissionPlaceData.xml",
+    "UnexpectedMissionKindData.xml",
+    "SectionMonsterData.xml"
+  ],
+  "support_files": [
+    "SpawnMonsterGroupData.xml",
+    "ActorSpawnConditionData.xml",
+    "NPCSpawnConditionData.xml",
+    "MonsterCharacterData.xml",
+    "ActorPositionData.xml",
+    "RespawnCycleData.xml",
+    "WeatherData.xml",
+    "ClimateData.xml"
+  ],
+  "patterns": [
+    "UnexpectedMission(World|Place|Kind)?Data\\\\.xml$",
+    "(SectionMonster|SpawnMonsterGroup|ActorSpawnCondition|NPCSpawnCondition)Data\\\\.xml$",
+    "(MonsterCharacter|ActorPosition|RespawnCycle|Weather|Climate)Data\\\\.xml$"
+  ],
+  "maximum_candidates": 96,
+  "required_join_fields": {
+    "place": [
+      "ID",
+      "MapID",
+      "MissionKindData",
+      "MissionRange"
+    ],
+    "kind": [
+      "ID",
+      "GroupID",
+      "MissionType",
+      "MissionValue1",
+      "MissionValue2",
+      "MissionValue3",
+      "MissionCount",
+      "AcceptConditionType",
+      "AcceptConditionValue1",
+      "AcceptConditionValue2",
+      "AcceptConditionValue3",
+      "DataLayer"
+    ],
+    "actor": [
+      "UID",
+      "UIDName",
+      "CID",
+      "GroupID",
+      "SectionUID",
+      "LevelCID",
+      "PosX",
+      "PosY",
+      "PosZ",
+      "SpawnConditionID",
+      "RespawnCycleID",
+      "ServerDeathCheck"
+    ]
+  },
+  "final_dynamic_state_source": {
+    "table": "tb_actor_respawn",
+    "fields": [
+      "ACTOR_UID",
+      "ACTOR_CID",
+      "RESPAWN_TYPE",
+      "DESTROY_TIME"
+    ],
+    "note": "Reuse the already working Radar availability tracker. Do not add a second periodic refresh loop or a local kill cache."
+  }
+}
