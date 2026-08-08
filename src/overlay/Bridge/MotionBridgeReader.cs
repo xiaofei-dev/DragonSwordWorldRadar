@@ -6,9 +6,15 @@ namespace DragonSwordWorldRadar
     internal sealed class MotionFrame
     {
         public long Sequence;
+        public int ProtocolVersion;
         public int Generation;
         public bool Enabled;
         public string Mode;
+        public bool ShowHeight;
+        public bool ShowTreasureTypes;
+        public bool ShowTreasures;
+        public bool ShowBosses;
+        public double TextScale;
         public double PlayerX;
         public double PlayerY;
         public double PlayerZ;
@@ -86,9 +92,15 @@ namespace DragonSwordWorldRadar
             WorldMapState destinationWorldMap)
         {
             destination.Sequence = source.Sequence;
+            destination.ProtocolVersion = source.ProtocolVersion;
             destination.Generation = source.Generation;
             destination.Enabled = source.Enabled;
             destination.Mode = source.Mode;
+            destination.ShowHeight = source.ShowHeight;
+            destination.ShowTreasureTypes = source.ShowTreasureTypes;
+            destination.ShowTreasures = source.ShowTreasures;
+            destination.ShowBosses = source.ShowBosses;
+            destination.TextScale = source.TextScale;
             destination.PlayerX = source.PlayerX;
             destination.PlayerY = source.PlayerY;
             destination.PlayerZ = source.PlayerZ;

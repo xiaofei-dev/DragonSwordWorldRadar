@@ -3,7 +3,8 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 $root = Split-Path -Parent $PSScriptRoot
-$release = Get-Content -LiteralPath (Join-Path $root 'metadata\release.json') -Raw | ConvertFrom-Json
+$releasePath = Join-Path $root 'metadata\release.json'
+$release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
 $version = [string]$release.version
 if ([string]::IsNullOrWhiteSpace($version)) {
     throw 'metadata/release.json has no version.'
@@ -11,23 +12,28 @@ if ([string]::IsNullOrWhiteSpace($version)) {
 
 $required = @(
     'Apply-Patch-And-Deploy.cmd',
+    'DragonSwordWorldRadar.sln',
     'build\Apply-Patch-And-Deploy.ps1',
+    'build\Build-Release.ps1',
+    'build\Compile-Source.ps1',
+    'build\Test-Refactor.ps1',
+    'build\ValidationHarness.cs',
     'src\ue4ss\main.lua',
     'src\ue4ss\world_map.lua',
     'src\ue4ss\diagnostics.lua',
     'src\ue4ss\bosses.lua',
-    'src\ue4ss\boss_tracker.lua',
     'src\ue4ss\treasures.lua',
     'src\ue4ss\config.default.lua',
     'src\overlay\Program.cs',
-    'src\overlay\Configuration\DebugSettings.cs',
-    'src\overlay\Diagnostics\ErrorLog.cs',
-    'src\overlay\UI\RadarForm.cs',
     'src\overlay\Bridge\MotionBridgeReader.cs',
     'src\overlay\Bridge\MotionRecordParser.cs',
-    'src\overlay\Diagnostics\OverlayPerformanceTracker.cs',
-    'src\overlay\Rendering\WorldTreasureRenderBuffer.cs',
-    'src\overlay\SaveData\BossRespawnRuleResolver.cs',
+    'src\overlay\Bridge\SharedBridgeFile.cs',
+    'src\overlay\Data\WorldBossCatalog.cs',
+    'src\overlay\Data\WorldTreasureCatalog.cs',
+    'src\overlay\Models\OverlayModels.cs',
+    'src\overlay\UI\RadarForm.cs',
+    'src\overlay\SaveData\SaveDatabaseFingerprint.cs',
+    'src\overlay\SaveData\SaveDatabaseKeyReader.cs',
     'src\overlay\SaveData\TreasureSaveState.cs',
     'src\installer\Install.cmd',
     'src\installer\Install.ps1',
@@ -38,14 +44,13 @@ $required = @(
     'src\host\DragonSwordWorldRadar.Watcher.vbs',
     'src\tools\Collect-Diagnostics.cmd',
     'src\tools\Collect-Diagnostics.ps1',
-    'build\Compile-Source.ps1',
-    'build\Test-Refactor.ps1',
-    'build\ValidationHarness.cs',
     'metadata\build-validation.json',
     'metadata\source-release-map.json',
+    'metadata\source-snapshot.json',
     'vendor\sqlcipher\e_sqlcipher.dll',
     'vendor\ooz\ooz.exe',
-    'resources\defaults\treasure_overrides.txt'
+    'resources\defaults\treasure_overrides.txt',
+    'resources\enabled.txt'
 )
 foreach ($relative in $required) {
     if (-not (Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf)) {
@@ -54,10 +59,12 @@ foreach ($relative in $required) {
 }
 
 $forbidden = @(
+    'src\ue4ss\boss_tracker.lua',
+    'src\overlay\Bridge\StaticStateBridgeReader.cs',
+    'src\overlay\Models\RadarState.cs',
     'src\ue4ss\treasure_event_probe.lua',
     'src\ue4ss\boss_respawn_probe.lua',
-    'src\overlay\SaveData\BossCooldownProbe.cs',
-    'src\overlay\UI\RadarForm.cs.before-dev6-compiler-fix'
+    'src\overlay\SaveData\BossCooldownProbe.cs'
 )
 foreach ($relative in $forbidden) {
     if (Test-Path -LiteralPath (Join-Path $root $relative)) {
@@ -70,7 +77,7 @@ $installerSources = @(Get-ChildItem -LiteralPath (Join-Path $root 'src\installer
 $luaSources = @(Get-ChildItem -LiteralPath (Join-Path $root 'src\ue4ss') -Filter '*.lua' -File)
 if ($overlaySources.Count -ne 31) { throw "Expected 31 Overlay C# files; found $($overlaySources.Count)." }
 if ($installerSources.Count -ne 13) { throw "Expected 13 Installer C# files; found $($installerSources.Count)." }
-if ($luaSources.Count -ne 7) { throw "Expected 7 UE4SS Lua files; found $($luaSources.Count)." }
+if ($luaSources.Count -ne 6) { throw "Expected 6 UE4SS Lua files; found $($luaSources.Count)." }
 
 foreach ($project in @(
     'src\overlay\DragonSwordWorldRadar.Overlay.csproj',
@@ -78,12 +85,17 @@ foreach ($project in @(
     $raw = Get-Content -LiteralPath (Join-Path $root $project) -Raw
     if ($raw -notmatch '<TargetFramework>net48</TargetFramework>' -or
         $raw -notmatch '<LangVersion>7\.3</LangVersion>') {
-        throw "$project must preserve the tested net48 / C# 7.3 project metadata."
+        throw "$project must preserve net48 / C# 7.3 project metadata."
     }
 }
 
-# The csproj language setting is for IDE builds. Production installation uses
-# Windows PowerShell 5.1 CodeDOM, so reject high-confidence syntax it cannot compile.
+$overlayProject = Get-Content -LiteralPath (Join-Path $root 'src\overlay\DragonSwordWorldRadar.Overlay.csproj') -Raw
+if ($overlayProject -match 'System\.Web\.Extensions') {
+    throw 'The removed Static JSON Bridge dependency remains in the Overlay project.'
+}
+
+# Production installation uses Windows PowerShell 5.1 CodeDOM. Reject common
+# syntax that its compiler does not accept even though an IDE may accept it.
 $unsupported = @(
     @{ Pattern = '\bnameof\s*\('; Name = 'nameof' },
     @{ Pattern = '\?\?='; Name = 'null-coalescing assignment' },
@@ -103,12 +115,20 @@ foreach ($source in @($overlaySources + $installerSources)) {
 }
 
 $sourceTextFiles = @(Get-ChildItem -LiteralPath (Join-Path $root 'src') -Recurse -File |
-    Where-Object { $_.Extension -in @('.ps1','.lua','.json','.md','.txt','.cs','.cmd','.vbs') })
+    Where-Object { $_.Extension -in @('.ps1','.lua','.json','.md','.txt','.cs','.cmd','.vbs','.csproj') })
 if (@($sourceTextFiles | Select-String -Pattern 'RegisterHook\s*\(').Count -gt 0) {
     throw 'Experimental RegisterHook calls remain in the production source tree.'
 }
 if (@($sourceTextFiles | Select-String -Pattern 'FindAllOf\s*\(\s*["'']Character["'']').Count -gt 0) {
     throw 'Character enumeration remains in the production source tree.'
+}
+$overlayTextFiles = @(Get-ChildItem -LiteralPath (Join-Path $root 'src\overlay') -Recurse -File |
+    Where-Object { $_.Extension -in @('.cs','.csproj') })
+if (@($overlayTextFiles | Select-String -Pattern 'JavaScriptSerializer|System\.Web\.Extensions').Count -gt 0) {
+    throw 'The removed Static JSON parser dependency remains in Overlay source.'
+}
+if (@($overlayTextFiles | Select-String -Pattern 'StaticStateBridgeReader|\bRadarState\b').Count -gt 0) {
+    throw 'Obsolete Static Bridge model/reader symbols remain in Overlay source.'
 }
 
 $mainLua = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\main.lua') -Raw
@@ -120,181 +140,119 @@ foreach ($marker in @(
     'WORLD_MAP_ACTIVE_INTERVAL_MS = 24',
     'MINIMAP_UPDATE_INTERVAL_MS = 250',
     'FAST_MOTION_INTERVAL_MS = 24',
+    'MOTION_PROTOCOL_VERSION = 2',
     'FAST_MOTION_HEARTBEAT_MS = 1000',
-    'MOD_SWITCH_CHECK_INTERVAL_MS = 5000',
-    'if world_map_was_active and latest_motion_map_state ~= nil then',
+    'MOTION_POSITION_EPSILON = 20.0',
+    'MOTION_Z_EPSILON = 10.0',
+    'Protocol-v2 Motion Bridge is the sole runtime IPC channel',
+    'no JSON Static Bridge is required',
     'report_async_failure',
-    'is_mod_enabled_in_mods_file',
-    'Overlay launch requested through hidden resident watcher',
-    'request:write(tostring(os.time()))')) {
+    'is_mod_enabled_in_mods_file')) {
     if ($mainLua -notmatch [regex]::Escape($marker)) {
-        throw "Performance producer marker is missing: $marker"
+        throw "Single-Bridge producer marker is missing: $marker"
     }
+}
+$loopCount = ([regex]::Matches($mainLua, 'LoopAsync\s*\(')).Count
+if ($loopCount -ne 3) {
+    throw "Expected exactly three textual LoopAsync registrations; found $loopCount."
 }
 foreach ($forbiddenMarker in @(
+    'require, "boss_tracker"',
+    'local boss_tracker',
+    'state_path_a',
+    'state_path_b',
+    'write_static',
+    'build_static',
     'WORLD_MAP_DETECT_INTERVAL_MS',
     'WORLD_MAP_EXIT_FAST_MISSING_SAMPLES',
-    'WORLD_MAP_REENTRY_BLOCK_MS',
-    'os.execute',
-    'cmd.exe /c',
-    'request:write(tostring(os.time()),')) {
+    'WORLD_MAP_REENTRY_BLOCK_MS')) {
     if ($mainLua -match [regex]::Escape($forbiddenMarker)) {
-        throw "Stale always-on world-map detector remains: $forbiddenMarker"
+        throw "Obsolete or regressed producer marker remains: $forbiddenMarker"
     }
 }
 
-$configLua = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\config.default.lua') -Raw
+$motionParser = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Bridge\MotionRecordParser.cs') -Raw
 foreach ($marker in @(
-    'use_logging = true',
-    'debug_logging = false')) {
-    if ($configLua -notmatch [regex]::Escape($marker)) {
-        throw "Split logging configuration marker is missing: $marker"
-    }
-}
-
-$diagnosticsLua = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\diagnostics.lua') -Raw
-foreach ($marker in @(
-    'DragonSwordWorldRadar.Lua.Use.log',
-    'DragonSwordWorldRadar.Lua.Debug.log',
-    'is_debug_enabled',
-    'motion_sample_hz',
-    'motion_write_skips',
-    'motion_write_hz',
-    'queue_over_250_ms')) {
-    if ($diagnosticsLua -notmatch [regex]::Escape($marker)) {
-        throw "Performance diagnostics marker is missing: $marker"
+    'SupportedProtocolVersion = 2',
+    'fixed 27-field',
+    'protocolVersion != SupportedProtocolVersion',
+    'sequence != trailingSequence',
+    'textScale < 0.5',
+    'textScale > 2.0')) {
+    if ($motionParser -notmatch [regex]::Escape($marker)) {
+        throw "Protocol-v2 parser marker is missing: $marker"
     }
 }
 
 $radar = Get-Content -LiteralPath (Join-Path $root 'src\overlay\UI\RadarForm.cs') -Raw
 foreach ($marker in @(
-    'ActiveTimerIntervalMs = 33',
+    'ActiveTimerIntervalMs = 24',
     'WorldIdleTimerIntervalMs = 50',
     'RadarIdleTimerIntervalMs = 75',
     'DisabledTimerIntervalMs = 125',
-    'StaticStatePollIntervalMs = 200',
-    'MotionVisualSnapshot',
-    'SetOverlayWindowVisible(false, false)',
-    '_overlayWindowVisible',
-    'SwShowNoActivate',
+    'BackgroundTimerIntervalMs = 500',
+    'MaintenanceIntervalMs = 500',
+    'GeometryCheckIntervalMs = 1000',
+    'GameLifetimeCheckIntervalMs = 1000',
+    'MotionStaleTimeoutMs = 2500',
+    'new WorldBossCatalog()',
+    'frame.ProtocolVersion',
     'SwpNoCopyBits',
-    'if (!_overlayWindowVisible && sizeChanged)',
-    'positionFlags |= NativeMethods.SwpNoCopyBits',
-    'else if (_overlayWindowVisible && sizeChanged)',
-    '_hiddenSurfacePreparedForCurrentTick',
-    'paintSequenceBeforeUpdate',
     'MAP_SURFACE_PREPARED',
-    'needsInvalidate',
     'Invalidate();',
-    'Update();',
-    'targetWidth = _overlaySize;',
-    'EVENTRADAR_GAME_PID',
-    'IsEnabledInModsFile',
-    'resetChanged')) {
+    'Update();')) {
     if ($radar -notmatch [regex]::Escape($marker)) {
-        throw "Performance/CodeDOM marker is missing: $marker"
+        throw "Overlay marker is missing: $marker"
     }
 }
-if ($radar -match 'NativeMethods\.SwpNoActivate\s*\|\s*NativeMethods\.SwpNoCopyBits') {
-    throw 'SWP_NOCOPYBITS must be conditional on a hidden size transition.'
-}
-$paintSequenceIncrementCount = ([regex]::Matches(
-    $radar,
-    [regex]::Escape('_paintSequence++;'))).Count
-if ($paintSequenceIncrementCount -ne 1 -or
-    $radar -notmatch '(?s)if \(!paintFailed\).*?_paintSequence\+\+;') {
-    throw 'Hidden-prepaint confirmation must advance only after a successful paint.'
-}
-
 foreach ($forbiddenMarker in @(
-    'GetRadarDrawBounds',
-    'InvalidatePresentedContent',
+    'StaticStatePollIntervalMs',
+    'StaticStateBridgeReader',
+    'JavaScriptSerializer',
     'WorldMapRevealDelayMs',
     '_worldMapRevealUtc',
     'world-map-warmup')) {
     if ($radar -match [regex]::Escape($forbiddenMarker)) {
-        throw "Stale fixed-fullscreen radar helper remains: $forbiddenMarker"
+        throw "Obsolete Overlay marker remains: $forbiddenMarker"
     }
 }
 
-$performanceTracker = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Diagnostics\OverlayPerformanceTracker.cs') -Raw
+$bossCatalog = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Data\WorldBossCatalog.cs') -Raw
 foreach ($marker in @(
-    'gaps50=',
-    'gaps100=',
-    'gaps250=',
-    'overlayPaintFps_not_game_present_fps')) {
-    if ($performanceTracker -notmatch [regex]::Escape($marker)) {
-        throw "Overlay debug performance marker is missing: $marker"
+    'ExpectedBossCount = 9',
+    'duplicate boss ID',
+    'changed while it was being read')) {
+    if ($bossCatalog -notmatch [regex]::Escape($marker)) {
+        throw "World-Boss catalog validation marker is missing: $marker"
     }
 }
 
-$errorLog = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Diagnostics\ErrorLog.cs') -Raw
+$fingerprint = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\SaveDatabaseFingerprint.cs') -Raw
+if ($fingerprint -match [regex]::Escape('Flush(true)')) {
+    throw 'Save snapshot still forces a physical-disk Flush(true).'
+}
+if ($fingerprint -notmatch [regex]::Escape('output.Flush();')) {
+    throw 'Expected normal buffered save-snapshot Flush() marker is missing.'
+}
+
+$keyReader = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\SaveDatabaseKeyReader.cs') -Raw
 foreach ($marker in @(
-    'DragonSwordWorldRadar.Overlay.Use.log',
-    'DragonSwordWorldRadar.Overlay.Debug.log',
-    'StartSession')) {
-    if ($errorLog -notmatch [regex]::Escape($marker)) {
-        throw "Overlay split-log marker is missing: $marker"
+    'TimeSpan.FromSeconds(30)',
+    'DateTime.UtcNow.Add(PatternScanDelay)',
+    '_patternScanAttempted = true',
+    'DetectOwnerPointerRva')) {
+    if ($keyReader -notmatch [regex]::Escape($marker)) {
+        throw "Save-key startup optimization marker is missing: $marker"
     }
 }
 
-$debugSettings = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Configuration\DebugSettings.cs') -Raw
-foreach ($marker in @(
-    'debug_logging',
-    'diagnostic_verbose',
-    'StartupEnabled = LoadAtStartup()',
-    'get { return StartupEnabled; }')) {
-    if ($debugSettings -notmatch [regex]::Escape($marker)) {
-        throw "Overlay startup-only debug setting marker is missing: $marker"
-    }
-}
-foreach ($forbiddenMarker in @(
-    'RefreshInterval',
-    '_nextRefreshUtc',
-    'FileInfo completedInfo',
-    'lock (Sync)')) {
-    if ($debugSettings -match [regex]::Escape($forbiddenMarker)) {
-        throw "Runtime Debug-config polling remains: $forbiddenMarker"
-    }
-}
-foreach ($forbiddenMarker in @(
-    'RefreshDebugMode()',
-    '_nextDebugModeRefreshUtc')) {
-    if ($radar -match [regex]::Escape($forbiddenMarker)) {
-        throw "Radar timer still polls Debug configuration: $forbiddenMarker"
-    }
-}
-
-$bossRuleResolver = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\BossRespawnRuleResolver.cs') -Raw
-foreach ($marker in @(
-    'ResetHour = 9',
-    'ResetMinute = 0',
-    'localReset=09:00',
-    'source=built-in-original')) {
-    if ($bossRuleResolver -notmatch [regex]::Escape($marker)) {
-        throw "Fixed Boss rule marker is missing: $marker"
-    }
-}
-foreach ($forbiddenMarker in @(
-    'Directory.GetFiles',
-    'File.ReadAllBytes',
-    'Regex.',
-    'TryDetectReadableOverride',
-    'ScanInterval',
-    'public void Refresh()')) {
-    if ($bossRuleResolver -match [regex]::Escape($forbiddenMarker)) {
-        throw "Runtime Boss PAK scanning remains: $forbiddenMarker"
-    }
-}
-$saveStateSource = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\TreasureSaveState.cs') -Raw
-if ($saveStateSource -match [regex]::Escape('_bossRuleResolver.Refresh()')) {
-    throw 'Save worker still invokes the removed Boss rule scanner.'
+$saveState = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\TreasureSaveState.cs') -Raw
+if ($saveState -notmatch [regex]::Escape('public bool HasLoadedSaveState')) {
+    throw 'Initial save-state visibility gate is missing.'
 }
 
 $program = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Program.cs') -Raw
-foreach ($marker in @(
-    'ErrorLog.StartSession()',
-    'Overlay session started')) {
+foreach ($marker in @('ErrorLog.StartSession()','Overlay session started')) {
     if ($program -notmatch [regex]::Escape($marker)) {
         throw "Overlay session-log marker is missing: $marker"
     }
@@ -310,44 +268,19 @@ foreach ($relative in @(
     }
 }
 
+$hostScriptText = Get-Content -LiteralPath (Join-Path $root 'src\host\DragonSwordWorldRadar.Host.ps1') -Raw
+if ($hostScriptText -match 'System\.Web\.Extensions|JavaScriptSerializer') {
+    throw 'Host still loads the removed JSON serializer assembly.'
+}
+
 $watcherVbs = Get-Content -LiteralPath (Join-Path $root 'src\host\DragonSwordWorldRadar.Watcher.vbs') -Raw
 foreach ($marker in @(
     'shell.Run(command, 0, True)',
     'WATCHER_STOP_REQUESTED',
     'OVERLAY_PROCESS_EXIT',
-    'NormalizeStamp',
-    'Len(normalized) > 32')) {
+    'NormalizeStamp')) {
     if ($watcherVbs -notmatch [regex]::Escape($marker)) {
-        throw "Resident hidden watcher marker is missing: $marker"
-    }
-}
-$exitDoCount = ([regex]::Matches($watcherVbs, 'Exit Do')).Count
-if ($exitDoCount -ne 1) {
-    throw "Watcher must exit only for watcher.stop; found $exitDoCount Exit Do statements."
-}
-
-$keyReader = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\SaveDatabaseKeyReader.cs') -Raw
-foreach ($marker in @(
-    'DateTime.UtcNow.AddSeconds(30)',
-    '_fallbackScanAttempted = true',
-    'Task.Run(',
-    'TryDetectOwnerPointerRva',
-    'completedProcessId == game.Id',
-    'CurrentOwnerPointerRva != _ownerPointerRva')) {
-    if ($keyReader -notmatch [regex]::Escape($marker)) {
-        throw "Save-key startup optimization marker is missing: $marker"
-    }
-}
-if ($keyReader -match [regex]::Escape('IsKeyInitializationPending')) {
-    throw 'Save-key fallback must not be permanently suppressed by a transient key-not-ready state.'
-}
-
-foreach ($marker in @(
-    'BuildExceptionSignature',
-    'IsExpectedStartupNotReady',
-    'Save-state initialization pending')) {
-    if ($saveStateSource -notmatch [regex]::Escape($marker)) {
-        throw "Save-state startup log marker is missing: $marker"
+        throw "Per-session hidden watcher marker is missing: $marker"
     }
 }
 
@@ -356,9 +289,32 @@ if ($installCmd -notmatch '(?i)powershell\.exe' -or $installCmd -match '(?i)\bpw
     throw 'Install.cmd must use Windows PowerShell and must not use PowerShell Core.'
 }
 $install = Get-Content -LiteralPath (Join-Path $root 'src\installer\Install.ps1') -Raw
-foreach ($marker in @('OVERLAY_COMPILE_OK','INSTALLER_COMPILE_OK','MOD_SETTING_PRESERVED','RESIDENT_WATCHER_READY','INSTALL_COMPLETE','DragonSwordWorldRadar.lnk','wscript.exe','-WindowStyle Hidden')) {
+foreach ($marker in @(
+    'OVERLAY_COMPILE_OK',
+    'INSTALLER_COMPILE_OK',
+    'REMOVED_OBSOLETE',
+    'SESSION_WATCHER_READY',
+    'INSTALL_COMPLETE')) {
     if ($install -notmatch [regex]::Escape($marker)) {
         throw "Installer marker is missing: $marker"
+    }
+}
+foreach ($obsolete in @(
+    'src\overlay\Bridge\StaticStateBridgeReader.cs',
+    'src\overlay\Models\RadarState.cs',
+    'scripts\boss_tracker.lua')) {
+    if ($install -notmatch [regex]::Escape($obsolete)) {
+        throw "Installer upgrade cleanup entry is missing: $obsolete"
+    }
+}
+
+$collector = Get-Content -LiteralPath (Join-Path $root 'src\tools\Collect-Diagnostics.ps1') -Raw
+if ($collector -match "'radar_state_a\.json'|'radar_state_b\.json'|'radar_state\.json'") {
+    throw 'Diagnostics still treats legacy Static Bridge files as active captures.'
+}
+foreach ($marker in @('radar_motion_a.dat','radar_motion_b.dat','WorldBossCatalog.cs')) {
+    if ($collector -notmatch [regex]::Escape($marker)) {
+        throw "Diagnostics marker is missing: $marker"
     }
 }
 
@@ -372,7 +328,6 @@ $unexpectedExe = @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.exe' -Fi
     Where-Object {
         $_.FullName -notlike (Join-Path $root 'dist\*') -and
         $_.FullName -notlike (Join-Path $root 'runtime\*') -and
-        $_.FullName -notlike (Join-Path $root '.git\*') -and
         [IO.Path]::GetFullPath($_.FullName) -ne $allowedTool
     })
 if ($unexpectedExe.Count -gt 0) {
@@ -391,4 +346,4 @@ if ($backupArtifacts.Count -gt 0) {
     throw ('Backup artifacts remain in src: ' + (($backupArtifacts.FullName) -join ', '))
 }
 
-Write-Host "Source verification passed for DragonSwordWorldRadar $version; overlay=31; installer=13; lua=7."
+Write-Host "Source verification passed for DragonSwordWorldRadar $version; overlay=31; installer=13; lua=6; motionProtocol=2; fields=27."

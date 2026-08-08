@@ -27,9 +27,6 @@ namespace DragonSwordWorldRadar
         private int _motionFrames;
         private int _motionVisualFrames;
         private int _motionSuppressedFrames;
-        private int _staticFrames;
-        private int _staticVisualFrames;
-        private int _staticSuppressedFrames;
         private int _invalidates;
         private int _timerGapSamples;
         private int _timerGap50Count;
@@ -62,24 +59,6 @@ namespace DragonSwordWorldRadar
             return _enabled
                 ? Stopwatch.GetTimestamp()
                 : 0L;
-        }
-
-        public void RecordStaticFrame(bool visualChange)
-        {
-            if (!_enabled)
-            {
-                return;
-            }
-
-            _staticFrames++;
-            if (visualChange)
-            {
-                _staticVisualFrames++;
-            }
-            else
-            {
-                _staticSuppressedFrames++;
-            }
         }
 
         public void RecordMotionFrame(
@@ -233,7 +212,7 @@ namespace DragonSwordWorldRadar
                 * (long)Math.Max(0, overlayBounds.Height);
             ErrorLog.WriteDebug(String.Format(
                 CultureInfo.InvariantCulture,
-                "OVERLAY_PERF windowSec={0:F3}; mode={1}; visible={2}; bounds={3},{4},{5},{6}; pixels={7}; timerMs={8}; timerHz={9:F3}; timerTicks={10}; timerGapAvgMs={11:F3}; timerGapMaxMs={12:F3}; timerLateAvgMs={13:F3}; timerLateMaxMs={14:F3}; gaps50={15}; gaps100={16}; gaps250={17}; staticReadHz={18:F3}; staticFrames={19}; staticRedraws={20}; staticSuppressed={21}; motionReadHz={22:F3}; motionFrames={23}; motionRedraws={24}; motionSuppressed={25}; motionGapMaxMs={26:F3}; invalidates={27}; overlayPaintFps={28:F3}; paints={29}; paintGapMaxMs={30:F3}; refreshAvgMs={31:F3}; refreshMaxMs={32:F3}; paintAvgMs={33:F3}; paintMaxMs={34:F3}; worldTreasures={35}; overlayCpuPct={36:F3}; gameCpuPct={37:F3}; overlayWorkingSetMb={38:F3}; gameWorkingSetMb={39:F3}; fpsMetric=overlayPaintFps_not_game_present_fps",
+                "OVERLAY_PERF windowSec={0:F3}; mode={1}; visible={2}; bounds={3},{4},{5},{6}; pixels={7}; timerMs={8}; timerHz={9:F3}; timerTicks={10}; timerGapAvgMs={11:F3}; timerGapMaxMs={12:F3}; timerLateAvgMs={13:F3}; timerLateMaxMs={14:F3}; gaps50={15}; gaps100={16}; gaps250={17}; bridgeReadHz={18:F3}; bridgeFrames={19}; bridgeRedraws={20}; bridgeSuppressed={21}; bridgeGapMaxMs={22:F3}; invalidates={23}; overlayPaintFps={24:F3}; paints={25}; paintGapMaxMs={26:F3}; refreshAvgMs={27:F3}; refreshMaxMs={28:F3}; paintAvgMs={29:F3}; paintMaxMs={30:F3}; worldTreasures={31}; overlayCpuPct={32:F3}; gameCpuPct={33:F3}; overlayWorkingSetMb={34:F3}; gameWorkingSetMb={35:F3}; fpsMetric=overlayPaintFps_not_game_present_fps",
                 windowSeconds,
                 mode,
                 overlayVisible,
@@ -252,10 +231,6 @@ namespace DragonSwordWorldRadar
                 _timerGap50Count,
                 _timerGap100Count,
                 _timerGap250Count,
-                _staticFrames / windowSeconds,
-                _staticFrames,
-                _staticVisualFrames,
-                _staticSuppressedFrames,
                 _motionFrames / windowSeconds,
                 _motionFrames,
                 _motionVisualFrames,
@@ -423,9 +398,6 @@ namespace DragonSwordWorldRadar
             _motionFrames = 0;
             _motionVisualFrames = 0;
             _motionSuppressedFrames = 0;
-            _staticFrames = 0;
-            _staticVisualFrames = 0;
-            _staticSuppressedFrames = 0;
             _invalidates = 0;
             _timerGapSamples = 0;
             _timerGap50Count = 0;

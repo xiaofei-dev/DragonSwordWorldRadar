@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.4.0-dev9-performance1.8-singlebridge1
+
+- Rebased the performance work on the accepted 1.7 Stable Core cadence: 24 ms minimap/world-map motion, 250 ms control sampling, 24 ms active Overlay polling, and 20/10 XY/Z thresholds.
+- Removed the active Static JSON Bridge, its one-second Lua heartbeat write, the Overlay's 200 ms Static file poll, `JavaScriptSerializer`, and static/motion fallback merging.
+- Introduced explicit Motion protocol v2 with 27 strictly validated fields, alternating slots, generation/sequence ordering, and leading/trailing sequence equality.
+- Moved fixed treasure and nine-Boss catalog ownership to the Overlay; Lua publishes only live UObject/control state.
+- Added a 2500 ms Motion stale timeout that hides obsolete output and automatically restores on the next valid frame.
+- Kept the effective immediate world-map transition: hidden no-copy resize, one synchronous prepaint, then immediate reveal; closing the map immediately restores the small radar.
+- Installer upgrades remove only the three obsolete 1.7 source files that folder overwrite cannot delete.
+- Preserved the save-startup visibility gate, buffered snapshot flush, delayed full-EXE key scan, and exact process-bound watcher lifecycle.
+
+## 0.4.0-dev9-performance1.4-30hz1
+
+- Synchronized the Lua minimap/world-map motion producers and the active Overlay consumer at 33 ms (~30 Hz); the prior source-only 33 ms Overlay edit had left the runtime producer at 24 ms.
+- Kept static state at 250 ms and retained 50/75/125/500 ms idle, disabled, and background Overlay intervals.
+- Removed the obsolete default `ignore 10220122` rule because the current game data exposes that chest again.
+- Installer upgrades now remove only the exact deprecated `ignore 10220122` rule from a preserved `data\treasure_overrides.txt`; other user overrides are preserved.
+- Session-overlap audit confirmed one resident hidden WScript watcher, one game-bound host, mutex-protected duplicate host startup, and clean host/Overlay teardown when the game exits. No extra runtime watcher process is created by F7/F8 toggles.
+- No bridge schema, Boss rule, marker style, save schema, or world-map lifecycle change.
+
 ## 0.4.0-dev9-performance1.3-mapinstant-hiddenhost1
 
 - Removed the 1000 ms world-map reveal delay and all associated warm-up state; map entry and exit now restore the Overlay in the same timer cycle.

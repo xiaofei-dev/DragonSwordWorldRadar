@@ -20,8 +20,6 @@ namespace DragonSwordWorldRadar
         private int _version;
         private List<WorldTreasure> _points =
             new List<WorldTreasure>();
-        private Dictionary<long, List<WorldTreasure>> _bySaveId =
-            new Dictionary<long, List<WorldTreasure>>();
 
         public WorldTreasureCatalog()
         {
@@ -40,42 +38,6 @@ namespace DragonSwordWorldRadar
         public int Version
         {
             get { return _version; }
-        }
-
-        // Some generated records share a save ID but have different names
-        // and locations. Minimap metadata therefore uses both the save ID
-        // and marker coordinates instead of collapsing those records.
-        public WorldTreasure FindBySaveIdAndCoordinates(
-            long saveId,
-            double x,
-            double y)
-        {
-            List<WorldTreasure> treasures;
-            if (!_bySaveId.TryGetValue(saveId, out treasures)
-                || treasures.Count == 0)
-            {
-                return null;
-            }
-            if (treasures.Count == 1)
-            {
-                return treasures[0];
-            }
-
-            WorldTreasure nearest = null;
-            double nearestDistanceSquared = Double.MaxValue;
-            foreach (WorldTreasure treasure in treasures)
-            {
-                double deltaX = treasure.X - x;
-                double deltaY = treasure.Y - y;
-                double distanceSquared =
-                    deltaX * deltaX + deltaY * deltaY;
-                if (distanceSquared < nearestDistanceSquared)
-                {
-                    nearest = treasure;
-                    nearestDistanceSquared = distanceSquared;
-                }
-            }
-            return nearest;
         }
 
         public void Refresh()
@@ -198,21 +160,6 @@ namespace DragonSwordWorldRadar
                 });
             }
 
-            Dictionary<long, List<WorldTreasure>> bySaveId =
-                new Dictionary<long, List<WorldTreasure>>();
-            foreach (WorldTreasure treasure in loaded)
-            {
-                List<WorldTreasure> matches;
-                if (!bySaveId.TryGetValue(
-                    treasure.SaveId,
-                    out matches))
-                {
-                    matches = new List<WorldTreasure>();
-                    bySaveId[treasure.SaveId] = matches;
-                }
-                matches.Add(treasure);
-            }
-
             FileInfo after = new FileInfo(_path);
             after.Refresh();
             if (!after.Exists
@@ -224,7 +171,6 @@ namespace DragonSwordWorldRadar
             }
 
             _points = loaded;
-            _bySaveId = bySaveId;
             _lastWriteUtc = writeTime;
             _lastLength = length;
             _hasLoaded = true;

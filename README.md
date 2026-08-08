@@ -1,24 +1,146 @@
 # DragonSwordWorldRadar
 
-DragonSwordWorldRadar is a modular radar framework for **DragonSword Awakening**. Version `0.4.0-dev9-performance1.3-mapinstant-hiddenhost1` keeps the treasure and nine-world-boss behavior of the accepted `performance1.1` baseline while removing the later always-fullscreen world-map regression and separating normal-use diagnostics from development diagnostics.
+DragonSwordWorldRadar is a modular radar for **DragonSword Awakening**. This repository snapshot contains the complete development source for version `0.4.0-dev9-performance1.8-singlebridge1` in the original repository layout.
 
-## Map lifecycle and performance
+## Repository layout
 
-- The compact motion protocol remains exactly 21 fields. Minimap movement is sampled every 24 ms without reading world-map UObjects.
-- World-map entry is detected by the 250 ms static-state update. Only while the map is active does a dedicated 24 ms transform producer run.
-- Closing the map is accepted on the first missing active-map read. The map producer terminates, stale map transforms are cleared, and a radar motion frame is published without the former three-sample exit delay or 250 ms stale re-entry block.
-- Radar mode uses an actual small top-right layered window. It no longer keeps a transparent game-client-sized surface alive behind the radar.
-- On every radar/world-map transition, the Overlay is hidden before resizing. The resize discards stale backing bits, the hidden surface is repainted synchronously, and the correct geometry is shown immediately without activation. There is no timed reveal delay.
-- The active world-map transform already sampled by the motion producer is reused by the static publisher instead of traversing the same UObject chain twice.
-- Compact motion files are written only after a visible delta or a 1000 ms liveness heartbeat. Static marker/configuration state remains double-buffered at 250 ms.
-- Overlay refresh remains adaptive: 24 ms during visual motion, 50 ms for an idle world map, 75 ms for an idle radar, 125 ms while disabled, and 500 ms while the game is backgrounded.
-- Heartbeat-only motion frames and visually equivalent static states update liveness without invalidating or repainting the form.
-- Non-nearest treasure markers remain grouped into retained type-specific `GraphicsPath` batches. Game lifetime, geometry, and save polling reuse the tracked game PID.
-- Boss cooldown calculation uses the verified fixed daily 09:00 local reset. The Overlay performs no runtime PAK enumeration or rule rescanning.
+```text
+src/ue4ss/          UE4SS Lua producer
+src/overlay/        C# WinForms Overlay
+src/installer/      installer entry point and C# installer core
+src/host/           hidden watcher and game-bound host
+src/tools/          diagnostics collector
+resources/          release-time defaults
+build/              source verification, compile tests, and release packaging
+docs/               architecture and performance notes
+vendor/              required local build/runtime dependencies
+```
 
-The bridge schema, generated-data schema, save-table interpretation, marker colors, F7/F8 controls, height behavior, and Boss filtering semantics are unchanged.
+The installable package uses a different layout (`scripts/`, `host/`, `installer/`, and `src/overlay/`). `build/Build-Release.ps1` performs that source-to-release mapping. Do not develop directly inside a deployed Mod folder.
 
-## Use and debug logs
+## Build and validation
+
+Run from Windows PowerShell 5.1:
+
+```powershell
+& .\build\Verify-Source.ps1
+& .\build\Compile-Source.ps1
+& .\build\Test-Refactor.ps1
+& .\build\Build-Release.ps1
+```
+
+The build creates `dist/DragonSwordWorldRadar-v0.4.0-dev9-performance1.8-singlebridge1.zip`. Windows PowerShell 5.1 `Add-Type` is the authoritative compiler path because installation uses the same compiler.
+
+---
+
+## 1.8 single-bridge design
+
+The following 1.7 performance baseline is unchanged:
+
+- 24 ms minimap position sampling.
+- 24 ms active world-map transform sampling; it stops when the world map closes.
+- 250 ms low-frequency UObject/control sampling.
+- 24 ms active Overlay timer, with the existing lower-frequency idle/background modes.
+- 20 XY and 10 Z movement thresholds.
+- Exactly the existing three textual `LoopAsync` registrations; no new worker loop, prime-number staggering, or ThreadPool polling chain.
+- Cached Pawn fast path, C# treasure selection, save-filtered local catalog, normal buffered save-snapshot flush, delayed full-EXE key scan, and one-time hidden world-map prepaint.
+
+The old runtime path was:
+
+```text
+UE4SS Lua
+├─ radar_motion_a/b.dat     (high-frequency movement)
+└─ radar_state_a/b.json     (low-frequency duplicate state)
+
+Overlay
+├─ fixed-record parser
+└─ JSON parser + static/motion fallback merge
+```
+
+The 1.8 path is:
+
+```text
+UE4SS Lua
+└─ radar_motion_a/b.dat     (all live control and motion data)
+
+Overlay
+├─ fixed protocol-v2 parser
+├─ local treasure catalog
+├─ local nine-boss catalog
+└─ save/Boss availability filtering
+```
+
+### Motion protocol v2
+
+Each alternating Motion slot is one fixed 27-field ASCII record. It contains:
+
+- leading and trailing sequence numbers;
+- explicit protocol version and Lua generation;
+- enabled state and `radar` / `world` / `disabled` mode;
+- height, treasure-type, treasure-layer, and Boss-layer display switches;
+- text scale;
+- player XYZ, Z validity, and radar radius;
+- all world-map transform fields required while the map is open.
+
+The explicit protocol version prevents an old 21-field record or partially upgraded installation from being interpreted with shifted fields. The existing two-slot sequence validation still rejects partial rewrites.
+
+### Work removed from the runtime
+
+1.8 removes:
+
+- the Lua Static JSON builder and one-second heartbeat write;
+- Static Bridge Boss serialization;
+- `radar_state_a.json`, `radar_state_b.json`, and the legacy single state file as active IPC;
+- the Overlay's 200 ms Static file poll;
+- `JavaScriptSerializer` and the `System.Web.Extensions` dependency;
+- Static/Motion generation matching, fallback-state merging, and duplicate redraw comparison;
+- the Lua `boss_tracker.lua` runtime module.
+
+The 250 ms Lua callback now reads only the low-frequency UObject/control state needed to refresh Pawn context, detect map mode, and update minimap radius. It does not build JSON or write a second bridge.
+
+### Local static data ownership
+
+- The Overlay loads `data/generated/treasures.lua` directly and applies save filtering locally.
+- The Overlay loads `data/generated/bosses.lua` directly, validates exactly nine unique Boss IDs, and applies `tb_actor_respawn` availability locally.
+- The compatibility wrappers `scripts/treasures.lua` and `scripts/bosses.lua` remain in the source package, but normal 1.8 runtime code does not require either catalog in Lua.
+
+### Failure behavior
+
+- A Motion frame older than 2500 ms is treated as stale; the Overlay hides instead of continuing to draw obsolete coordinates.
+- New valid Motion data restores the Overlay automatically.
+- Legacy Static files are deleted only as upgrade/session cleanup; they are never read or written as active state.
+- Catalog, save, renderer, timer, process, and geometry failures remain isolated and rate-limited.
+
+## World-map behavior
+
+The accepted immediate-map behavior remains:
+
+```text
+hide Overlay
+→ resize to the game client with SWP_NOCOPYBITS
+→ one hidden Invalidate() + Update()
+→ reveal immediately
+```
+
+There is no fixed one-second reveal delay and no recurring warm-up render loop. The first failed active-map sample stops full-map production and restores the small radar mode.
+
+## Implemented layers
+
+### Treasures
+
+- Minimap and world-map markers generated locally from the game PAK.
+- SQLCipher save filtering, overrides, aliases, type colors, nearest marker, and height indicator.
+- Player-height comparison offset: `-150`.
+- Until the first complete save snapshot is available, treasure visibility is unknown and treasure points remain hidden; startup does not flash every point.
+
+### World bosses
+
+- Exactly nine fixed locations generated locally from game data.
+- Availability comes from `tb_actor_respawn`; no streamed `Character` scan or HP hook is used.
+- Respawn cycle 106 uses the verified daily 09:00 local reset.
+- Boss coordinates are loaded by the Overlay; Lua no longer serializes the same fixed records every second.
+
+## Logging and diagnostics
 
 Configure logging in `scripts/config.lua`:
 
@@ -28,7 +150,7 @@ debug_logging = false,
 diagnostic_perf_interval_seconds = 5,
 ```
 
-Normal play should keep `debug_logging = false`. Normal-use logs contain startup/shutdown, warnings, errors, and key state changes only; periodic performance counters and detailed save/geometry messages are not produced.
+Normal use should keep `debug_logging = false`.
 
 | Purpose | Path |
 |---|---|
@@ -37,67 +159,37 @@ Normal play should keep `debug_logging = false`. Normal-use logs contain startup
 | Overlay normal-use/error log | `runtime/logs/DragonSwordWorldRadar.Overlay.Use.log` |
 | Overlay debug/performance log | `runtime/logs/DragonSwordWorldRadar.Overlay.Debug.log` |
 
-Debug mode records producer queue delay, update duration, 50/100/250 ms stall counts, sampling/write rates, Overlay timer and paint gaps, normalized Overlay/game-process CPU, working set, visibility, window geometry, and `MAP_SURFACE_PREPARED` timing for each hidden map/radar resize. `overlayPaintFps` is the WinForms Overlay paint rate, **not** the game's Present FPS. Use an external frame-rate tool for authoritative game FPS comparison.
+Overlay debug output reports the single Bridge's read rate, complete frames, redraw-producing frames, suppressed frames, timer gaps, paint gaps, CPU, and working set. `overlayPaintFps` is the WinForms paint rate, not the game's Present FPS.
 
-`Collect-Diagnostics.cmd` collects both log sets, bridge snapshots, metadata, generated data, UE4SS log tail, process data, and source hashes.
-
-## Implemented layers
-
-### Treasures
-
-- Minimap and world-map markers generated from the local game PAK.
-- XYZ nearest-treasure selection, semantic type colors, height pointer, overrides, aliases, and SQLCipher save filtering.
-- Player-height reference offset is `-150`.
-
-### World bosses
-
-- Nine fixed world-boss locations generated from local game data.
-- One enlarged marker modeled on the game's field-boss icon.
-- Availability is derived from `tb_actor_respawn`, not streamed `Character` objects.
-- Save snapshots include active `.db`/`.bak` files and WAL/SHM/journal sidecars.
-- RespawnCycle rule 106 uses the verified daily 09:00 local reset directly; no runtime PAK scan is performed.
-
-No `FindAllOf("Character")` scan or experimental HP/death hook is used.
-
-## Reliability
-
-- Installation compiles the exact complete Overlay source set under Windows PowerShell 5.1. A compile failure stops installation; the authoritative success marker is `OVERLAY_COMPILE_OK`.
-- Lua game-thread queue and callback failures always release their pending gates, allowing the next producer iteration to recover.
-- Static and motion bridges use alternating files and sequence validation. Invalid or partial frames never replace the last complete published frame.
-- Save, catalog, visibility-index, Boss, diagnostics, timer, renderer, game-window, and game-lifetime failures are isolated and rate-limited.
-- Catalog, override, and per-map visibility replacements publish only after complete consistency checks.
-- A transient game-process API failure does not start the shutdown countdown for an already tracked PID.
-- `Install.cmd` starts and validates a resident hidden WScript watcher and registers it for the current user’s next sign-in. Game-time Lua writes only a validated digits-only `runtime\launch.request` stamp with no trailing newline; it does not invoke a shell. Debug configuration is read once when the Overlay process starts; changing `debug_logging` requires restarting that Overlay process or the game.
-- Runtime and patch-deployment backup folders are excluded from the source-only unexpected-EXE scan; the only bundled source tool remains the declared `ooz.exe` with SHA-256 verification.
+`Collect-Diagnostics.cmd` captures both Motion slots, logs, generated data, metadata, process state, UE4SS log tail, and relevant source hashes. It no longer collects active Static Bridge files.
 
 ## Installation
 
-1. Install UE4SS.
-2. Extract the complete release folder to `Mods/DragonSwordWorldRadar`.
-3. Close the game and run `Install.cmd`. This recreates the hidden user Startup watcher required for shell-free game launch.
-4. Confirm the installer prints `OVERLAY_COMPILE_OK` and `INSTALL_COMPLETE`.
-5. Start the game normally.
-6. Press **F7** to enable and **F8** to disable.
+1. Close the game and all existing radar processes.
+2. Extract the complete folder to `Mods/DragonSwordWorldRadar`.
+3. Run `Install.cmd` outside a ZIP preview.
+4. Require these markers:
 
-Do not run `Install.cmd` from inside a ZIP preview. The installer preserves a valid `scripts/config.lua`, `data/treasure_overrides.txt`, and unrelated entries in `mods.txt`.
+```text
+OVERLAY_COMPILE_OK
+INSTALLER_COMPILE_OK
+SESSION_WATCHER_READY
+INSTALL_COMPLETE
+```
+
+5. Start the game normally. Press **F7** to enable and **F8** to disable.
+
+The installer preserves a valid `scripts/config.lua`, `data/treasure_overrides.txt`, and unrelated `mods.txt` entries. It also removes the three exact 1.7 source files retired by the single-Bridge architecture, so a normal full-folder overwrite followed by `Install.cmd` does not retain duplicate C# models or the old Lua Boss tracker.
 
 ## Validation status
 
-This repaired source package received static source, JSON/XML, Lua syntax, delimiter, semantic-invariant, binary-hash, and package-integrity checks in a Linux preparation environment. Windows PowerShell 5.1 `Add-Type` compilation and in-game FPS/transition validation were not executable there. Run `Install.cmd` and require `OVERLAY_COMPILE_OK` before treating a deployment as valid.
+The release preparation validates Lua syntax, actual stubbed execution of disabled/radar/world protocol-v2 records, protocol positive and negative cases, C# lexical structure and Windows PowerShell 5.1 CodeDOM compatibility patterns, JSON/XML structure, PowerShell delimiter structure, Boss catalog shape, source invariants, manifest hashes, ZIP CRC, path safety, duplicate entries, extracted-byte equality, and bundled binary hashes.
+
+Windows PowerShell 5.1 `Add-Type` compilation and in-game FPS/frame-time testing are not available in the preparation environment. `Install.cmd` remains the authoritative Windows compile gate, and same-route game testing remains the authoritative performance gate. The expected gain from removing Static Bridge is lower periodic IPC/JSON work and simpler failure behavior; no specific FPS increase is claimed.
 
 ## Game updates
 
-Installation stores a fingerprint of the game executable and generated-data PAK in `metadata/install-state.json`. If the game changes, the watcher requests reinstallation instead of running stale datasets.
-
-## Apply a patch, build, and deploy
-
-Place one `.patch` or `.diff` file in the repository root and run:
-
-```text
-Apply-Patch-And-Deploy.cmd
-```
-
-The workflow requires a clean Git work tree, confirms the current and target versions, runs all validation gates, builds the release, lets you select `DSClient-Win64-Shipping.exe`, deploys the Mod, and runs the normal installer. Patch changes remain staged for review and commit. Logs are written under `runtime/patch-deploy`.
+Installation records the game executable and generated-data PAK fingerprint in `metadata/install-state.json`. If the game changes, the watcher requests reinstallation rather than using stale generated data.
 
 ## License
 

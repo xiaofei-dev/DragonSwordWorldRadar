@@ -47,7 +47,7 @@ Function NormalizeStamp(value)
     NormalizeStamp = normalized
 End Function
 
-LogLine "WATCHER_START version=0.4.0-dev9-performance1.3-mapinstant-hiddenhost1 host=wscript pidless=true"
+LogLine "WATCHER_START version=0.4.0-dev9-performance1.8-singlebridge1 host=wscript pidless=true"
 Do
     If fso.FileExists(stopPath) Then
         On Error Resume Next
@@ -78,6 +78,7 @@ Do
             LogLine "OVERLAY_PROCESS_START stamp=" & currentStamp
             rc = shell.Run(command, 0, True)
             LogLine "OVERLAY_PROCESS_EXIT stamp=" & currentStamp & " rc=" & CStr(rc)
+            Exit Do
         End If
     End If
     WScript.Sleep 250

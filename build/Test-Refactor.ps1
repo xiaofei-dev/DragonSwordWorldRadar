@@ -10,7 +10,6 @@ if ($PSVersionTable.PSVersion.Major -ne 5 -or
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Web.Extensions
 $sources = @(Get-ChildItem -LiteralPath (Join-Path $root 'src\overlay') -Recurse -Filter '*.cs' -File |
     Where-Object { $_.Name -ne 'Program.cs' } |
     Sort-Object FullName | Select-Object -ExpandProperty FullName)
@@ -18,7 +17,6 @@ $sources += (Join-Path $PSScriptRoot 'ValidationHarness.cs')
 $references = @(
     [System.Windows.Forms.Form].Assembly.Location,
     [System.Drawing.Graphics].Assembly.Location,
-    [System.Web.Script.Serialization.JavaScriptSerializer].Assembly.Location,
     [System.Linq.Enumerable].Assembly.Location,
     [System.Uri].Assembly.Location
 ) | Select-Object -Unique

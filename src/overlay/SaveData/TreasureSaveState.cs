@@ -597,65 +597,19 @@ namespace DragonSwordWorldRadar
 
         private void LogRefreshError(Exception exception)
         {
-            string message = BuildExceptionSignature(exception);
+            string message =
+                exception.GetType().FullName + ": " +
+                exception.Message;
             lock (_sync)
             {
-                if (message == _lastError)
+                if (message != _lastError)
                 {
-                    return;
+                    _lastError = message;
+                    ErrorLog.Write(
+                        "Save-state refresh failed",
+                        exception);
                 }
-
-                _lastError = message;
-                if (!_hasLoadedSaveState
-                    && IsExpectedStartupNotReady(exception))
-                {
-                    ErrorLog.WriteDebug(
-                        "Save-state initialization pending: " +
-                        message);
-                    return;
-                }
-
-                ErrorLog.Write(
-                    "Save-state refresh failed",
-                    exception);
             }
-        }
-
-        private static string BuildExceptionSignature(
-            Exception exception)
-        {
-            List<string> parts = new List<string>();
-            Exception current = exception;
-            while (current != null)
-            {
-                parts.Add(
-                    current.GetType().FullName + ": " +
-                    current.Message);
-                current = current.InnerException;
-            }
-            return String.Join(" --> ", parts.ToArray());
-        }
-
-        private static bool IsExpectedStartupNotReady(
-            Exception exception)
-        {
-            Exception current = exception;
-            while (current != null)
-            {
-                if (String.Equals(
-                        current.Message,
-                        "Save database owner is not ready.",
-                        StringComparison.Ordinal)
-                    || String.Equals(
-                        current.Message,
-                        "Save database key is not ready.",
-                        StringComparison.Ordinal))
-                {
-                    return true;
-                }
-                current = current.InnerException;
-            }
-            return false;
         }
 
         private void ResetForGameProcess(int processId)

@@ -8,7 +8,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
 namespace DragonSwordWorldRadar
@@ -21,12 +20,14 @@ namespace DragonSwordWorldRadar
         private const int ReferenceRightMargin = 40;
         private const int ReferenceTopMargin = 37;
         private const float ReferenceRadarRadius = 170f;
-        private const int ActiveTimerIntervalMs = 33;
+        private const int WorldMapId = 100;
+        private const int MaxRadarTreasurePoints = 80;
+        private const int RadarTreasureSelectionIntervalMs = 250;
+        private const int ActiveTimerIntervalMs = 24;
         private const int WorldIdleTimerIntervalMs = 50;
         private const int RadarIdleTimerIntervalMs = 75;
         private const int DisabledTimerIntervalMs = 125;
         private const int BackgroundTimerIntervalMs = 500;
-        private const int StaticStatePollIntervalMs = 200;
         private const int MaintenanceIntervalMs = 500;
         private const int GeometryCheckIntervalMs = 1000;
         private const int GameLifetimeCheckIntervalMs = 1000;
@@ -40,13 +41,12 @@ namespace DragonSwordWorldRadar
         private const double ComparablePlayerZOffset = -150.0;
 
         private readonly Timer _timer;
-        private readonly JavaScriptSerializer _serializer;
-        private readonly StaticStateBridgeReader _staticStateBridge;
         private readonly MotionBridgeReader _motionBridge;
         private readonly NotifyIcon _trayIcon;
         private readonly ContextMenuStrip _trayMenu;
         private readonly TreasureSaveState _saveState;
         private readonly WorldTreasureCatalog _worldTreasures;
+        private readonly WorldBossCatalog _worldBosses;
         private readonly Brush _otherTreasureBrush;
         private readonly Brush _miniGameTreasureBrush;
         private readonly Brush _mapTreasureBrush;
@@ -56,6 +56,7 @@ namespace DragonSwordWorldRadar
         private readonly OverlayPerformanceTracker _performance;
         private readonly BossAvailabilityTracker _bossAvailability;
         private readonly WorldTreasureVisibilityIndex _worldTreasureIndex;
+        private readonly RadarTreasureQueryBuffer _radarTreasureQueryBuffer;
         private readonly WorldTreasureRenderBuffer _worldTreasureRenderBuffer;
         private readonly BossMarkerRenderer _bossMarkerRenderer;
         private readonly HeightIndicatorRenderer _heightIndicatorRenderer;
@@ -64,12 +65,9 @@ namespace DragonSwordWorldRadar
         private readonly Dictionary<string, DateTime> _nextModuleFailureLogUtc =
             new Dictionary<string, DateTime>();
 
-        private RadarState _state;
         private MotionFrame _motion;
         private readonly MotionVisualSnapshot _motionVisualSnapshot =
             new MotionVisualSnapshot();
-        private DateTime _stateMissingSinceUtc;
-        private DateTime _nextStaticStatePollUtc;
         private DateTime _nextMaintenanceUtc;
         private DateTime _nextGeometryCheckUtc;
         private DateTime _lastMotionVisualChangeUtc;
@@ -99,19 +97,19 @@ namespace DragonSwordWorldRadar
                 ModPath.BaseDirectory,
                 "runtime",
                 "bridge");
-            _serializer = new JavaScriptSerializer();
-            _staticStateBridge = new StaticStateBridgeReader(
-                bridgeDirectory,
-                _serializer);
             _motionBridge = new MotionBridgeReader(
                 bridgeDirectory);
             _saveState = new TreasureSaveState();
             _worldTreasures = new WorldTreasureCatalog();
+            _worldBosses = new WorldBossCatalog();
             _performance = new OverlayPerformanceTracker();
             _debugEnabled = DebugSettings.Enabled;
             _performance.SetEnabled(_debugEnabled);
             _bossAvailability = new BossAvailabilityTracker();
             _worldTreasureIndex = new WorldTreasureVisibilityIndex();
+            _radarTreasureQueryBuffer =
+                new RadarTreasureQueryBuffer(
+                    MaxRadarTreasurePoints);
             _worldTreasureRenderBuffer =
                 new WorldTreasureRenderBuffer();
             _bossMarkerRenderer = new BossMarkerRenderer();
@@ -242,11 +240,8 @@ namespace DragonSwordWorldRadar
             bool paintFailed = false;
             try
             {
-                RadarState state = _state;
-                MotionFrame motion = GetCompatibleMotion(state);
-                if (state == null
-                    || !state.enabled
-                    || (motion != null && !motion.Enabled))
+                MotionFrame motion = GetCurrentMotion();
+                if (motion == null || !motion.Enabled)
                 {
                     return;
                 }
@@ -254,48 +249,34 @@ namespace DragonSwordWorldRadar
                 eventArgs.Graphics.SmoothingMode =
                     SmoothingMode.AntiAlias;
                 bool showDebugCoordinates = _debugEnabled;
-                float textScale = NormalizeTextScale(state.textScale);
+                float textScale = NormalizeTextScale(motion.TextScale);
                 string mode = _presentedMode;
-                double playerX = motion == null
-                    ? state.playerX
-                    : motion.PlayerX;
-                double playerY = motion == null
-                    ? state.playerY
-                    : motion.PlayerY;
-                double playerZ = motion == null
-                    ? state.playerZ
-                    : motion.PlayerZ;
-                bool hasPlayerZ = motion == null
-                    ? state.hasPlayerZ
-                    : motion.HasPlayerZ;
-                double radius = motion == null
-                    || motion.Radius <= 0
-                    ? state.radius
-                    : motion.Radius;
+                double playerX = motion.PlayerX;
+                double playerY = motion.PlayerY;
+                double playerZ = motion.PlayerZ;
+                bool hasPlayerZ = motion.HasPlayerZ;
+                double radius = motion.Radius;
 
                 if (String.Equals(
                     mode,
                     "world",
                     StringComparison.Ordinal))
                 {
-                    WorldMapState map = motion != null
-                        && motion.WorldMap != null
-                        ? motion.WorldMap
-                        : state.worldMap;
+                    WorldMapState map = motion.WorldMap;
                     if (map != null)
                     {
                         DrawWorldMap(
                             eventArgs.Graphics,
                             map,
-                            state.showHeight,
-                            state.showTreasureTypes,
-                            state.showTreasures,
+                            motion.ShowHeight,
+                            motion.ShowTreasureTypes,
+                            motion.ShowTreasures,
                             showDebugCoordinates,
                             textScale,
                             playerZ,
                             hasPlayerZ,
-                            state.showBosses,
-                            state.bosses);
+                            motion.ShowBosses,
+                            _worldBosses.Points);
                     }
                     return;
                 }
@@ -307,22 +288,18 @@ namespace DragonSwordWorldRadar
                 float center = _overlaySize / 2f;
                 float radarRadius =
                     ReferenceRadarRadius * _displayScale;
-                IList<RadarPoint> points = state.points;
-                if (points == null)
-                {
-                    points = Array.Empty<RadarPoint>();
-                }
-                RadarPoint nearest = FindNearestRadarPoint(
-                    points,
-                    playerX,
-                    playerY,
-                    playerZ,
-                    hasPlayerZ,
-                    radius);
+                WorldTreasure nearest = motion.ShowTreasures
+                    ? FindNearestRadarTreasure(
+                        playerX,
+                        playerY,
+                        playerZ,
+                        hasPlayerZ,
+                        radius)
+                    : null;
 
-                if (state.showBosses)
+                if (motion.ShowBosses)
                 {
-                    IList<BossPoint> bosses = state.bosses;
+                    IList<BossPoint> bosses = _worldBosses.Points;
                     if (bosses == null)
                     {
                         bosses = Array.Empty<BossPoint>();
@@ -332,6 +309,14 @@ namespace DragonSwordWorldRadar
                         if (boss == null
                             || !boss.visible
                             || !_bossAvailability.IsAvailable(boss.bossId))
+                        {
+                            continue;
+                        }
+                        double bossDeltaX = boss.x - playerX;
+                        double bossDeltaY = boss.y - playerY;
+                        if (bossDeltaX * bossDeltaX
+                            + bossDeltaY * bossDeltaY
+                            > radius * radius)
                         {
                             continue;
                         }
@@ -348,72 +333,67 @@ namespace DragonSwordWorldRadar
                     }
                 }
 
-                _worldTreasureRenderBuffer.Reset();
-                double radiusSquared = radius * radius;
-                float normalDiameter = 10f * _displayScale;
-                float normalHalf = normalDiameter / 2f;
-                for (int index = points.Count - 1;
-                    index >= 0;
-                    index--)
+                if (motion.ShowTreasures)
                 {
-                    RadarPoint point = points[index];
-                    if (point == null
-                        || _saveState.IsOpened(point.saveId))
+                    _worldTreasureRenderBuffer.Reset();
+                    double radiusSquared = radius * radius;
+                    float normalDiameter = 10f * _displayScale;
+                    float normalHalf = normalDiameter / 2f;
+                    for (int index =
+                            _radarTreasureQueryBuffer.Count - 1;
+                        index >= 0;
+                        index--)
                     {
-                        continue;
-                    }
-                    double deltaX = point.x - playerX;
-                    double deltaY = point.y - playerY;
-                    if (deltaX * deltaX + deltaY * deltaY
-                        > radiusSquared)
-                    {
-                        continue;
-                    }
-                    if (Object.ReferenceEquals(point, nearest))
-                    {
-                        continue;
+                        WorldTreasure treasure =
+                            _radarTreasureQueryBuffer[index];
+                        if (treasure == null
+                            || Object.ReferenceEquals(
+                                treasure,
+                                nearest))
+                        {
+                            continue;
+                        }
+
+                        double deltaX = treasure.X - playerX;
+                        double deltaY = treasure.Y - playerY;
+                        if (deltaX * deltaX + deltaY * deltaY
+                            > radiusSquared)
+                        {
+                            continue;
+                        }
+                        float x = center +
+                            (float)(deltaX / radius * radarRadius);
+                        float y = center +
+                            (float)(deltaY / radius * radarRadius);
+                        _worldTreasureRenderBuffer.AddMarker(
+                            treasure.Kind,
+                            new RectangleF(
+                                x - normalHalf,
+                                y - normalHalf,
+                                normalDiameter,
+                                normalDiameter));
                     }
 
-                    float x = center +
-                        (float)(deltaX / radius * radarRadius);
-                    float y = center +
-                        (float)(deltaY / radius * radarRadius);
-                    WorldTreasure metadata =
-                        _worldTreasures.FindBySaveIdAndCoordinates(
-                            point.saveId,
-                            point.x,
-                            point.y);
-                    _worldTreasureRenderBuffer.AddMarker(
-                        metadata == null
-                            ? TreasureKind.Other
-                            : metadata.Kind,
-                        new RectangleF(
-                            x - normalHalf,
-                            y - normalHalf,
-                            normalDiameter,
-                            normalDiameter));
-                }
+                    DrawBatchedTreasurePaths(eventArgs.Graphics);
 
-                DrawBatchedTreasurePaths(eventArgs.Graphics);
-
-                if (nearest != null
-                    && !_saveState.IsOpened(nearest.saveId))
-                {
-                    DrawPoint(
-                        eventArgs.Graphics,
-                        nearest,
-                        playerX,
-                        playerY,
-                        radius,
-                        radarRadius,
-                        center,
-                        true,
-                        state.showHeight,
-                        state.showTreasureTypes,
-                        showDebugCoordinates,
-                        textScale,
-                        playerZ,
-                        hasPlayerZ);
+                    if (nearest != null)
+                    {
+                        DrawPoint(
+                            eventArgs.Graphics,
+                            nearest,
+                            playerX,
+                            playerY,
+                            radius,
+                            radarRadius,
+                            center,
+                            true,
+                            motion.ShowHeight,
+                            motion.ShowTreasureTypes,
+                            showDebugCoordinates,
+                            textScale,
+                            playerZ,
+                            hasPlayerZ);
+                    }
                 }
             }
             catch (Exception exception)
@@ -434,41 +414,47 @@ namespace DragonSwordWorldRadar
             }
         }
 
-        private RadarPoint FindNearestRadarPoint(
-            IList<RadarPoint> points,
+        private WorldTreasure FindNearestRadarTreasure(
             double playerX,
             double playerY,
             double playerZ,
             bool hasPlayerZ,
             double radius)
         {
-            RadarPoint nearest = null;
-            double nearestDistance = Double.MaxValue;
+            WorldTreasure nearest = null;
+            double nearestDistanceSquared = Double.MaxValue;
             double radiusSquared = radius * radius;
-            foreach (RadarPoint point in points)
+            double comparablePlayerZ =
+                GetComparablePlayerZ(playerZ);
+            for (int index = 0;
+                index < _radarTreasureQueryBuffer.Count;
+                index++)
             {
-                if (point == null
-                    || _saveState.IsOpened(point.saveId))
+                WorldTreasure treasure =
+                    _radarTreasureQueryBuffer[index];
+                if (treasure == null)
                 {
                     continue;
                 }
-                double deltaX = point.x - playerX;
-                double deltaY = point.y - playerY;
-                double planar = deltaX * deltaX + deltaY * deltaY;
-                if (planar > radiusSquared)
+                double deltaX = treasure.X - playerX;
+                double deltaY = treasure.Y - playerY;
+                double planarDistanceSquared =
+                    deltaX * deltaX + deltaY * deltaY;
+                if (planarDistanceSquared > radiusSquared)
                 {
                     continue;
                 }
                 double deltaZ = 0.0;
-                if (point.hasZ && hasPlayerZ)
+                if (hasPlayerZ && treasure.HasZ)
                 {
-                    deltaZ = point.z - GetComparablePlayerZ(playerZ);
+                    deltaZ = treasure.Z - comparablePlayerZ;
                 }
-                double distance = planar + deltaZ * deltaZ;
-                if (distance < nearestDistance)
+                double distanceSquared =
+                    planarDistanceSquared + deltaZ * deltaZ;
+                if (distanceSquared < nearestDistanceSquared)
                 {
-                    nearestDistance = distance;
-                    nearest = point;
+                    nearestDistanceSquared = distanceSquared;
+                    nearest = treasure;
                 }
             }
             return nearest;
@@ -892,7 +878,7 @@ namespace DragonSwordWorldRadar
 
         private void DrawPoint(
             Graphics graphics,
-            RadarPoint point,
+            WorldTreasure point,
             double playerX,
             double playerY,
             double stateRadius,
@@ -907,18 +893,14 @@ namespace DragonSwordWorldRadar
             bool hasPlayerZ)
         {
             float x = center +
-                (float)((point.x - playerX)
+                (float)((point.X - playerX)
                     / stateRadius * radarRadius);
             float y = center +
-                (float)((point.y - playerY)
+                (float)((point.Y - playerY)
                     / stateRadius * radarRadius);
             float diameter =
                 (nearest ? 16f : 10f) * _displayScale;
-            WorldTreasure metadata =
-                _worldTreasures.FindBySaveIdAndCoordinates(
-                    point.saveId,
-                    point.x,
-                    point.y);
+            WorldTreasure metadata = point;
             Color color = GetTreasureColor(metadata);
 
             DrawTreasureMarker(
@@ -940,8 +922,8 @@ namespace DragonSwordWorldRadar
                         diameter,
                         playerZ,
                         hasPlayerZ,
-                        point.z,
-                        point.hasZ,
+                        point.Z,
+                        point.HasZ,
                         color,
                         _displayScale,
                         ComparablePlayerZOffset);
@@ -958,9 +940,9 @@ namespace DragonSwordWorldRadar
                         showTreasureTypes,
                         playerZ,
                         hasPlayerZ,
-                        point.z,
-                        point.hasZ,
-                        point.saveId,
+                        point.Z,
+                        point.HasZ,
+                        point.SaveId,
                         metadata);
                 }
             }
@@ -1386,56 +1368,6 @@ namespace DragonSwordWorldRadar
             bool redraw = false;
             bool geometryChanged = false;
 
-            if (now >= _nextStaticStatePollUtc)
-            {
-                _nextStaticStatePollUtc = now.AddMilliseconds(
-                    StaticStatePollIntervalMs);
-                RadarState loaded;
-                if (_staticStateBridge.TryReadLatest(out loaded))
-                {
-                    RadarState previousState = _state;
-                    bool hasCompatibleMotion = _motion != null
-                        && _motion.Generation == loaded.producerGeneration
-                        && now - _lastMotionFrameUtc
-                            <= TimeSpan.FromMilliseconds(
-                                MotionStaleTimeoutMs);
-                    bool staticVisualChange =
-                        StaticStateRequiresRedraw(
-                            previousState,
-                            loaded,
-                            !hasCompatibleMotion);
-                    _performance.RecordStaticFrame(
-                        staticVisualChange);
-                    _state = loaded;
-                    if (_motion != null
-                        && _motion.Generation != loaded.producerGeneration)
-                    {
-                        _motion = null;
-                        _lastMotionFrameUtc = DateTime.MinValue;
-                        _motionVisualSnapshot.Reset();
-                    }
-                    _stateMissingSinceUtc = DateTime.MinValue;
-                    redraw |= staticVisualChange;
-                }
-                else if (!_staticStateBridge.HasAnyFile)
-                {
-                    if (_stateMissingSinceUtc == DateTime.MinValue)
-                    {
-                        _stateMissingSinceUtc = now;
-                    }
-                    if (_state != null
-                        && now - _stateMissingSinceUtc
-                            >= TimeSpan.FromSeconds(1))
-                    {
-                        _state = null;
-                        _motion = null;
-                        _lastMotionFrameUtc = DateTime.MinValue;
-                        _motionVisualSnapshot.Reset();
-                        redraw = true;
-                    }
-                }
-            }
-
             MotionFrame motion;
             if (_motionBridge.TryReadLatest(out motion))
             {
@@ -1449,12 +1381,6 @@ namespace DragonSwordWorldRadar
                 if (motionVisualChange)
                 {
                     _lastMotionVisualChangeUtc = now;
-                }
-                if (motionVisualChange
-                    && (_state == null
-                        || motion.Generation ==
-                            _state.producerGeneration))
-                {
                     redraw = true;
                 }
             }
@@ -1488,6 +1414,23 @@ namespace DragonSwordWorldRadar
 
                 try
                 {
+                    int previousBossVersion = _worldBosses.Version;
+                    _worldBosses.Refresh();
+                    if (_worldBosses.Version != previousBossVersion)
+                    {
+                        redraw = true;
+                    }
+                    ClearModuleFailure("world-boss-catalog");
+                }
+                catch (Exception exception)
+                {
+                    ReportModuleFailure(
+                        "world-boss-catalog",
+                        exception);
+                }
+
+                try
+                {
                     if (_worldTreasureIndex.Refresh(
                             _worldTreasures,
                             _saveState))
@@ -1505,9 +1448,8 @@ namespace DragonSwordWorldRadar
 
                 try
                 {
-                    RadarState state = _state;
                     if (_bossAvailability.Refresh(
-                            state == null ? null : state.bosses,
+                            _worldBosses.Points,
                             _saveState))
                     {
                         redraw = true;
@@ -1538,6 +1480,22 @@ namespace DragonSwordWorldRadar
             {
                 _lastModeTransitionUtc = now;
             }
+
+            try
+            {
+                if (RefreshRadarTreasureSelection(now))
+                {
+                    redraw = true;
+                }
+                ClearModuleFailure("radar-treasure-query");
+            }
+            catch (Exception exception)
+            {
+                ReportModuleFailure(
+                    "radar-treasure-query",
+                    exception);
+            }
+
             if (geometryChanged
                 || now >= _nextGeometryCheckUtc)
             {
@@ -1554,153 +1512,43 @@ namespace DragonSwordWorldRadar
             }
         }
 
-        private static bool StaticStateRequiresRedraw(
-            RadarState previous,
-            RadarState current,
-            bool includeMotionFallback)
+        private bool RefreshRadarTreasureSelection(
+            DateTime now)
         {
-            if (Object.ReferenceEquals(previous, current))
-            {
-                return false;
-            }
-            if (previous == null || current == null)
-            {
-                return true;
-            }
-            if (previous.producerGeneration != current.producerGeneration
-                || previous.enabled != current.enabled
-                || previous.showHeight != current.showHeight
-                || previous.showTreasureTypes != current.showTreasureTypes
-                || previous.showTreasures != current.showTreasures
-                || previous.showBosses != current.showBosses
-                || previous.textScale != current.textScale
-                || previous.radius != current.radius
+            MotionFrame motion = GetCurrentMotion();
+            if (motion == null
+                || !motion.Enabled
+                || !motion.ShowTreasures
                 || !String.Equals(
-                    previous.mode,
-                    current.mode,
-                    StringComparison.Ordinal)
-                || !RadarPointsEqual(previous.points, current.points)
-                || !BossPointsEqual(previous.bosses, current.bosses))
+                    _presentedMode,
+                    "radar",
+                    StringComparison.Ordinal))
             {
-                return true;
+                return _radarTreasureQueryBuffer.Reset();
             }
 
-            if (!includeMotionFallback)
+            double radius = motion.Radius;
+            if (radius <= 0)
             {
-                return false;
+                return _radarTreasureQueryBuffer.Reset();
             }
-            return previous.playerX != current.playerX
-                || previous.playerY != current.playerY
-                || previous.playerZ != current.playerZ
-                || previous.hasPlayerZ != current.hasPlayerZ
-                || !WorldMapsEqual(
-                    previous.worldMap,
-                    current.worldMap);
+
+            return _radarTreasureQueryBuffer.RefreshIfNeeded(
+                _worldTreasureIndex.GetMap(WorldMapId),
+                _worldTreasureIndex.Version,
+                motion.PlayerX,
+                motion.PlayerY,
+                motion.PlayerZ,
+                motion.HasPlayerZ,
+                radius,
+                now,
+                RadarTreasureSelectionIntervalMs,
+                ComparablePlayerZOffset);
         }
 
-        private static bool RadarPointsEqual(
-            IList<RadarPoint> left,
-            IList<RadarPoint> right)
+        private MotionFrame GetCurrentMotion()
         {
-            int leftCount = left == null ? 0 : left.Count;
-            int rightCount = right == null ? 0 : right.Count;
-            if (leftCount != rightCount)
-            {
-                return false;
-            }
-            for (int index = 0; index < leftCount; index++)
-            {
-                RadarPoint leftPoint = left[index];
-                RadarPoint rightPoint = right[index];
-                if (Object.ReferenceEquals(leftPoint, rightPoint))
-                {
-                    continue;
-                }
-                if (leftPoint == null
-                    || rightPoint == null
-                    || leftPoint.saveId != rightPoint.saveId
-                    || leftPoint.x != rightPoint.x
-                    || leftPoint.y != rightPoint.y
-                    || leftPoint.z != rightPoint.z
-                    || leftPoint.hasZ != rightPoint.hasZ)
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        private static bool BossPointsEqual(
-            IList<BossPoint> left,
-            IList<BossPoint> right)
-        {
-            int leftCount = left == null ? 0 : left.Count;
-            int rightCount = right == null ? 0 : right.Count;
-            if (leftCount != rightCount)
-            {
-                return false;
-            }
-            for (int index = 0; index < leftCount; index++)
-            {
-                BossPoint leftPoint = left[index];
-                BossPoint rightPoint = right[index];
-                if (Object.ReferenceEquals(leftPoint, rightPoint))
-                {
-                    continue;
-                }
-                if (leftPoint == null
-                    || rightPoint == null
-                    || leftPoint.bossId != rightPoint.bossId
-                    || leftPoint.mapId != rightPoint.mapId
-                    || leftPoint.x != rightPoint.x
-                    || leftPoint.y != rightPoint.y
-                    || leftPoint.z != rightPoint.z
-                    || leftPoint.hasZ != rightPoint.hasZ
-                    || leftPoint.visible != rightPoint.visible
-                    || !String.Equals(
-                        leftPoint.status,
-                        rightPoint.status,
-                        StringComparison.Ordinal))
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        private static bool WorldMapsEqual(
-            WorldMapState left,
-            WorldMapState right)
-        {
-            if (Object.ReferenceEquals(left, right))
-            {
-                return true;
-            }
-            if (left == null || right == null)
-            {
-                return false;
-            }
-            return left.mapId == right.mapId
-                && left.dimensions == right.dimensions
-                && left.uiSize == right.uiSize
-                && left.left == right.left
-                && left.top == right.top
-                && left.zoom == right.zoom
-                && left.viewportWidth == right.viewportWidth
-                && left.viewportHeight == right.viewportHeight
-                && left.viewportScale == right.viewportScale
-                && left.playerWorldX == right.playerWorldX
-                && left.playerWorldY == right.playerWorldY
-                && left.playerMapX == right.playerMapX
-                && left.playerMapY == right.playerMapY;
-        }
-
-        private MotionFrame GetCompatibleMotion(
-            RadarState state)
-        {
-            if (state == null
-                || _motion == null
-                || _motion.Generation != state.producerGeneration
+            if (_motion == null
                 || DateTime.UtcNow - _lastMotionFrameUtc
                     > TimeSpan.FromMilliseconds(
                         MotionStaleTimeoutMs))
@@ -1712,19 +1560,12 @@ namespace DragonSwordWorldRadar
 
         private string GetEffectiveMode()
         {
-            RadarState state = _state;
-            MotionFrame motion = GetCompatibleMotion(state);
-            if (motion != null)
-            {
-                return motion.Enabled
-                    ? motion.Mode ?? "disabled"
-                    : "disabled";
-            }
-            if (state == null || !state.enabled)
+            MotionFrame motion = GetCurrentMotion();
+            if (motion == null || !motion.Enabled)
             {
                 return "disabled";
             }
-            return state.mode ?? "radar";
+            return motion.Mode ?? "radar";
         }
 
         private void ReportModuleFailure(
@@ -1775,45 +1616,39 @@ namespace DragonSwordWorldRadar
 
             _nextSaveFilterLogUtc =
                 DateTime.UtcNow.AddSeconds(2);
-            RadarState state = _state;
-            IList<RadarPoint> points = Array.Empty<RadarPoint>();
-            if (state != null && state.points != null)
-            {
-                points = state.points;
-            }
-            int hidden = points.Count(
-                point => _saveState.IsOpened(point.saveId));
-            string mode = state == null
-                ? "none"
-                : state.mode ?? "minimap";
-            string playerZ = state != null
-                && state.hasPlayerZ
-                ? GetComparablePlayerZ(state.playerZ).ToString(
+            MotionFrame motion = GetCurrentMotion();
+            int catalogCount = _worldTreasures.Points.Count;
+            int openFilteredCount = _worldTreasureIndex.Count;
+            int selectedCount = _radarTreasureQueryBuffer.Count;
+            string mode = GetEffectiveMode();
+            string playerZ = motion != null && motion.HasPlayerZ
+                ? GetComparablePlayerZ(motion.PlayerZ).ToString(
                     "0",
                     CultureInfo.InvariantCulture)
                 : "?";
             string details = IsWorldMapMode()
-                ? BuildWorldMapDebugDetails(state)
-                : BuildRadarDebugDetails(points);
+                ? BuildWorldMapDebugDetails(motion)
+                : BuildRadarDebugDetails();
             string message = string.Format(
                 CultureInfo.InvariantCulture,
                 "Treasure debug snapshot: mode={0}; " +
                 "gameProcessId={1}; saveLoaded={2}; " +
                 "database={3}; databaseWrite={4}; " +
                 "openedBits={5}; radarEnabled={6}; " +
-                "playerZ={7}; radarPoints={8}; hidden={9}; " +
-                "visible={10}; lastError={11}",
+                "playerZ={7}; catalog={8}; openFiltered={9}; " +
+                "radarSelected={10}; bosses={11}; lastError={12}",
                 mode,
                 _saveState.GameProcessId,
                 _saveState.HasLoadedSaveState,
                 _saveState.DatabaseName,
                 _saveState.DatabaseWriteSummary,
                 _saveState.OpenedBitCount,
-                state != null && state.enabled,
+                motion != null && motion.Enabled,
                 playerZ,
-                points.Count,
-                hidden,
-                points.Count - hidden,
+                catalogCount,
+                openFilteredCount,
+                selectedCount,
+                _worldBosses.Points.Count,
                 _saveState.LastErrorSummary)
                 + Environment.NewLine
                 + details;
@@ -1825,63 +1660,80 @@ namespace DragonSwordWorldRadar
             }
         }
 
-        private string BuildRadarDebugDetails(
-            IList<RadarPoint> points)
+        private string BuildRadarDebugDetails()
         {
-            if (points == null || points.Count == 0)
+            if (_radarTreasureQueryBuffer.Count == 0)
             {
                 return "Nearby treasure details: none";
             }
 
+            MotionFrame motion = GetCurrentMotion();
+            double playerX = motion == null ? 0.0 : motion.PlayerX;
+            double playerY = motion == null ? 0.0 : motion.PlayerY;
+            List<WorldTreasure> selected =
+                new List<WorldTreasure>(
+                    _radarTreasureQueryBuffer.Count);
+            for (int index = 0;
+                index < _radarTreasureQueryBuffer.Count;
+                index++)
+            {
+                WorldTreasure treasure =
+                    _radarTreasureQueryBuffer[index];
+                if (treasure != null)
+                {
+                    selected.Add(treasure);
+                }
+            }
+            selected.Sort(delegate(
+                WorldTreasure left,
+                WorldTreasure right)
+            {
+                double leftX = left.X - playerX;
+                double leftY = left.Y - playerY;
+                double rightX = right.X - playerX;
+                double rightY = right.Y - playerY;
+                return (leftX * leftX + leftY * leftY).CompareTo(
+                    rightX * rightX + rightY * rightY);
+            });
+
             List<string> rows = new List<string>();
-            int count = Math.Min(points.Count, 12);
+            int count = Math.Min(selected.Count, 12);
             for (int index = 0; index < count; index++)
             {
-                RadarPoint point = points[index];
-                WorldTreasure metadata =
-                    _worldTreasures.FindBySaveIdAndCoordinates(
-                        point.saveId,
-                        point.x,
-                        point.y);
+                WorldTreasure treasure = selected[index];
+                double deltaX = treasure.X - playerX;
+                double deltaY = treasure.Y - playerY;
                 double horizontal = Math.Sqrt(
-                    point.dx * point.dx +
-                    point.dy * point.dy);
+                    deltaX * deltaX + deltaY * deltaY);
                 rows.Add(string.Format(
                     CultureInfo.InvariantCulture,
                     "  [{0}] name={1}; id={2}; uidName={3}; groupId={4}; " +
                     "x={5:0}; y={6:0}; z={7}; " +
                     "dxy={8:0}({9:0.0}m); dz={10}; {11}; overlaps={12}",
                     index,
-                    metadata == null
-                        ? TreasureIdentity.GetDebugName(
-                            null,
-                            point.saveId)
-                        : metadata.DebugName,
-                    point.saveId,
-                    metadata == null
-                        || String.IsNullOrWhiteSpace(metadata.UidName)
+                    treasure.DebugName,
+                    treasure.SaveId,
+                    String.IsNullOrWhiteSpace(treasure.UidName)
                         ? "(missing)"
-                        : metadata.UidName,
-                    metadata == null
-                        ? 0
-                        : metadata.GroupId,
-                    point.x,
-                    point.y,
-                    point.hasZ
-                        ? point.z.ToString(
+                        : treasure.UidName,
+                    treasure.GroupId,
+                    treasure.X,
+                    treasure.Y,
+                    treasure.HasZ
+                        ? treasure.Z.ToString(
                             "0",
                             CultureInfo.InvariantCulture)
                         : "?",
                     horizontal,
                     horizontal / 100.0,
                     GetVerticalDeltaText(
-                        _state,
-                        point.z,
-                        point.hasZ),
-                    _saveState.Describe(point.saveId),
+                        motion,
+                        treasure.Z,
+                        treasure.HasZ),
+                    _saveState.Describe(treasure.SaveId),
                     FindRadarOverlapSummary(
-                        point,
-                        points)));
+                        treasure,
+                        selected)));
             }
 
             return "Nearby treasure details:"
@@ -1892,14 +1744,14 @@ namespace DragonSwordWorldRadar
         }
 
         private string BuildWorldMapDebugDetails(
-            RadarState state)
+            MotionFrame motion)
         {
-            if (state == null || state.worldMap == null)
+            if (motion == null || motion.WorldMap == null)
             {
                 return "World-map treasure details: none";
             }
 
-            WorldMapState map = state.worldMap;
+            WorldMapState map = motion.WorldMap;
             List<WorldTreasure> nearest =
                 _worldTreasures.Points
                     .Where(treasure =>
@@ -1954,7 +1806,7 @@ namespace DragonSwordWorldRadar
                     horizontal,
                     horizontal / 100.0,
                     GetVerticalDeltaText(
-                        state,
+                        motion,
                         treasure.Z,
                         treasure.HasZ),
                     _saveState.Describe(
@@ -1972,19 +1824,19 @@ namespace DragonSwordWorldRadar
         }
 
         private static string GetVerticalDeltaText(
-            RadarState state,
+            MotionFrame motion,
             double treasureZ,
             bool hasTreasureZ)
         {
-            if (state == null
-                || !state.hasPlayerZ
+            if (motion == null
+                || !motion.HasPlayerZ
                 || !hasTreasureZ)
             {
                 return "?";
             }
 
             return (treasureZ
-                - GetComparablePlayerZ(state.playerZ)).ToString(
+                - GetComparablePlayerZ(motion.PlayerZ)).ToString(
                 "0",
                 CultureInfo.InvariantCulture);
         }
@@ -1995,24 +1847,24 @@ namespace DragonSwordWorldRadar
         }
 
         private static string FindRadarOverlapSummary(
-            RadarPoint source,
-            IEnumerable<RadarPoint> points)
+            WorldTreasure source,
+            IEnumerable<WorldTreasure> points)
         {
             string[] overlaps = points
                 .Where(candidate =>
                     !object.ReferenceEquals(candidate, source)
                     && CandidateIsClose(
-                        source.x,
-                        source.y,
-                        candidate.x,
-                        candidate.y))
+                        source.X,
+                        source.Y,
+                        candidate.X,
+                        candidate.Y))
                 .Take(5)
                 .Select(candidate => string.Format(
                     CultureInfo.InvariantCulture,
                     "{0}@z{1}",
-                    candidate.saveId,
-                    candidate.hasZ
-                        ? candidate.z.ToString(
+                    candidate.SaveId,
+                    candidate.HasZ
+                        ? candidate.Z.ToString(
                             "0",
                             CultureInfo.InvariantCulture)
                         : "?"))
@@ -2078,8 +1930,9 @@ namespace DragonSwordWorldRadar
             string previousMode = _presentedMode;
 
             // Hide before changing between the small radar window and the
-            // full-client world-map window. Resizing a visible layered window
-            // is what produced the black edge/tear during map transitions.
+            // full-client world-map window. The hidden surface is resized and
+            // painted once before it is shown, so no fixed reveal delay is
+            // needed and stale compact-window pixels never become visible.
             SetOverlayWindowVisible(false, false);
             _presentedMode = normalizedMode;
             ErrorLog.WriteDebug(
@@ -2102,7 +1955,9 @@ namespace DragonSwordWorldRadar
                 }
                 string[] patterns =
                 {
-                    "radar_state_*.json",
+                    // Legacy Static Bridge cleanup for upgrades from 1.7 and
+                    // earlier. 1.8 reads only the motion/control slots.
+                    "radar_state*.json",
                     "radar_motion_*.dat"
                 };
                 for (int patternIndex = 0;
@@ -2522,12 +2377,9 @@ namespace DragonSwordWorldRadar
             }
             ClearModuleFailure("set-window-position");
 
-            // A layered TransparencyKey window can briefly expose stale or
-            // uninitialized pixels when it changes from the compact radar
-            // rectangle to the full game client. Discard the old backing bits
-            // during SetWindowPos, then synchronously paint the new hidden
-            // surface before ShowWindow makes it visible. This adds no timed
-            // warm-up and runs only when the hidden window size changes.
+            // Prepare the resized layered surface while hidden, then reveal it
+            // immediately. This is a one-time mode/size transition operation;
+            // it does not add a recurring render loop or a timed warm-up.
             if (!_overlayWindowVisible
                 && sizeChanged
                 && IsHandleCreated)
@@ -2558,9 +2410,6 @@ namespace DragonSwordWorldRadar
             }
             else if (_overlayWindowVisible && sizeChanged)
             {
-                // A live resolution/client-size change is not a map-mode
-                // transition. Keep the copied surface visible and request one
-                // normal repaint instead of discarding the client bits.
                 _performance.RecordInvalidate();
                 Invalidate();
             }
@@ -2736,15 +2585,266 @@ namespace DragonSwordWorldRadar
             return bestWindow;
         }
 
+        private struct RadarTreasureCandidate
+        {
+            public WorldTreasure Treasure;
+            public double DistanceSquared;
+        }
+
+        private sealed class RadarTreasureQueryBuffer
+        {
+            private const double PositionEpsilonSquared = 20.0 * 20.0;
+            private const double HeightEpsilon = 10.0;
+
+            private readonly RadarTreasureCandidate[] _heap;
+            private readonly WorldTreasure[] _selected;
+            private int _count;
+            private int _indexVersion = -1;
+            private double _playerX;
+            private double _playerY;
+            private double _playerZ;
+            private bool _hasPlayerZ;
+            private double _radius;
+            private bool _initialized;
+            private DateTime _nextRefreshUtc;
+
+            public RadarTreasureQueryBuffer(int capacity)
+            {
+                if (capacity <= 0)
+                {
+                    throw new ArgumentOutOfRangeException(
+                        "capacity");
+                }
+                _heap = new RadarTreasureCandidate[capacity];
+                _selected = new WorldTreasure[capacity];
+            }
+
+            public int Count
+            {
+                get { return _count; }
+            }
+
+            public WorldTreasure this[int index]
+            {
+                get { return _selected[index]; }
+            }
+
+            public bool RefreshIfNeeded(
+                IList<WorldTreasure> source,
+                int indexVersion,
+                double playerX,
+                double playerY,
+                double playerZ,
+                bool hasPlayerZ,
+                double radius,
+                DateTime now,
+                int minimumIntervalMs,
+                double comparablePlayerZOffset)
+            {
+                bool sourceChanged = !_initialized
+                    || _indexVersion != indexVersion
+                    || _radius != radius
+                    || _hasPlayerZ != hasPlayerZ;
+                if (!sourceChanged)
+                {
+                    double deltaX = playerX - _playerX;
+                    double deltaY = playerY - _playerY;
+                    bool positionChanged =
+                        deltaX * deltaX + deltaY * deltaY
+                            > PositionEpsilonSquared;
+                    bool heightChanged = hasPlayerZ
+                        && Math.Abs(playerZ - _playerZ)
+                            > HeightEpsilon;
+                    if (!positionChanged && !heightChanged)
+                    {
+                        return false;
+                    }
+                    if (now < _nextRefreshUtc)
+                    {
+                        return false;
+                    }
+                }
+
+                Build(
+                    source,
+                    playerX,
+                    playerY,
+                    playerZ,
+                    hasPlayerZ,
+                    radius,
+                    comparablePlayerZOffset);
+                _indexVersion = indexVersion;
+                _playerX = playerX;
+                _playerY = playerY;
+                _playerZ = playerZ;
+                _hasPlayerZ = hasPlayerZ;
+                _radius = radius;
+                _initialized = true;
+                _nextRefreshUtc = now.AddMilliseconds(
+                    minimumIntervalMs);
+                return true;
+            }
+
+            public bool Reset()
+            {
+                bool changed = _initialized
+                    || _count != 0;
+                for (int index = 0; index < _count; index++)
+                {
+                    _heap[index].Treasure = null;
+                    _heap[index].DistanceSquared = 0.0;
+                    _selected[index] = null;
+                }
+                _count = 0;
+                _indexVersion = -1;
+                _initialized = false;
+                _nextRefreshUtc = DateTime.MinValue;
+                return changed;
+            }
+
+            private void Build(
+                IList<WorldTreasure> source,
+                double playerX,
+                double playerY,
+                double playerZ,
+                bool hasPlayerZ,
+                double radius,
+                double comparablePlayerZOffset)
+            {
+                int previousCount = _count;
+                for (int index = 0; index < previousCount; index++)
+                {
+                    _heap[index].Treasure = null;
+                    _heap[index].DistanceSquared = 0.0;
+                    _selected[index] = null;
+                }
+                _count = 0;
+
+                if (source == null || source.Count == 0)
+                {
+                    return;
+                }
+
+                double radiusSquared = radius * radius;
+                double comparablePlayerZ =
+                    playerZ + comparablePlayerZOffset;
+                foreach (WorldTreasure treasure in source)
+                {
+                    if (treasure == null)
+                    {
+                        continue;
+                    }
+                    double deltaX = treasure.X - playerX;
+                    double deltaY = treasure.Y - playerY;
+                    double planarDistanceSquared =
+                        deltaX * deltaX + deltaY * deltaY;
+                    if (planarDistanceSquared > radiusSquared)
+                    {
+                        continue;
+                    }
+
+                    double deltaZ = 0.0;
+                    if (hasPlayerZ && treasure.HasZ)
+                    {
+                        deltaZ = treasure.Z - comparablePlayerZ;
+                    }
+                    double distanceSquared =
+                        planarDistanceSquared + deltaZ * deltaZ;
+                    AddNearest(treasure, distanceSquared);
+                }
+
+                for (int index = 0; index < _count; index++)
+                {
+                    _selected[index] = _heap[index].Treasure;
+                }
+            }
+
+            private void AddNearest(
+                WorldTreasure treasure,
+                double distanceSquared)
+            {
+                if (_count < _heap.Length)
+                {
+                    int index = _count;
+                    _count++;
+                    _heap[index].Treasure = treasure;
+                    _heap[index].DistanceSquared = distanceSquared;
+                    SiftUp(index);
+                    return;
+                }
+                if (distanceSquared >= _heap[0].DistanceSquared)
+                {
+                    return;
+                }
+
+                _heap[0].Treasure = treasure;
+                _heap[0].DistanceSquared = distanceSquared;
+                SiftDown(0);
+            }
+
+            private void SiftUp(int index)
+            {
+                while (index > 0)
+                {
+                    int parent = (index - 1) / 2;
+                    if (_heap[parent].DistanceSquared
+                        >= _heap[index].DistanceSquared)
+                    {
+                        return;
+                    }
+                    Swap(parent, index);
+                    index = parent;
+                }
+            }
+
+            private void SiftDown(int index)
+            {
+                while (true)
+                {
+                    int left = index * 2 + 1;
+                    if (left >= _count)
+                    {
+                        return;
+                    }
+                    int right = left + 1;
+                    int largest = right < _count
+                        && _heap[right].DistanceSquared
+                            > _heap[left].DistanceSquared
+                        ? right
+                        : left;
+                    if (_heap[index].DistanceSquared
+                        >= _heap[largest].DistanceSquared)
+                    {
+                        return;
+                    }
+                    Swap(index, largest);
+                    index = largest;
+                }
+            }
+
+            private void Swap(int left, int right)
+            {
+                RadarTreasureCandidate candidate = _heap[left];
+                _heap[left] = _heap[right];
+                _heap[right] = candidate;
+            }
+        }
+
         private sealed class MotionVisualSnapshot
         {
             private readonly WorldMapState _worldMap =
                 new WorldMapState();
             private bool _hasValue;
             private bool _hasWorldMap;
+            private int _protocolVersion;
             private int _generation;
             private bool _enabled;
             private string _mode;
+            private bool _showHeight;
+            private bool _showTreasureTypes;
+            private bool _showTreasures;
+            private bool _showBosses;
+            private double _textScale;
             private double _playerX;
             private double _playerY;
             private double _playerZ;
@@ -2762,12 +2862,18 @@ namespace DragonSwordWorldRadar
 
                 bool hasWorldMap = frame.WorldMap != null;
                 bool changed = !_hasValue
+                    || _protocolVersion != frame.ProtocolVersion
                     || _generation != frame.Generation
                     || _enabled != frame.Enabled
                     || !String.Equals(
                         _mode,
                         frame.Mode,
                         StringComparison.Ordinal)
+                    || _showHeight != frame.ShowHeight
+                    || _showTreasureTypes != frame.ShowTreasureTypes
+                    || _showTreasures != frame.ShowTreasures
+                    || _showBosses != frame.ShowBosses
+                    || _textScale != frame.TextScale
                     || _playerX != frame.PlayerX
                     || _playerY != frame.PlayerY
                     || _playerZ != frame.PlayerZ
@@ -2780,9 +2886,15 @@ namespace DragonSwordWorldRadar
                             frame.WorldMap));
 
                 _hasValue = true;
+                _protocolVersion = frame.ProtocolVersion;
                 _generation = frame.Generation;
                 _enabled = frame.Enabled;
                 _mode = frame.Mode;
+                _showHeight = frame.ShowHeight;
+                _showTreasureTypes = frame.ShowTreasureTypes;
+                _showTreasures = frame.ShowTreasures;
+                _showBosses = frame.ShowBosses;
+                _textScale = frame.TextScale;
                 _playerX = frame.PlayerX;
                 _playerY = frame.PlayerY;
                 _playerZ = frame.PlayerZ;
@@ -2800,14 +2912,47 @@ namespace DragonSwordWorldRadar
             {
                 _hasValue = false;
                 _hasWorldMap = false;
+                _protocolVersion = 0;
                 _generation = 0;
                 _enabled = false;
                 _mode = null;
+                _showHeight = false;
+                _showTreasureTypes = false;
+                _showTreasures = false;
+                _showBosses = false;
+                _textScale = 0.0;
                 _playerX = 0.0;
                 _playerY = 0.0;
                 _playerZ = 0.0;
                 _hasPlayerZ = false;
                 _radius = 0.0;
+            }
+
+            private static bool WorldMapsEqual(
+                WorldMapState left,
+                WorldMapState right)
+            {
+                if (Object.ReferenceEquals(left, right))
+                {
+                    return true;
+                }
+                if (left == null || right == null)
+                {
+                    return false;
+                }
+                return left.mapId == right.mapId
+                    && left.dimensions == right.dimensions
+                    && left.uiSize == right.uiSize
+                    && left.left == right.left
+                    && left.top == right.top
+                    && left.zoom == right.zoom
+                    && left.viewportWidth == right.viewportWidth
+                    && left.viewportHeight == right.viewportHeight
+                    && left.viewportScale == right.viewportScale
+                    && left.playerWorldX == right.playerWorldX
+                    && left.playerWorldY == right.playerWorldY
+                    && left.playerMapX == right.playerMapX
+                    && left.playerMapY == right.playerMapY;
             }
 
             private static void CopyWorldMap(

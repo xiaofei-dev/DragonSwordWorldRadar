@@ -14,7 +14,7 @@ namespace DragonSwordWorldRadar
         {
             try
             {
-                TestMotionParser();
+                TestMotionParserProtocolV2();
                 TestMotionParserRejectsInvalidRecords();
                 TestMotionVersionOrdering();
                 TestWorldTreasureRenderBuffer();
@@ -34,21 +34,26 @@ namespace DragonSwordWorldRadar
             }
         }
 
-        private static void TestMotionParser()
+        private static void TestMotionParserProtocolV2()
         {
-            string record =
-                "41|7|1|world|100.5|-200.25|900|1|4500|101|" +
-                "8192|1024|-12.5|33.25|1.75|2560|1440|1|" +
-                "500.5|600.25|41\r\n";
-            byte[] bytes = Encoding.ASCII.GetBytes(record);
+            string worldRecord =
+                "41|2|7|1|world|1|1|1|1|1.25|100.5|-200.25|900|1|4500|101|" +
+                "8192|1024|-12.5|33.25|1.75|2560|1440|1|500.5|600.25|41\r\n";
+            byte[] bytes = Encoding.ASCII.GetBytes(worldRecord);
             MotionFrame frame = new MotionFrame();
             WorldMapState map = new WorldMapState();
             Assert(MotionRecordParser.TryParse(bytes, bytes.Length, frame, map),
-                "valid world motion record");
+                "valid protocol-v2 world record");
             Assert(frame.Sequence == 41, "sequence");
+            Assert(frame.ProtocolVersion == 2, "protocol version");
             Assert(frame.Generation == 7, "generation");
             Assert(frame.Enabled, "enabled");
-            Assert(frame.Mode == "world", "mode");
+            Assert(frame.Mode == "world", "world mode");
+            Assert(frame.ShowHeight, "show height");
+            Assert(frame.ShowTreasureTypes, "show treasure types");
+            Assert(frame.ShowTreasures, "show treasures");
+            Assert(frame.ShowBosses, "show bosses");
+            Assert(Almost(frame.TextScale, 1.25), "text scale");
             Assert(Almost(frame.PlayerX, 100.5), "player x");
             Assert(Almost(frame.PlayerY, -200.25), "player y");
             Assert(Almost(frame.PlayerZ, 900.0), "player z");
@@ -58,36 +63,53 @@ namespace DragonSwordWorldRadar
                 "retained world-map instance");
             Assert(map.mapId == 101, "map id");
             Assert(Almost(map.zoom, 1.75), "zoom");
+            Assert(Almost(map.playerMapX, 500.5), "player map x");
 
             string radarRecord =
-                "42|7|1|radar|1|2|3|1|4000|0|0|0|0|0|0|0|0|0|0|0|42";
+                "42|2|7|1|radar|1|0|1|1|1|1|2|3|1|4000|0|0|0|0|0|0|0|0|0|0|0|42";
             bytes = Encoding.ASCII.GetBytes(radarRecord);
             Assert(MotionRecordParser.TryParse(bytes, bytes.Length, frame, map),
-                "valid radar motion record");
+                "valid protocol-v2 radar record");
             Assert(frame.WorldMap == null, "radar clears published map");
             Assert(frame.Sequence == 42, "reused frame updated");
+            Assert(!frame.ShowTreasureTypes, "radar display flag updated");
+
+            string disabledRecord =
+                "43|2|7|0|disabled|1|1|1|1|1|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|43";
+            bytes = Encoding.ASCII.GetBytes(disabledRecord);
+            Assert(MotionRecordParser.TryParse(bytes, bytes.Length, frame, map),
+                "valid protocol-v2 disabled record");
+            Assert(!frame.Enabled, "disabled state");
+            Assert(frame.Mode == "disabled", "disabled mode");
         }
 
         private static void TestMotionParserRejectsInvalidRecords()
         {
-            string valid =
-                "5|1|1|radar|1|2|3|1|4000|0|0|0|0|0|0|0|0|0|0|0|5";
+            string validRadar =
+                "5|2|1|1|radar|1|1|1|1|1|1|2|3|1|4000|0|0|0|0|0|0|0|0|0|0|0|5";
             string[] invalid =
             {
-                valid + "|extra",
-                valid + "|",
-                valid.Substring(0, valid.Length - 1) + "6",
-                valid.Replace("|1|2|", "|NaN|2|"),
-                valid.Replace("radar", "other"),
+                // Legacy protocol-v1 / 21-field record.
+                "5|1|1|radar|1|2|3|1|4000|0|0|0|0|0|0|0|0|0|0|0|5",
+                validRadar + "|extra",
+                validRadar + "|",
+                "5|2|1|1|radar|1|1|1|1|1|1|2|3|1|4000|0|0|0|0|0|0|0|0|0|0|0|6",
+                "5|2|1|2|radar|1|1|1|1|1|1|2|3|1|4000|0|0|0|0|0|0|0|0|0|0|0|5",
+                "5|2|1|1|disabled|1|1|1|1|1|1|2|3|1|4000|0|0|0|0|0|0|0|0|0|0|0|5",
+                "5|2|1|0|radar|1|1|1|1|1|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|5",
+                "5|2|1|1|radar|2|1|1|1|1|1|2|3|1|4000|0|0|0|0|0|0|0|0|0|0|0|5",
+                "5|2|1|1|radar|1|1|1|1|0.4|1|2|3|1|4000|0|0|0|0|0|0|0|0|0|0|0|5",
+                "5|2|1|1|world|1|1|1|1|1|1|2|3|1|4000|0|8192|1024|0|0|1|2560|1440|1|1|2|5",
+                "5|2|1|1|radar|1|1|1|1|1|NaN|2|3|1|4000|0|0|0|0|0|0|0|0|0|0|0|5",
                 "",
-                "5|1|1|radar"
+                "5|2|1|1|radar"
             };
             foreach (string record in invalid)
             {
                 byte[] bytes = Encoding.ASCII.GetBytes(record);
                 Assert(!MotionRecordParser.TryParse(
                     bytes, bytes.Length, new MotionFrame(), new WorldMapState()),
-                    "invalid motion record rejected");
+                    "invalid protocol-v2 record rejected");
             }
             Assert(!MotionRecordParser.TryParse(
                 null, 0, new MotionFrame(), new WorldMapState()),

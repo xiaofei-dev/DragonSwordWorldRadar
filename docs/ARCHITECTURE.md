@@ -2,79 +2,54 @@
 
 ## Runtime processes
 
-DragonSwordWorldRadar uses UE4SS Lua as the game-side producer, a resident hidden WScript watcher, a game-bound hidden Windows PowerShell 5.1 host, and an in-memory compiled WinForms Overlay. No custom radar executable is built or distributed.
+DragonSwordWorldRadar uses UE4SS Lua as the game-side producer, a hidden per-session WScript watcher, a game-bound hidden Windows PowerShell 5.1 host, and an in-memory compiled WinForms Overlay. No custom radar executable is built or distributed.
 
 ```text
 UE4SS Lua
-  -> alternating static JSON slots (250 ms)
-  -> alternating compact motion slots (24 ms sampling; visual-delta writes)
-  -> resident hidden WScript watcher / game-bound hidden host
+  -> alternating protocol-v2 Motion/control slots
+  -> hidden WScript watcher / exact-PID PowerShell host
   -> in-memory WinForms Overlay
 ```
 
-## Data and state boundaries
+## Single live IPC channel
+
+`runtime/bridge/radar_motion_a.dat` and `radar_motion_b.dat` are the only active Lua-to-Overlay state channel. Each compact ASCII record contains 27 fields: protocol version, generation, sequence integrity, enabled/mode state, layer controls, text scale, player coordinates, radar radius, and active world-map transform data.
+
+The old `radar_state*.json` files are cleanup-only. They are never read or written as active state. This removes duplicate state ownership, JSON serialization/parsing, the 200 ms Static poll, and static/motion fallback merging.
+
+## Data ownership
 
 ```text
 TreasureDataProvider -> data/generated/treasures.lua
-                     -> SQLCipher opened-state filter
-                     -> per-map visibility index
+                     -> Overlay catalog + save visibility index
                      -> minimap/world-map renderer
 
-BossDataProvider     -> data/generated/bosses.lua
-                     -> SQLCipher tb_actor_respawn state
-                     -> availability deadline cache
+BossDataProvider     -> data/generated/bosses.lua (exactly 9)
+                     -> Overlay catalog + tb_actor_respawn availability
                      -> minimap/world-map renderer
 ```
 
-Treasure and Boss save state are read from consistent copies of active `.db`/`.bak` files and available WAL/SHM/journal sidecars. The production runtime does not enumerate `Character` objects and does not install experimental gameplay hooks.
+Lua no longer serializes fixed treasure or Boss catalogs. It publishes only live UObject/control data that the external Overlay cannot obtain itself.
 
-## Scheduler and map lifecycle
+## Scheduler
 
-- Radar motion sampling: 24 ms, with no world-map UObject read in that loop.
-- World-map entry detection: the existing 250 ms static-state producer.
-- Active world-map transform sampling: 24 ms only while the map is open.
-- Map exit: the first missing active-map read clears the map transform, publishes radar motion, and terminates the world-map loop.
-- Motion publication: only after a visible delta or a 1000 ms heartbeat.
-- Static state publication: 250 ms.
-- Overlay polling: 24 ms active, 50 ms idle world map, 75 ms idle radar, 125 ms disabled, and 500 ms while backgrounded.
-- Heartbeat-only and visually equivalent states update liveness without invalidating the window.
-- Failed Lua game-thread queues/callbacks clear their pending gates so later iterations can recover.
+- Radar position sampling: 24 ms.
+- Active world-map transform sampling: 24 ms, only while the map is open.
+- Low-frequency Pawn/map-mode/radius control sampling: 250 ms.
+- Motion heartbeat: 1000 ms.
+- Overlay active timer: 24 ms; idle/disabled/background modes remain 50/75/125/500 ms.
+- Motion stale timeout: 2500 ms.
+- XY/Z publication thresholds: 20/10 game units.
+- The textual Lua `LoopAsync` registration count remains three; no added pseudo-worker loop or prime-number staggering.
 
 ## Window lifecycle
 
-Radar and world-map modes use different actual window geometries:
+Radar mode uses a real small top-right layered window. World-map mode uses a client-sized layered window only while the map is active. On entry the Overlay hides, resizes with `SWP_NOCOPYBITS`, performs one hidden `Invalidate() + Update()` prepaint, and reveals immediately. There is no fixed reveal delay or recurring warm-up. The first missing active-map sample stops full-map production and restores radar mode.
 
-- Radar: a small top-right layered window.
-- World map: a game-client-sized layered window only while the map is active.
+## Save and availability state
 
-The Overlay hides before either geometry change, resizes with `SWP_NOCOPYBITS`, synchronously repaints the new hidden surface, and then uses `SW_SHOWNOACTIVATE` in the same Overlay timer cycle. There is no timed warm-up. This avoids copying stale layered-window pixels while still avoiding an invisible full-client composition surface during ordinary radar use.
-
-## Rendering
-
-World-map treasures are projected once per paint into a reusable buffer with projected-pixel deduplication. Non-nearest treasure markers are grouped into four retained `GraphicsPath` batches. Boss markers, nearest treasure, labels, and height indicators retain independent rendering paths.
+Treasure and Boss state are read from consistent snapshots of the active `.db`/`.bak` and available WAL/SHM/journal sidecars. Treasures remain hidden until the first complete save snapshot. Boss cycle 106 uses the verified daily 09:00 local reset. Production code does not enumerate streamed `Character` objects or install gameplay hooks.
 
 ## Diagnostics
 
-Normal mode writes only low-volume Use logs. Detailed producer timing, bridge rates, timer/paint pacing, CPU/memory, save/Boss state, and geometry are computed and written only when `debug_logging = true`.
-
-```text
-runtime/logs/
-  DragonSwordWorldRadar.Lua.Use.log
-  DragonSwordWorldRadar.Lua.Debug.log
-  DragonSwordWorldRadar.Overlay.Use.log
-  DragonSwordWorldRadar.Overlay.Debug.log
-  watcher / host / installer operational logs
-```
-
-`overlayPaintFps` is an Overlay paint-rate metric, not the game's Present FPS.
-
-## Runtime directories
-
-```text
-runtime/
-  bridge/       transient Lua-to-Overlay state
-  logs/         installer, watcher, host, Lua, and Overlay logs
-  diagnostics/  collected snapshots when diagnostics are requested
-  launch.request  # digits-only session stamp; no trailing newline
-  reinstall-required.json
-```
+Normal mode writes low-volume Use logs. Detailed producer, Bridge, timer, paint, CPU, memory, save, and geometry metrics are computed only when `debug_logging = true`. `overlayPaintFps` is the WinForms paint rate, not the game's Present FPS.
