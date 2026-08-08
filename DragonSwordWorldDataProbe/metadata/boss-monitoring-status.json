@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "boss_runtime_monitoring": false,
+  "boss_collection_enabled": false,
+  "reason": "Boss static + availability chain is already complete.",
+  "production_state_source": "existing Radar tb_actor_respawn tracker",
+  "disabled_experimental_sources": [
+    "boss_kill_probe",
+    "world_boss_lifecycle",
+    "world_boss_runtime",
+    "ReceiveDestroyed",
+    "ReceiveEndPlay"
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "static_pak": {
+    "status": "primary",
+    "purpose": "complete static catalogs",
+    "default": true
+  },
+  "save_database": {
+    "status": "primary_dynamic_state",
+    "purpose": "global persisted availability",
+    "default": false,
+    "note": "Existing Radar implementation remains authoritative for Boss."
+  },
+  "runtime_exact_schema": {
+    "status": "optional",
+    "purpose": "class/property discovery",
+    "default": false
+  },
+  "treasure_runtime_actor_sampling": {
+    "status": "archived_disabled",
+    "purpose": "preserved diagnostic evidence only",
+    "default": false,
+    "note": "Removed from the active runtime path in 1.0.38 because continuous Lua Actor enumeration did not meet the performance target."
+  },
+  "assault_trigger_state_polling": {
+    "status": "archived_disabled",
+    "purpose": "preserved trigger-area correlation evidence only",
+    "default": false,
+    "note": "CUnexpectedMissionInStandAlone semantics are confirmed and do not answer global target availability."
+  },
+  "assault_target_existence": {
+    "status": "primary_candidate_requires_global_coverage_validation",
+    "purpose": "per-mission availability including upstream weather or time spawn gating",
+    "default": false,
+    "note": "Each MONSTER_ALIVE condition identifies one unique target actor, but unloaded-region behavior is unknown."
+  },
+  "bounded_object_snapshot": {
+    "status": "diagnostic",
+    "purpose": "loaded-object samples",
+    "default": false
+  },
+  "ui_snapshot": {
+    "status": "secondary",
+    "purpose": "UI mapping aid",
+    "default": false
+  },
+  "targeted_hook": {
+    "status": "experimental",
+    "purpose": "known transition only",
+    "default": false
+  },
+  "actor_lifecycle_hook": {
+    "status": "prohibited",
+    "reason": "not a kill signal and caused native crashes"
+  },
+  "pak_guess_recovery": {
+    "status": "prohibited",
+    "reason": "adjacent-record false positives"
+  },
+  "raw_save_snapshot": {
+    "status": "optional_safe",
+    "purpose": "before/after forensic copies including WAL/SHM/BAK/SAV",
+    "default": false
+  },
+  "object_dump_filter": {
+    "status": "optional_safe",
+    "purpose": "schema/function/property discovery from existing dump",
+    "default": false
+  },
+  "native_database_connection": {
+    "status": "experimental_source_only",
+    "purpose": "future decrypted-connection research",
+    "default": false
+  },
+  "task_controller_ui": {
+    "status": "rejected_as_primary",
+    "reason": "did not yield a complete world-interface global state list"
+  },
+  "dps_damage_pipeline": {
+    "status": "not_required",
+    "reason": "high-frequency aggregation is unnecessary for the current Boss/assault state model"
+  }
+}

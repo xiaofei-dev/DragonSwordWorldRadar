@@ -1,0 +1,20 @@
+/dist/
+*.user
+*.suo
+.vs/
+
+# Installed/runtime state
+/runtime/
+/metadata/install-state.json
+/metadata/datasets.json
+/data/generated/*.lua
+/data/treasure_overrides.txt
+/scripts/config.lua
+
+# Diagnostics
+DragonSwordWorldRadar-Diagnostics-*.zip
+EventRadar-Diagnostics-*.zip
+*.log
+
+# Local release-build tool; bundled in source archives but not committed.
+/vendor/ooz/ooz.exe

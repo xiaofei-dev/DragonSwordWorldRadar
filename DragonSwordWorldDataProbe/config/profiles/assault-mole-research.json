@@ -1,0 +1,177 @@
+{
+  "id": "real-treasure-actor-proximity-plus-safe-assault",
+  "description": "Runtime uses only exact 11 TreasureBox generated classes for 25m presence/absence diagnostics plus the safe 10-ID Assault batch.",
+  "runtime_modules": [
+    "treasure_real_actor_proximity",
+    "assault_condition_transition"
+  ],
+  "external_modules": [
+    "static_inventory",
+    "treasure_static_fast",
+    "treasure_static_catalog",
+    "treasure_blueprint_analysis",
+    "assault_respawn_cycle_fast",
+    "transition_capture_analysis",
+    "assault_quest_condition_analysis"
+  ],
+  "risk_policy": {
+    "allow_find_first": true,
+    "allow_property_reads": true,
+    "allow_noarg_methods": true,
+    "allow_find_all": true,
+    "find_all_scope": "DsAnimationProp only",
+    "allow_hooks": true,
+    "hook_scope": [
+      "DsAnimationProp state/interaction functions",
+      "DInteractableComponent interaction functions"
+    ],
+    "allow_actor_lifecycle_hooks": false,
+    "allow_mutation": false
+  },
+  "static_target_profile": "assault",
+  "boss_runtime_monitoring": false,
+  "boss_collection": false,
+  "mole_game_monitoring": "disabled",
+  "mole_scope": {
+    "type": "Mole",
+    "node_count": 40,
+    "id_min": 12001,
+    "id_max": 12040,
+    "goal": "map markers for unfinished Mole minigames"
+  },
+  "mole_runtime_probe": {
+    "enabled": false,
+    "reason": "Mole completion source already confirmed 40/40."
+  },
+  "assault_strategy": {
+    "primary_static_source": "DUnexpectedMissionTable runtime snapshot",
+    "verification_static_source": "manual-only PAK verification",
+    "place_kind_join": "Place.MissionKindData -> Kind.GroupID",
+    "dynamic_condition_probe": "DETUtil.CUnexpectedMissionInStandAlone raw booleans",
+    "final_availability_source": "existing tb_actor_respawn tracker after exact actor identity is known",
+    "task_ui_required": false,
+    "pak_required_for_normal_operation": false,
+    "normal_pipeline": [
+      "assault_runtime_table (in game)",
+      "static_inventory",
+      "assault_catalog",
+      "mole_state_discovery"
+    ],
+    "runtime_table_reader": "reflective StructProperty/UScriptStruct member discovery",
+    "support_data": {
+      "mode": "build-pinned bundled reference",
+      "required_build_fingerprint": "85d072028086faac03bd39f783126254e624405cdb2784da04395d829c17a25f",
+      "fallback": "manual PAK verification only"
+    },
+    "kind_place_sources": [
+      "runtime DUnexpectedMissionTable (primary)",
+      "assault_kind_place_fast two-file PAK fallback (only if runtime missing)",
+      "pak_static manual full verifier (historical/optional)"
+    ]
+  },
+  "mole_static_discovery_frozen": true,
+  "treasure_strategy": {
+    "route": "PAK exact static extraction",
+    "tables": {
+      "PropTreasureBoxData.xml": {
+        "encoded_offset": 10540
+      },
+      "SectionTreasureBoxData.xml": {
+        "encoded_offset": 11964
+      }
+    },
+    "purpose": [
+      "get BlueprintPath without runtime UScriptStruct MapProperty wrapper",
+      "derive exact GeneratedClass names",
+      "match those classes/functions/properties in ObjectDump",
+      "prepare next live opened-state/25m actor-presence probe"
+    ],
+    "runtime_treasure_probe": false,
+    "unknown_function_invocation": false
+  },
+  "assault_status": {
+    "state": "temporarily_enabled_for_live_task_transition_only",
+    "historical_completion_known_by_user": "1 of 40 completed before this test",
+    "observed_after_historical_completion": "40/40 false/false",
+    "inference": "CUnexpectedMissionInStandAlone is not a simple persistent completion flag",
+    "goal": "capture a state transition while the user actually performs one task"
+  },
+  "assault_availability_strategy": {
+    "goal": "separate task availability from player-in-zone state",
+    "known_in_zone_query": "CUnexpectedMissionInStandAlone; false outside area, true in area for observed PlaceID",
+    "quest_trigger_focus": [
+      "DETTask_TagQuestStepLoopInStandAlone",
+      "DLayerEvent_GoalQuest",
+      "QuestID",
+      "ISRegister"
+    ],
+    "quest_system_focus": [
+      "DClientQuestSystem",
+      "DsPGQuestSubsystem",
+      "DsPGQuestMainSubsystem"
+    ],
+    "cooldown_hypothesis": {
+      "evidence": "all 40 exact target actors RespawnCycleID=105, ServerDeathCheck=true",
+      "status": "strong hypothesis; cycle 105 rule and runtime death record not yet proven",
+      "new_probe": "RespawnCycleData.xml exact extraction"
+    },
+    "environment_hypothesis": {
+      "AcceptConditionType": "MONSTER_ALIVE for 40/40",
+      "SpawnConditionID": "0 for 40/40 exact actors",
+      "UnexpectedMissionWorldData": "DaySwitchID=1 observed",
+      "weather_status": "not proven; runtime weather/day snapshot and ObjectDump evidence added"
+    }
+  },
+  "runtime_disabled_after_crash": {
+    "assault_quest_trigger_correlation": {
+      "enabled": false,
+      "reason": "new in 1.0.30; possible crash source; preserved for offline redesign"
+    },
+    "assault_environment_snapshot": {
+      "enabled": false,
+      "reason": "new in 1.0.30; possible crash source; preserved for offline redesign"
+    }
+  },
+  "assault_runtime_safety": {
+    "batch_size": 10,
+    "mode": "ISAll=false only",
+    "max_native_calls_per_assault_step": 10,
+    "full_40_id_sweep_batches": 4,
+    "fresh_handle_resolution_each_batch": true,
+    "revalidate_handles_before_every_call": true,
+    "on_first_call_failure": "disable module for remainder of session",
+    "previous_unsafe_shape": "40 IDs x 2 modes = 80 native calls in one step"
+  },
+  "respawn_cycle_105": {
+    "RespawnType": "DAILY",
+    "RespawnRealTime": "0",
+    "ConditionType": "",
+    "status": "cycle type proven; exact daily boundary still unresolved"
+  },
+  "treasure_proximity_strategy": {
+    "classes": [
+      "TreasureBox01_C",
+      "TreasureBox02_C",
+      "TreasureBox02_Mount_C",
+      "TreasureBox03_C",
+      "TreasureBox03_Mount_C",
+      "TreasureBox03_OnlyFront_C",
+      "TreasureBox04Key_C",
+      "TreasureBox04_C",
+      "TreasureBox05_C",
+      "TreasureBox05_Mount_C",
+      "TreasureBox06_C"
+    ],
+    "catalog_points": 1692,
+    "radius_uu": 2500,
+    "actor_match_radius_uu": 1500,
+    "absence_confirmation_samples": 3,
+    "state_machine": {
+      "actor_present": "unopened_present",
+      "1-2_missing_samples": "pending_absence_confirmation",
+      "3+_missing_samples": "suspected_opened_absent",
+      "actor_reappears": "immediately resets to unopened_present"
+    },
+    "note": "diagnostic inference only; does not replace tb_treasure_box yet"
+  }
+}

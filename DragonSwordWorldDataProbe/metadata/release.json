@@ -1,0 +1,479 @@
+{
+  "schema_version": 1,
+  "version": "1.0.42",
+  "name": "DragonSwordWorldDataProbe",
+  "stage": "assault-time-weather-teleport-validation",
+  "default_profile": "assault-mole-research",
+  "boss_logic_modified": false,
+  "default_runtime_modules": [
+    "healthcheck"
+  ],
+  "default_external_modules": [
+    "static_inventory",
+    "pak_static",
+    "assault_catalog",
+    "mole_game_discovery",
+    "mole_state_discovery"
+  ],
+  "dangerous_defaults": false,
+  "pak_decoder": {
+    "policy": "standard compact FPakEntry bitfield",
+    "mask": "single inferred global number mask",
+    "record_boundary": "next greater encoded offset",
+    "validation": [
+      "parsed length equals record length",
+      "data header consistency",
+      "PAK bounds",
+      "AES/Oodle output",
+      "exact XML root"
+    ],
+    "forbidden": [
+      "adjacent offset substitution",
+      "0..255 mask brute force",
+      "blind XML acceptance"
+    ]
+  },
+  "assault_final_model": "static activation/conditions + exact actor identity + existing tb_actor_respawn availability",
+  "module_interfaces": {
+    "external": "tools/modules/<id>/Run.ps1 + config/modules.json + profile",
+    "runtime": "scripts/core/module_api.lua + scripts/modules + scripts/config.lua",
+    "static_target": "config/static-targets/<id>.json selected by profile.static_target_profile"
+  },
+  "legacy_sources_preserved": true,
+  "compatibility_fixes": [
+    "automatic read-only variable collision removed",
+    "WinPS 5.1 JSON scalar/array normalization",
+    "loose collection parameter binding in Write-ModuleResult",
+    "WinPS 5.1-safe Start-Process argument binding",
+    "diagnostic collection survives module-host failures"
+  ],
+  "changes": [
+    "proven PakReaderCore+ooz backend retained",
+    "critical Kind/Place/Respawn entries now receive one exact recovery attempt using the real inferred numberMask and exact directory offset",
+    "critical recovery never searches adjacent offsets and never enumerates 0..255 masks",
+    "recovered XML root must match the requested table identity",
+    "if exact recovery fails, raw compact record/window and PakReaderCore decoder IL are captured automatically in the same run",
+    "support tables retain the previously proven fallback behavior",
+    "Boss logic remains untouched"
+  ],
+  "boss_runtime_monitoring": false,
+  "mole_game_discovery": {
+    "enabled": true,
+    "mode": "static_pak_plus_objectdump",
+    "runtime_hooks": false,
+    "find_all_character": false,
+    "mutates_game_state": false
+  },
+  "mole_scope": {
+    "node_count": 40,
+    "id_min": 12001,
+    "id_max": 12040,
+    "known_node_prefix": "MiniGame_Mole_",
+    "known_classes": [
+      "DsMiniGameNode_Mole",
+      "DsMiniGameMoleAsset",
+      "DsMiniGameMoleComponent",
+      "DsMiniGameMoleData",
+      "DMiniGameTable",
+      "EMoleType",
+      "RoundSetting"
+    ],
+    "goal": "unfinished nodes show; completed nodes hide"
+  },
+  "static_cache": {
+    "enabled": true,
+    "key": "EXE/PAK size + mtime fingerprint",
+    "shared_by": [
+      "pak_static",
+      "assault_catalog",
+      "mole_game_discovery"
+    ],
+    "collect_diagnostics_default": "package existing results; collect only missing modules"
+  },
+  "audit_fixes_1_0_6": [
+    "heavy PAK/static modules moved from monitor_start to game_exit/collect",
+    "ModuleHost serialized with named mutex",
+    "ModuleHost clears current output before each new run to prevent stale result inheritance",
+    "module results carry framework_version and build fingerprint for collect-time reuse",
+    "static cache fingerprint includes extractor schema so decoder/profile changes invalidate stale caches",
+    "partial pak_static cache no longer reports success",
+    "shared PAK candidate list now includes MiniGameData/Mole terms",
+    "MiniGameData receives exact compact recovery/evidence if required",
+    "Mole exact node regex fixed for 12001-12040",
+    "Mole analyzer now performs exact numeric 12001-12040 cross-references across extracted XML",
+    "mole_state_discovery included in post-exit/collect pipeline",
+    "all visible version strings aligned to 1.0.6"
+  ],
+  "changes_1_0_7": [
+    "fix numbered XML filename recognition in Mole analyzer and assault parser",
+    "add read-only Mole completion query for IDs 12001-12040 using DETUtil.CIsClearMiniGameInStandAlone",
+    "gate 39 Mole queries behind one successful 12001 canary in each game process",
+    "write runtime/reports/mole-completion-state.tsv",
+    "add deterministic 16-byte single-block XOR compact fallback for Kind/Place/Respawn",
+    "XOR fallback uses record byte #1 as the mask and validates PAK DataEntry sizes/compression",
+    "no adjacent-offset substitution and no 0-255 mask enumeration in the new fallback",
+    "Boss runtime monitoring remains disabled"
+  ],
+  "hotfix_1_0_8": {
+    "root_cause": "1.0.7 Mole result writer invoked a shell mkdir path once per result, creating visible windows",
+    "diagnostic_confirmation": "12001-12018 returned valid boolean completion states before abort",
+    "fixes": [
+      "remove all shell/process calls from Mole runtime module",
+      "write directly to existing runtime/reports",
+      "fail safely if report cannot be opened",
+      "stop useful work after 40 unique successful IDs",
+      "retain read-only completion function"
+    ]
+  },
+  "changes_1_0_9": [
+    "Mole completion scan is one canary plus one bulk step",
+    "12002-12040 queried in one read-only pass",
+    "removed AssaultStaticProbe legacy inner named mutex",
+    "ModuleHost global mutex remains authoritative",
+    "static cache schema bumped to force a clean XOR16 decoder run",
+    "Boss runtime monitoring remains disabled"
+  ],
+  "changes_1_0_10": [
+    "fix leftover $created=false singleton guard that made pak_static exit immediately",
+    "add one-session read-only DUnexpectedMissionTable runtime snapshot",
+    "enumerate UnexpectedMissionPlaceDataMap and UnexpectedMissionKindDataMap directly",
+    "add bounded raw CUnexpectedMissionInStandAlone snapshot for real Place IDs",
+    "assault parser accepts runtime Kind/Place TSV when XML is unavailable",
+    "Place.MissionKindData now joins Kind.GroupID structurally before any direct-ID fallback",
+    "remove Kind.GroupID from objective-value actor cross-reference search",
+    "retain XOR16 PAK decoder as verification/backup rather than sole dependency",
+    "Mole completion steps marked once_per_session",
+    "Boss runtime monitoring remains disabled"
+  ],
+  "changes_1_0_11": [
+    "pak_static removed from normal game_exit/collect pipeline",
+    "normal diagnostics no longer wait on PAK extraction",
+    "DUnexpectedMissionTable runtime snapshot remains primary Kind/Place source",
+    "mole_game_discovery disabled because Mole completion source is already confirmed",
+    "Run-Pak-Verification.cmd added as an optional manual verifier",
+    "manual PAK verifier has a hard 180-second child timeout",
+    "manual PAK verifier refuses to run while the game is running",
+    "Boss runtime monitoring remains disabled"
+  ],
+  "changes_1_0_12": [
+    "replace hardcoded UnexpectedMissionPlaceDataMap.Data access with StructProperty reflection",
+    "replace hardcoded UnexpectedMissionKindDataMap.Data access with StructProperty reflection",
+    "inspect UScriptStruct members with ForEachProperty and select the actual iterable TMap",
+    "support both direct map-to-record and map-to-Wrap(Data->record) layouts",
+    "write assault-runtime-schema.tsv for exact runtime structure evidence",
+    "remove assault_catalog hard dependency on pak_static result.json",
+    "assault_catalog now requires only runtime Place/Kind snapshots; PAK XML remains optional",
+    "update normal diagnostic summary to runtime-table assault strategy",
+    "Boss runtime monitoring remains disabled"
+  ],
+  "changes_1_0_13": [
+    "disable Mole runtime/data-collection modules so assault runs first",
+    "assault runtime probe is the only scheduled runtime probe",
+    "fix property metadata access to UObject:Reflection():GetProperty",
+    "use GetPropertyValue for UObject properties and direct indexing for UScriptStruct members",
+    "retry unavailable/deferred once-per-session custom steps on later passes",
+    "split CUnexpectedMissionInStandAlone queries into eight bounded batches of at most 32 IDs",
+    "capture optional DLayerUnexpectedMission target position/radius/timer for active-event correlation",
+    "bundle previously extracted support XML for the exact current game build fingerprint",
+    "use bundled support only on an exact build-fingerprint match",
+    "normal pipeline remains PAK-free; manual PAK verification stays optional",
+    "Boss and Mole research monitoring remain disabled"
+  ],
+  "changes_1_0_14": [
+    "restore previously removed MoleStaticProbe.Proven.ps1",
+    "restore Mole discovery PakReaderCore.exe and ooz.exe tool copies",
+    "archive historically replaced Mole/assault/PAK implementations as non-executable .disabled.txt snapshots",
+    "formalize preserve-instead-of-delete policy",
+    "keep Mole discovery/state modules disabled rather than removing them",
+    "keep PAK module manual-only",
+    "current default assault-only runtime behavior unchanged"
+  ],
+  "changes_1_0_15": [
+    "keep all restored historical modules and snapshots from 1.0.14",
+    "add assault-runtime-access.tsv with UScriptStruct/base/property/value-pointer evidence",
+    "add DUnexpectedMissionTable function inventory for generic row-accessor discovery",
+    "add separate assault_kind_place_fast module; old pak_static remains untouched/manual",
+    "fast fallback reads only UnexpectedMissionPlaceData and UnexpectedMissionKindData candidates",
+    "fast fallback is skipped when runtime Place/Kind TSVs already have rows",
+    "fast fallback is build-pinned and hard-killed after 60 seconds",
+    "assault_catalog merges same-build reference support XML with fast Kind/Place results",
+    "normal runtime remains assault-only; Mole/Boss collection stays disabled"
+  ],
+  "changes_1_0_16": [
+    "fix Lua lexical scope: access_probe is forward-declared before find_map",
+    "remove access_probe dependency on later-defined choose_table",
+    "fix WinPS 5.1 incompatibility with -NextAction (if(...)) by precomputing $nextAction",
+    "add fast fallback error logging",
+    "retain runtime DUnexpectedMissionTable as primary route",
+    "retain 60-second build-pinned Kind/Place fallback",
+    "preserve all historical modules/snapshots"
+  ],
+  "changes_1_0_17": [
+    "fix fast Kind/Place candidate filter to match Entry.File exact XML basenames",
+    "assert exactly two Kind/Place candidates before extraction",
+    "copy fast extractor stage/log/manifest/decoder evidence into diagnostics",
+    "refresh child process before reading ExitCode",
+    "bound runtime UScriptStruct MapProperty attempts to three per session",
+    "retain runtime access/value-pointer diagnostics",
+    "retain all historical modules and preservation policy"
+  ],
+  "changes_1_0_18": [
+    "instrument XOR16 compact decode with full DataEntry snapshots and rejection reasons",
+    "record raw/decoded 16-byte compact entry and decoded metadata",
+    "if direct DataEntry header does not match, search +/-384 bytes around the decoded PAK offset",
+    "nearby header is accepted only when compressed size, raw size, compression index, and flags exactly match",
+    "require exactly one matching nearby DataEntry header",
+    "final XML root identity validation remains mandatory",
+    "package xor16_debug JSON into diagnostics",
+    "preserve all historical modules and data"
+  ],
+  "changes_1_0_19": [
+    "replace unsupported Windows PowerShell 5.1 `1u -shl N` expressions with explicit `[uint32]1 -shl N`",
+    "no change to XOR16 compact decoding semantics",
+    "no change to DataEntry direct/nearby header search",
+    "no change to runtime assault reflection route",
+    "preserve all historical modules and data"
+  ],
+  "changes_1_0_20": [
+    "fix DataEntry diagnostic snapshot reading nonexistent PayloadOffset member",
+    "make all diagnostic DataEntry member reads optional/tolerant",
+    "evaluate direct compact/DataEntry match before generating diagnostic snapshot",
+    "evaluate nearby compact/DataEntry match before generating diagnostic snapshot",
+    "no changes to XOR16 metadata, header-search radius, Oodle decompression, or XML identity validation",
+    "preserve all historical modules and data"
+  ],
+  "changes_1_0_21": [
+    "add read-only treasure DETUtil function/signature inventory before assault runtime capture",
+    "add full ObjectDump treasure function/class parser and candidate scoring",
+    "bundle 1693-entry treasure static catalog as a build-pinned reference",
+    "record current tb_treasure_box category/bit ground-truth model",
+    "collect one-sided unopened samples from WorldRadar bridge points",
+    "collect authoritative opened samples from WorldRadar debug save-state deltas when available",
+    "include exact candidate validator but keep it disabled until both opened and unopened ground truth exist",
+    "unknown treasure functions are never invoked during discovery",
+    "add treasure discovery external module before assault Kind/Place fallback",
+    "fix assault_catalog Python command resolution",
+    "preserve all historical Boss, Mole, assault, and PAK modules"
+  ],
+  "changes_1_0_22": [
+    "fix assault XOR16 success fall-through: validated Kind/Place XML is now accepted instead of overwritten by legacy fallback",
+    "retain XML identity validation as the final acceptance gate",
+    "add treasure reference graph parser seeded by TreasureBox structs/enums/properties",
+    "walk owner/struct/class references up to three hops in full UE4SS ObjectDump",
+    "enumerate all functions owned by discovered treasure-related classes even when function names do not contain Treasure",
+    "rank query-shaped owner functions and penalize mutating functions",
+    "unknown treasure functions remain uncalled",
+    "retain existing DETUtil discovery as a completed negative result",
+    "preserve Boss and Mole modules unchanged"
+  ],
+  "changes_1_0_23": [
+    "canonicalize numbered build-pinned assault support XML filenames before catalog parsing",
+    "preserve successfully decoded Kind/Place XML and all support XML",
+    "fix treasure reference graph function ownership by deriving owner class from Function path",
+    "add generic query-shaped Save/Prop/State function inventory from full ObjectDump",
+    "add read-only runtime DPropDataTable function inventory",
+    "do not invoke any discovered treasure function",
+    "keep candidate validator disabled",
+    "Boss and Mole research remain frozen"
+  ],
+  "changes_1_0_24": [
+    "confirm and bundle 40/40 exact assault actor joins using CID + UIDName",
+    "include Place/Kind/CID/UID/UIDName/XYZ/RespawnCycleID reference for current build",
+    "add one-shot CUnexpectedMissionInStandAlone snapshot for all 40 Place IDs with ISAll=false and true",
+    "use only the already-known read-only UnexpectedMission helper",
+    "broaden read-only DPropDataTable lookup evidence via CDO and GameDB singleton names",
+    "do not invoke any unknown treasure candidate",
+    "Boss and Mole research remain frozen"
+  ],
+  "changes_1_0_25": [
+    "fix Lua false boolean serialization in assault condition correlation",
+    "preserve raw return types and call-success flags for both ISAll modes",
+    "narrow treasure discovery to world treasure opened-state ownership",
+    "penalize AdventureBook/UI owners in treasure candidate ranking",
+    "search TreasureBox Actor/Component, save/player/world-state containers, opened/state/flag/bit accessors",
+    "add treasure-openstate owners/functions/properties reports",
+    "invoke zero unknown treasure functions",
+    "retain current DB bitset model as validation ground truth and fallback",
+    "Boss and Mole research remain frozen"
+  ],
+  "changes_1_0_26": [
+    "freeze assault research and remove assault runtime/external modules from normal pipeline",
+    "preserve the 40/40 exact assault target catalog and all historical assault modules",
+    "keep CUnexpectedMissionInStandAlone correlation module available but disabled/manual",
+    "add focused TreasureBox Actor/DInteractableComponent/Prop-state runtime signature inventory",
+    "add focused post-exit TreasureBox Actor->Interaction->persistent-state ObjectDump parser",
+    "avoid global actor scans, hooks, and unknown function invocation",
+    "continue using tb_treasure_box opened bits as validation ground truth/fallback",
+    "Boss and Mole research remain frozen"
+  ],
+  "changes_1_0_27": [
+    "temporarily re-enable Assault condition capture as repeated transition snapshots",
+    "record only baseline and changed Assault rows in history while keeping a current 40-row matrix",
+    "add targeted FindAllOf(DsAnimationProp) treasure snapshots matched against the 1693-point catalog",
+    "use InteractTypeValue=TreasureBox/4, ObjectID, UIDName and spatial matching to identify chest candidates",
+    "capture DsGuid/ObjectID/save-load fields, interaction fields and XYZ before/after chest interaction",
+    "add exact observation-only hooks for DsAnimationProp and DInteractableComponent state/interaction functions",
+    "never invoke ReturnContentsPropState or any other unknown Treasure function",
+    "detect appeared/state_changed/disappeared_or_streamed Treasure actor transitions",
+    "add post-exit transition summary module",
+    "move broad ObjectDump treasure discovery to manual-only",
+    "preserve all historical Boss, Mole, Assault, Treasure and PAK modules"
+  ],
+  "changes_1_0_28": [
+    "Collect-Diagnostics now waits for all game processes to exit instead of packaging a partial live-game report",
+    "waiting console shows elapsed time, game PIDs, current runtime probe, pending step and phase",
+    "after game exit diagnostics waits for the automatic monitor mutex to finish post-exit collection",
+    "if no automatic monitor exists, diagnostics applies a short fallback file-flush grace and collects locally",
+    "ModuleHost collector-lock wait now reports elapsed progress every five seconds",
+    "ModuleHost prints eligible module list, reuse decisions, child launch, heartbeat, substep progress and final status",
+    "add progress.json/progress.log contract for external modules",
+    "add detailed progress to static_inventory and transition_capture_analysis",
+    "diagnostic packaging now exposes twelve named stages from initialization through ZIP verification",
+    "write runtime/reports/diagnostics-progress.json and diagnostics-progress.log",
+    "Start-Monitor records game-exit, grace and game-exit-collection stages in monitor.log",
+    "historical Boss, Mole, Assault, Treasure and PAK modules remain preserved"
+  ],
+  "changes_1_0_29": [
+    "disable the DsAnimationProp guess from the normal runtime pipeline after it produced zero Treasure matches",
+    "enumerate DPropDataTable.TreasureBoxPropDataMap.Data directly at runtime",
+    "capture DPropTreasureBoxData ID/open config/BlueprintPath/lock/reward fields",
+    "derive unique Blueprint basenames and generated class short names",
+    "probe only exact generated class names for already-loaded instances",
+    "post-exit match exact BlueprintPath-derived classes against full UE4SS ObjectDump",
+    "rank exact class functions/properties for later opened-state transition capture",
+    "invoke zero unknown Treasure functions and perform no global Actor scan",
+    "keep Assault transition polling because the user intends to perform one task",
+    "record that one historical completion still yielded 40/40 false/false, proving the query is not a persistent completion flag",
+    "retain 1.0.28 wait-for-game-exit diagnostics and detailed progress",
+    "preserve all historical modules"
+  ],
+  "changes_1_0_30": [
+    "add exact Quest Trigger/Step runtime snapshots for DETTask_TagQuestStepLoopInStandAlone and DLayerEvent_GoalQuest",
+    "capture QuestID/MissionID/UnexpectedMissionID/PlaceID/ISRegister/Active/Enabled/State/Clear/Completed transitions",
+    "inventory Quest/Register/Clear/Mission/State functions on DClientQuestSystem and PG Quest subsystems without invoking them",
+    "add read-only weather/climate/day/time runtime snapshot for condition correlation",
+    "add build-pinned exact RespawnCycleData.xml extractor and report RespawnCycleID 105",
+    "add ObjectDump Quest/Trigger/Register/Weather/DaySwitch/Respawn evidence",
+    "record current static fact that all 40 Kind rows use MONSTER_ALIVE and all target actors use SpawnConditionID=0",
+    "do not treat CUnexpectedMissionInStandAlone as marker visibility; it is only known player-in-zone state",
+    "preserve Treasure Blueprint actor discovery and 1.0.28 diagnostics workflow",
+    "no death lifecycle hooks, no Character scan, no unknown Quest/Treasure function invocation"
+  ],
+  "changes_1_0_31": [
+    "rollback in-game runtime probes added in 1.0.30",
+    "disable assault_quest_trigger_correlation from active runtime",
+    "disable assault_environment_snapshot from active runtime",
+    "retain only previously stable treasure_blueprint_catalog and assault_condition_transition in game",
+    "keep RespawnCycleData extraction and Quest/Weather/DaySwitch ObjectDump analysis post-exit only",
+    "preserve all 1.0.30 code for later controlled reintroduction",
+    "retain 1.0.28 wait-for-game-exit diagnostics workflow"
+  ],
+  "changes_1_0_32": [
+    "replace 40x2 UnexpectedMission native-call burst with 10-ID batches",
+    "remove ISAll=true calls because both modes moved together in all captured samples",
+    "resolve fresh DETUtil/function/world handles at the start of every batch",
+    "revalidate all handles immediately before every native query",
+    "disable the entire Assault runtime sampler for the session after the first failed/non-boolean call",
+    "record batch ranges/status to assault-condition-batches.tsv",
+    "retain Quest Trigger and environment probes disabled from in-game runtime",
+    "fix RespawnCycleData namespace parsing and emit all rows plus cycle 105 JSON",
+    "record proven cycle 105 row: DAILY, RespawnRealTime=0, no explicit condition",
+    "retain post-exit Quest/Weather/DaySwitch analysis and Treasure Blueprint discovery",
+    "preserve all historical modules"
+  ],
+  "changes_1_0_33": [
+    "remove Treasure Blueprint runtime UScriptStruct/TMap probe from active in-game schedule",
+    "use exact PAK directory evidence: PropTreasureBoxData.xml encodedOffset=10540",
+    "use exact PAK directory evidence: SectionTreasureBoxData.xml encodedOffset=11964",
+    "add build-pinned two-table Treasure static extractor using existing deterministic decoder",
+    "parse PropTreasureBoxData BlueprintPath and derive GeneratedClassShortName offline",
+    "emit explicit SectionTreasureBoxData -> PropTreasureBoxData join evidence without assuming field semantics",
+    "feed generated Treasure blueprint type list into the existing ObjectDump class/function/property analyzer",
+    "fix RespawnCycleData parser using SelectNodes('./*') and namespace-agnostic attribute LocalName",
+    "keep in-game runtime limited to crash-hardened 10-ID Assault batches",
+    "preserve all historical Treasure runtime probes as inactive code"
+  ],
+  "changes_1_0_34": [
+    "fix PropTreasureBoxData field spelling to BluePrintPath",
+    "bundle 1692 exact SectionTreasureBoxData -> PropTreasureBoxData joins from latest proven diagnostic",
+    "confirm 11 real TreasureBox GeneratedClass names and counts",
+    "add exact-class FindAllOf sampling for only those 11 TreasureBox Blueprint classes",
+    "evaluate only catalog points within 25m of the player",
+    "infer unopened when matching Actor is present",
+    "require three consecutive nearby missing samples before suspected_opened_absent",
+    "self-correct immediately if the Actor later reappears",
+    "keep inference diagnostic-only; do not replace tb_treasure_box yet",
+    "fix RespawnCycle XML parsing to XmlDocument.Load(path) for raw UTF-8 correctness",
+    "update transition analyzer for single InStandAlone column",
+    "keep safe Assault 10-ID batch unchanged"
+  ],
+  "changes_1_0_35": [
+    "keep treasure_real_actor_proximity and assault_condition_transition in the active runtime probe order",
+    "retain the crash-hardened Assault sampler and all historical evidence unchanged",
+    "freeze Boss research and do not expand the proven production Boss model",
+    "record MnMRadar 1.3 as supporting evidence for local loaded-zone absence and reappearance heuristics, not as save-state ground truth",
+    "do not promote Treasure actor absence into production Radar state without opened and unopened save-database correlation",
+    "continue Assault research only toward a controlled availability and completion evidence closure"
+  ],
+  "changes_1_0_36": [
+    "collect exact TreasureBox Actor coordinates before player initialization",
+    "write each loaded Actor with its nearest same-class static UID, CID, PropID, coordinates, and match distances",
+    "preserve all 1692 bundled 64-bit Treasure UIDs as canonical strings",
+    "replace the shared slow round-robin schedule with independent probe intervals",
+    "sample Treasure at approximately one-second effective intervals while keeping Assault near its previous low-frequency rate",
+    "distinguish observed presence-to-absence, selective absence, unobservable absence, ambiguous matching, and reappearance",
+    "gate absence-only inference on loaded-zone Actor evidence",
+    "recover a previous-process custom step left only in the queued phase without quarantining it",
+    "retain quarantine for unfinished steps that entered a game-thread or native phase",
+    "freeze Boss research and leave production Boss behavior unchanged"
+  ],
+  "changes_1_0_37": [
+    "confirm an exact Treasure Actor presence-to-absence transition for UID 10537365938623186743",
+    "record the confirmed match at 0.58 XY units and 52.68 Z units before disappearance",
+    "replace full 11-class polling with adaptive exact-class sampling",
+    "scan only classes required by nearby catalog points",
+    "scan one rotating exact class per pass when no catalog point is nearby",
+    "retain short-lived class caches only for diagnostic context",
+    "preserve the strong opened_after_observed_presence transition and all fail-closed gates",
+    "leave Assault scheduling and Boss freeze unchanged"
+  ],
+  "changes_1_0_38": [
+    "archive and disable Treasure runtime sampling while preserving source, catalogs, reports, and confirmed evidence",
+    "remove Treasure from the active probe order so the runtime performs no Treasure FindAllOf calls",
+    "make assault_condition_transition the only automatic runtime probe",
+    "stagger Assault sampling to one read-only PlaceID query per scheduler tick",
+    "retain ISAll=false, fresh handles, per-call validity checks, and fail-closed session disablement",
+    "do not label true-to-false as completion without controlled context",
+    "keep Boss research frozen"
+  ],
+  "changes_1_0_39": [
+    "archive and disable CUnexpectedMissionInStandAlone polling after trigger-state semantics were confirmed",
+    "return the active runtime to a 60-second framework-only health check with no game-object query",
+    "disable all remaining automatic Treasure external collectors while preserving their implementations and evidence",
+    "confirm that all 40 MONSTER_ALIVE conditions name a unique target actor in AcceptConditionValue3",
+    "treat weather and time as possible upstream controls of local target existence rather than assuming a separate mission flag",
+    "leave unloaded-region target existence unknown until bounded global-coverage evidence exists",
+    "keep Boss research frozen"
+  ],
+  "changes_1_0_40": [
+    "compare conditioned PlaceID 104 with control PlaceID 126",
+    "enumerate only DsMon_Skeleton_leader_Named02_C and DsMon_Skeleton_commander_Named01_C",
+    "match actors by exact UIDName with bounded CID and static-coordinate fallbacks",
+    "sample once every 10 seconds",
+    "label absence as not observed in the loaded object set rather than globally unavailable",
+    "perform no global Character or Actor scan, unknown function call, hook, or mutation"
+  ],
+  "changes_1_0_41": [
+    "read CurrentWeatherState and CurrentWeatherBTState from the exact DsEnvironmentManager singleton",
+    "preserve the 1.0.40 pair report and write weather-aware v2 report files",
+    "correlate the runtime pair with production Radar tb_actor_respawn diagnostics for all 40 target CIDs",
+    "do not enumerate the environment SectionList map or invoke any weather function"
+  ],
+  "changes_1_0_42": [
+    "read DGameSingleton TimeOfDay and LoginStartTimeOfDay",
+    "read current sky TimeOfDay and RealTimeOfDay",
+    "read bounded environment custom-time, speed, weather-state, and teleport scalars",
+    "write a new v3 report for before-and-after teleport continuity analysis",
+    "do not enumerate environment maps or invoke world-time or weather functions"
+  ]
+}

@@ -1,0 +1,329 @@
+{
+  "json": {
+    "config/modules.json": "ok",
+    "config/profiles/assault-research.json": "ok",
+    "config/static-targets/assault.json": "ok",
+    "config/suite.json": "ok",
+    "metadata/known-findings.json": "ok",
+    "metadata/method-matrix.json": "ok",
+    "metadata/release.json": "ok",
+    "metadata/source-lineage.json": "ok",
+    "metadata/validation.json": "ok",
+    "metadata/world-boss-catalog.json": "ok"
+  },
+  "python": {
+    "tools/parsers/Build-AssaultCatalog.py": "ok"
+  },
+  "structure": {
+    "README.txt": true,
+    "config/suite.json": true,
+    "config/modules.json": true,
+    "config/profiles/assault-research.json": true,
+    "config/static-targets/assault.json": true,
+    "scripts/main.lua": true,
+    "scripts/core/module_api.lua": true,
+    "tools/ModuleHost.ps1": true,
+    "tools/core/PakCore.ps1": true,
+    "tools/modules/pak_static/Run.ps1": true,
+    "tools/modules/assault_catalog/Run.ps1": true,
+    "tools/modules/pak_decoder_evidence/Run.ps1": true,
+    "tools/parsers/Build-AssaultCatalog.py": true,
+    "tools/vendor/PakReaderCore.exe": true,
+    "tools/vendor/ooz.exe": true,
+    "docs/METHODS.md": true,
+    "docs/ASSAULT_CAPTURE_PLAN.md": true,
+    "docs/VERSION_HISTORY.md": true,
+    "docs/EXTENSION_RECIPES.md": true,
+    "metadata/source-lineage.json": true
+  },
+  "policy": {
+    "exact_compact_parser": true,
+    "no_mask_bruteforce": true,
+    "no_adjacent_offset_recovery": true,
+    "exact_xml_root": true,
+    "default_no_hooks": true,
+    "default_no_findall": true,
+    "profile_target_not_hardcoded": true,
+    "current_run_result_isolated": true,
+    "runtime_module_api_present": true,
+    "legacy_save_reader_not_registered": true
+  },
+  "analyzer_test": {
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": "",
+    "fixture": "normalized copies of previously extracted supporting XML; Kind/Place intentionally absent",
+    "pipeline": {
+      "schema_version": 1,
+      "status": "partial",
+      "blockers": [
+        "UnexpectedMissionKindData.xml",
+        "UnexpectedMissionPlaceData.xml"
+      ],
+      "record_counts": {
+        "UnexpectedMissionWorldData": 1,
+        "UnexpectedMissionPlaceData": 0,
+        "UnexpectedMissionKindData": 0,
+        "SectionMonsterData": 8174,
+        "SpawnMonsterGroupData": 258,
+        "ActorSpawnConditionData": 554,
+        "NPCSpawnConditionData": 549,
+        "MonsterCharacterData": 2571,
+        "ActorPositionData": 7536,
+        "RespawnCycleData": 0,
+        "WeatherData": 0,
+        "ClimateData": 0
+      },
+      "place_kind_links": 0,
+      "kind_records": 0,
+      "objective_cross_references": 0,
+      "condition_cross_references": 0,
+      "candidate_catalog_records": 0,
+      "unresolved_count": 0,
+      "semantic_policy": "Exact value cross-references only. MissionType and AcceptConditionType meanings are preserved, not guessed.",
+      "final_state_chain": "static active/condition catalog + exact actor identity + existing tb_actor_respawn availability tracker",
+      "boss_logic_modified": false,
+      "next_action": "Complete exact PAK extraction of required Kind/Place rows; use decoder evidence, not runtime scanning."
+    }
+  },
+  "powershell_runtime_test": "not_available_in_build_container; requires Windows PowerShell 5.1 and the current game PAK",
+  "overall": "pass",
+  "schema_version": 1,
+  "version": "1.0.42",
+  "audit_status": "static_pass_runtime_gate_required",
+  "boss_runtime_monitoring": false,
+  "dangerous_defaults": {
+    "receive_destroyed": false,
+    "receive_end_play": false,
+    "find_all_character": false,
+    "native_hooks": false,
+    "mutation": false
+  },
+  "runtime_boundary": "Windows PowerShell 5.1 and game executable are not available in the build container.",
+  "runtime_gate": [
+    "xor16_debug direct_data_entry contains numeric fields instead of PayloadOffset exception",
+    "direct_match reflects actual DataEntry metadata comparison",
+    "nearby matcher cannot discard a valid entry due to diagnostic serialization",
+    "if direct_match=true, decompression and XML identity validation are attempted"
+  ],
+  "mole_runtime_external_processes": false,
+  "normal_pipeline_must_not_include": [
+    "pak_static",
+    "mole_game_discovery"
+  ],
+  "pak_verification": {
+    "required": false,
+    "trigger": "manual",
+    "hard_timeout_seconds": 180,
+    "game_must_be_closed": true
+  },
+  "bundled_support_build_fingerprint": "85d072028086faac03bd39f783126254e624405cdb2784da04395d829c17a25f",
+  "treasure_discovery_gate": [
+    "treasure-runtime-functions.tsv is produced without invoking an unknown function",
+    "treasure-function-candidates.tsv contains exact parameter and return signatures",
+    "safe_bool_query classification requires a bool return and query-shaped function name",
+    "treasure_candidate.lua remains enabled=false in this release",
+    "candidate validation requires both opened and unopened IDs",
+    "mutation/event candidates are never auto-called",
+    "catalog record count remains 1693"
+  ],
+  "assault_gate_1_0_22": [
+    "both Kind and Place xor16_debug must show direct_match=true",
+    "both must show xml_identity_ok=true",
+    "extraction_manifest must contain OK_EXACT_XOR16_SINGLEBLOCK for both tables",
+    "assault_kind_place_fast result must report kind=true and place=true",
+    "assault_catalog must receive the extracted XML"
+  ],
+  "treasure_reference_graph_gate": [
+    "no unknown function invocation",
+    "seed types include DPropTreasureBoxData/TreasureBox-related structures when present",
+    "reference graph walks only ObjectDump metadata",
+    "owner-function candidates are ranked but never called automatically",
+    "candidate validator remains disabled"
+  ],
+  "assault_gate_1_0_23": [
+    "UnexpectedMissionWorldData canonical file must parse with nonzero rows",
+    "SectionMonsterData canonical file must parse with nonzero rows",
+    "SpawnMonsterGroupData/ActorPositionData and other bundled support tables must parse",
+    "Place and Kind remain 40/40",
+    "objective and condition cross-reference generation proceeds from complete support inputs"
+  ],
+  "treasure_gate_1_0_23": [
+    "function owner is derived from /Script/...Class:Function even when Function has no [owr]",
+    "DPropDataTable runtime functions are inventoried if live",
+    "generic Save/Prop/State query candidates are inventory-only",
+    "unknown discovered functions invoked = 0"
+  ],
+  "assault_exact_target_gate": [
+    "40/40 unique joins on both CID and UIDName",
+    "40 unique actor UIDs",
+    "all current rows DEFEAT_MONSTER + MONSTER_ALIVE",
+    "all exact actors RespawnCycleID=105, ServerDeathCheck=true, SpawnConditionID=0",
+    "runtime correlation output must contain 40 rows"
+  ],
+  "treasure_runtime_owner_gate": [
+    "attempt DPropDataTable live instance, CDO, GameDBTableManager, DGameDBTableManager",
+    "write lookup evidence",
+    "invoke zero discovered treasure functions"
+  ],
+  "assault_condition_gate_1_0_25": [
+    "boolean false serializes as false, never ERR",
+    "CallOK and raw return types are preserved",
+    "40 Place IDs remain one-shot only"
+  ],
+  "treasure_openstate_gate": [
+    "unknown treasure function calls remain zero",
+    "AdventureBook/UI candidates are penalized",
+    "focused reports include owners/functions/properties",
+    "candidate acceptance still requires opened and unopened DB ground truth"
+  ],
+  "assault_freeze_gate": [
+    "assault runtime modules absent from active probe_order",
+    "assault_kind_place_fast and assault_catalog are manual-only",
+    "assault exact target reference files remain preserved"
+  ],
+  "treasure_actor_chain_gate": [
+    "inventory DInteractableComponent, DsAnimationProp, DsPickupProp and TreasureBox-named classes read-only",
+    "no FindAllOf Character/global actor scan",
+    "no RegisterHook",
+    "unknown function invocation count remains zero",
+    "candidate acceptance still requires DB-ground-truth opened and unopened IDs"
+  ],
+  "runtime_gate_1_0_27": [
+    "exact hook registration reports successes/failures without invoking hooked functions",
+    "treasure-actor-current.tsv is generated from targeted DsAnimationProp scan",
+    "treasure history records appeared/state_changed/disappeared_or_streamed transitions",
+    "treasure hook events retain SaveID/XYZ/state fields when a chest is interacted with",
+    "assault current report contains 40 rows",
+    "assault history records any PlaceID bool transition while the user runs one mission",
+    "no Character/global Actor scan, no lifecycle hooks, no mutation"
+  ],
+  "diagnostics_gate_1_0_28": [
+    "launching Collect-Diagnostics while the game is running must wait rather than package immediately",
+    "waiting output must show game PIDs and current runtime probe/step/phase when available",
+    "after game exit, diagnostics must wait for the automatic monitor or use fallback grace",
+    "ModuleHost lock waits and child-module waits must emit periodic heartbeats",
+    "static_inventory and transition_capture_analysis must emit detailed progress.json stages",
+    "final diagnostics ZIP must contain collection-summary.json and diagnostics progress logs",
+    "game_running in final collection-summary must be false for a normal waited run"
+  ],
+  "treasure_blueprint_gate_1_0_29": [
+    "DPropDataTable access evidence must record TreasureBoxPropDataMap and Data value types",
+    "TreasureBoxPropDataMap.Data ForEach must produce nonzero records",
+    "unique BlueprintPath list must be emitted",
+    "generated class names must be derived deterministically from BlueprintPath basename",
+    "runtime live-instance probe may query only those exact generated class names",
+    "post-exit ObjectDump analysis must use only BlueprintPath-derived tokens",
+    "unknown Treasure function invocations remain zero"
+  ],
+  "assault_transition_gate_1_0_29": [
+    "historical 1/40 completion is treated as evidence that false/false is not a persistent completion bit",
+    "no semantic label is assigned until a PlaceID changes during the user's live task"
+  ],
+  "assault_availability_gate_1_0_30": [
+    "capture Quest Trigger/Step objects before, during and after one task",
+    "identify fields with desired availability pattern outside=true, inside=true, completed=false if present",
+    "RespawnCycleData 105 must be extracted before assigning cooldown semantics",
+    "weather gating must not be claimed unless a task-specific mapping to weather/day state is observed",
+    "CUnexpectedMissionInStandAlone remains classified as in-zone, not availability"
+  ],
+  "safe_runtime_gate_1_0_31": [
+    "active probe_order contains only treasure_blueprint_catalog and assault_condition_transition",
+    "no FindAllOf quest-trigger classes in active runtime path",
+    "no environment controller property probes in active runtime path",
+    "RespawnCycle and Quest/Weather analysis remain post-exit only",
+    "historical 1.0.30 modules remain preserved"
+  ],
+  "crash_safety_gate_1_0_32": [
+    "maximum UnexpectedMission native calls in one runtime step is 10",
+    "ISAll=true is not queried",
+    "fresh handles are resolved every batch",
+    "handles are validated before every call",
+    "first pcall failure or non-boolean result disables the runtime Assault sampler",
+    "Quest Trigger FindAllOf and environment probes are absent from active probe_order"
+  ],
+  "respawn_cycle_gate_1_0_32": [
+    "namespace-prefixed XML attributes are parsed by LocalName",
+    "RespawnCycleData all rows are exported",
+    "ID 105 must parse as RespawnType=DAILY and RespawnRealTime=0"
+  ],
+  "treasure_static_gate_1_0_33": [
+    "PropTreasureBoxData.xml and SectionTreasureBoxData.xml are selected by exact filename only",
+    "both XML identities and nonzero row counts are validated",
+    "BlueprintPath is parsed offline without invoking any game function",
+    "GeneratedClassShortName comes only from extracted BlueprintPath",
+    "ObjectDump analysis uses only those exact derived class tokens"
+  ],
+  "respawn_cycle_gate_1_0_33": [
+    "RespawnCycleData direct child nodes are selected with XPath './*'",
+    "attributes are keyed by LocalName",
+    "all rows are exported",
+    "ID 105 should parse as DAILY / RespawnRealTime 0"
+  ],
+  "treasure_real_actor_gate_1_0_34": [
+    "1692 exact static joins are bundled",
+    "exact generated-class set contains 11 classes",
+    "runtime FindAllOf is limited to those 11 exact TreasureBox class names",
+    "only treasure points within 25m are evaluated",
+    "absence requires three consecutive samples before suspected_opened_absent",
+    "actor reappearance resets inference immediately",
+    "no Character/global Actor scan and no unknown function invocation"
+  ],
+  "respawn_cycle_gate_1_0_34": [
+    "XmlDocument.Load(path) reads original UTF-8 bytes",
+    "ID 105 is parsed after namespace-agnostic attribute LocalName extraction"
+  ],
+  "treasure_assault_closure_gate_1_0_35": [
+    "active probe_order contains treasure_real_actor_proximity and assault_condition_transition only",
+    "Boss research remains frozen and production Boss behavior is unchanged",
+    "no unknown function invocation, global Character scan, lifecycle hook, or game-state mutation is introduced"
+  ],
+  "fast_treasure_assault_recovery_gate_1_0_36": [
+    "all bundled Treasure UIDs are quoted strings and remain exact",
+    "Treasure Actor snapshots are written even when player location is unavailable",
+    "each loaded Treasure Actor records nearest same-class static identity and XY/Z match distances",
+    "presence-to-absence and reappearance are distinct transition outcomes",
+    "absence-only inference requires loaded-zone evidence and time plus sample thresholds",
+    "ambiguous spatial matches fail closed",
+    "Treasure and Assault use independent intervals without overlapping the shared pending checkpoint",
+    "a queued-only prior step is recovered without quarantine",
+    "unfinished game-thread/native phases remain quarantined",
+    "Assault remains bounded to 10 ISAll=false calls per batch",
+    "Boss research remains frozen"
+  ],
+  "adaptive_treasure_sampling_gate_1_0_37": [
+    "no pass enumerates all 11 Treasure classes unless 11 distinct classes are simultaneously required within 25 metres",
+    "no-nearby sampling enumerates exactly one rotating exact class per pass",
+    "nearby sampling enumerates only classes required by nearby catalog points",
+    "cached classes expire from runtime evidence after four samples",
+    "the observed presence-to-absence state chain remains unchanged",
+    "no unknown function invocation, global Actor scan, lifecycle hook, or game-state mutation is introduced"
+  ],
+  "treasure_archive_assault_closure_gate_1_0_38": [
+    "active probe_order contains assault_condition_transition only",
+    "treasure_real_actor_proximity remains preserved but enabled=false",
+    "active runtime performs no FindAllOf calls",
+    "each Assault scheduler tick issues at most one known read-only PlaceID query",
+    "ISAll=true remains disabled",
+    "a true-to-false transition is not labeled as completion without controlled context",
+    "Boss research remains frozen"
+  ],
+  "assault_trigger_archive_availability_gate_1_0_39": [
+    "active probe_order contains healthcheck only",
+    "assault_condition_transition remains preserved but enabled=false",
+    "active runtime performs no UObject lookup, ProcessEvent query, FindAllOf call, or hook",
+    "all automatic Treasure external modules are disabled",
+    "all 40 Kind rows use MONSTER_ALIVE with a unique target UIDName in AcceptConditionValue3",
+    "unloaded-region target existence remains unknown rather than unavailable",
+    "DaySwitchID 1 remains unresolved and is not labeled as weather or clock time",
+    "Boss research remains frozen"
+  ],
+  "assault_target_pair_gate_1_0_40": [
+    "active probe_order contains assault_target_presence_pair only",
+    "exact target pair is PlaceID 104 conditioned and PlaceID 126 control",
+    "only two exact generated monster classes are enumerated",
+    "UIDName, CID, and static coordinates bound identity matching",
+    "absence is labeled loaded-object-set only",
+    "no global Character or Actor scan, unknown function call, hook, or mutation is introduced"
+  ]
+}

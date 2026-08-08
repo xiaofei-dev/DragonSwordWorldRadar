@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "package_type": "full_source_snapshot",
+  "version": "1.0.34",
+  "based_on_runtime_package": "DragonSwordWorldDataProbe-1.0.34-treasure-real-actor-proximity.zip",
+  "includes": [
+    "scripts",
+    "tools",
+    "config",
+    "reference",
+    "docs",
+    "metadata",
+    "native/experimental if present",
+    "historical preserved modules",
+    "runtime-support binaries already shipped with the mod"
+  ],
+  "note": "This is a complete source-tree snapshot of the 1.0.34 runtime package. No historical research modules were removed."
+}

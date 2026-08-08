@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "version": "1.0.30",
+  "records": 40,
+  "observed_common_fields": {
+    "MissionType": [
+      "DEFEAT_MONSTER"
+    ],
+    "MissionLimitTime": [
+      "180"
+    ],
+    "AcceptConditionType": [
+      "MONSTER_ALIVE"
+    ],
+    "RespawnCycleID": [
+      105
+    ],
+    "SpawnConditionID": [
+      0
+    ],
+    "ServerDeathCheck": [
+      "True"
+    ]
+  },
+  "unexpected_mission_world_rows": [
+    {
+      "{http://leigient.549n.com/schema/UnexpectedMissionWorldInfo}MapID": "100",
+      "{http://leigient.549n.com/schema/UnexpectedMissionWorldInfo}Memo": "1월드",
+      "{http://leigient.549n.com/schema/UnexpectedMissionWorldInfo}MissionCnt_Min": "1",
+      "{http://leigient.549n.com/schema/UnexpectedMissionWorldInfo}MissionCnt_Max": "1",
+      "{http://leigient.549n.com/schema/UnexpectedMissionWorldInfo}DaySwitchID": "1"
+    }
+  ],
+  "current_interpretation": {
+    "cooldown": "likely but not yet proven; all 40 target actors use RespawnCycleID 105 and ServerDeathCheck=true",
+    "weather": "not yet proven; all 40 Kind rows only expose MONSTER_ALIVE and all exact target actors have SpawnConditionID=0",
+    "day_switch": "UnexpectedMissionWorldData currently references DaySwitchID=1, but its exact gating semantics remain unknown"
+  }
+}

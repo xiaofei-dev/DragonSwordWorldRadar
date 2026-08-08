@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "version": "1.0.34",
+  "active_profile": "assault-mole-research",
+  "game": {
+    "process_names": [
+      "DSClient-Win64-Shipping",
+      "DSClient_Win64_Shipping",
+      "DSClient"
+    ],
+    "executable_name": "DSClient-Win64-Shipping.exe",
+    "pak_relative_path": "DS\\Content\\Paks\\pakchunk109-WindowsClient.pak",
+    "generated_xml_mount": "../../../DS/Content/__GeneratedGameData__/Server/XML/GameData/"
+  },
+  "monitor": {
+    "auto_start_from_lua": true,
+    "wait_for_game": true,
+    "wait_timeout_minutes": 20,
+    "poll_seconds": 2,
+    "run_modules_once_per_game_build": true,
+    "exit_grace_seconds": 8
+  },
+  "diagnostics": {
+    "run_collect_modules": true,
+    "copy_save_files": false,
+    "copy_ue4ss_logs": true,
+    "copy_object_dump_extracts": true,
+    "maximum_zip_input_bytes": 536870912,
+    "collect_missing_modules_only": false,
+    "wait_for_game_exit": true,
+    "game_exit_poll_seconds": 2,
+    "wait_status_seconds": 5,
+    "wait_for_automatic_monitor": true,
+    "automatic_monitor_wait_timeout_minutes": 30,
+    "post_exit_fallback_grace_seconds": 3,
+    "module_heartbeat_seconds": 5
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "version": "1.0.42",
+  "policy": "Preserve historical collection methods and data; add new modules rather than replacing or deleting old ones.",
+  "default_active_research": "assault_availability_conditions",
+  "preservation_rules": [
+    "Completed research modules remain in-tree with enabled=false or manual trigger.",
+    "Dangerous/buggy historical implementations are retained only as .disabled.txt snapshots.",
+    "Previously extracted reference data remains build-pinned and read-only.",
+    "No legacy snapshot may be auto-loaded by scripts/main.lua or ModuleHost.",
+    "Future removals require an explicit replacement/archive record.",
+    "New research routes should be added as separate modules when practical.",
+    "Treasure discovery and future validator remain separate modules; completed or superseded versions are disabled/archived rather than deleted.",
+    "The 1.0.38 Treasure archive preserves source, catalogs, and reports while excluding all Treasure modules from the active probe order.",
+    "The 1.0.39 Assault trigger archive preserves transition evidence while excluding CUnexpectedMissionInStandAlone polling from the active runtime."
+  ],
+  "restored_files": [
+    "tools/modules/mole_game_discovery/MoleStaticProbe.Proven.ps1",
+    "tools/modules/mole_game_discovery/tools/PakReaderCore.exe",
+    "tools/modules/mole_game_discovery/tools/ooz.exe"
+  ],
+  "historical_snapshots": [
+    {
+      "archive_path": "archive/legacy-snapshots/mole/mole_completion_state-1.0.7-window-spam.lua.disabled.txt",
+      "source_package": "DragonSwordWorldDataProbe-1.0.7-assault-mole-state.zip",
+      "source_path": "scripts/modules/mole_completion_state.lua",
+      "executable": false,
+      "note": "Historical snapshot only; .disabled.txt prevents automatic loading."
+    },
+    {
+      "archive_path": "archive/legacy-snapshots/mole/mole_completion_state-1.0.8-sequential-safe.lua.disabled.txt",
+      "source_package": "DragonSwordWorldDataProbe-1.0.8-hotfix-no-window-spam.zip",
+      "source_path": "scripts/modules/mole_completion_state.lua",
+      "executable": false,
+      "note": "Historical snapshot only; .disabled.txt prevents automatic loading."
+    },
+    {
+      "archive_path": "archive/legacy-snapshots/mole/mole_completion_state-1.0.9-bulk.lua.disabled.txt",
+      "source_package": "DragonSwordWorldDataProbe-1.0.9-fast-mole-assault-decoder.zip",
+      "source_path": "scripts/modules/mole_completion_state.lua",
+      "executable": false,
+      "note": "Historical snapshot only; .disabled.txt prevents automatic loading."
+    },
+    {
+      "archive_path": "archive/legacy-snapshots/assault/assault_runtime_table-1.0.10.lua.disabled.txt",
+      "source_package": "DragonSwordWorldDataProbe-1.0.10-assault-runtime-table.zip",
+      "source_path": "scripts/modules/assault_runtime_table.lua",
+      "executable": false,
+      "note": "Historical snapshot only; .disabled.txt prevents automatic loading."
+    },
+    {
+      "archive_path": "archive/legacy-snapshots/assault/assault_runtime_table-1.0.12-reflection.lua.disabled.txt",
+      "source_package": "DragonSwordWorldDataProbe-1.0.12-assault-reflective-map.zip",
+      "source_path": "scripts/modules/assault_runtime_table.lua",
+      "executable": false,
+      "note": "Historical snapshot only; .disabled.txt prevents automatic loading."
+    },
+    {
+      "archive_path": "archive/legacy-snapshots/pak/AssaultStaticProbe.Proven-1.0.9-xor16.ps1.disabled.txt",
+      "source_package": "DragonSwordWorldDataProbe-1.0.9-fast-mole-assault-decoder.zip",
+      "source_path": "tools/modules/pak_static/AssaultStaticProbe.Proven.ps1",
+      "executable": false,
+      "note": "Historical snapshot only; .disabled.txt prevents automatic loading."
+    }
+  ],
+  "legacy_directories_retained": [
+    "scripts/experimental/legacy",
+    "tools/experimental/legacy",
+    "tools/experimental/save_database",
+    "native/experimental",
+    "metadata/world-boss-catalog.json",
+    "metadata/boss-monitoring-status.json",
+    "config/static-targets/mole_game.json"
+  ]
+}

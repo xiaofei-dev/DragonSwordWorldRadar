@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ns1:ActionMonsterLinkDataMap xmlns:ns1="http://leigient.549n.com/schema/ActionMonsterLinkInfo">
+	<ns1:ActionMonsterLinkData ns1:ID="2010002" ns1:Name="Default__LevelActor_Skull_refine_C" ns1:Type="OBJECT_PROP" ns1:ActionIndex="1642887234" ns1:AnimationName="prop_skull_refine_summon_action" ns1:NotifyKey="2310536245" ns1:ComboIndex="1" ns1:MonsterLinkIndex="1" />
+</ns1:ActionMonsterLinkDataMap>

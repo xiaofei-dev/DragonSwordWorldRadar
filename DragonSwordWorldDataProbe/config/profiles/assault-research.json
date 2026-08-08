@@ -1,0 +1,23 @@
+{
+  "id": "assault-research",
+  "description": "Safe default. Static PAK extraction and assault correlation are enabled; runtime UObject access is healthcheck-only.",
+  "runtime_modules": [
+    "healthcheck"
+  ],
+  "external_modules": [
+    "static_inventory",
+    "pak_static",
+    "assault_catalog",
+    "pak_decoder_evidence"
+  ],
+  "risk_policy": {
+    "allow_find_first": false,
+    "allow_property_reads": false,
+    "allow_noarg_methods": false,
+    "allow_find_all": false,
+    "allow_hooks": false,
+    "allow_actor_lifecycle_hooks": false,
+    "allow_mutation": false
+  },
+  "static_target_profile": "assault"
+}

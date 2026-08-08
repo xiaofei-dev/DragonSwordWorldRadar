@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "framework_version": "1.0.6",
+  "historical_components": [
+    {
+      "name": "WorldBossStaticProbe",
+      "result": "merged",
+      "destination": [
+        "tools/core/PakCore.ps1",
+        "tools/modules/pak_static"
+      ]
+    },
+    {
+      "name": "WorldBossSaveMonitor",
+      "result": "preserved_not_default",
+      "destination": [
+        "tools/experimental/save_database"
+      ]
+    },
+    {
+      "name": "mission/global/UI probes",
+      "result": "legacy_only",
+      "destination": [
+        "scripts/experimental/legacy"
+      ]
+    },
+    {
+      "name": "Actor lifecycle probes",
+      "result": "prohibited_default",
+      "destination": [
+        "scripts/experimental/legacy"
+      ]
+    },
+    {
+      "name": "AssaultStaticProbe 0.1/0.3",
+      "result": "preserved_forensics",
+      "destination": [
+        "tools/experimental/legacy"
+      ]
+    },
+    {
+      "name": "native DB connection prototype",
+      "result": "preserved_not_loaded",
+      "destination": [
+        "native/experimental"
+      ]
+    }
+  ],
+  "authoritative_current_paths": {
+    "static_catalog": "pak_static + assault_catalog",
+    "dynamic_boss_state": "existing DragonSwordWorldRadar tb_actor_respawn tracker",
+    "runtime_schema": "explicit whitelist Lua modules only"
+  }
+}
