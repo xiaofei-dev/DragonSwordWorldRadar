@@ -23,11 +23,25 @@ namespace DragonSwordWorldRadar
         private bool _hasGameProcessSample;
 
         private int _timerTicks;
+        private int _worldMapTimerTicks;
+        private int _modeTransitions;
+        private int _timerResolutionAcquireAttempts;
+        private int _timerResolutionAcquireSuccesses;
+        private int _timerResolutionReleaseAttempts;
+        private int _timerResolutionReleaseSuccesses;
+        private int _timerResolutionBalance;
         private int _paints;
         private int _motionFrames;
         private int _motionVisualFrames;
         private int _motionSuppressedFrames;
+        private int _predictionTicks;
+        private int _predictionClamps;
+        private int _predictionResets;
+        private int _predictionStaleFreezes;
+        private double _predictionAgeTotalMs;
+        private double _predictionAgeMaxMs;
         private int _invalidates;
+        private int _windowVisibilitySamples;
         private int _timerGapSamples;
         private int _timerGap50Count;
         private int _timerGap100Count;
@@ -42,6 +56,22 @@ namespace DragonSwordWorldRadar
         private double _timerLateMaxMs;
         private double _paintGapMaxMs;
         private double _motionGapMaxMs;
+        private int _treasureDrawCalls;
+        private int _treasureMarkersDrawn;
+        private double _treasureDrawTotalMs;
+        private double _treasureDrawMaxMs;
+        private int _bossDrawCalls;
+        private int _bossMarkersDrawn;
+        private double _bossDrawTotalMs;
+        private double _bossDrawMaxMs;
+        private int _assaultDrawCalls, _assaultMarkersDrawn; private double _assaultDrawTotalMs, _assaultDrawMaxMs;
+        private int _moleDrawCalls;
+        private int _moleMarkersDrawn;
+        private double _moleDrawTotalMs;
+        private double _moleDrawMaxMs;
+        private int _worldStatusDrawCalls;
+        private double _worldStatusDrawTotalMs;
+        private double _worldStatusDrawMaxMs;
 
         public void SetEnabled(bool enabled)
         {
@@ -97,6 +127,35 @@ namespace DragonSwordWorldRadar
             }
         }
 
+        public void RecordMotionPrediction(
+            double ageMs,
+            bool clamped,
+            bool reset,
+            bool stale)
+        {
+            if (!_enabled)
+            {
+                return;
+            }
+            _predictionTicks++;
+            ageMs = Math.Max(0.0, ageMs);
+            _predictionAgeTotalMs += ageMs;
+            _predictionAgeMaxMs = Math.Max(
+                _predictionAgeMaxMs,
+                ageMs);
+            if (clamped) _predictionClamps++;
+            if (reset) _predictionResets++;
+            if (stale) _predictionStaleFreezes++;
+        }
+
+        public void RecordWindowVisibilitySample()
+        {
+            if (_enabled)
+            {
+                _windowVisibilitySamples++;
+            }
+        }
+
         public void RecordPaint(
             long started,
             DateTime now)
@@ -119,10 +178,83 @@ namespace DragonSwordWorldRadar
             _lastPaintUtc = now;
         }
 
+        public void RecordMoleDraw(long started, int markers)
+        {
+            if (!_enabled) return;
+            double elapsed = ElapsedMilliseconds(started);
+            _moleDrawCalls++;
+            _moleMarkersDrawn += Math.Max(0, markers);
+            _moleDrawTotalMs += elapsed;
+            _moleDrawMaxMs = Math.Max(_moleDrawMaxMs, elapsed);
+        }
+
+        public void RecordTreasureDraw(long started, int markers)
+        {
+            if (!_enabled) return;
+            double elapsed = ElapsedMilliseconds(started);
+            _treasureDrawCalls++;
+            _treasureMarkersDrawn += Math.Max(0, markers);
+            _treasureDrawTotalMs += elapsed;
+            _treasureDrawMaxMs = Math.Max(
+                _treasureDrawMaxMs,
+                elapsed);
+        }
+
+        public void RecordBossDraw(long started, int markers)
+        {
+            if (!_enabled) return;
+            double elapsed = ElapsedMilliseconds(started);
+            _bossDrawCalls++;
+            _bossMarkersDrawn += Math.Max(0, markers);
+            _bossDrawTotalMs += elapsed;
+            _bossDrawMaxMs = Math.Max(_bossDrawMaxMs, elapsed);
+        }
+        public void RecordAssaultDraw(long started,int markers){if(!_enabled)return;double elapsed=ElapsedMilliseconds(started);_assaultDrawCalls++;_assaultMarkersDrawn+=Math.Max(0,markers);_assaultDrawTotalMs+=elapsed;_assaultDrawMaxMs=Math.Max(_assaultDrawMaxMs,elapsed);}
+
+        public void RecordEncounterDraw(
+            long started,
+            int bossMarkers,
+            int assaultMarkers)
+        {
+            if (!_enabled) return;
+            double elapsed = ElapsedMilliseconds(started);
+            int bosses = Math.Max(0, bossMarkers);
+            int assaults = Math.Max(0, assaultMarkers);
+            int total = bosses + assaults;
+            double bossElapsed = total == 0
+                ? 0.0
+                : elapsed * bosses / total;
+            double assaultElapsed = total == 0
+                ? 0.0
+                : elapsed - bossElapsed;
+            _bossDrawCalls++;
+            _bossMarkersDrawn += bosses;
+            _bossDrawTotalMs += bossElapsed;
+            _bossDrawMaxMs = Math.Max(
+                _bossDrawMaxMs,
+                bossElapsed);
+            _assaultDrawCalls++;
+            _assaultMarkersDrawn += assaults;
+            _assaultDrawTotalMs += assaultElapsed;
+            _assaultDrawMaxMs = Math.Max(
+                _assaultDrawMaxMs,
+                assaultElapsed);
+        }
+
+        public void RecordWorldStatusDraw(long started)
+        {
+            if (!_enabled) return;
+            double elapsed = ElapsedMilliseconds(started);
+            _worldStatusDrawCalls++;
+            _worldStatusDrawTotalMs += elapsed;
+            _worldStatusDrawMaxMs = Math.Max(_worldStatusDrawMaxMs, elapsed);
+        }
+
         public void RecordTimerTick(
             long started,
             DateTime now,
-            int expectedIntervalMs)
+            int expectedIntervalMs,
+            string mode)
         {
             if (!_enabled)
             {
@@ -131,6 +263,10 @@ namespace DragonSwordWorldRadar
 
             double elapsed = ElapsedMilliseconds(started);
             _timerTicks++;
+            if (String.Equals(mode, "world", StringComparison.Ordinal))
+            {
+                _worldMapTimerTicks++;
+            }
             _refreshTotalMs += elapsed;
             _refreshMaxMs = Math.Max(_refreshMaxMs, elapsed);
 
@@ -159,6 +295,45 @@ namespace DragonSwordWorldRadar
                 }
             }
             _lastTimerTickUtc = now;
+        }
+
+        public void RecordModeTransition(
+            string previousMode,
+            string currentMode)
+        {
+            if (_enabled && !String.Equals(
+                previousMode,
+                currentMode,
+                StringComparison.Ordinal))
+            {
+                _modeTransitions++;
+            }
+        }
+
+        public void RecordTimerResolutionChange(bool acquire, bool success)
+        {
+            if (!_enabled)
+            {
+                return;
+            }
+            if (acquire)
+            {
+                _timerResolutionAcquireAttempts++;
+                if (success)
+                {
+                    _timerResolutionAcquireSuccesses++;
+                    _timerResolutionBalance++;
+                }
+            }
+            else
+            {
+                _timerResolutionReleaseAttempts++;
+                if (success)
+                {
+                    _timerResolutionReleaseSuccesses++;
+                    _timerResolutionBalance--;
+                }
+            }
         }
 
         public void LogIfDue(
@@ -249,6 +424,58 @@ namespace DragonSwordWorldRadar
                 gameCpuPercent,
                 overlayWorkingSetMb,
                 gameWorkingSetMb));
+            ErrorLog.WriteDebug(String.Format(
+                CultureInfo.InvariantCulture,
+                "OVERLAY_LAYER_PERF windowSec={0:F3}; treasureDrawCalls={1}; treasureMarkers={2}; treasureAvgMs={3:F3}; treasureMaxMs={4:F3}; bossDrawCalls={5}; bossMarkers={6}; bossAvgMs={7:F3}; bossMaxMs={8:F3}; moleDrawCalls={9}; moleMarkers={10}; moleAvgMs={11:F3}; moleMaxMs={12:F3}; worldStatusDrawCalls={13}; worldStatusAvgMs={14:F3}; worldStatusMaxMs={15:F3}; assaultDrawCalls={16}; assaultMarkers={17}; assaultAvgMs={18:F3}; assaultMaxMs={19:F3}",
+                windowSeconds,
+                _treasureDrawCalls,
+                _treasureMarkersDrawn,
+                Average(_treasureDrawTotalMs, _treasureDrawCalls),
+                _treasureDrawMaxMs,
+                _bossDrawCalls,
+                _bossMarkersDrawn,
+                Average(_bossDrawTotalMs, _bossDrawCalls),
+                _bossDrawMaxMs,
+                _moleDrawCalls,
+                _moleMarkersDrawn,
+                Average(_moleDrawTotalMs, _moleDrawCalls),
+                _moleDrawMaxMs,
+                _worldStatusDrawCalls,
+                Average(_worldStatusDrawTotalMs, _worldStatusDrawCalls),
+                _worldStatusDrawMaxMs,_assaultDrawCalls,_assaultMarkersDrawn,Average(_assaultDrawTotalMs,_assaultDrawCalls),_assaultDrawMaxMs));
+            ErrorLog.WriteDebug(String.Format(
+                CultureInfo.InvariantCulture,
+                "OVERLAY_WORK_PERF windowSec={0:F3}; visualHz={1:F3}; invalidateHz={2:F3}; paintHz={3:F3}; refreshDutyPct={4:F3}; paintDutyPct={5:F3}; composedMPixelsPerSecEstimate={6:F3}; windowVisibilitySampleHz={7:F3}; windowVisibilitySamples={8}; worldMapPresentationHz={9:F3}; worldMapTimerTicks={10}; modeTransitions={11}; timerResolutionAcquireAttempts={12}; timerResolutionAcquireSuccesses={13}; timerResolutionReleaseAttempts={14}; timerResolutionReleaseSuccesses={15}; timerResolutionBalance={16}; estimateNote=window_pixels_times_overlay_paints_not_game_present_cost",
+                windowSeconds,
+                _motionVisualFrames / windowSeconds,
+                _invalidates / windowSeconds,
+                _paints / windowSeconds,
+                _refreshTotalMs * 0.1 / windowSeconds,
+                _paintTotalMs * 0.1 / windowSeconds,
+                overlayPixels * (_paints / windowSeconds) / 1000000.0,
+                _windowVisibilitySamples / windowSeconds,
+                _windowVisibilitySamples,
+                _worldMapTimerTicks / windowSeconds,
+                _worldMapTimerTicks,
+                _modeTransitions,
+                _timerResolutionAcquireAttempts,
+                _timerResolutionAcquireSuccesses,
+                _timerResolutionReleaseAttempts,
+                _timerResolutionReleaseSuccesses,
+                _timerResolutionBalance));
+            ErrorLog.WriteDebug(String.Format(
+                CultureInfo.InvariantCulture,
+                "OVERLAY_MOTION_PREDICTION windowSec={0:F3}; predictionHz={1:F3}; ticks={2}; ageAvgMs={3:F3}; ageMaxMs={4:F3}; clamps={5}; resets={6}; staleFreezes={7}; maxPredictionMs=250; staleFreezeMs=500; source=uobject_free_scalar_history",
+                windowSeconds,
+                _predictionTicks / windowSeconds,
+                _predictionTicks,
+                _predictionTicks > 0
+                    ? _predictionAgeTotalMs / _predictionTicks
+                    : 0.0,
+                _predictionAgeMaxMs,
+                _predictionClamps,
+                _predictionResets,
+                _predictionStaleFreezes));
 
             ResetWindow(now);
         }
@@ -394,11 +621,24 @@ namespace DragonSwordWorldRadar
             _nextLogUtc = now.AddSeconds(
                 DefaultLogIntervalSeconds);
             _timerTicks = 0;
+            _worldMapTimerTicks = 0;
+            _modeTransitions = 0;
+            _timerResolutionAcquireAttempts = 0;
+            _timerResolutionAcquireSuccesses = 0;
+            _timerResolutionReleaseAttempts = 0;
+            _timerResolutionReleaseSuccesses = 0;
             _paints = 0;
             _motionFrames = 0;
             _motionVisualFrames = 0;
             _motionSuppressedFrames = 0;
+            _predictionTicks = 0;
+            _predictionClamps = 0;
+            _predictionResets = 0;
+            _predictionStaleFreezes = 0;
+            _predictionAgeTotalMs = 0.0;
+            _predictionAgeMaxMs = 0.0;
             _invalidates = 0;
+            _windowVisibilitySamples = 0;
             _timerGapSamples = 0;
             _timerGap50Count = 0;
             _timerGap100Count = 0;
@@ -413,6 +653,22 @@ namespace DragonSwordWorldRadar
             _timerLateMaxMs = 0.0;
             _paintGapMaxMs = 0.0;
             _motionGapMaxMs = 0.0;
+            _treasureDrawCalls = 0;
+            _treasureMarkersDrawn = 0;
+            _treasureDrawTotalMs = 0.0;
+            _treasureDrawMaxMs = 0.0;
+            _bossDrawCalls = 0;
+            _bossMarkersDrawn = 0;
+            _bossDrawTotalMs = 0.0;
+            _bossDrawMaxMs = 0.0;
+            _assaultDrawCalls=0;_assaultMarkersDrawn=0;_assaultDrawTotalMs=0.0;_assaultDrawMaxMs=0.0;
+            _moleDrawCalls = 0;
+            _moleMarkersDrawn = 0;
+            _moleDrawTotalMs = 0.0;
+            _moleDrawMaxMs = 0.0;
+            _worldStatusDrawCalls = 0;
+            _worldStatusDrawTotalMs = 0.0;
+            _worldStatusDrawMaxMs = 0.0;
         }
     }
 }

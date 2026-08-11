@@ -7,11 +7,32 @@ namespace DragonSwordWorldRadar
     {
         private const string SettingName = "debug_logging";
         private const string LegacySettingName = "diagnostic_verbose";
+        private static readonly bool StartupVerboseLabelsEnabled =
+            LoadBooleanAtStartup(LegacySettingName, false);
+        private const string HighResolutionTimerSettingName =
+            "high_resolution_timer";
         private static readonly bool StartupEnabled = LoadAtStartup();
+        private static readonly bool StartupHighResolutionTimerEnabled =
+            LoadBooleanAtStartup(
+                HighResolutionTimerSettingName,
+                false);
+        private static readonly bool StartupShowAssaults =
+            LoadBooleanAtStartup("show_assaults", true);
+        public static bool ShowAssaults { get { return StartupShowAssaults; } }
 
         public static bool Enabled
         {
             get { return StartupEnabled; }
+        }
+
+        public static bool VerboseLabelsEnabled
+        {
+            get { return StartupVerboseLabelsEnabled; }
+        }
+
+        public static bool HighResolutionTimerEnabled
+        {
+            get { return StartupHighResolutionTimerEnabled; }
         }
 
         private static bool LoadAtStartup()
@@ -95,6 +116,62 @@ namespace DragonSwordWorldRadar
             return comment < 0
                 ? line
                 : line.Substring(0, comment);
+        }
+
+        private static bool LoadBooleanAtStartup(
+            string settingName,
+            bool defaultValue)
+        {
+            try
+            {
+                string path = Path.Combine(
+                    ModPath.BaseDirectory,
+                    "scripts",
+                    "config.lua");
+                if (!File.Exists(path))
+                {
+                    return defaultValue;
+                }
+
+                bool result = defaultValue;
+                foreach (string sourceLine in File.ReadLines(path))
+                {
+                    string line = RemoveComment(sourceLine).Trim();
+                    int equals = line.IndexOf('=');
+                    if (equals < 0
+                        || !String.Equals(
+                            line.Substring(0, equals).Trim(),
+                            settingName,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    string value = line.Substring(equals + 1)
+                        .Trim()
+                        .TrimEnd(',');
+                    if (String.Equals(
+                        value,
+                        "true",
+                        StringComparison.OrdinalIgnoreCase))
+                    {
+                        result = true;
+                    }
+                    else if (String.Equals(
+                        value,
+                        "false",
+                        StringComparison.OrdinalIgnoreCase))
+                    {
+                        result = false;
+                    }
+                }
+                return result;
+            }
+            catch
+            {
+                // Optional timer tuning must never prevent Overlay startup.
+                return defaultValue;
+            }
         }
     }
 }

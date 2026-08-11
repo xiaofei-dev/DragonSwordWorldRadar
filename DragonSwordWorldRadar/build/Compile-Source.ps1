@@ -11,9 +11,10 @@ if ($PSVersionTable.PSVersion.Major -ne 5 -or
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 $overlaySources = @(Get-ChildItem -LiteralPath (Join-Path $root 'src\overlay') -Recurse -Filter '*.cs' -File |
+    Where-Object { $_.FullName -notmatch '[\\/](?:obj|bin)[\\/]' } |
     Sort-Object FullName | Select-Object -ExpandProperty FullName)
-if ($overlaySources.Count -ne 31) {
-    throw "Overlay source set must contain exactly 31 files; found $($overlaySources.Count)."
+if ($overlaySources.Count -ne 41) {
+    throw "Overlay source set must contain exactly 41 files; found $($overlaySources.Count)."
 }
 $overlayReferences = @(
     [System.Windows.Forms.Form].Assembly.Location,
@@ -26,9 +27,10 @@ Write-Host "OVERLAY_COMPILE_OK sources=$($overlaySources.Count)"
 
 Add-Type -AssemblyName System.Xml
 $installerSources = @(Get-ChildItem -LiteralPath (Join-Path $root 'src\installer\Core') -Recurse -Filter '*.cs' -File |
+    Where-Object { $_.FullName -notmatch '[\\/](?:obj|bin)[\\/]' } |
     Sort-Object FullName | Select-Object -ExpandProperty FullName)
-if ($installerSources.Count -ne 13) {
-    throw "Installer source set must contain exactly 13 files; found $($installerSources.Count)."
+if ($installerSources.Count -ne 18) {
+    throw "Installer source set must contain exactly 18 files; found $($installerSources.Count)."
 }
 $installerReferences = @(
     [System.Xml.XmlDocument].Assembly.Location,

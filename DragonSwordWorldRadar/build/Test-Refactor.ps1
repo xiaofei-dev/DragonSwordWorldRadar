@@ -11,9 +11,10 @@ if ($PSVersionTable.PSVersion.Major -ne 5 -or
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 $sources = @(Get-ChildItem -LiteralPath (Join-Path $root 'src\overlay') -Recurse -Filter '*.cs' -File |
-    Where-Object { $_.Name -ne 'Program.cs' } |
+    Where-Object { $_.Name -ne 'Program.cs' -and $_.FullName -notmatch '[\\/](?:obj|bin)[\\/]' } |
     Sort-Object FullName | Select-Object -ExpandProperty FullName)
 $sources += (Join-Path $PSScriptRoot 'ValidationHarness.cs')
+$sources += (Join-Path $root 'src\installer\Core\Generation\OwnerPointerRvaResolver.cs')
 $references = @(
     [System.Windows.Forms.Form].Assembly.Location,
     [System.Drawing.Graphics].Assembly.Location,
@@ -26,7 +27,7 @@ New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
 try {
     Add-Type -Path $sources -ReferencedAssemblies $references `
         -OutputAssembly $testExe -OutputType ConsoleApplication -ErrorAction Stop
-    $output = & $testExe 2>&1
+    $output = & cmd.exe /d /c ('"' + $testExe + '" 2>&1')
     $exitCode = $LASTEXITCODE
     $output | ForEach-Object { Write-Host $_ }
     if ($exitCode -ne 0 -or ($output -join "`n") -notmatch 'REFACTOR_TESTS_OK') {
@@ -36,3 +37,4 @@ try {
 finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
+& (Join-Path $PSScriptRoot 'Test-PerformanceScheduling.ps1')

@@ -18,7 +18,7 @@ function Resolve-DragonSwordWorldRadarGameLayout {
             # bundled with DragonSwordWorldRadar, then the existing UE4SS Mods-root copy.
             $oozCandidates = @(
                 (Join-Path $ModDir 'tools\ooz.exe'),
-                (Join-Path $win64Root 'Mods\ooz.exe'),
+                (Join-Path $win64Root 'ue4ss\Mods\ooz.exe'),
                 (Join-Path $gameRoot 'ooz.exe')
             ) | Select-Object -Unique
             $ooz = $oozCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1

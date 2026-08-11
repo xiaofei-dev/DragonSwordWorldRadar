@@ -9,26 +9,14 @@ namespace DragonSwordWorldRadar
 {
     internal sealed class TreasureSaveState
     {
-        // Metadata checks are cheap and run on the UI timer; SQLCipher work is
-        // queued only when the active slot or one of its WAL/journal sidecars
-        // changes.
+        // Metadata checks are cheap and run only while F7 is active. A changed
+        // slot must remain stable before any copy/decrypt work is queued.
         private static readonly TimeSpan RefreshInterval =
-            TimeSpan.FromMilliseconds(500);
-        private static readonly int[] WorldBossIds =
-        {
-            9000005, 9000007, 9000010,
-            9000011, 9000012, 9000019,
-            9000022, 9000023, 9000025
-        };
-        private static readonly int[] AssaultTargetIds =
-        {
-            102, 105, 106, 110, 114, 134,
-            140, 141, 142, 143, 144, 145, 146, 147,
-            148, 149, 150, 151, 153, 154, 156, 157,
-            158, 159, 160, 161, 162, 163, 164, 165,
-            166, 167, 168, 172, 173, 174, 175, 176,
-            177, 178
-        };
+            TimeSpan.FromMilliseconds(2000);
+        private static readonly TimeSpan SaveChangeDebounce =
+            TimeSpan.FromSeconds(4);
+        private static readonly TimeSpan TreasureQueryInterval =
+            TimeSpan.FromSeconds(45);
         private readonly object _sync = new object();
         private volatile Dictionary<int, ulong> _opened =
             new Dictionary<int, ulong>();
@@ -40,14 +28,21 @@ namespace DragonSwordWorldRadar
             new BossRespawnRuleResolver();
         private readonly SaveDatabaseLocator _databaseLocator =
             new SaveDatabaseLocator();
+        private readonly SaveSnapshotReader _snapshotReader =
+            new SaveSnapshotReader();
         private volatile Dictionary<int, BossRespawnRecord> _bossRespawns =
             new Dictionary<int, BossRespawnRecord>();
+        private volatile int[] _encounterTargetIds = Array.Empty<int>();
 
         private DateTime _nextRefreshUtc;
+        private DateTime _nextTreasureQueryUtc;
         private string _lastDatabasePath;
         private DateTime _lastDatabaseWriteUtc;
         private string _lastSlotSignature;
         private string _lastKey;
+        private string _pendingSlotSignature;
+        private string _pendingKey;
+        private DateTime _pendingSinceUtc;
         private string _lastError;
         private string _lastDatabaseAttemptLog;
         private string _lastDatabaseSuccessLog;
@@ -55,13 +50,63 @@ namespace DragonSwordWorldRadar
         private int _version;
         private int _openedBitCount;
         private bool _hasLoadedSaveState;
+        private bool _initialDebounceBypassConsumed;
         private bool _loadInProgress;
+        private volatile bool _runtimeEnabled;
         private int _loadToken;
         private int _lastOverrideVersion = -1;
-        private readonly Dictionary<int, string> _lastBossStateLog =
-            new Dictionary<int, string>();
-        private readonly Dictionary<int, string> _lastAssaultStateLog =
-            new Dictionary<int, string>();
+        private string _lastEncounterStateLog;
+        private string _encounterTaskSignature;
+
+        public bool ConfigureEncounterTargets(
+            IList<WorldEncounter> points)
+        {
+            if (points == null || points.Count != 49)
+            {
+                throw new InvalidOperationException(
+                    "The install-bound encounter filter requires exactly 49 catalog records.");
+            }
+            HashSet<int> seen = new HashSet<int>();
+            int[] configured = new int[points.Count];
+            for (int index = 0; index < points.Count; index++)
+            {
+                WorldEncounter point = points[index];
+                if (point == null
+                    || point.Id <= 0
+                    || !seen.Add(point.Id))
+                {
+                    throw new InvalidOperationException(
+                        "The encounter filter contains an invalid or duplicate actor ID.");
+                }
+                configured[index] = point.Id;
+            }
+            Array.Sort(configured);
+            bool changed;
+            lock (_sync)
+            {
+                if (_runtimeEnabled
+                    || _gameProcessId != 0
+                    || _hasLoadedSaveState
+                    || _loadInProgress)
+                {
+                    throw new InvalidOperationException(
+                        "Encounter targets may only be configured during Overlay startup.");
+                }
+                changed = !_encounterTargetIds.SequenceEqual(configured);
+                if (!changed)
+                {
+                    return false;
+                }
+                _encounterTargetIds = configured;
+            }
+            ErrorLog.WriteDebug(String.Format(
+                CultureInfo.InvariantCulture,
+                "WORLD_ENCOUNTER_SAVE_FILTER_CONFIGURED targets={0}; firstId={1}; lastId={2}; source=install_generated_catalogs; lifecycle=overlay_startup_once; cacheReset=false",
+                configured.Length,
+                configured[0],
+                configured[configured.Length - 1]));
+            return true;
+        }
 
         public int GameProcessId
         {
@@ -143,12 +188,12 @@ namespace DragonSwordWorldRadar
         }
 
 
-        public DateTime GetBossNextAvailableUtc(int bossId)
+        public DateTime GetEncounterNextAvailableUtc(int encounterId)
         {
             BossRespawnRecord record;
             Dictionary<int, BossRespawnRecord> bossRespawns =
                 _bossRespawns;
-            if (!bossRespawns.TryGetValue(bossId, out record))
+            if (!bossRespawns.TryGetValue(encounterId, out record))
             {
                 return DateTime.MinValue;
             }
@@ -159,7 +204,7 @@ namespace DragonSwordWorldRadar
         public bool IsBossAvailable(int bossId)
         {
             DateTime nextAvailableUtc =
-                GetBossNextAvailableUtc(bossId);
+                GetEncounterNextAvailableUtc(bossId);
             return nextAvailableUtc == DateTime.MinValue
                 || DateTime.UtcNow >= nextAvailableUtc;
         }
@@ -212,6 +257,21 @@ namespace DragonSwordWorldRadar
                 return true;
             }
 
+            int category = (int)(saveId / 64);
+            int bit = (int)(saveId % 64);
+            ulong field;
+            return opened.TryGetValue(category, out field)
+                && (field & (1UL << bit)) != 0;
+        }
+
+        internal static bool IsRawOpened(
+            long saveId,
+            IDictionary<int, ulong> opened)
+        {
+            if (saveId <= 0 || opened == null)
+            {
+                return false;
+            }
             int category = (int)(saveId / 64);
             int bit = (int)(saveId % 64);
             ulong field;
@@ -282,8 +342,39 @@ namespace DragonSwordWorldRadar
                 resolvedOpened);
         }
 
+        public void SetRuntimeEnabled(bool enabled)
+        {
+            if (_runtimeEnabled == enabled)
+            {
+                return;
+            }
+            lock (_sync)
+            {
+                if (_runtimeEnabled == enabled)
+                {
+                    return;
+                }
+                _runtimeEnabled = enabled;
+                _nextRefreshUtc = DateTime.MinValue;
+                _pendingSlotSignature = null;
+                _pendingKey = null;
+                _pendingSinceUtc = DateTime.MinValue;
+                if (!enabled)
+                {
+                    // Invalidate an already queued result so F8 cannot publish
+                    // save work after the master gate has closed.
+                    _loadToken++;
+                    _loadInProgress = false;
+                }
+            }
+        }
+
         public void Refresh()
         {
+            if (!_runtimeEnabled)
+            {
+                return;
+            }
             _overrides.Refresh();
             int overrideVersion = _overrides.Version;
             lock (_sync)
@@ -341,20 +432,62 @@ namespace DragonSwordWorldRadar
                 candidateSummary + "; activeSlot=" + slot.Summary);
 
             int loadToken;
+            bool includeTreasure;
             lock (_sync)
             {
+                if (!_runtimeEnabled)
+                {
+                    return;
+                }
                 if (slot.Stem == _lastDatabasePath
                     && slot.Signature == _lastSlotSignature
-                    && key == _lastKey)
+                    && key == _lastKey
+                    && DateTime.UtcNow < _nextTreasureQueryUtc)
                 {
+                    _pendingSlotSignature = null;
+                    _pendingKey = null;
+                    _pendingSinceUtc = DateTime.MinValue;
                     return;
                 }
                 if (_loadInProgress)
                 {
                     return;
                 }
+
+                DateTime now = DateTime.UtcNow;
+                bool initialSnapshot = !_hasLoadedSaveState
+                    && !_initialDebounceBypassConsumed;
+                if (_pendingSlotSignature != slot.Signature
+                    || _pendingKey != key)
+                {
+                    _pendingSlotSignature = slot.Signature;
+                    _pendingKey = key;
+                    _pendingSinceUtc = now;
+                    if (!initialSnapshot)
+                    {
+                        ErrorLog.WriteDebug(
+                            "Save-state change detected; waiting for a stable " +
+                            SaveChangeDebounce.TotalSeconds.ToString(
+                                "F0",
+                                CultureInfo.InvariantCulture) +
+                            " second window before SQLCipher refresh.");
+                        return;
+                    }
+                    ErrorLog.WriteDebug(
+                        "Initial save-state snapshot bypasses change debounce; " +
+                        "the worker still requires an unchanged source " +
+                        "fingerprint before/after its copy.");
+                    _initialDebounceBypassConsumed = true;
+                }
+                if (!initialSnapshot
+                    && now - _pendingSinceUtc < SaveChangeDebounce)
+                {
+                    return;
+                }
                 _loadInProgress = true;
                 loadToken = ++_loadToken;
+                includeTreasure = !_hasLoadedSaveState
+                    || DateTime.UtcNow >= _nextTreasureQueryUtc;
             }
 
             SaveLoadRequest request = new SaveLoadRequest
@@ -362,7 +495,9 @@ namespace DragonSwordWorldRadar
                 GameProcessId = game.Id,
                 LoadToken = loadToken,
                 Slot = slot,
-                Key = key
+                Key = key,
+                EncounterTargetIds = _encounterTargetIds,
+                IncludeTreasure = includeTreasure
             };
             if (!ThreadPool.QueueUserWorkItem(
                     LoadSaveState,
@@ -384,17 +519,42 @@ namespace DragonSwordWorldRadar
         {
             SaveLoadRequest request =
                 (SaveLoadRequest)state;
+            Thread worker = Thread.CurrentThread;
+            ThreadPriority originalPriority = worker.Priority;
             try
             {
-                SaveSnapshot snapshot = SaveSnapshotReader.Read(
+                worker.Priority = ThreadPriority.BelowNormal;
+            }
+            catch
+            {
+                // Thread-pool priority changes are best effort only.
+            }
+            try
+            {
+                lock (_sync)
+                {
+                    if (!_runtimeEnabled
+                        || _gameProcessId != request.GameProcessId
+                        || _loadToken != request.LoadToken)
+                    {
+                        return;
+                    }
+                }
+
+                SaveSnapshotReadMetrics metrics;
+                SaveSnapshot snapshot = _snapshotReader.Read(
                     request.Slot,
-                    request.Key);
-                Dictionary<int, ulong> opened = snapshot.Opened;
+                    request.Key,
+                    request.EncounterTargetIds,
+                    request.IncludeTreasure,
+                    out metrics);
+                Dictionary<int, ulong> opened;
 
                 IList<long> newlyOpened;
                 IList<long> newlyClosed;
                 bool openedChanged;
                 bool bossChanged;
+                bool encounterTasksChanged;
                 bool firstSuccessfulLoad;
                 bool recoveredFromStartupPending;
                 lock (_sync)
@@ -406,6 +566,9 @@ namespace DragonSwordWorldRadar
                     }
 
                     Dictionary<int, ulong> previousOpened = _opened;
+                    opened = snapshot.OpenedAvailable
+                        ? snapshot.Opened
+                        : previousOpened;
                     Dictionary<int, BossRespawnRecord> previousBossRespawns =
                         _bossRespawns;
                     openedChanged = !OpenedDictionariesEqual(
@@ -428,6 +591,14 @@ namespace DragonSwordWorldRadar
                     bossChanged = !BossRespawnDictionariesEqual(
                         previousBossRespawns,
                         snapshot.BossRespawns);
+                    string taskSignature = snapshot.EncounterTasks == null
+                        ? "missing"
+                        : snapshot.EncounterTasks.Signature;
+                    encounterTasksChanged = !String.Equals(
+                        _encounterTaskSignature,
+                        taskSignature,
+                        StringComparison.Ordinal);
+                    _encounterTaskSignature = taskSignature;
                     firstSuccessfulLoad = !_hasLoadedSaveState;
                     recoveredFromStartupPending =
                         firstSuccessfulLoad && _lastError != null;
@@ -441,11 +612,20 @@ namespace DragonSwordWorldRadar
                     _lastDatabaseWriteUtc = request.Slot.LatestWriteUtc;
                     _lastSlotSignature = request.Slot.Signature;
                     _lastKey = request.Key;
+                    if (snapshot.OpenedAvailable)
+                    {
+                        _nextTreasureQueryUtc = DateTime.UtcNow.Add(
+                            TreasureQueryInterval);
+                    }
+                    _pendingSlotSignature = null;
+                    _pendingKey = null;
+                    _pendingSinceUtc = DateTime.MinValue;
                     _lastError = null;
                     _hasLoadedSaveState = true;
                     if (firstSuccessfulLoad
                         || openedChanged
-                        || bossChanged)
+                        || bossChanged
+                        || encounterTasksChanged)
                     {
                         _version++;
                     }
@@ -454,6 +634,17 @@ namespace DragonSwordWorldRadar
                 LogDatabaseLoaded(
                     request.Slot.Stem,
                     opened);
+                ErrorLog.WriteDebug(String.Format(
+                    CultureInfo.InvariantCulture,
+                    "SAVE_REFRESH_PERF totalMs={0:F3}; copyMs={1:F3}; keyMs={2:F3}; treasureQueryMs={3:F3}; bossQueryMs={4:F3}; encounterTaskQueryMs={5:F3}; databaseReads={6}; databaseCacheHits={7}",
+                    metrics.TotalMilliseconds,
+                    metrics.CopyMilliseconds,
+                    metrics.KeyMilliseconds,
+                    metrics.TreasureQueryMilliseconds,
+                    metrics.BossQueryMilliseconds,
+                    metrics.EncounterTaskQueryMilliseconds,
+                    metrics.DatabaseReads,
+                    metrics.DatabaseCacheHits));
                 if (firstSuccessfulLoad)
                 {
                     ErrorLog.WriteMessage(
@@ -467,12 +658,13 @@ namespace DragonSwordWorldRadar
                     newlyClosed);
                 if (firstSuccessfulLoad || bossChanged)
                 {
-                    LogBossStates(
+                    LogEncounterStates(
                         snapshot.BossRespawns,
                         request.Slot);
-                    LogAssaultStates(
-                        snapshot.BossRespawns,
-                        request.Slot);
+                }
+                if (firstSuccessfulLoad || encounterTasksChanged)
+                {
+                    LogEncounterTaskTable(snapshot.EncounterTasks);
                 }
             }
             catch (Exception exception)
@@ -482,6 +674,7 @@ namespace DragonSwordWorldRadar
                     if (_gameProcessId == request.GameProcessId
                         && _loadToken == request.LoadToken)
                     {
+                        _pendingSinceUtc = DateTime.UtcNow;
                         LogRefreshError(exception);
                     }
                 }
@@ -495,10 +688,17 @@ namespace DragonSwordWorldRadar
                         _loadInProgress = false;
                     }
                 }
+                try
+                {
+                    worker.Priority = originalPriority;
+                }
+                catch
+                {
+                }
             }
         }
 
-        private void LogBossStates(
+        private void LogEncounterStates(
             IDictionary<int, BossRespawnRecord> current,
             SaveSlotFingerprint slot)
         {
@@ -507,54 +707,73 @@ namespace DragonSwordWorldRadar
                 return;
             }
 
-            foreach (int bossId in WorldBossIds)
+            int hidden = 0;
+            DateTime now = DateTime.UtcNow;
+            List<string> details = new List<string>();
+            foreach (BossRespawnRecord record in current.Values)
             {
-                BossRespawnRecord record;
-                string comparisonState;
-                string messageState;
-                if (!current.TryGetValue(bossId, out record))
-                {
-                    comparisonState = String.Format(
-                        CultureInfo.InvariantCulture,
-                        "bossId={0}; available=true; reason=no-death-record; rule={1}",
-                        bossId,
-                        _bossRuleResolver.RuleSummary);
-                    messageState = comparisonState +
-                        "; slot=" + slot.Summary;
-                }
-                else
-                {
-                    DateTime next = _bossRuleResolver.NextAvailableUtc(
+                DateTime nextAvailableUtc =
+                    _bossRuleResolver.NextAvailableUtc(
                         record.DestroyTimeUtc);
-                    comparisonState = String.Format(
-                        CultureInfo.InvariantCulture,
-                        "bossId={0}; destroyUtc={1:O}; nextUtc={2:O}; available={3}; respawnType={4}; rule={5}",
-                        bossId,
-                        record.DestroyTimeUtc,
-                        next,
-                        DateTime.UtcNow >= next,
-                        record.RespawnType,
-                        _bossRuleResolver.RuleSummary);
-                    messageState = comparisonState +
-                        "; slot=" + slot.Summary;
-                }
-
-                bool changed;
-                lock (_sync)
+                bool isHidden = now < nextAvailableUtc;
+                if (isHidden)
                 {
-                    string old;
-                    changed = !_lastBossStateLog.TryGetValue(
-                        bossId,
-                        out old)
-                        || old != comparisonState;
-                    _lastBossStateLog[bossId] = comparisonState;
+                    hidden++;
                 }
-                if (changed)
-                {
-                    ErrorLog.WriteDebug(
-                        "World-boss save state: " + messageState);
-                }
+                details.Add(String.Format(
+                    CultureInfo.InvariantCulture,
+                    "id={0},respawnType={1},destroyUtc={2:O},nextUtc={3:O},hidden={4}",
+                    record.BossId,
+                    record.RespawnType,
+                    record.DestroyTimeUtc,
+                    nextAvailableUtc,
+                    isHidden));
             }
+            details.Sort(StringComparer.Ordinal);
+            string message = String.Format(
+                CultureInfo.InvariantCulture,
+                "WORLD_ENCOUNTER_SAVE_STATE targets={0}; deathRecords={1}; respawnHidden={2}; rule={3}; records={4}; slot={5}",
+                _encounterTargetIds.Length,
+                current.Count,
+                hidden,
+                _bossRuleResolver.RuleSummary,
+                details.Count == 0
+                    ? "none"
+                    : String.Join("|", details.ToArray()),
+                slot.Summary);
+            if (!String.Equals(
+                message,
+                _lastEncounterStateLog,
+                StringComparison.Ordinal))
+            {
+                _lastEncounterStateLog = message;
+                ErrorLog.WriteDebug(message);
+            }
+        }
+
+        private static void LogEncounterTaskTable(
+            EncounterTaskTableSnapshot snapshot)
+        {
+            if (!DebugSettings.Enabled)
+            {
+                return;
+            }
+            if (snapshot == null || !snapshot.Exists)
+            {
+                ErrorLog.WriteDebug(
+                    "ENCOUNTER_TASK_TABLE table=tb_unexpected_switch_week; exists=false");
+                return;
+            }
+            ErrorLog.WriteDebug(String.Format(
+                CultureInfo.InvariantCulture,
+                "ENCOUNTER_TASK_TABLE table=tb_unexpected_switch_week; exists=true; columns={0}; rowCount={1}; rows={2}",
+                snapshot.Columns.Count == 0
+                    ? "none"
+                    : String.Join(",", snapshot.Columns.ToArray()),
+                snapshot.Rows.Count,
+                snapshot.Rows.Count == 0
+                    ? "none"
+                    : String.Join("|", snapshot.Rows.ToArray())));
         }
 
         private void LogDatabaseSelection(
@@ -646,50 +865,6 @@ namespace DragonSwordWorldRadar
             }
         }
 
-        private void LogAssaultStates(
-            IDictionary<int, BossRespawnRecord> current,
-            SaveSlotFingerprint slot)
-        {
-            foreach (int actorCid in AssaultTargetIds)
-            {
-                BossRespawnRecord record;
-                string state;
-                if (!current.TryGetValue(actorCid, out record))
-                {
-                    state = String.Format(
-                        CultureInfo.InvariantCulture,
-                        "actorCid={0}; rowPresent=false",
-                        actorCid);
-                }
-                else
-                {
-                    state = String.Format(
-                        CultureInfo.InvariantCulture,
-                        "actorCid={0}; rowPresent=true; destroyUtc={1:O}; respawnType={2}",
-                        actorCid,
-                        record.DestroyTimeUtc,
-                        record.RespawnType);
-                }
-
-                bool changed;
-                lock (_sync)
-                {
-                    string old;
-                    changed = !_lastAssaultStateLog.TryGetValue(
-                        actorCid,
-                        out old)
-                        || old != state;
-                    _lastAssaultStateLog[actorCid] = state;
-                }
-                if (changed)
-                {
-                    ErrorLog.WriteMessage(
-                        "Assault save diagnostic: " + state +
-                        "; slot=" + slot.Summary);
-                }
-            }
-        }
-
         private static bool IsStartupInitializationPending(
             Exception exception)
         {
@@ -724,20 +899,26 @@ namespace DragonSwordWorldRadar
                     new Dictionary<int, BossRespawnRecord>();
                 _lastDatabasePath = null;
                 _lastDatabaseWriteUtc = DateTime.MinValue;
+                _nextTreasureQueryUtc = DateTime.MinValue;
                 _lastSlotSignature = null;
                 _lastKey = null;
+                _pendingSlotSignature = null;
+                _pendingKey = null;
+                _pendingSinceUtc = DateTime.MinValue;
                 _lastError = null;
                 _lastDatabaseAttemptLog = null;
                 _lastDatabaseSuccessLog = null;
                 _hasLoadedSaveState = false;
+                _initialDebounceBypassConsumed = false;
                 _loadToken++;
                 _loadInProgress = false;
-                _lastBossStateLog.Clear();
-                _lastAssaultStateLog.Clear();
+                _lastEncounterStateLog = null;
+                _encounterTaskSignature = null;
                 _version++;
             }
             _keyReader.Reset();
             _databaseLocator.Reset();
+            _snapshotReader.Reset();
         }
 
         private static List<long> FindNewlySetIds(
@@ -870,6 +1051,8 @@ namespace DragonSwordWorldRadar
             public int LoadToken;
             public SaveSlotFingerprint Slot;
             public string Key;
+            public int[] EncounterTargetIds;
+            public bool IncludeTreasure;
         }
 
     }

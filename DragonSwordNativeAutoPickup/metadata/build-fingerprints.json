@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "captured_utc": "2026-08-11T03:17:42Z",
+  "game": {
+    "file": "DSClient-Win64-Shipping.exe",
+    "sha256": "0C9D54A35D7160E671A3DB10C5E645140FDAD15A7293314681E9EDA7E360C1FE"
+  },
+  "ue4ss": {
+    "version": "3.0.1 Beta #0",
+    "git_sha": "1c1a1497f942c707f47ba668db75b25e86f6c08a",
+    "file": "ue4ss/UE4SS.dll",
+    "sha256": "F31188D59B34A812AFC32DB4B6FF0C74E1B44861D1ED7967452EE4B3B6635BE1"
+  },
+  "source_build": {
+    "status": "compiled_not_runtime_validated",
+    "built_utc": "2026-08-11T03:17:03Z",
+    "configuration": "Game__Shipping__Win64",
+    "main_dll_size_bytes": 444416,
+    "main_dll_sha256": "2CB3A4E082C7AF6520243D70C2DC8EE699B9C88BC23542D5B9ABEA5582B43606",
+    "binary_reproducibility": "not_established",
+    "dependencies": {
+      "ue4ss_git_sha": "1c1a1497f942c707f47ba668db75b25e86f6c08a",
+      "uepseudo_git_sha": "b2e876da82b17254c04304746341c8fde0ddb37c",
+      "patternsleuth_git_sha": "da8bfe4c5a464be0ef225c2c9a6ccaa2d9284018",
+      "imgui_color_text_edit_git_sha": "6d943aba9f7cef05da80b86dbb0253b63818f95c"
+    },
+    "toolchain": {
+      "cmake": "3.29.6",
+      "generator": "Ninja",
+      "rust": "1.97.1",
+      "msvc": "19.44.35228"
+    },
+    "deployed": true,
+    "runtime_validated": false
+  },
+  "unknown_build_policy": "passive_off"
+}

@@ -121,6 +121,40 @@ function Merge-LuaConfig {
     [IO.File]::WriteAllLines($UserPath,$updated,$utf8)
 }
 
+function Migrate-AssaultConfig {
+    param([string]$UserPath)
+    $lines = @([IO.File]::ReadAllLines($UserPath))
+    $legacyIsolation = $null
+    $showIndex = -1
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        $code = ($lines[$index] -split '--',2)[0]
+        if ($code -match '^\s*assault_performance_ab_isolation\s*=\s*(true|false)\s*,?\s*$') {
+            $legacyIsolation = $Matches[1] -ieq 'true'
+        }
+        if ($code -match '^\s*show_assaults\s*=\s*(true|false)\s*,?\s*$') {
+            $showIndex = $index
+        }
+    }
+    $migrated = New-Object System.Collections.Generic.List[string]
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        $code = ($lines[$index] -split '--',2)[0]
+        if ($code -match '^\s*assault_performance_ab_isolation\s*=') {
+            continue
+        }
+        if ($index -eq $showIndex) {
+            $indent = [regex]::Match($lines[$index],'^\s*').Value
+            $migrated.Add($indent + 'show_assaults = true,')
+            continue
+        }
+        $migrated.Add($lines[$index])
+    }
+    if ($showIndex -lt 0) {
+        throw 'scripts\config.lua is missing the required show_assaults setting.'
+    }
+    [IO.File]::WriteAllLines($UserPath,$migrated,$utf8)
+    Log 'ENABLED diagnostic Assault crash reproduction; show_assaults=true'
+}
+
 function Stop-ExistingWatcher {
     $stopPath = Join-Path $runtime 'watcher.stop'
     [IO.File]::WriteAllText($stopPath,[DateTime]::UtcNow.ToString('O'),$utf8)
@@ -153,7 +187,7 @@ try {
     $release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
     $releaseVersion = [string]$release.version
     if ([string]::IsNullOrWhiteSpace($releaseVersion)) { throw 'metadata\release.json does not define a release version.' }
-    Log ("INSTALL_START version={0} mode=single-motion-bridge-v2" -f $releaseVersion)
+    Log ("INSTALL_START version={0} mode=single-motion-bridge-v4" -f $releaseVersion)
 
     # A normal Windows folder overwrite does not remove files that were
     # deleted from the new release. Remove the exact 1.7 sources retired by
@@ -164,7 +198,9 @@ try {
     $obsoleteRelativePaths = @(
         'scripts\boss_tracker.lua',
         'src\overlay\Bridge\StaticStateBridgeReader.cs',
-        'src\overlay\Models\RadarState.cs'
+        'src\overlay\Models\RadarState.cs',
+        'src\overlay\SaveData\BossAvailabilityTracker.cs',
+        'src\overlay\SaveData\AssaultAvailabilityTracker.cs'
     )
     foreach ($obsoleteRelativePath in $obsoleteRelativePaths) {
         $obsoletePath = Join-Path $modRoot $obsoleteRelativePath
@@ -215,6 +251,7 @@ try {
         -UserPath $userConfig `
         -ArchiveDirectory $archiveDir
     Merge-LuaConfig -DefaultPath $defaultConfig -UserPath $userConfig
+    Migrate-AssaultConfig -UserPath $userConfig
     if (-not (Test-LuaConfig -Path $userConfig)) {
         throw 'scripts\config.lua failed validation after merge.'
     }
@@ -261,8 +298,9 @@ try {
     Add-Type -AssemblyName System.Drawing
     $overlaySourceRoot = Join-Path $modRoot 'src\overlay'
     $overlaySources = @(Get-ChildItem -LiteralPath $overlaySourceRoot -Recurse -Filter '*.cs' -File |
+        Where-Object { $_.FullName -notmatch '[\\/](?:obj|bin)[\\/]' } |
         Sort-Object FullName | Select-Object -ExpandProperty FullName)
-    if ($overlaySources.Count -lt 20) {
+    if ($overlaySources.Count -ne 41) {
         throw "Overlay source set is incomplete: $($overlaySources.Count) files."
     }
     $overlayReferences = @(
@@ -282,8 +320,9 @@ try {
 
     if ($layout.OodleLibraryPath) {
         $installerSources = @(Get-ChildItem -LiteralPath (Join-Path $modRoot 'src\installer') -Recurse -Filter '*.cs' -File |
+            Where-Object { $_.FullName -notmatch '[\\/](?:obj|bin)[\\/]' } |
             Sort-Object FullName | Select-Object -ExpandProperty FullName)
-        if ($installerSources.Count -lt 8) { throw "Installer source set is incomplete: $($installerSources.Count) files." }
+        if ($installerSources.Count -ne 18) { throw "Installer source set is incomplete: $($installerSources.Count) files." }
         Add-Type -AssemblyName System.Xml
         $installerRefs = @(
             [System.Xml.XmlDocument].Assembly.Location,
@@ -301,7 +340,7 @@ try {
         if ($results.Count -eq 0) { throw 'The data provider pipeline returned no datasets.' }
     } else {
         if ([string]$identityBeforeData.fingerprint -ne $bundledFingerprint) {
-            throw ("This game build differs from the bundled dataset and ooz.exe is unavailable. Current fingerprint={0}. Place ooz.exe in DragonSwordWorldRadar\tools or DS\Binaries\Win64\Mods, then run Install.cmd again." -f $identityBeforeData.fingerprint)
+            throw ("This game build differs from the bundled dataset and ooz.exe is unavailable. Current fingerprint={0}. Place ooz.exe in DragonSwordWorldRadar\tools or DS\Binaries\Win64\ue4ss\Mods, then run Install.cmd again." -f $identityBeforeData.fingerprint)
         }
         if (-not (Test-Path -LiteralPath $bundledCatalog -PathType Leaf)) {
             throw 'The bundled bootstrap treasure catalog is missing.'
@@ -319,13 +358,45 @@ try {
             OutputPath = $bootstrapOutput
             SourcePak = $layout.PakPath
             SourceEntry = 'bundled-bootstrap-for-20c421817e93'
+            GameFingerprint = [string]$identityBeforeData.fingerprint
         })
         Log ("DATASET_BOOTSTRAP id=treasures; records={0}; reason=ooz-not-found; fingerprint={1}" -f $bootstrapCount,$identityBeforeData.fingerprint)
     }
 
+    $identityAfterData = Get-DragonSwordWorldRadarGameIdentity -Layout $layout
+    if ([string]$identityAfterData.fingerprint -ne [string]$identityBeforeData.fingerprint) {
+        throw 'Game executable or PAK identity changed while datasets were being generated. Installation failed closed; retry after the game update is stable.'
+    }
+
+    $ownerPointerConfigPath = Join-Path $generatedRoot 'save_owner_pointer.cfg'
+    if (-not (Test-Path -LiteralPath $ownerPointerConfigPath -PathType Leaf)) {
+        throw 'Installer-generated save owner-pointer configuration is missing.'
+    }
+    $ownerPointerConfigText = [IO.File]::ReadAllText($ownerPointerConfigPath)
+    # File.WriteAllText uses the platform newline. Accept both LF and CRLF
+    # without allowing trailing field data into the fingerprint-bound values.
+    $ownerFingerprintMatch = [regex]::Match($ownerPointerConfigText,'(?m)^game_fingerprint=(?<value>[0-9a-f]{64})\r?$')
+    $ownerLengthMatch = [regex]::Match($ownerPointerConfigText,'(?m)^executable_length=(?<value>[1-9][0-9]*)\r?$')
+    $ownerRvaMatch = [regex]::Match($ownerPointerConfigText,'(?m)^owner_pointer_rva=0x(?<value>[0-9A-F]+)\r?$')
+    if (-not $ownerFingerprintMatch.Success -or
+        -not $ownerLengthMatch.Success -or
+        -not $ownerRvaMatch.Success -or
+        $ownerFingerprintMatch.Groups['value'].Value -ne [string]$identityBeforeData.fingerprint -or
+        [int64]$ownerLengthMatch.Groups['value'].Value -ne [int64]$identityBeforeData.executable_length) {
+        throw 'Installer-generated save owner-pointer configuration is malformed or not bound to the locked game fingerprint.'
+    }
+    $ownerRva = [Convert]::ToUInt64($ownerRvaMatch.Groups['value'].Value,16)
+    if ($ownerRva -le 0 -or $ownerRva -ge [uint64]$identityBeforeData.executable_length) {
+        throw 'Installer-generated save owner-pointer RVA is outside executable bounds.'
+    }
+    Log ("SAVE_OWNER_POINTER_GENERATED source=exact-executable-pattern; fingerprint={0}; rva=0x{1:X}; keyPersisted=false" -f $identityBeforeData.fingerprint,$ownerRva)
+
     $datasetEntries = @()
     foreach ($result in $results) {
         if (-not (Test-Path -LiteralPath $result.OutputPath)) { throw "Generated dataset is missing: $($result.OutputPath)" }
+        if ([string]$result.GameFingerprint -ne [string]$identityBeforeData.fingerprint) {
+            throw "Dataset $($result.Id) was not generated from the locked pre-generation game fingerprint."
+        }
         $datasetEntries += [ordered]@{
             id = [string]$result.Id
             record_count = [int]$result.RecordCount
@@ -333,12 +404,15 @@ try {
             sha256 = (Get-FileHash -LiteralPath $result.OutputPath -Algorithm SHA256).Hash.ToLowerInvariant()
             source_pak = [IO.Path]::GetFileName([string]$result.SourcePak)
             source_entry = [string]$result.SourceEntry
+            game_fingerprint = [string]$result.GameFingerprint
         }
         Log ("DATASET_GENERATED id={0}; records={1}; output={2}" -f $result.Id,$result.RecordCount,$result.OutputPath)
     }
     Write-DragonSwordWorldRadarJson -Path (Join-Path $metadataRoot 'datasets.json') -Value ([ordered]@{
-        schema_version = 1
+        schema_version = 2
         generated_at_utc = [DateTime]::UtcNow.ToString('O')
+        game_fingerprint_before_generation = [string]$identityBeforeData.fingerprint
+        game_fingerprint_after_generation = [string]$identityAfterData.fingerprint
         providers = $datasetEntries
     })
 
@@ -364,7 +438,83 @@ try {
         throw "Generated world-boss catalog validation failed (records=$bossRecordCount)."
     }
 
+    $assaultCatalogPath = Join-Path $generatedRoot 'assaults.lua'
+    if (-not (Test-Path -LiteralPath $assaultCatalogPath -PathType Leaf)) {
+        throw 'Generated Assault catalog is missing.'
+    }
+    $assaultCatalogText = [IO.File]::ReadAllText($assaultCatalogPath)
+    $assaultRecordCount = [regex]::Matches($assaultCatalogText,'(?m)^\s*\{\s*place_id\s*=').Count
+    $assaultConditionCount = [regex]::Matches($assaultCatalogText,'\bcondition_type\s*=\s*"world_time_window"').Count
+    $assaultPolicyPath = Join-Path $metadataRoot 'assault-inference-policy.xml'
+    if (-not (Test-Path -LiteralPath $assaultPolicyPath -PathType Leaf)) {
+        throw 'Assault inference policy is missing.'
+    }
+    [xml]$assaultPolicy = [IO.File]::ReadAllText($assaultPolicyPath)
+    $policyRoot = $assaultPolicy.DocumentElement
+    if ($null -eq $policyRoot -or $policyRoot.LocalName -ne 'AssaultInferencePolicy' -or
+        [string]$policyRoot.schema_version -ne '1' -or
+        [string]$policyRoot.expected_game_fingerprint -ne [string]$identityBeforeData.fingerprint) {
+        throw 'Assault inference policy schema or game fingerprint is invalid.'
+    }
+    $policyConditions = @($policyRoot.SelectNodes('./Condition'))
+    $seenPolicyPlaces = @{}
+    foreach ($condition in $policyConditions) {
+        foreach ($field in @('place_id','cid','uid','uid_name','reveal_cycle_id','condition_type','provenance','missing_confirmation')) {
+            if ([string]::IsNullOrWhiteSpace([string]$condition.GetAttribute($field))) {
+                throw "Assault inference policy condition is missing $field."
+            }
+        }
+        if ([string]$condition.condition_type -ne 'world_time_window' -or
+            $seenPolicyPlaces.ContainsKey([string]$condition.place_id)) {
+            throw 'Assault inference policy contains an unknown type or duplicate target selector.'
+        }
+        $seenPolicyPlaces[[string]$condition.place_id] = $true
+    }
+    $expectedAssaultConditionCount = $policyConditions.Count
+    $escapedGenerationFingerprint = [regex]::Escape([string]$identityBeforeData.fingerprint)
+    $assaultFingerprintCount = [regex]::Matches($assaultCatalogText,
+        ('(?m)^\s*\{[^\r\n]*\bgame_fingerprint\s*=\s*"' + $escapedGenerationFingerprint + '"')).Count
+    if ($assaultRecordCount -ne 40 -or $assaultConditionCount -ne $expectedAssaultConditionCount -or $assaultFingerprintCount -ne 40) {
+        throw "Generated Assault catalog validation failed (records=$assaultRecordCount; conditions=$assaultConditionCount/$expectedAssaultConditionCount; fingerprints=$assaultFingerprintCount)."
+    }
+    Log ("ASSAULT_CATALOG_VALIDATED records=40; conditioned={0}; fingerprint={1}; source=install-generated-current-game-pak" -f $expectedAssaultConditionCount,$identityBeforeData.fingerprint)
+    Log ("WORLD_ENCOUNTER_CATALOG_VALIDATED records=49; bosses=9; assaults=40; conditioned={0}; runtime=single-startup-fixed-catalog-query-cache" -f $expectedAssaultConditionCount)
+
+    $moleCatalogPath = Join-Path $generatedRoot 'moles.lua'
+    if (-not (Test-Path -LiteralPath $moleCatalogPath -PathType Leaf)) {
+        throw 'Generated Mole/Fly catalog is missing.'
+    }
+    $moleCatalogText = [IO.File]::ReadAllText($moleCatalogPath)
+    $moleMatches = [regex]::Matches($moleCatalogText,
+        '(?m)^\s*\{[^\r\n]*\bmini_game_id\s*=\s*(?<id>110(?:0[1-9]|[12][0-9]|3[0-4]))\b[^\r\n]*\breward_save_id\s*=\s*(?<reward>[1-9]\d*)\b[^\r\n]*\bmask_bit\s*=\s*(?<bit>\d+)\b[^\r\n]*\bmap_id\s*=\s*(?<map>[1-9]\d*)\b[^\r\n]*\bposition_role\s*=\s*"(?:NPC_Start|Teleport_Start|Fly_Linked)"[^\r\n]*\bnotice_title\s*=\s*"109208"[^\r\n]*\bnotice_description\s*=\s*"109202"')
+    if ($moleMatches.Count -ne 34) {
+        throw "Generated Mole/Fly catalog must contain exactly 34 shape-valid records; found $($moleMatches.Count)."
+    }
+    $seenMoleIds = @{}
+    $seenMoleRewards = @{}
+    $seenMoleBits = @{}
+    foreach ($match in $moleMatches) {
+        $moleId = [int]$match.Groups['id'].Value
+        $rewardSaveId = [long]$match.Groups['reward'].Value
+        $maskBit = [int]$match.Groups['bit'].Value
+        if ($seenMoleIds.ContainsKey($moleId) -or $seenMoleRewards.ContainsKey($rewardSaveId) -or $seenMoleBits.ContainsKey($maskBit)) {
+            throw 'Generated Mole/Fly catalog contains duplicate IDs, reward save IDs, or mask bits.'
+        }
+        $seenMoleIds[$moleId] = $true
+        $seenMoleRewards[$rewardSaveId] = $true
+        $seenMoleBits[$maskBit] = $true
+    }
+    for ($maskBit = 0; $maskBit -lt 34; $maskBit++) {
+        if (-not $seenMoleBits.ContainsKey($maskBit)) {
+            throw "Generated Mole/Fly catalog is missing contiguous mask bit $maskBit."
+        }
+    }
+    Log ("MOLE_CATALOG_VALIDATED records=34; ids={0}; rewardMappings=34; source=install-generated-current-game-pak" -f (($seenMoleIds.Keys | Sort-Object) -join ','))
+
     $identity = Get-DragonSwordWorldRadarGameIdentity -Layout $layout
+    if ([string]$identity.fingerprint -ne [string]$identityBeforeData.fingerprint) {
+        throw 'Game executable or PAK identity changed after dataset validation. Install-state was not written.'
+    }
     Write-DragonSwordWorldRadarJson -Path (Join-Path $metadataRoot 'install-state.json') -Value ([ordered]@{
         schema_version = 1
         mod_version = $releaseVersion
@@ -372,6 +522,7 @@ try {
         game_root = $layout.GameRoot
         game = $identity
         datasets_manifest = 'metadata\datasets.json'
+        save_owner_pointer_config = 'data\generated\save_owner_pointer.cfg'
     })
     Log ("GAME_FINGERPRINT version={0}; fingerprint={1}" -f $identity.display_version,$identity.fingerprint)
 
@@ -459,9 +610,9 @@ try {
     }
     if ($allExecutables.Count -ne 1) { throw "Expected exactly one bundled tool executable, found $($allExecutables.Count)." }
 
-    Log ("INSTALL_COMPLETE version={0} customExe=0 bundledToolExe=1 watcher=per-session-wscript transientPowerShell=true" -f $releaseVersion)
-    Write-Host ("DragonSwordWorldRadar {0} installed. Generated {1} treasure records and {2} world-boss records for game version {3}." -f $releaseVersion,$recordCount,$bossRecordCount,$identity.display_version)
-    Write-Host 'Start the game normally. F7 enables the radar; F8 disables it.'
+    Log ("INSTALL_COMPLETE version={0} datasets=treasure,boss,assault,mole encounterRecords=49 assaultRecords=40 encounterConditioned={1} customExe=0 bundledToolExe=1 watcher=per-session-wscript transientPowerShell=true" -f $releaseVersion,$expectedAssaultConditionCount)
+    Write-Host ("DragonSwordWorldRadar {0} installed. Generated {1} treasure, {2} world-boss, 40 Assault ({3} conditioned), and 34 Mole/Fly records for game version {4}." -f $releaseVersion,$recordCount,$bossRecordCount,$expectedAssaultConditionCount,$identity.display_version)
+    Write-Host 'Start the game normally. Overlay startup fixes one 49-record Boss/Assault encounter catalog and save-query shape. F7 only enables configured marker, save-state, and isolated world-clock work; F8 disables all active mod work for FPS comparison. The clock performs one read after stable context and then advances locally.'
 } catch {
     try { Log ("INSTALL_FAILED " + ($_ | Out-String)) } catch {}
     Write-Error $_

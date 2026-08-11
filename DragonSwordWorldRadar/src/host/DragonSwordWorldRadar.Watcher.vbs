@@ -47,7 +47,7 @@ Function NormalizeStamp(value)
     NormalizeStamp = normalized
 End Function
 
-LogLine "WATCHER_START version=0.4.0-dev9-performance1.8-singlebridge1 host=wscript pidless=true"
+LogLine "WATCHER_START version=0.4.0-dev59-ue4ssroot1 host=wscript pidless=true"
 Do
     If fso.FileExists(stopPath) Then
         On Error Resume Next
