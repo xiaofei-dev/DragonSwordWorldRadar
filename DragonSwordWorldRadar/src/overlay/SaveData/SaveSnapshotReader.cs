@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -9,7 +11,28 @@ namespace DragonSwordWorldRadar
     internal sealed class SaveSnapshot
     {
         public Dictionary<int, ulong> Opened;
+        public bool OpenedAvailable;
         public Dictionary<int, BossRespawnRecord> BossRespawns;
+        public EncounterTaskTableSnapshot EncounterTasks;
+    }
+
+    internal sealed class EncounterTaskTableSnapshot
+    {
+        public bool Exists;
+        public string Source;
+        public readonly List<string> Columns = new List<string>();
+        public readonly List<string> Rows = new List<string>();
+
+        public string Signature
+        {
+            get
+            {
+                return (Exists ? "1" : "0") + "|" +
+                    (Source ?? "unknown") + "|" +
+                    String.Join(",", Columns.ToArray()) + "|" +
+                    String.Join("\n", Rows.ToArray());
+            }
+        }
     }
 
     internal sealed class BossRespawnRecord
@@ -19,18 +42,44 @@ namespace DragonSwordWorldRadar
         public DateTime DestroyTimeUtc;
     }
 
-    internal static class SaveSnapshotReader
+    internal sealed class SaveSnapshotReadMetrics
+    {
+        public int DatabaseReads;
+        public int DatabaseCacheHits;
+        public double CopyMilliseconds;
+        public double KeyMilliseconds;
+        public double TreasureQueryMilliseconds;
+        public double BossQueryMilliseconds;
+        public double EncounterTaskQueryMilliseconds;
+        public double TotalMilliseconds;
+    }
+
+    internal sealed class SaveSnapshotReader
     {
         private const int SqliteOpenReadWrite = 0x00000002;
+        private readonly object _cacheSync = new object();
+        private readonly Dictionary<string, CachedDatabaseSnapshot> _cache =
+            new Dictionary<string, CachedDatabaseSnapshot>(
+                StringComparer.OrdinalIgnoreCase);
 
-        public static SaveSnapshot Read(
+        public SaveSnapshot Read(
             SaveSlotFingerprint slot,
-            string key)
+            string key,
+            IList<int> encounterTargetIds,
+            bool includeTreasure,
+            out SaveSnapshotReadMetrics metrics)
         {
+            string actorFilterSignature = BuildActorFilterSignature(
+                encounterTargetIds) +
+                (includeTreasure ? "|treasure" : "|encounter");
+            metrics = new SaveSnapshotReadMetrics();
+            Stopwatch totalWatch = Stopwatch.StartNew();
             SaveSnapshot merged = new SaveSnapshot
             {
                 Opened = new Dictionary<int, ulong>(),
-                BossRespawns = new Dictionary<int, BossRespawnRecord>()
+                OpenedAvailable = false,
+                BossRespawns = new Dictionary<int, BossRespawnRecord>(),
+                EncounterTasks = new EncounterTaskTableSnapshot()
             };
             string temporaryDirectory = Path.Combine(
                 Path.GetTempPath(),
@@ -50,16 +99,60 @@ namespace DragonSwordWorldRadar
                     }
                     try
                     {
+                        SaveSnapshot current;
+                        if (TryGetCached(
+                                database,
+                                key,
+                                actorFilterSignature,
+                                out current))
+                        {
+                            metrics.DatabaseCacheHits++;
+                            if (current.OpenedAvailable)
+                            {
+                                MergeOpened(merged.Opened, current.Opened);
+                                merged.OpenedAvailable = true;
+                            }
+                            MergeBossRespawns(
+                                merged.BossRespawns,
+                                current.BossRespawns);
+                            MergeEncounterTasks(
+                                merged.EncounterTasks,
+                                current.EncounterTasks);
+                            loaded++;
+                            continue;
+                        }
+
+                        Stopwatch copyWatch = Stopwatch.StartNew();
                         string snapshotPath =
                             database.CopyConsistentSnapshot(
                                 temporaryDirectory);
-                        SaveSnapshot current = ReadFile(
+                        copyWatch.Stop();
+                        metrics.CopyMilliseconds +=
+                            copyWatch.Elapsed.TotalMilliseconds;
+                        current = ReadFile(
                             snapshotPath,
-                            key);
-                        MergeOpened(merged.Opened, current.Opened);
+                            key,
+                            encounterTargetIds,
+                            includeTreasure,
+                            Path.GetFileName(database.Path),
+                            metrics);
+                        StoreCached(
+                            database,
+                            key,
+                            actorFilterSignature,
+                            current);
+                        metrics.DatabaseReads++;
+                        if (current.OpenedAvailable)
+                        {
+                            MergeOpened(merged.Opened, current.Opened);
+                            merged.OpenedAvailable = true;
+                        }
                         MergeBossRespawns(
                             merged.BossRespawns,
                             current.BossRespawns);
+                        MergeEncounterTasks(
+                            merged.EncounterTasks,
+                            current.EncounterTasks);
                         loaded++;
                     }
                     catch (Exception exception)
@@ -87,12 +180,91 @@ namespace DragonSwordWorldRadar
                     "No active save database snapshot could be read.",
                     lastError);
             }
+            PruneCache(slot, key);
+            totalWatch.Stop();
+            metrics.TotalMilliseconds =
+                totalWatch.Elapsed.TotalMilliseconds;
             return merged;
+        }
+
+        public void Reset()
+        {
+            lock (_cacheSync)
+            {
+                _cache.Clear();
+            }
+        }
+
+        private bool TryGetCached(
+            SaveDatabaseFingerprint database,
+            string key,
+            string actorFilterSignature,
+            out SaveSnapshot snapshot)
+        {
+            lock (_cacheSync)
+            {
+                CachedDatabaseSnapshot cached;
+                if (_cache.TryGetValue(database.Path, out cached)
+                    && cached.Signature == database.Signature
+                    && cached.Key == key
+                    && cached.ActorFilterSignature ==
+                        actorFilterSignature)
+                {
+                    snapshot = cached.Snapshot;
+                    return true;
+                }
+            }
+            snapshot = null;
+            return false;
+        }
+
+        private void StoreCached(
+            SaveDatabaseFingerprint database,
+            string key,
+            string actorFilterSignature,
+            SaveSnapshot snapshot)
+        {
+            lock (_cacheSync)
+            {
+                _cache[database.Path] = new CachedDatabaseSnapshot
+                {
+                    Signature = database.Signature,
+                    Key = key,
+                    ActorFilterSignature = actorFilterSignature,
+                    Snapshot = snapshot
+                };
+            }
+        }
+
+        private void PruneCache(
+            SaveSlotFingerprint slot,
+            string key)
+        {
+            HashSet<string> active = new HashSet<string>(
+                slot.Databases.Where(item => item.Exists)
+                    .Select(item => item.Path),
+                StringComparer.OrdinalIgnoreCase);
+            lock (_cacheSync)
+            {
+                List<string> removed = _cache
+                    .Where(pair => !active.Contains(pair.Key)
+                        || pair.Value.Key != key)
+                    .Select(pair => pair.Key)
+                    .ToList();
+                foreach (string path in removed)
+                {
+                    _cache.Remove(path);
+                }
+            }
         }
 
         private static SaveSnapshot ReadFile(
             string source,
-            string key)
+            string key,
+            IList<int> encounterTargetIds,
+            bool includeTreasure,
+            string taskSource,
+            SaveSnapshotReadMetrics metrics)
         {
             IntPtr database = IntPtr.Zero;
             try
@@ -109,10 +281,42 @@ namespace DragonSwordWorldRadar
                         result,
                         IntPtr.Zero);
                 }
+                Stopwatch keyWatch = Stopwatch.StartNew();
+                ApplyKey(database, key);
+                keyWatch.Stop();
+                metrics.KeyMilliseconds +=
+                    keyWatch.Elapsed.TotalMilliseconds;
+
+                Dictionary<int, ulong> opened =
+                    new Dictionary<int, ulong>();
+                if (includeTreasure)
+                {
+                    Stopwatch treasureWatch = Stopwatch.StartNew();
+                    opened = QueryOpenedTreasureBits(database);
+                    treasureWatch.Stop();
+                    metrics.TreasureQueryMilliseconds +=
+                        treasureWatch.Elapsed.TotalMilliseconds;
+                }
+
+                Stopwatch bossWatch = Stopwatch.StartNew();
+                Dictionary<int, BossRespawnRecord> bossRespawns =
+                    QueryBossRespawns(database, encounterTargetIds);
+                bossWatch.Stop();
+                metrics.BossQueryMilliseconds +=
+                    bossWatch.Elapsed.TotalMilliseconds;
+                Stopwatch taskWatch = Stopwatch.StartNew();
+                EncounterTaskTableSnapshot encounterTasks =
+                    QueryEncounterTaskTable(database);
+                encounterTasks.Source = taskSource;
+                taskWatch.Stop();
+                metrics.EncounterTaskQueryMilliseconds +=
+                    taskWatch.Elapsed.TotalMilliseconds;
                 return new SaveSnapshot
                 {
-                    Opened = QueryOpenedTreasureBits(database, key),
-                    BossRespawns = QueryBossRespawns(database, key)
+                    Opened = opened,
+                    OpenedAvailable = includeTreasure,
+                    BossRespawns = bossRespawns,
+                    EncounterTasks = encounterTasks
                 };
             }
             finally
@@ -151,23 +355,102 @@ namespace DragonSwordWorldRadar
             }
         }
 
+        private static string BuildActorFilterSignature(
+            IList<int> encounterTargetIds)
+        {
+            List<int> normalized = NormalizeEncounterTargetIds(
+                encounterTargetIds);
+            StringBuilder signature = new StringBuilder();
+            for (int index = 0; index < normalized.Count; index++)
+            {
+                if (index > 0)
+                {
+                    signature.Append(',');
+                }
+                signature.Append(normalized[index]);
+            }
+            return signature.ToString();
+        }
+
+        private static void MergeEncounterTasks(
+            EncounterTaskTableSnapshot target,
+            EncounterTaskTableSnapshot source)
+        {
+            if (target == null || source == null || !source.Exists)
+            {
+                return;
+            }
+            target.Exists = true;
+            if (target.Columns.Count == 0)
+            {
+                target.Columns.AddRange(source.Columns);
+            }
+            foreach (string row in source.Rows)
+            {
+                string sourcedRow = (source.Source ?? "unknown") +
+                    ":" + row;
+                if (!target.Rows.Contains(sourcedRow))
+                {
+                    target.Rows.Add(sourcedRow);
+                }
+            }
+            target.Rows.Sort(StringComparer.Ordinal);
+        }
+
+        private static string BuildActorFilterSql(
+            IList<int> encounterTargetIds)
+        {
+            List<int> ids = NormalizeEncounterTargetIds(
+                encounterTargetIds);
+            StringBuilder filter = new StringBuilder("(");
+            for (int index = 0; index < ids.Count; index++)
+            {
+                if (index > 0)
+                {
+                    filter.Append(',');
+                }
+                filter.Append(ids[index]);
+            }
+            return filter.Append(')').ToString();
+        }
+
+        private static List<int> NormalizeEncounterTargetIds(
+            IList<int> encounterTargetIds)
+        {
+            List<int> normalized = new List<int>();
+            HashSet<int> seen = new HashSet<int>();
+            if (encounterTargetIds != null)
+            {
+                foreach (int actorCid in encounterTargetIds)
+                {
+                    if (actorCid <= 0 || !seen.Add(actorCid))
+                    {
+                        throw new InvalidDataException(
+                            "World encounter filter contains an invalid or duplicate actor ID.");
+                    }
+                    normalized.Add(actorCid);
+                }
+            }
+            normalized.Sort();
+            return normalized;
+        }
+
         private static Dictionary<int, BossRespawnRecord>
-            QueryBossRespawns(IntPtr database, string key)
+            QueryBossRespawns(
+                IntPtr database,
+                IList<int> encounterTargetIds)
         {
             Dictionary<int, BossRespawnRecord> rows =
                 new Dictionary<int, BossRespawnRecord>();
-            string escapedKey = key.Replace("'", "''");
+            if (encounterTargetIds == null
+                || encounterTargetIds.Count == 0)
+            {
+                return rows;
+            }
             string sql =
-                "PRAGMA key = '" + escapedKey + "';" +
-                "PRAGMA cipher_compatibility = 4;" +
                 "SELECT ACTOR_CID,RESPAWN_TYPE,DESTROY_TIME " +
                 "FROM tb_actor_respawn WHERE ACTOR_CID IN " +
-                "(9000005,9000007,9000010,9000011,9000012," +
-                "9000019,9000022,9000023,9000025," +
-                "102,105,106,110,114,134,140,141,142,143,144," +
-                "145,146,147,148,149,150,151,153,154,156,157," +
-                "158,159,160,161,162,163,164,165,166,167,168," +
-                "172,173,174,175,176,177,178);";
+                BuildActorFilterSql(encounterTargetIds) + ";";
             CallbackFailure failure = new CallbackFailure();
             NativeMethods.ExecCallback callback = delegate(
                 IntPtr context,
@@ -240,14 +523,11 @@ namespace DragonSwordWorldRadar
         }
 
         private static Dictionary<int, ulong>
-            QueryOpenedTreasureBits(IntPtr database, string key)
+            QueryOpenedTreasureBits(IntPtr database)
         {
             Dictionary<int, ulong> opened =
                 new Dictionary<int, ulong>();
-            string escapedKey = key.Replace("'", "''");
             string sql =
-                "PRAGMA key = '" + escapedKey + "';" +
-                "PRAGMA cipher_compatibility = 4;" +
                 "SELECT CATEGORY,OPENED_BIT_FIELD " +
                 "FROM tb_treasure_box;";
             CallbackFailure failure = new CallbackFailure();
@@ -273,6 +553,123 @@ namespace DragonSwordWorldRadar
 
             Execute(database, sql, callback, failure);
             return opened;
+        }
+
+        private static EncounterTaskTableSnapshot
+            QueryEncounterTaskTable(IntPtr database)
+        {
+            EncounterTaskTableSnapshot result =
+                new EncounterTaskTableSnapshot();
+            CallbackFailure existenceFailure = new CallbackFailure();
+            NativeMethods.ExecCallback existenceCallback = delegate(
+                IntPtr context,
+                int count,
+                IntPtr values,
+                IntPtr names)
+            {
+                try
+                {
+                    result.Exists = count > 0
+                        && !String.IsNullOrEmpty(PointerString(
+                            Marshal.ReadIntPtr(values, 0)));
+                    return 0;
+                }
+                catch (Exception exception)
+                {
+                    existenceFailure.Exception = exception;
+                    return 1;
+                }
+            };
+            Execute(
+                database,
+                "SELECT name FROM sqlite_master WHERE type='table' " +
+                    "AND name='tb_unexpected_switch_week' LIMIT 1;",
+                existenceCallback,
+                existenceFailure);
+            if (!result.Exists)
+            {
+                return result;
+            }
+
+            CallbackFailure rowFailure = new CallbackFailure();
+            NativeMethods.ExecCallback rowCallback = delegate(
+                IntPtr context,
+                int count,
+                IntPtr values,
+                IntPtr names)
+            {
+                try
+                {
+                    int boundedCount = Math.Min(count, 32);
+                    if (result.Columns.Count == 0)
+                    {
+                        for (int index = 0;
+                            index < boundedCount;
+                            index++)
+                        {
+                            result.Columns.Add(SafeTaskValue(
+                                PointerString(Marshal.ReadIntPtr(
+                                    names,
+                                    IntPtr.Size * index))));
+                        }
+                    }
+                    if (result.Rows.Count >= 256)
+                    {
+                        return 0;
+                    }
+                    string[] fields = new string[boundedCount];
+                    for (int index = 0;
+                        index < boundedCount;
+                        index++)
+                    {
+                        fields[index] = SafeTaskValue(PointerString(
+                            Marshal.ReadIntPtr(
+                                values,
+                                IntPtr.Size * index)));
+                    }
+                    result.Rows.Add(String.Join("\t", fields));
+                    return 0;
+                }
+                catch (Exception exception)
+                {
+                    rowFailure.Exception = exception;
+                    return 1;
+                }
+            };
+            Execute(
+                database,
+                "SELECT * FROM tb_unexpected_switch_week LIMIT 256;",
+                rowCallback,
+                rowFailure);
+            result.Rows.Sort(StringComparer.Ordinal);
+            return result;
+        }
+
+        private static string SafeTaskValue(string value)
+        {
+            if (String.IsNullOrEmpty(value))
+            {
+                return "<null>";
+            }
+            string safe = value.Replace("\r", " ")
+                .Replace("\n", " ")
+                .Replace("\t", " ");
+            return safe.Length <= 160
+                ? safe
+                : safe.Substring(0, 160) + "...";
+        }
+
+        private static void ApplyKey(
+            IntPtr database,
+            string key)
+        {
+            string escapedKey = key.Replace("'", "''");
+            Execute(
+                database,
+                "PRAGMA key = '" + escapedKey + "';" +
+                    "PRAGMA cipher_compatibility = 4;",
+                null,
+                null);
         }
 
         private static void Execute(
@@ -358,6 +755,14 @@ namespace DragonSwordWorldRadar
         private sealed class CallbackFailure
         {
             public Exception Exception;
+        }
+
+        private sealed class CachedDatabaseSnapshot
+        {
+            public string Signature;
+            public string Key;
+            public string ActorFilterSignature;
+            public SaveSnapshot Snapshot;
         }
 
         private static byte[] Utf8(string value)

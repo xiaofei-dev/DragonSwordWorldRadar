@@ -7,5 +7,6 @@ namespace DragonSwordWorldRadar.Installer
         public string SourcePak { get; set; }
         public string SourceEntry { get; set; }
         public int RecordCount { get; set; }
+        public string GameFingerprint { get; set; }
     }
 }

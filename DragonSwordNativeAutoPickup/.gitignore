@@ -1,0 +1,13 @@
+# Generated build and package output
+/build/
+/build-native/
+/dist/
+/out/
+/package/
+/staging/
+/.sdk/
+
+# Runtime state and diagnostics
+/runtime/
+*.log
+*.zip

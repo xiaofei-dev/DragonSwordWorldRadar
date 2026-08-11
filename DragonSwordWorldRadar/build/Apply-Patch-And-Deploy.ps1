@@ -342,7 +342,7 @@ function Get-LocalDeployModsPath {
 
     $configPath = Join-Path $configDirectory 'deploy-mods-path.txt'
 
-    $defaultPath = 'G:\SteamLibrary\steamapps\common\DragonSword  Awakening\DS\Binaries\Win64\Mods'
+    $defaultPath = 'G:\SteamLibrary\steamapps\common\DragonSword  Awakening\DS\Binaries\Win64\ue4ss\Mods'
 
 
 
@@ -403,7 +403,7 @@ function Get-LocalDeployModsPath {
 
     $modsPath = [IO.Path]::GetFullPath($modsPath)
 
-    $expectedSuffix = '\DS\Binaries\Win64\Mods'
+    $expectedSuffix = '\DS\Binaries\Win64\ue4ss\Mods'
 
     if (-not $modsPath.EndsWith($expectedSuffix, [StringComparison]::OrdinalIgnoreCase)) {
 
@@ -413,7 +413,9 @@ function Get-LocalDeployModsPath {
 
 
 
-    $win64Path = Split-Path -Parent $modsPath
+    $ue4ssPath = Split-Path -Parent $modsPath
+
+    $win64Path = Split-Path -Parent $ue4ssPath
 
     $dsPath = [IO.Path]::GetFullPath((Join-Path $win64Path '..\..'))
 
@@ -532,7 +534,7 @@ function Deploy-Release([string]$DsRoot) {
 
 
 
-    $modsRoot = Join-Path $DsRoot 'Binaries\Win64\Mods'
+    $modsRoot = Join-Path $DsRoot 'Binaries\Win64\ue4ss\Mods'
 
     $target = Join-Path $modsRoot 'DragonSwordWorldRadar'
 

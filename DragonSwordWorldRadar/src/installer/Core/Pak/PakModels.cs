@@ -9,6 +9,13 @@ namespace DragonSwordWorldRadar.Installer
         public ulong IndexSize;
     }
 
+    internal sealed class PakDirectoryEntry
+    {
+        public string DirectoryName;
+        public string FileName;
+        public int EncodedOffset;
+    }
+
     internal sealed class EncodedEntry
     {
         public int CompressionSlot;

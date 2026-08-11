@@ -1,6 +1,7 @@
 {
   "schema_version": 2,
-  "version": "0.4.0-dev9-performance1.8-singlebridge1",
+  "version": "0.4.0-dev21-dev15rollback1",
+  "preserved_evidence_scope": "Existing inventory, mapping, tested-release, and validation claims describe the accepted 0.4.0-dev9-performance1.8-singlebridge1 repository snapshot.",
   "generated_at_utc": "2026-08-08T04:21:42.847957+00:00",
   "package_type": "complete Git repository snapshot",
   "source_layout_checks": {
@@ -51,6 +52,19 @@
   "tested_release": {
     "path": "dist/DragonSwordWorldRadar-v0.4.0-dev9-performance1.8-singlebridge1.zip",
     "sha256": "fefc338792c015b8e6a379d42dc393c25311e3f580aa08c75c5638eecb1082cb"
+  },
+  "successor_validation": {
+    "version": "0.4.0-dev48-clockrestore1",
+    "baseline_commit": "00d129b5af15052fd427070f4e0504adc9e1df16",
+    "inventory": { "overlay_csharp_files": 42, "installer_core_csharp_files": 18, "ue4ss_lua_files": 9 },
+    "architecture": { "host": 1, "watcher": 1, "overlay": 1, "active_bridge": 1, "loopasync_registrations": 3 },
+    "production_source_to_release_mappings": 105,
+    "windows_gates": "passed after final rerun; exact output recorded in task handoff",
+    "real_pak_acceptance": "Mole retained its accepted 34-record catalog; Assault current-PAK generation passed with 40 records, one generic conditioned target, and fingerprint d4fa7c994927537651ba3f4ef69c61e7bc7262e586457cf8ce18c1207960dee0",
+    "publication": "uncommitted, undeployed, unpushed, and unpublished",
+    "world_status": "disabled matching dev38; zero production TimeOfDay/weather reads",
+    "save_refresh": "F8-gated; two-second metadata checks, four-second stable-change debounce, per-sibling exact-fingerprint parsed cache, one SQLCipher key setup per isolated temporary connection, below-normal worker, and debug phase timings",
+    "runtime_status": "dev40 static/build/package gates pending; scalar prediction and travel behavior require owner in-game acceptance"
   },
   "bundled_binaries": [
     {

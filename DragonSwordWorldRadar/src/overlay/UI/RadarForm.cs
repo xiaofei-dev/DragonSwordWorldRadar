@@ -17,20 +17,23 @@ namespace DragonSwordWorldRadar
         private const float ReferenceWindowWidth = 2560f;
         private const float ReferenceWindowHeight = 1440f;
         private const int ReferenceOverlaySize = 360;
+        private const int ReferenceStatusStripGap = -6;
+        private const int ReferenceStatusStripHeight = 46;
         private const int ReferenceRightMargin = 40;
         private const int ReferenceTopMargin = 37;
         private const float ReferenceRadarRadius = 170f;
         private const int WorldMapId = 100;
         private const int MaxRadarTreasurePoints = 80;
-        private const int RadarTreasureSelectionIntervalMs = 250;
-        private const int ActiveTimerIntervalMs = 24;
-        private const int WorldIdleTimerIntervalMs = 50;
+        private const int RadarTreasureSelectionIntervalMs = 1000;
+        private const int ActiveTimerIntervalMs = 50;
+        private const int WorldMapTimerIntervalMs = 4;
         private const int RadarIdleTimerIntervalMs = 75;
         private const int DisabledTimerIntervalMs = 125;
         private const int BackgroundTimerIntervalMs = 500;
-        private const int MaintenanceIntervalMs = 500;
+        private const int MaintenanceIntervalMs = 1000;
         private const int GeometryCheckIntervalMs = 1000;
         private const int GameLifetimeCheckIntervalMs = 1000;
+        private const int WindowVisibilityCheckIntervalMs = 250;
         private const int MotionActivityWindowMs = 300;
         private const int MotionStaleTimeoutMs = 2500;
 
@@ -46,19 +49,26 @@ namespace DragonSwordWorldRadar
         private readonly ContextMenuStrip _trayMenu;
         private readonly TreasureSaveState _saveState;
         private readonly WorldTreasureCatalog _worldTreasures;
-        private readonly WorldBossCatalog _worldBosses;
+        private readonly WorldEncounterCatalog _worldEncounters;
+        private readonly WorldMoleCatalog _worldMoles;
         private readonly Brush _otherTreasureBrush;
         private readonly Brush _miniGameTreasureBrush;
         private readonly Brush _mapTreasureBrush;
         private readonly Brush _puzzleTreasureBrush;
         private readonly Pen _treasureOutlinePen;
         private readonly bool _highResolutionTimerEnabled;
+        private bool _worldMapTimerResolutionAcquired;
         private readonly OverlayPerformanceTracker _performance;
-        private readonly BossAvailabilityTracker _bossAvailability;
+        private readonly EncounterAvailabilityTracker
+            _encounterAvailability;
+        private readonly MoleRewardVisibilityIndex _moleRewardVisibility;
         private readonly WorldTreasureVisibilityIndex _worldTreasureIndex;
         private readonly RadarTreasureQueryBuffer _radarTreasureQueryBuffer;
         private readonly WorldTreasureRenderBuffer _worldTreasureRenderBuffer;
         private readonly BossMarkerRenderer _bossMarkerRenderer;
+        private readonly MoleMarkerRenderer _moleMarkerRenderer;
+        private readonly AssaultMarkerRenderer _assaultMarkerRenderer;
+        private readonly WorldStatusRenderer _worldStatusRenderer;
         private readonly HeightIndicatorRenderer _heightIndicatorRenderer;
         private readonly Dictionary<string, string> _moduleFailureSignatures =
             new Dictionary<string, string>();
@@ -68,6 +78,8 @@ namespace DragonSwordWorldRadar
         private MotionFrame _motion;
         private readonly MotionVisualSnapshot _motionVisualSnapshot =
             new MotionVisualSnapshot();
+        private readonly ScalarMotionPredictor _motionPredictor =
+            new ScalarMotionPredictor();
         private DateTime _nextMaintenanceUtc;
         private DateTime _nextGeometryCheckUtc;
         private DateTime _lastMotionVisualChangeUtc;
@@ -75,6 +87,9 @@ namespace DragonSwordWorldRadar
         private DateTime _lastModeTransitionUtc = DateTime.UtcNow;
         private float _displayScale = 1f;
         private int _overlaySize = ReferenceOverlaySize;
+        private int _compactOverlayWidth = ReferenceOverlaySize;
+        private int _compactOverlayHeight = ReferenceOverlaySize +
+            ReferenceStatusStripGap + ReferenceStatusStripHeight;
         private string _lastGeometryLog;
         private string _lastSaveFilterLog;
         private DateTime _nextSaveFilterLogUtc;
@@ -82,6 +97,8 @@ namespace DragonSwordWorldRadar
         private IntPtr _gameWindowHandle;
         private bool _overlaySuppressed;
         private string _overlaySuppressionReason = "initial";
+        private string _cachedWindowSuppressionReason = "initial";
+        private DateTime _nextWindowVisibilityCheckUtc;
         private bool _hasSeenGameProcess;
         private DateTime _gameProcessMissingSinceUtc;
         private DateTime _nextGameLifetimeCheckUtc;
@@ -90,6 +107,9 @@ namespace DragonSwordWorldRadar
         private int _paintSequence;
         private bool _hiddenSurfacePreparedForCurrentTick;
         private readonly bool _debugEnabled;
+        private bool? _lastEncounterRuntimeEnabled;
+        private int _lastEncounterWorldEpoch = -1;
+        private string _lastEncounterMode;
 
         public RadarForm()
         {
@@ -101,11 +121,26 @@ namespace DragonSwordWorldRadar
                 bridgeDirectory);
             _saveState = new TreasureSaveState();
             _worldTreasures = new WorldTreasureCatalog();
-            _worldBosses = new WorldBossCatalog();
+            _worldEncounters = new WorldEncounterCatalog();
+            _worldMoles = new WorldMoleCatalog();
             _performance = new OverlayPerformanceTracker();
             _debugEnabled = DebugSettings.Enabled;
             _performance.SetEnabled(_debugEnabled);
-            _bossAvailability = new BossAvailabilityTracker();
+            _encounterAvailability =
+                new EncounterAvailabilityTracker();
+            try
+            {
+                _worldEncounters.Load();
+                _saveState.ConfigureEncounterTargets(
+                    _worldEncounters.Points);
+            }
+            catch (Exception exception)
+            {
+                ErrorLog.Write(
+                    "Unified world encounter startup failed closed.",
+                    exception);
+            }
+            _moleRewardVisibility = new MoleRewardVisibilityIndex();
             _worldTreasureIndex = new WorldTreasureVisibilityIndex();
             _radarTreasureQueryBuffer =
                 new RadarTreasureQueryBuffer(
@@ -113,6 +148,9 @@ namespace DragonSwordWorldRadar
             _worldTreasureRenderBuffer =
                 new WorldTreasureRenderBuffer();
             _bossMarkerRenderer = new BossMarkerRenderer();
+            _moleMarkerRenderer = new MoleMarkerRenderer();
+            _assaultMarkerRenderer = new AssaultMarkerRenderer();
+            _worldStatusRenderer = new WorldStatusRenderer();
             _heightIndicatorRenderer = new HeightIndicatorRenderer();
             _otherTreasureBrush = new SolidBrush(
                 RadarMarkerStyle.TreasureOther);
@@ -130,18 +168,25 @@ namespace DragonSwordWorldRadar
             _treasureOutlinePen = CreateTreasureOutlinePen();
             ConfigureWindow();
             bool highResolutionTimerEnabled = false;
-            try
+            if (DebugSettings.HighResolutionTimerEnabled)
             {
-                highResolutionTimerEnabled =
-                    NativeMethods.timeBeginPeriod(1) == 0;
-            }
-            catch
-            {
-                // The overlay remains functional with the default Windows
-                // timer resolution if winmm is unavailable.
+                try
+                {
+                    highResolutionTimerEnabled =
+                        NativeMethods.timeBeginPeriod(1) == 0;
+                }
+                catch
+                {
+                    // The overlay remains functional with the default Windows
+                    // timer resolution if winmm is unavailable.
+                }
             }
             _highResolutionTimerEnabled =
                 highResolutionTimerEnabled;
+            ErrorLog.WriteMessage(
+                "Overlay timer resolution: requested=" +
+                DebugSettings.HighResolutionTimerEnabled +
+                "; active=" + _highResolutionTimerEnabled + ".");
 
             _trayMenu = CreateTrayMenu();
             _trayIcon = new NotifyIcon
@@ -216,8 +261,12 @@ namespace DragonSwordWorldRadar
             _treasureOutlinePen.Dispose();
             _worldTreasureRenderBuffer.Dispose();
             _bossMarkerRenderer.Dispose();
+            _moleMarkerRenderer.Dispose();
+            _assaultMarkerRenderer.Dispose();
+            _worldStatusRenderer.Dispose();
             _heightIndicatorRenderer.Dispose();
             ClearSessionBridgeFiles();
+            ReleaseWorldMapTimerResolution("form-close");
             if (_highResolutionTimerEnabled)
             {
                 try
@@ -241,16 +290,18 @@ namespace DragonSwordWorldRadar
             try
             {
                 MotionFrame motion = GetCurrentMotion();
-                if (motion == null || !motion.Enabled)
+                if (motion == null)
                 {
                     return;
                 }
 
                 eventArgs.Graphics.SmoothingMode =
                     SmoothingMode.AntiAlias;
-                bool showDebugCoordinates = _debugEnabled;
+                bool showDebugCoordinates =
+                    DebugSettings.VerboseLabelsEnabled;
                 float textScale = NormalizeTextScale(motion.TextScale);
                 string mode = _presentedMode;
+                if (!motion.Enabled) return;
                 double playerX = motion.PlayerX;
                 double playerY = motion.PlayerY;
                 double playerZ = motion.PlayerZ;
@@ -276,7 +327,9 @@ namespace DragonSwordWorldRadar
                             playerZ,
                             hasPlayerZ,
                             motion.ShowBosses,
-                            _worldBosses.Points);
+                            motion.ShowMoles,
+                            motion.MoleMask
+                                & _moleRewardVisibility.VisibleMask);
                     }
                     return;
                 }
@@ -285,7 +338,7 @@ namespace DragonSwordWorldRadar
                     return;
                 }
 
-                float center = _overlaySize / 2f;
+                float center = ClientSize.Width - _overlaySize / 2f;
                 float radarRadius =
                     ReferenceRadarRadius * _displayScale;
                 WorldTreasure nearest = motion.ShowTreasures
@@ -297,32 +350,36 @@ namespace DragonSwordWorldRadar
                         radius)
                     : null;
 
-                if (motion.ShowBosses)
+                long encounterLayerStarted = _performance.BeginTiming();
+                int bossMarkersDrawn = 0;
+                int assaultMarkersDrawn = 0;
+                foreach (WorldEncounter encounter
+                    in _worldEncounters.Points)
                 {
-                    IList<BossPoint> bosses = _worldBosses.Points;
-                    if (bosses == null)
+                    bool isBoss = encounter.Kind ==
+                        WorldEncounterKind.Boss;
+                    if ((isBoss && !motion.ShowBosses)
+                        || (!isBoss
+                            && !DebugSettings.ShowAssaults)
+                        || !_encounterAvailability.IsAvailable(
+                            encounter,
+                            motion.WorldTimeAvailable,
+                            motion.WorldTimeSeconds))
                     {
-                        bosses = Array.Empty<BossPoint>();
+                        continue;
                     }
-                    foreach (BossPoint boss in bosses)
+                    double deltaX = encounter.X - playerX;
+                    double deltaY = encounter.Y - playerY;
+                    if (deltaX * deltaX + deltaY * deltaY
+                        > radius * radius)
                     {
-                        if (boss == null
-                            || !boss.visible
-                            || !_bossAvailability.IsAvailable(boss.bossId))
-                        {
-                            continue;
-                        }
-                        double bossDeltaX = boss.x - playerX;
-                        double bossDeltaY = boss.y - playerY;
-                        if (bossDeltaX * bossDeltaX
-                            + bossDeltaY * bossDeltaY
-                            > radius * radius)
-                        {
-                            continue;
-                        }
+                        continue;
+                    }
+                    if (isBoss)
+                    {
                         DrawBossPoint(
                             eventArgs.Graphics,
-                            boss,
+                            encounter.BossMetadata,
                             playerX,
                             playerY,
                             radius,
@@ -330,9 +387,30 @@ namespace DragonSwordWorldRadar
                             center,
                             showDebugCoordinates,
                             textScale);
+                        bossMarkersDrawn++;
+                    }
+                    else
+                    {
+                        float x = center +
+                            (float)(deltaX / radius * radarRadius);
+                        float y = center +
+                            (float)(deltaY / radius * radarRadius);
+                        _assaultMarkerRenderer.DrawMarker(
+                            eventArgs.Graphics,
+                            x,
+                            y,
+                            Math.Max(22.8f, 27.6f * _displayScale),
+                            _displayScale);
+                        assaultMarkersDrawn++;
                     }
                 }
+                _performance.RecordEncounterDraw(
+                    encounterLayerStarted,
+                    bossMarkersDrawn,
+                    assaultMarkersDrawn);
 
+                long treasureLayerStarted = _performance.BeginTiming();
+                int treasureMarkersDrawn = 0;
                 if (motion.ShowTreasures)
                 {
                     _worldTreasureRenderBuffer.Reset();
@@ -372,6 +450,7 @@ namespace DragonSwordWorldRadar
                                 y - normalHalf,
                                 normalDiameter,
                                 normalDiameter));
+                        treasureMarkersDrawn++;
                     }
 
                     DrawBatchedTreasurePaths(eventArgs.Graphics);
@@ -393,7 +472,38 @@ namespace DragonSwordWorldRadar
                             textScale,
                             playerZ,
                             hasPlayerZ);
+                        treasureMarkersDrawn++;
                     }
+                }
+                _performance.RecordTreasureDraw(
+                    treasureLayerStarted,
+                    treasureMarkersDrawn);
+
+                DrawVisibleRadarMoles(
+                    eventArgs.Graphics,
+                    motion.ShowMoles,
+                    motion.MoleMask
+                        & _moleRewardVisibility.VisibleMask,
+                    playerX,
+                    playerY,
+                    radius,
+                    radarRadius,
+                    center,
+                    showDebugCoordinates,
+                    textScale);
+
+                if (motion.ShowWorldStatus)
+                {
+                    long worldStatusStarted = _performance.BeginTiming();
+                    _worldStatusRenderer.Draw(
+                        eventArgs.Graphics,
+                        ClientSize.Width,
+                        ClientSize.Height,
+                        _overlaySize,
+                        _displayScale,
+                        motion.WorldTimeAvailable,
+                        motion.WorldTimeSeconds);
+                    _performance.RecordWorldStatusDraw(worldStatusStarted);
                 }
             }
             catch (Exception exception)
@@ -471,7 +581,8 @@ namespace DragonSwordWorldRadar
             double playerZ,
             bool hasPlayerZ,
             bool showBosses,
-            IList<BossPoint> bosses)
+            bool showMoles,
+            long moleMask)
         {
             if (map.dimensions <= 0
                 || map.uiSize <= 0
@@ -502,63 +613,82 @@ namespace DragonSwordWorldRadar
                 IList<WorldTreasure> mapTreasures =
                     _worldTreasureIndex.GetMap(map.mapId);
 
-                if (showBosses)
+                long encounterLayerStarted = _performance.BeginTiming();
+                int bossMarkersDrawn = 0;
+                int assaultMarkersDrawn = 0;
+                foreach (WorldEncounter encounter
+                    in _worldEncounters.Points)
                 {
-                    IList<BossPoint> visibleBosses = bosses;
-                    if (visibleBosses == null)
+                    bool isBoss = encounter.Kind ==
+                        WorldEncounterKind.Boss;
+                    if ((isBoss && !showBosses)
+                        || (!isBoss
+                            && !DebugSettings.ShowAssaults)
+                        || encounter.MapId != map.mapId
+                        || !_encounterAvailability.IsAvailable(
+                            encounter,
+                            _motion.WorldTimeAvailable,
+                            _motion.WorldTimeSeconds))
                     {
-                        visibleBosses = Array.Empty<BossPoint>();
+                        continue;
                     }
-
-                    foreach (BossPoint boss in visibleBosses)
+                    float x;
+                    float y;
+                    float diameter = isBoss
+                        ? Math.Max(44f, 54f * _displayScale)
+                        : Math.Max(26.4f, 32.4f * _displayScale);
+                    if (!TryProjectWorldPoint(
+                        encounter.X,
+                        encounter.Y,
+                        map,
+                        coordinateScale,
+                        windowScaleX,
+                        windowScaleY,
+                        diameter / 2f,
+                        out x,
+                        out y))
                     {
-                        if (boss == null
-                            || !boss.visible
-                            || !_bossAvailability.IsAvailable(boss.bossId)
-                            || boss.mapId != map.mapId)
-                        {
-                            continue;
-                        }
-
-                        float bossX;
-                        float bossY;
-                        float bossDiameter = Math.Max(
-                            44f,
-                            54f * _displayScale);
-                        if (!TryProjectWorldPoint(
-                            boss.x,
-                            boss.y,
-                            map,
-                            coordinateScale,
-                            windowScaleX,
-                            windowScaleY,
-                            bossDiameter / 2f,
-                            out bossX,
-                            out bossY))
-                        {
-                            continue;
-                        }
-
+                        continue;
+                    }
+                    if (isBoss)
+                    {
                         _bossMarkerRenderer.DrawMarker(
                             graphics,
-                            bossX,
-                            bossY,
-                            bossDiameter,
+                            x,
+                            y,
+                            diameter,
                             _displayScale);
+                        bossMarkersDrawn++;
                         if (showDebugCoordinates)
                         {
                             _bossMarkerRenderer.DrawDebugLabel(
                                 graphics,
-                                boss,
-                                bossX,
-                                bossY,
-                                bossDiameter,
+                                encounter.BossMetadata,
+                                x,
+                                y,
+                                diameter,
                                 textScale,
                                 _displayScale);
                         }
                     }
+                    else
+                    {
+                        _assaultMarkerRenderer.DrawMarker(
+                            graphics,
+                            x,
+                            y,
+                            diameter,
+                            _displayScale);
+                        assaultMarkersDrawn++;
+                    }
                 }
+                _performance.RecordEncounterDraw(
+                    encounterLayerStarted,
+                    bossMarkersDrawn,
+                    assaultMarkersDrawn);
 
+                long treasureLayerStarted = _performance.BeginTiming();
+                int treasureMarkersDrawn = 0;
                 if (showTreasures)
                 {
                     float normalDiameter = Math.Max(
@@ -657,6 +787,7 @@ namespace DragonSwordWorldRadar
                                 projected.Y - half,
                                 normalDiameter,
                                 normalDiameter));
+                        treasureMarkersDrawn++;
                     }
 
                     DrawBatchedTreasurePaths(graphics);
@@ -674,6 +805,7 @@ namespace DragonSwordWorldRadar
                             nearestDiameter,
                             GetTreasureBrush(nearestTreasure),
                             _treasureOutlinePen);
+                        treasureMarkersDrawn++;
 
                         Color nearestColor =
                             GetTreasureColor(nearestTreasure);
@@ -711,11 +843,194 @@ namespace DragonSwordWorldRadar
                         }
                     }
                 }
+                _performance.RecordTreasureDraw(
+                    treasureLayerStarted,
+                    treasureMarkersDrawn);
+
+                DrawVisibleWorldMoles(
+                    graphics,
+                    map,
+                    showMoles,
+                    moleMask,
+                    coordinateScale,
+                    windowScaleX,
+                    windowScaleY,
+                    showDebugCoordinates,
+                    textScale);
             }
             finally
             {
                 graphics.Restore(saved);
             }
+        }
+
+        private void DrawVisibleWorldMoles(
+        Graphics graphics,
+        WorldMapState map,
+        bool showMoles,
+        long moleMask,
+        float coordinateScale,
+        float windowScaleX,
+        float windowScaleY,
+        bool showDebugCoordinates,
+        float textScale)
+        {
+        long drawStarted = _performance.BeginTiming();
+        int drawn = 0;
+        if (!showMoles || moleMask == 0 || map == null)
+        {
+        _performance.RecordMoleDraw(drawStarted, 0);
+        return;
+        }
+
+        float diameter = Math.Max(
+        26f,
+        34f * _displayScale);
+        foreach (WorldMole mole in _worldMoles.GetMap(map.mapId))
+        {
+        if (!IsMoleVisible(mole, moleMask))
+        {
+        continue;
+        }
+
+        float x;
+        float y;
+        if (!TryProjectWorldPoint(
+        mole.X,
+        mole.Y,
+        map,
+        coordinateScale,
+        windowScaleX,
+        windowScaleY,
+        diameter / 2f,
+        out x,
+        out y))
+        {
+        continue;
+        }
+
+        _moleMarkerRenderer.DrawMarker(
+        graphics,
+        x,
+        y,
+        diameter,
+        _displayScale);
+        drawn++;
+        if (showDebugCoordinates)
+        {
+        _moleMarkerRenderer.DrawDebugLabel(
+        graphics,
+        mole,
+        x,
+        y,
+        diameter,
+        textScale,
+        _displayScale);
+        }
+        }
+        _performance.RecordMoleDraw(drawStarted, drawn);
+        }
+
+        private void DrawVisibleRadarMoles(
+        Graphics graphics,
+        bool showMoles,
+        long moleMask,
+        double playerX,
+        double playerY,
+        double stateRadius,
+        float radarRadius,
+        float center,
+        bool showDebugCoordinates,
+        float textScale)
+        {
+        long drawStarted = _performance.BeginTiming();
+        int drawn = 0;
+        if (!showMoles || moleMask == 0 || stateRadius <= 0)
+        {
+        _performance.RecordMoleDraw(drawStarted, 0);
+        return;
+        }
+
+        double radiusSquared = stateRadius * stateRadius;
+        foreach (WorldMole mole in _worldMoles.Points)
+        {
+        if (!IsMoleVisible(mole, moleMask))
+        {
+        continue;
+        }
+        double deltaX = mole.X - playerX;
+        double deltaY = mole.Y - playerY;
+        if (deltaX * deltaX + deltaY * deltaY
+        > radiusSquared)
+        {
+        continue;
+        }
+        DrawMolePoint(
+        graphics,
+        mole,
+        playerX,
+        playerY,
+        stateRadius,
+        radarRadius,
+        center,
+        showDebugCoordinates,
+        textScale);
+        drawn++;
+        }
+        _performance.RecordMoleDraw(drawStarted, drawn);
+        }
+
+        private void DrawMolePoint(
+        Graphics graphics,
+        WorldMole mole,
+        double playerX,
+        double playerY,
+        double stateRadius,
+        float radarRadius,
+        float center,
+        bool showDebugCoordinates,
+        float textScale)
+        {
+        float x = center +
+        (float)((mole.X - playerX)
+        / stateRadius * radarRadius);
+        float y = center +
+        (float)((mole.Y - playerY)
+        / stateRadius * radarRadius);
+        float diameter = Math.Max(
+        22f,
+        28f * _displayScale);
+        _moleMarkerRenderer.DrawMarker(
+        graphics,
+        x,
+        y,
+        diameter,
+        _displayScale);
+        if (showDebugCoordinates)
+        {
+        _moleMarkerRenderer.DrawDebugLabel(
+        graphics,
+        mole,
+        x,
+        y,
+        diameter,
+        textScale,
+        _displayScale);
+        }
+        }
+
+        private static bool IsMoleVisible(
+        WorldMole mole,
+        long visibleMask)
+        {
+        if (mole == null
+        || mole.MaskBit < 0
+        || mole.MaskBit >= 34)
+        {
+        return false;
+        }
+        long bit = 1L << mole.MaskBit;
+        return (visibleMask & bit) != 0;
         }
 
         private bool TryProjectWorldTreasure(
@@ -826,7 +1141,8 @@ namespace DragonSwordWorldRadar
                 _performance.RecordTimerTick(
                     refreshStarted,
                     tickStartedUtc,
-                    expectedIntervalMs);
+                    expectedIntervalMs,
+                    _presentedMode);
                 _performance.LogIfDue(
                     GetEffectiveMode(),
                     _timer.Interval,
@@ -1084,7 +1400,7 @@ namespace DragonSwordWorldRadar
         }
 
         // show_height controls the retained height pointer renderer. Exact Z
-        // values are displayed only while debug_logging is enabled, and
+        // values are displayed only while diagnostic_verbose is enabled, and
         // treasure type labels remain independently configurable.
 
         private void DrawNearestLabel(
@@ -1339,9 +1655,10 @@ namespace DragonSwordWorldRadar
                     "world",
                     StringComparison.Ordinal))
             {
-                interval = motionActive
-                    ? ActiveTimerIntervalMs
-                    : WorldIdleTimerIntervalMs;
+                // The existing single timer changes interval in place. World
+                // mode stays at 4 ms only while it is actually presented;
+                // closing it deterministically restores compact cadence.
+                interval = WorldMapTimerIntervalMs;
             }
             else if (String.Equals(
                 mode,
@@ -1371,6 +1688,10 @@ namespace DragonSwordWorldRadar
             MotionFrame motion;
             if (_motionBridge.TryReadLatest(out motion))
             {
+                LogEncounterLifecycle(motion);
+                bool predictionReset = _motionPredictor.Accept(
+                    motion,
+                    Stopwatch.GetTimestamp());
                 bool motionVisualChange =
                     _motionVisualSnapshot.Update(motion);
                 _performance.RecordMotionFrame(
@@ -1383,7 +1704,41 @@ namespace DragonSwordWorldRadar
                     _lastMotionVisualChangeUtc = now;
                     redraw = true;
                 }
+                if (predictionReset)
+                {
+                    _performance.RecordMotionPrediction(
+                        0.0,
+                        false,
+                        true,
+                        false);
+                }
             }
+
+            if (_motion != null)
+            {
+                double predictionAgeMs;
+                bool predictionClamped;
+                bool predictionStale;
+                bool predictionChanged = _motionPredictor.Apply(
+                    _motion,
+                    Stopwatch.GetTimestamp(),
+                    out predictionAgeMs,
+                    out predictionClamped,
+                    out predictionStale);
+                _performance.RecordMotionPrediction(
+                    predictionAgeMs,
+                    predictionClamped,
+                    false,
+                    predictionStale);
+                if (predictionChanged)
+                {
+                    redraw = true;
+                }
+            }
+
+            MotionFrame activeMotion = GetCurrentMotion();
+            _saveState.SetRuntimeEnabled(
+                activeMotion != null && activeMotion.Enabled);
 
             if (now >= _nextMaintenanceUtc)
             {
@@ -1414,18 +1769,31 @@ namespace DragonSwordWorldRadar
 
                 try
                 {
-                    int previousBossVersion = _worldBosses.Version;
-                    _worldBosses.Refresh();
-                    if (_worldBosses.Version != previousBossVersion)
+                    if (_worldMoles.Refresh())
                     {
                         redraw = true;
                     }
-                    ClearModuleFailure("world-boss-catalog");
+                    ClearModuleFailure("world-mole-catalog");
+                }
+                catch (Exception exception)
+                {
+                    ReportModuleFailure("world-mole-catalog", exception);
+                }
+
+                try
+                {
+                    if (_moleRewardVisibility.Refresh(
+                            _worldMoles,
+                            _saveState))
+                    {
+                        redraw = true;
+                    }
+                    ClearModuleFailure("mole-reward-visibility");
                 }
                 catch (Exception exception)
                 {
                     ReportModuleFailure(
-                        "world-boss-catalog",
+                        "mole-reward-visibility",
                         exception);
                 }
 
@@ -1446,21 +1814,26 @@ namespace DragonSwordWorldRadar
                         exception);
                 }
 
-                try
+                if (activeMotion != null
+                    && activeMotion.Enabled)
                 {
-                    if (_bossAvailability.Refresh(
-                            _worldBosses.Points,
-                            _saveState))
+                    try
                     {
-                        redraw = true;
+                        if (_encounterAvailability.Refresh(
+                            _worldEncounters.Points,
+                            _saveState))
+                        {
+                            redraw = true;
+                        }
+                        ClearModuleFailure(
+                            "encounter-availability");
                     }
-                    ClearModuleFailure("boss-availability");
-                }
-                catch (Exception exception)
-                {
-                    ReportModuleFailure(
-                        "boss-availability",
-                        exception);
+                    catch (Exception exception)
+                    {
+                        ReportModuleFailure(
+                            "encounter-availability",
+                            exception);
+                    }
                 }
 
                 try
@@ -1479,6 +1852,9 @@ namespace DragonSwordWorldRadar
             if (geometryChanged)
             {
                 _lastModeTransitionUtc = now;
+                // F7/F8 and radar/world transitions must not wait for the
+                // normal 250 ms foreground-window sampling interval.
+                _nextWindowVisibilityCheckUtc = DateTime.MinValue;
             }
 
             try
@@ -1561,11 +1937,46 @@ namespace DragonSwordWorldRadar
         private string GetEffectiveMode()
         {
             MotionFrame motion = GetCurrentMotion();
-            if (motion == null || !motion.Enabled)
+            if (motion == null)
+            {
+                return "disabled";
+            }
+            if (!motion.Enabled)
             {
                 return "disabled";
             }
             return motion.Mode ?? "radar";
+        }
+
+        private void LogEncounterLifecycle(MotionFrame motion)
+        {
+            if (!_debugEnabled
+                || motion == null)
+            {
+                return;
+            }
+            if (_lastEncounterRuntimeEnabled == motion.Enabled
+                && _lastEncounterWorldEpoch == motion.WorldEpoch
+                && String.Equals(
+                    _lastEncounterMode,
+                    motion.Mode,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+            _lastEncounterRuntimeEnabled = motion.Enabled;
+            _lastEncounterWorldEpoch = motion.WorldEpoch;
+            _lastEncounterMode = motion.Mode;
+            ErrorLog.WriteDebug(String.Format(
+                CultureInfo.InvariantCulture,
+                "WORLD_ENCOUNTER_LIFECYCLE enabled={0}; epoch={1}; mode={2}; records={3}; bosses={4}; assaults={5}; timeAvailable={6}; catalogLifecycle=overlay_startup_once; f7Reconfiguration=false; retainedGameUObjects=0",
+                motion.Enabled,
+                motion.WorldEpoch,
+                motion.Mode ?? "none",
+                _worldEncounters.Points.Count,
+                _worldEncounters.BossCount,
+                _worldEncounters.AssaultCount,
+                motion.WorldTimeAvailable));
         }
 
         private void ReportModuleFailure(
@@ -1648,7 +2059,7 @@ namespace DragonSwordWorldRadar
                 catalogCount,
                 openFilteredCount,
                 selectedCount,
-                _worldBosses.Points.Count,
+                _worldEncounters.BossCount,
                 _saveState.LastErrorSummary)
                 + Environment.NewLine
                 + details;
@@ -1935,6 +2346,10 @@ namespace DragonSwordWorldRadar
             // needed and stale compact-window pixels never become visible.
             SetOverlayWindowVisible(false, false);
             _presentedMode = normalizedMode;
+            UpdateWorldMapTimerResolution("mode-transition");
+            _performance.RecordModeTransition(
+                previousMode,
+                _presentedMode);
             ErrorLog.WriteDebug(
                 "Overlay mode changed: " +
                 previousMode + " -> " + _presentedMode);
@@ -2112,38 +2527,52 @@ namespace DragonSwordWorldRadar
         private void UpdateOverlayVisibility()
         {
             DateTime now = DateTime.UtcNow;
-            string reason = null;
-            IntPtr gameWindow = _gameWindowHandle;
-            if (_gameProcessId <= 0 || gameWindow == IntPtr.Zero)
+            if (now >= _nextWindowVisibilityCheckUtc
+                || String.Equals(
+                    _cachedWindowSuppressionReason,
+                    "initial",
+                    StringComparison.Ordinal))
             {
-                reason = "game-window-unavailable";
-            }
-            else if (!NativeMethods.IsWindowVisible(gameWindow))
-            {
-                reason = "game-window-hidden";
-            }
-            else if (NativeMethods.IsIconic(gameWindow))
-            {
-                reason = "game-window-minimized";
-            }
-            else
-            {
-                IntPtr foregroundWindow = NativeMethods.GetForegroundWindow();
-                uint foregroundProcessId = 0;
-                if (foregroundWindow != IntPtr.Zero)
+                _performance.RecordWindowVisibilitySample();
+                _nextWindowVisibilityCheckUtc = now.AddMilliseconds(
+                    WindowVisibilityCheckIntervalMs);
+                string sampledReason = null;
+                IntPtr gameWindow = _gameWindowHandle;
+                if (_gameProcessId <= 0 || gameWindow == IntPtr.Zero)
                 {
-                    NativeMethods.GetWindowThreadProcessId(
-                        foregroundWindow,
-                        out foregroundProcessId);
+                    sampledReason = "game-window-unavailable";
                 }
-                if (foregroundProcessId != (uint)_gameProcessId)
+
+                else if (!NativeMethods.IsWindowVisible(gameWindow))
                 {
-                    reason = "game-not-foreground";
+                    sampledReason = "game-window-hidden";
                 }
+                else if (NativeMethods.IsIconic(gameWindow))
+                {
+                    sampledReason = "game-window-minimized";
+                }
+                else
+                {
+                    IntPtr foregroundWindow =
+                        NativeMethods.GetForegroundWindow();
+                    uint foregroundProcessId = 0;
+                    if (foregroundWindow != IntPtr.Zero)
+                    {
+                        NativeMethods.GetWindowThreadProcessId(
+                            foregroundWindow,
+                            out foregroundProcessId);
+                    }
+                    if (foregroundProcessId != (uint)_gameProcessId)
+                    {
+                        sampledReason = "game-not-foreground";
+                    }
+                }
+                _cachedWindowSuppressionReason = sampledReason;
+                _overlaySuppressed = sampledReason != null;
             }
 
-            bool shouldSuppress = reason != null;
-            _overlaySuppressed = shouldSuppress;
+            string reason = _cachedWindowSuppressionReason;
+            bool shouldSuppress = _overlaySuppressed;
             bool disabled = String.Equals(
                 _presentedMode,
                 "disabled",
@@ -2185,6 +2614,7 @@ namespace DragonSwordWorldRadar
             if (!IsHandleCreated)
             {
                 _overlayWindowVisible = false;
+                UpdateWorldMapTimerResolution("handle-unavailable");
                 return;
             }
             if (visible == _overlayWindowVisible)
@@ -2201,6 +2631,7 @@ namespace DragonSwordWorldRadar
                     ? NativeMethods.SwShowNoActivate
                     : NativeMethods.SwHide);
             _overlayWindowVisible = visible;
+            UpdateWorldMapTimerResolution("visibility-transition");
             if (needsInvalidate)
             {
                 _performance.RecordInvalidate();
@@ -2217,12 +2648,12 @@ namespace DragonSwordWorldRadar
                 primaryBounds.Height);
 
             int targetX = workingArea.Right
-                - _overlaySize
+                - _compactOverlayWidth
                 - ScalePixels(ReferenceRightMargin);
             int targetY = workingArea.Top
                 + ScalePixels(ReferenceTopMargin);
-            int targetWidth = _overlaySize;
-            int targetHeight = _overlaySize;
+            int targetWidth = _compactOverlayWidth;
+            int targetHeight = _compactOverlayHeight;
             IntPtr gameWindow = IntPtr.Zero;
             NativeRect gameRectangle = new NativeRect();
             bool hasGameRectangle = false;
@@ -2245,7 +2676,12 @@ namespace DragonSwordWorldRadar
                             gameWindow = FindLargestVisibleWindow(
                                 process.Id);
                         }
-                        _gameWindowHandle = gameWindow;
+                        if (_gameWindowHandle != gameWindow)
+                        {
+                            _gameWindowHandle = gameWindow;
+                            _nextWindowVisibilityCheckUtc =
+                                DateTime.MinValue;
+                        }
 
                         NativeRect rectangle;
                         if (gameWindow != IntPtr.Zero
@@ -2268,14 +2704,14 @@ namespace DragonSwordWorldRadar
                                 rectangle.Width,
                                 rectangle.Height);
                             targetX = rectangle.Right
-                                - _overlaySize
+                                - _compactOverlayWidth
                                 - ScalePixels(
                                     ReferenceRightMargin);
                             targetY = rectangle.Top
                                 + ScalePixels(
                                     ReferenceTopMargin);
-                            targetWidth = _overlaySize;
-                            targetHeight = _overlaySize;
+                            targetWidth = _compactOverlayWidth;
+                            targetHeight = _compactOverlayHeight;
                             if (IsWorldMapMode())
                             {
                                 targetX = rectangle.Left;
@@ -2287,7 +2723,12 @@ namespace DragonSwordWorldRadar
                     }
                     else
                     {
-                        _gameWindowHandle = IntPtr.Zero;
+                        if (_gameWindowHandle != IntPtr.Zero)
+                        {
+                            _gameWindowHandle = IntPtr.Zero;
+                            _nextWindowVisibilityCheckUtc =
+                                DateTime.MinValue;
+                        }
                     }
                 }
                 ClearModuleFailure("game-window");
@@ -2506,6 +2947,18 @@ namespace DragonSwordWorldRadar
                 1,
                 (int)Math.Round(
                     ReferenceOverlaySize * _displayScale));
+            _compactOverlayWidth = Math.Max(
+                _overlaySize,
+                (int)Math.Round(
+                    ReferenceOverlaySize
+                        * _displayScale));
+            _compactOverlayHeight = Math.Max(
+                _overlaySize,
+                (int)Math.Round(
+                    (ReferenceOverlaySize
+                        + ReferenceStatusStripGap
+                        + ReferenceStatusStripHeight)
+                        * _displayScale));
             UpdateTreasureOutlinePenWidths();
         }
 
@@ -2589,6 +3042,250 @@ namespace DragonSwordWorldRadar
         {
             public WorldTreasure Treasure;
             public double DistanceSquared;
+        }
+
+        private static double ElapsedMilliseconds(long started)
+        {
+            return started <= 0L
+                ? 0.0
+                : (Stopwatch.GetTimestamp() - started)
+                    * 1000.0 / Stopwatch.Frequency;
+        }
+
+        private void UpdateWorldMapTimerResolution(string reason)
+        {
+            bool shouldAcquire = _overlayWindowVisible
+                && String.Equals(
+                    _presentedMode,
+                    "world",
+                    StringComparison.Ordinal)
+                && !_highResolutionTimerEnabled;
+            if (shouldAcquire)
+            {
+                if (_worldMapTimerResolutionAcquired)
+                {
+                    return;
+                }
+                bool success = false;
+                try
+                {
+                    success = NativeMethods.timeBeginPeriod(1) == 0;
+                }
+                catch
+                {
+                }
+                _worldMapTimerResolutionAcquired = success;
+                _performance.RecordTimerResolutionChange(true, success);
+                ErrorLog.WriteDebug(
+                    "World-map timer resolution acquire: success=" +
+                    success + "; reason=" + reason +
+                    "; globalOptionActive=" +
+                    _highResolutionTimerEnabled + ".");
+            }
+            else
+            {
+                ReleaseWorldMapTimerResolution(reason);
+            }
+        }
+
+        private void ReleaseWorldMapTimerResolution(string reason)
+        {
+            if (!_worldMapTimerResolutionAcquired)
+            {
+                return;
+            }
+            bool success = false;
+            try
+            {
+                success = NativeMethods.timeEndPeriod(1) == 0;
+            }
+            catch
+            {
+            }
+            if (success)
+            {
+                _worldMapTimerResolutionAcquired = false;
+            }
+            _performance.RecordTimerResolutionChange(false, success);
+            ErrorLog.WriteDebug(
+                "World-map timer resolution release: success=" +
+                success + "; reason=" + reason +
+                "; balance=" +
+                (_worldMapTimerResolutionAcquired ? 1 : 0) + ".");
+        }
+
+        internal sealed class ScalarMotionPredictor
+        {
+            private const double MaximumPredictionMs = 250.0;
+            private const double StaleFreezeMs = 500.0;
+            private const double MaximumSourceGapMs = 1000.0;
+
+            private bool _hasPrevious;
+            private bool _hasCurrent;
+            private int _generation;
+            private int _worldEpoch;
+            private string _mode;
+            private bool _enabled;
+            private double _previousTimestampMs;
+            private double _previousX;
+            private double _previousY;
+            private double _previousZ;
+            private bool _previousHasZ;
+            private double _currentTimestampMs;
+            private double _currentX;
+            private double _currentY;
+            private double _currentZ;
+            private bool _currentHasZ;
+            private double _radius;
+            private long _currentArrivalTicks;
+
+            public bool Accept(MotionFrame frame, long arrivalTicks)
+            {
+                if (frame == null
+                    || !Finite(frame.PlayerX)
+                    || !Finite(frame.PlayerY)
+                    || !Finite(frame.PlayerZ)
+                    || !Finite(frame.SampleTimestampMs)
+                    || frame.SampleTimestampMs < 0.0)
+                {
+                    Reset();
+                    return true;
+                }
+
+                if (_hasCurrent
+                    && frame.Generation == _generation
+                    && frame.WorldEpoch == _worldEpoch
+                    && frame.Enabled == _enabled
+                    && String.Equals(frame.Mode, _mode,
+                        StringComparison.Ordinal)
+                    && frame.SampleTimestampMs == _currentTimestampMs)
+                {
+                    return false;
+                }
+
+                bool reset = !_hasCurrent
+                    || frame.Generation != _generation
+                    || frame.WorldEpoch != _worldEpoch
+                    || frame.Enabled != _enabled
+                    || !String.Equals(frame.Mode, _mode,
+                        StringComparison.Ordinal)
+                    || frame.SampleTimestampMs < _currentTimestampMs;
+                if (!reset)
+                {
+                    double dx = frame.PlayerX - _currentX;
+                    double dy = frame.PlayerY - _currentY;
+                    double distanceSquared = dx * dx + dy * dy;
+                    double outlierDistance = Math.Max(
+                        50000.0,
+                        Math.Max(frame.Radius, _radius) * 2.0);
+                    double sourceGap = frame.SampleTimestampMs
+                        - _currentTimestampMs;
+                    reset = sourceGap > MaximumSourceGapMs
+                        || distanceSquared
+                            > outlierDistance * outlierDistance;
+                }
+
+                if (reset)
+                {
+                    _hasPrevious = false;
+                }
+                else
+                {
+                    _hasPrevious = true;
+                    _previousTimestampMs = _currentTimestampMs;
+                    _previousX = _currentX;
+                    _previousY = _currentY;
+                    _previousZ = _currentZ;
+                    _previousHasZ = _currentHasZ;
+                }
+
+                _hasCurrent = true;
+                _generation = frame.Generation;
+                _worldEpoch = frame.WorldEpoch;
+                _mode = frame.Mode;
+                _enabled = frame.Enabled;
+                _currentTimestampMs = frame.SampleTimestampMs;
+                _currentX = frame.PlayerX;
+                _currentY = frame.PlayerY;
+                _currentZ = frame.PlayerZ;
+                _currentHasZ = frame.HasPlayerZ;
+                _radius = frame.Radius;
+                _currentArrivalTicks = arrivalTicks;
+                return reset;
+            }
+
+            public bool Apply(
+                MotionFrame frame,
+                long nowTicks,
+                out double ageMs,
+                out bool clamped,
+                out bool stale)
+            {
+                ageMs = 0.0;
+                clamped = false;
+                stale = false;
+                if (frame == null || !_hasCurrent)
+                {
+                    return false;
+                }
+                ageMs = Math.Max(
+                    0.0,
+                    (nowTicks - _currentArrivalTicks)
+                        * 1000.0 / Stopwatch.Frequency);
+                stale = ageMs > StaleFreezeMs;
+                double horizonMs = stale
+                    ? 0.0
+                    : Math.Min(ageMs, MaximumPredictionMs);
+                clamped = !stale && ageMs > MaximumPredictionMs;
+
+                double predictedX = _currentX;
+                double predictedY = _currentY;
+                double predictedZ = _currentZ;
+                if (_hasPrevious && horizonMs > 0.0)
+                {
+                    double sourceDeltaMs = _currentTimestampMs
+                        - _previousTimestampMs;
+                    if (sourceDeltaMs > 0.0
+                        && sourceDeltaMs <= MaximumSourceGapMs)
+                    {
+                        double scale = horizonMs / sourceDeltaMs;
+                        predictedX += (_currentX - _previousX) * scale;
+                        predictedY += (_currentY - _previousY) * scale;
+                        if (_currentHasZ && _previousHasZ)
+                        {
+                            predictedZ += (_currentZ - _previousZ) * scale;
+                        }
+                    }
+                }
+                if (!Finite(predictedX)
+                    || !Finite(predictedY)
+                    || !Finite(predictedZ))
+                {
+                    Reset();
+                    return false;
+                }
+                bool changed = frame.PlayerX != predictedX
+                    || frame.PlayerY != predictedY
+                    || (frame.HasPlayerZ && frame.PlayerZ != predictedZ);
+                frame.PlayerX = predictedX;
+                frame.PlayerY = predictedY;
+                frame.PlayerZ = predictedZ;
+                return changed;
+            }
+
+            private void Reset()
+            {
+                _hasPrevious = false;
+                _hasCurrent = false;
+                _mode = null;
+                _currentArrivalTicks = 0L;
+            }
+
+            private static bool Finite(double value)
+            {
+                return !Double.IsNaN(value)
+                    && !Double.IsInfinity(value);
+            }
         }
 
         private sealed class RadarTreasureQueryBuffer
@@ -2844,6 +3541,14 @@ namespace DragonSwordWorldRadar
             private bool _showTreasureTypes;
             private bool _showTreasures;
             private bool _showBosses;
+            private bool _showMoles;
+            private long _moleMask;
+            private bool _showWorldStatus;
+            private bool _worldTimeAvailable;
+            private int _worldTimeMinute;
+            private bool _weatherAvailable;
+            private int _weatherState;
+            private int _weatherBtState;
             private double _textScale;
             private double _playerX;
             private double _playerY;
@@ -2861,6 +3566,15 @@ namespace DragonSwordWorldRadar
                 }
 
                 bool hasWorldMap = frame.WorldMap != null;
+                bool worldStatusVisible = frame.ShowWorldStatus
+                    && (!frame.Enabled
+                        || String.Equals(
+                            frame.Mode,
+                            "radar",
+                            StringComparison.Ordinal));
+                int worldTimeMinute = frame.WorldTimeAvailable
+                    ? frame.WorldTimeSeconds / 60
+                    : -1;
                 bool changed = !_hasValue
                     || _protocolVersion != frame.ProtocolVersion
                     || _generation != frame.Generation
@@ -2873,6 +3587,15 @@ namespace DragonSwordWorldRadar
                     || _showTreasureTypes != frame.ShowTreasureTypes
                     || _showTreasures != frame.ShowTreasures
                     || _showBosses != frame.ShowBosses
+                    || _showMoles != frame.ShowMoles
+                    || _moleMask != frame.MoleMask
+                    || _showWorldStatus != frame.ShowWorldStatus
+                    || (worldStatusVisible
+                        && (_worldTimeAvailable != frame.WorldTimeAvailable
+                            || _worldTimeMinute != worldTimeMinute
+                            || _weatherAvailable != frame.WeatherAvailable
+                            || _weatherState != frame.WeatherState
+                            || _weatherBtState != frame.WeatherBtState))
                     || _textScale != frame.TextScale
                     || _playerX != frame.PlayerX
                     || _playerY != frame.PlayerY
@@ -2894,6 +3617,14 @@ namespace DragonSwordWorldRadar
                 _showTreasureTypes = frame.ShowTreasureTypes;
                 _showTreasures = frame.ShowTreasures;
                 _showBosses = frame.ShowBosses;
+                _showMoles = frame.ShowMoles;
+                _moleMask = frame.MoleMask;
+                _showWorldStatus = frame.ShowWorldStatus;
+                _worldTimeAvailable = frame.WorldTimeAvailable;
+                _worldTimeMinute = worldTimeMinute;
+                _weatherAvailable = frame.WeatherAvailable;
+                _weatherState = frame.WeatherState;
+                _weatherBtState = frame.WeatherBtState;
                 _textScale = frame.TextScale;
                 _playerX = frame.PlayerX;
                 _playerY = frame.PlayerY;
@@ -2920,6 +3651,14 @@ namespace DragonSwordWorldRadar
                 _showTreasureTypes = false;
                 _showTreasures = false;
                 _showBosses = false;
+                _showMoles = false;
+                _moleMask = 0;
+                _showWorldStatus = false;
+                _worldTimeAvailable = false;
+                _worldTimeMinute = -1;
+                _weatherAvailable = false;
+                _weatherState = 0;
+                _weatherBtState = 0;
                 _textScale = 0.0;
                 _playerX = 0.0;
                 _playerY = 0.0;

@@ -1,14 +1,34 @@
 local WorldMap = {}
-local cached_layer = nil
+local MAX_CANDIDATES = 2
+local MAX_RETIRED_IDENTITIES = 256
+local cached_entry = nil
 local cached_data = {}
-local known_layers = {}
+local candidates = {}
+local retired_identities = {}
+local retired_order = {}
 
 -- During map loading, all cached UObjects are considered unsafe.
 local suspended = false
 local needs_rescan = true
+local access_guard = function() return true end
+local lifecycle_epoch = 0
+local candidate_token = 1
+local wake_hint = false
+local perf_diagnostics = nil
+local scan_results = 0
+local admitted = 0
+local rejected_stale = 0
+local rejected_cap = 0
+
+local function access_allowed(epoch, token)
+    return not suspended
+        and (epoch == nil or epoch == lifecycle_epoch)
+        and (token == nil or token == candidate_token)
+        and access_guard(lifecycle_epoch) == true
+end
 
 local function is_valid(object)
-    if object == nil then
+    if object == nil or not access_allowed() then
         return false
     end
 
@@ -20,7 +40,7 @@ local function is_valid(object)
 end
 
 local function safe_get(object, name)
-    if object == nil then
+    if object == nil or not access_allowed() then
         return nil
     end
 
@@ -32,7 +52,7 @@ local function safe_get(object, name)
 end
 
 local function safe_call(object, name, ...)
-    if object == nil then
+    if object == nil or not access_allowed() then
         return false, nil
     end
 
@@ -49,7 +69,7 @@ local function safe_call(object, name, ...)
 end
 
 local function full_name(object)
-    if object == nil then
+    if object == nil or not access_allowed() then
         return "<nil>"
     end
 
@@ -80,31 +100,85 @@ local function is_world_map_layer(layer)
         and string.find(name, ".DPanelWorldMap_C.", 1, true) ~= nil
 end
 
-local function remember_world_map_layer(layer)
-    if suspended then
+local function record_candidate_metrics(event)
+    if perf_diagnostics ~= nil then
+        perf_diagnostics.record_world_map_candidates({
+            event = event,
+            retained = #candidates,
+            scan_results = scan_results,
+            admitted = admitted,
+            rejected_stale = rejected_stale,
+            rejected_cap = rejected_cap,
+            epoch = lifecycle_epoch,
+            token = candidate_token,
+        })
+    end
+end
+
+local function retire_identity(identity)
+    if identity == nil or identity == "<unavailable>"
+        or retired_identities[identity]
+    then
         return
     end
+    retired_identities[identity] = true
+    table.insert(retired_order, identity)
+    if #retired_order > MAX_RETIRED_IDENTITIES then
+        local removed = table.remove(retired_order, 1)
+        retired_identities[removed] = nil
+    end
+end
 
-    if not is_valid(layer) or not is_world_map_layer(layer) then
-        return
+local function entry_current(entry)
+    return entry ~= nil
+        and entry.epoch == lifecycle_epoch
+        and entry.token == candidate_token
+        and access_allowed(entry.epoch, entry.token)
+end
+
+local function remember_world_map_layer(layer, source, allow_retired)
+    local capture_epoch = lifecycle_epoch
+    local capture_token = candidate_token
+    if not access_allowed(capture_epoch, capture_token)
+        or not is_valid(layer)
+        or not is_world_map_layer(layer)
+    then
+        return false
     end
 
-    -- Remove invalid entries while checking for duplicates.
-    for index = #known_layers, 1, -1 do
-        local known = known_layers[index]
-
-        if not is_valid(known) then
-            table.remove(known_layers, index)
-        elseif known == layer then
-            return
+    local identity = full_name(layer)
+    if not allow_retired and retired_identities[identity] then
+        rejected_stale = rejected_stale + 1
+        return false
+    end
+    for index = #candidates, 1, -1 do
+        local entry = candidates[index]
+        if not entry_current(entry) then
+            table.remove(candidates, index)
+        elseif entry.object == layer or entry.identity == identity then
+            return true
         end
     end
-
-    table.insert(known_layers, layer)
+    if #candidates >= MAX_CANDIDATES then
+        rejected_cap = rejected_cap + 1
+        return false
+    end
+    table.insert(candidates, {
+        object = layer,
+        identity = identity,
+        epoch = capture_epoch,
+        token = capture_token,
+        source = tostring(source or "unknown"),
+    })
+    admitted = admitted + 1
+    if source == "notify-current-epoch" then
+        wake_hint = true
+    end
+    return true
 end
 
 local function scan_world_map_layers()
-    if suspended then
+    if not access_allowed() then
         return
     end
 
@@ -113,16 +187,29 @@ local function scan_world_map_layers()
     end)
 
     if scan_ok and layers ~= nil then
-        for _, layer in ipairs(layers) do
-            remember_world_map_layer(layer)
+        scan_results = scan_results + #layers
+        -- FindAllOf ordering is treated only as a newest-first hint. Scan
+        -- wrappers remain transient. Visible candidates are preferred, then
+        -- at most the small cap of unseen hidden candidates is admitted.
+        for pass = 1, 2 do
+            for index = #layers, 1, -1 do
+                local layer = layers[index]
+                local visible = is_visible(layer)
+                if (pass == 1 and visible)
+                    or (pass == 2 and not visible)
+                then
+                    remember_world_map_layer(layer, "bounded-resume-scan", false)
+                end
+            end
         end
     end
 
     needs_rescan = false
+    record_candidate_metrics("scan")
 end
 
 local function find_world_map_layer()
-    if suspended then
+    if not access_allowed() then
         return nil
     end
 
@@ -130,20 +217,25 @@ local function find_world_map_layer()
         scan_world_map_layers()
     end
 
-    if is_visible(cached_layer) then
-        return cached_layer
+    if entry_current(cached_entry)
+        and is_visible(cached_entry.object)
+    then
+        return cached_entry
     end
 
-    cached_layer = nil
+    cached_entry = nil
 
-    for index = #known_layers, 1, -1 do
-        local layer = known_layers[index]
+    for index = #candidates, 1, -1 do
+        local entry = candidates[index]
 
-        if not is_valid(layer) then
-            table.remove(known_layers, index)
-        elseif is_visible(layer) then
-            cached_layer = layer
-            return layer
+        if not entry_current(entry) then
+            table.remove(candidates, index)
+        elseif not is_valid(entry.object) then
+            retire_identity(entry.identity)
+            table.remove(candidates, index)
+        elseif is_visible(entry.object) then
+            cached_entry = entry
+            return entry
         end
     end
 
@@ -220,13 +312,46 @@ end
 
 function WorldMap.reset()
     -- Drop every UObject wrapper retained from the previous world.
-    cached_layer = nil
+    for _, entry in ipairs(candidates) do
+        retire_identity(entry.identity)
+    end
+    cached_entry = nil
     cached_data = {}
-    known_layers = {}
+    candidates = {}
+    candidate_token = candidate_token + 1
     needs_rescan = true
+    wake_hint = false
+    record_candidate_metrics("reset")
 end
 
-function WorldMap.set_suspended(value)
+function WorldMap.close_session()
+    -- A normal map close is not a world transition. Drop only UObject
+    -- candidates from this presentation session so hidden widgets cannot fill
+    -- the bounded cap and block the next newly-created map layer. Cached map
+    -- dimensions are scalar data and remain reusable.
+    cached_entry = nil
+    candidates = {}
+    candidate_token = candidate_token + 1
+    needs_rescan = true
+    wake_hint = false
+    record_candidate_metrics("close-session")
+end
+
+function WorldMap.consume_wake_hint()
+    local hinted = wake_hint
+    wake_hint = false
+    return hinted
+end
+
+function WorldMap.set_suspended(value, epoch)
+    local requested_epoch = epoch ~= nil
+        and (tonumber(epoch) or lifecycle_epoch)
+        or lifecycle_epoch
+    local epoch_changed = requested_epoch ~= lifecycle_epoch
+    if epoch_changed then
+        lifecycle_epoch = requested_epoch
+        WorldMap.reset()
+    end
     local new_value = value == true
 
     if suspended == new_value then
@@ -246,15 +371,29 @@ function WorldMap.set_suspended(value)
     end
 end
 
-function WorldMap.initialize(log, is_current_generation)
-    scan_world_map_layers()
+function WorldMap.initialize(
+    log,
+    is_current_generation,
+    is_lifecycle_current,
+    diagnostics
+)
+    perf_diagnostics = diagnostics
+    access_guard = type(is_lifecycle_current) == "function"
+        and is_lifecycle_current or access_guard
+    suspended = true
+    WorldMap.reset()
 
     local notify_ok, notify_error = pcall(function()
         NotifyOnNewObject(
             "/Script/DSClient.DLayerMap",
             function(created_object)
-                if is_current_generation() and not suspended then
-                    remember_world_map_layer(created_object)
+                if is_current_generation() and access_allowed() then
+                    remember_world_map_layer(
+                        created_object,
+                        "notify-current-epoch",
+                        true
+                    )
+                    record_candidate_metrics("notify")
                 end
             end
         )
@@ -269,18 +408,20 @@ function WorldMap.initialize(log, is_current_generation)
 end
 
 function WorldMap.read_state()
-    if suspended then
+    if not access_allowed() then
         return nil
     end
 
-    local layer = find_world_map_layer()
-    if not is_valid(layer) then
+    local entry = find_world_map_layer()
+    if not entry_current(entry) then
         return nil
     end
+    local layer = entry.object
+    if not is_valid(layer) then return nil end
 
     local visible_ok, visible = safe_call(layer, "IsVisible")
     if visible_ok and visible == false then
-        cached_layer = nil
+        cached_entry = nil
         return nil
     end
 
@@ -377,6 +518,17 @@ function WorldMap.read_state()
     end
 
     return state
+end
+
+function WorldMap.debug_state()
+    return {
+        retained = #candidates,
+        cap = MAX_CANDIDATES,
+        epoch = lifecycle_epoch,
+        token = candidate_token,
+        retired = #retired_order,
+        needs_rescan = needs_rescan,
+    }
 end
 
 return WorldMap

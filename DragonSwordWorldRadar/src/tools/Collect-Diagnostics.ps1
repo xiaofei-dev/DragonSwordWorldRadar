@@ -64,6 +64,7 @@ try {
     Copy-IfExists (Join-Path $modRoot 'data\treasure_overrides.txt') 'config\treasure_overrides.txt'
     Copy-IfExists (Join-Path $modRoot 'data\generated\treasures.lua') 'data\treasures.lua'
     Copy-IfExists (Join-Path $modRoot 'data\generated\bosses.lua') 'data\bosses.lua'
+    Copy-IfExists (Join-Path $modRoot 'data\generated\moles.lua') 'data\moles.lua'
 
     $modsRoot = Split-Path -Parent $modRoot
     Copy-IfExists (Join-Path $modsRoot 'mods.txt') 'ue4ss\mods.txt'
@@ -98,11 +99,15 @@ try {
         'scripts\main.lua',
         'scripts\world_map.lua',
         'scripts\treasures.lua',
+        'scripts\world_environment.lua',
         'src\overlay\Bridge\MotionBridgeReader.cs',
         'src\overlay\Bridge\MotionRecordParser.cs',
         'src\overlay\Data\WorldBossCatalog.cs',
+        'src\overlay\Data\WorldEncounterCatalog.cs',
+        'src\overlay\Data\WorldMoleCatalog.cs',
         'src\overlay\Models\OverlayModels.cs',
         'src\overlay\Rendering\TreasureMarkerPalette.cs',
+        'src\overlay\Rendering\WorldStatusRenderer.cs',
         'src\overlay\UI\RadarForm.cs',
         'src\overlay\SaveData\SaveDatabaseFingerprint.cs',
         'src\overlay\SaveData\BossRespawnRuleResolver.cs',
@@ -111,7 +116,8 @@ try {
         'host\DragonSwordWorldRadar.Host.ps1',
         'metadata\release.json',
         'data\generated\treasures.lua',
-        'data\generated\bosses.lua')) {
+        'data\generated\bosses.lua',
+        'data\generated\moles.lua')) {
         $path = Join-Path $modRoot $relative
         if (Test-Path -LiteralPath $path) {
             $hashes += [ordered]@{

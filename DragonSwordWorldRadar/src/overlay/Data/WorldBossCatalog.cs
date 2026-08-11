@@ -38,6 +38,14 @@ namespace DragonSwordWorldRadar
 
         public void Refresh()
         {
+            // Installer-generated coordinates are immutable for one Overlay
+            // process. Once validated, avoid recurring filesystem metadata
+            // checks on the maintenance path; an install/reinstall starts a
+            // new process and performs a fresh validation.
+            if (_hasLoaded)
+            {
+                return;
+            }
             DateTime now = DateTime.UtcNow;
             if (now < _nextRefreshUtc)
             {

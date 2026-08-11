@@ -5,29 +5,31 @@ namespace DragonSwordWorldRadar
 {
     internal sealed class BossRespawnRuleResolver
     {
-        private const int ResetHour = 9;
-        private const int ResetMinute = 0;
+        private const int ResetUtcHour = 0;
+        private const int ResetUtcMinute = 0;
         private const string FixedRuleSummary =
-            "type=DAILY; localReset=09:00; source=built-in-original";
+            "type=DAILY; resetKst=09:00; resetUtc=00:00; source=user-validated-runtime";
 
         public DateTime NextAvailableUtc(
             DateTime destroyTimeUtc)
         {
-            DateTime localDestroy =
-                destroyTimeUtc.ToLocalTime();
+            DateTime normalizedDestroyUtc =
+                destroyTimeUtc.Kind == DateTimeKind.Utc
+                    ? destroyTimeUtc
+                    : destroyTimeUtc.ToUniversalTime();
             DateTime reset = new DateTime(
-                localDestroy.Year,
-                localDestroy.Month,
-                localDestroy.Day,
-                ResetHour,
-                ResetMinute,
+                normalizedDestroyUtc.Year,
+                normalizedDestroyUtc.Month,
+                normalizedDestroyUtc.Day,
+                ResetUtcHour,
+                ResetUtcMinute,
                 0,
-                DateTimeKind.Local);
-            if (reset <= localDestroy)
+                DateTimeKind.Utc);
+            if (reset <= normalizedDestroyUtc)
             {
                 reset = reset.AddDays(1);
             }
-            return reset.ToUniversalTime();
+            return reset;
         }
 
         public bool IsAvailable(DateTime destroyTimeUtc)

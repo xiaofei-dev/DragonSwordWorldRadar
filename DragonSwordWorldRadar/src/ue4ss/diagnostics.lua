@@ -20,7 +20,28 @@ local function reset_counters()
     counters = {
         updates = 0,
         world_updates = 0,
+        world_map_producer_ticks = 0,
+        world_map_read_count = 0,
+        world_map_read_visible = 0,
+        world_map_read_total_ms = 0.0,
+        world_map_read_max_ms = 0.0,
+        world_candidate_retained = 0,
+        world_candidate_scan_results = 0,
+        world_candidate_admitted = 0,
+        world_candidate_rejected_stale = 0,
+        world_candidate_rejected_cap = 0,
+        world_candidate_epoch = 0,
+        world_candidate_token = 0,
+        compact_loop_starts = 0,
+        world_loop_starts = 0,
+        loop_stops = 0,
+        loop_stale_exits = 0,
+        logical_compact_active = 0,
+        logical_world_active = 0,
+        max_logical_loops = 0,
+        mode_transitions = 0,
         radar_updates = 0,
+        status_updates = 0,
         failed_updates = 0,
         queue_requests = 0,
         queue_pending_skips = 0,
@@ -34,8 +55,16 @@ local function reset_counters()
         motion_write_failures = 0,
         motion_write_total_ms = 0.0,
         motion_write_max_ms = 0.0,
+        bridge_cause_motion = 0, bridge_cause_world_map = 0,
+        bridge_cause_mole = 0, bridge_cause_world_time = 0,
+        bridge_cause_heartbeat = 0, bridge_cause_lifecycle = 0,
         player_total_ms = 0.0,
         player_max_ms = 0.0,
+        player_location_samples = 0,
+        player_root_total_ms = 0.0,
+        player_root_max_ms = 0.0,
+        actor_location_total_ms = 0.0,
+        actor_location_max_ms = 0.0,
         world_total_ms = 0.0,
         world_max_ms = 0.0,
         build_total_ms = 0.0,
@@ -60,6 +89,13 @@ local function reset_counters()
         last_world_top = nil,
         last_world_zoom = nil,
         last_state_sequence = 0,
+        mole_queries = 0, mole_valid = 0, mole_failures = 0,
+        mole_completions = 0, mole_query_total_ms = 0.0, mole_query_max_ms = 0.0,
+        mole_query_over_1_ms = 0, mole_query_over_2_ms = 0,
+        mole_suspended = 0, mole_backoff = 0, mole_paced = 0,
+        mole_unfinished = 0, mole_sweep_cursor = 0, mole_retry_ticks = 0,
+        world_time_total_ms = 0.0, world_time_max_ms = 0.0,
+        mole_total_ms = 0.0, mole_max_ms = 0.0,
     }
 end
 reset_counters()
@@ -318,6 +354,7 @@ function Diagnostics.set_mode(mode, sequence)
     end
     mode = tostring(mode or "unknown")
     if mode ~= current_mode then
+        counters.mode_transitions = counters.mode_transitions + 1
         Diagnostics.debug("MODE_CHANGE", nil, {
             previous = current_mode,
             current = mode,
@@ -325,6 +362,73 @@ function Diagnostics.set_mode(mode, sequence)
         })
         current_mode = mode
     end
+end
+
+function Diagnostics.record_world_map_producer_tick()
+    if debug_enabled then
+        counters.world_map_producer_ticks =
+            counters.world_map_producer_ticks + 1
+    end
+end
+
+function Diagnostics.record_world_map_read(duration_ms, visible)
+    if not debug_enabled then return end
+    duration_ms = math.max(0.0, tonumber(duration_ms) or 0.0)
+    counters.world_map_read_count = counters.world_map_read_count + 1
+    counters.world_map_read_total_ms =
+        counters.world_map_read_total_ms + duration_ms
+    counters.world_map_read_max_ms = math.max(
+        counters.world_map_read_max_ms,
+        duration_ms
+    )
+    if visible then
+        counters.world_map_read_visible =
+            counters.world_map_read_visible + 1
+    end
+end
+
+function Diagnostics.record_world_map_candidates(metrics)
+    if not debug_enabled then return end
+    metrics = metrics or {}
+    counters.world_candidate_retained = tonumber(metrics.retained) or 0
+    counters.world_candidate_scan_results =
+        tonumber(metrics.scan_results) or 0
+    counters.world_candidate_admitted = tonumber(metrics.admitted) or 0
+    counters.world_candidate_rejected_stale =
+        tonumber(metrics.rejected_stale) or 0
+    counters.world_candidate_rejected_cap =
+        tonumber(metrics.rejected_cap) or 0
+    counters.world_candidate_epoch = tonumber(metrics.epoch) or 0
+    counters.world_candidate_token = tonumber(metrics.token) or 0
+end
+
+function Diagnostics.record_loop_event(
+    kind,
+    event,
+    token,
+    compact_active,
+    world_active
+)
+    if not debug_enabled then return end
+    kind = tostring(kind or "unknown")
+    event = tostring(event or "unknown")
+    if event == "start" then
+        if kind == "compact" then
+            counters.compact_loop_starts = counters.compact_loop_starts + 1
+        elseif kind == "world" then
+            counters.world_loop_starts = counters.world_loop_starts + 1
+        end
+    elseif string.find(event, "stale", 1, true) ~= nil then
+        counters.loop_stale_exits = counters.loop_stale_exits + 1
+    else
+        counters.loop_stops = counters.loop_stops + 1
+    end
+    counters.logical_compact_active = tonumber(compact_active) or 0
+    counters.logical_world_active = tonumber(world_active) or 0
+    counters.max_logical_loops = math.max(
+        counters.max_logical_loops,
+        counters.logical_compact_active + counters.logical_world_active
+    )
 end
 
 function Diagnostics.record_queue_request()
@@ -356,11 +460,13 @@ function Diagnostics.record_motion_skip()
     end
 end
 
-function Diagnostics.record_motion_write(duration_ms, ok)
+function Diagnostics.record_motion_write(duration_ms, ok, cause)
     if not debug_enabled then
         return
     end
     counters.motion_writes = counters.motion_writes + 1
+    local cause_key = "bridge_cause_" .. tostring(cause or "motion")
+    if counters[cause_key] ~= nil then counters[cause_key] = counters[cause_key] + 1 end
     if not ok then
         counters.motion_write_failures = counters.motion_write_failures + 1
     end
@@ -373,6 +479,31 @@ function Diagnostics.record_motion_write(duration_ms, ok)
             duration_ms
         )
     end
+end
+
+function Diagnostics.record_mole_query(duration_ms, valid)
+    if not debug_enabled then return end
+    duration_ms = tonumber(duration_ms) or 0.0
+    counters.mole_queries = counters.mole_queries + 1
+    counters.mole_query_total_ms = counters.mole_query_total_ms + duration_ms
+    counters.mole_query_max_ms = math.max(counters.mole_query_max_ms, duration_ms)
+    if valid then counters.mole_valid = counters.mole_valid + 1 else counters.mole_failures = counters.mole_failures + 1 end
+    if duration_ms >= 1.0 then counters.mole_query_over_1_ms = counters.mole_query_over_1_ms + 1 end
+    if duration_ms >= 2.0 then counters.mole_query_over_2_ms = counters.mole_query_over_2_ms + 1 end
+end
+
+function Diagnostics.record_mole_state_change()
+    if debug_enabled then counters.mole_completions = counters.mole_completions + 1 end
+end
+
+function Diagnostics.record_mole_scheduler(state, unfinished, cursor, retry_ticks)
+    if not debug_enabled then return end
+    if state == "suspended" then counters.mole_suspended = counters.mole_suspended + 1
+    elseif state == "backoff" then counters.mole_backoff = counters.mole_backoff + 1
+    elseif state == "paced" then counters.mole_paced = counters.mole_paced + 1 end
+    counters.mole_unfinished = tonumber(unfinished) or 0
+    counters.mole_sweep_cursor = tonumber(cursor) or 0
+    counters.mole_retry_ticks = tonumber(retry_ticks) or 0
 end
 
 local function add_metric(prefix, value)
@@ -398,6 +529,8 @@ function Diagnostics.record_update(metrics)
         counters.world_updates = counters.world_updates + 1
     elseif mode == "radar" then
         counters.radar_updates = counters.radar_updates + 1
+    elseif mode == "status" then
+        counters.status_updates = counters.status_updates + 1
     end
     if metrics.player_missing then
         counters.player_missing = counters.player_missing + 1
@@ -417,6 +550,8 @@ function Diagnostics.record_update(metrics)
     add_metric("write", metrics.write_ms)
     add_metric("total", metrics.total_ms)
     add_metric("queue", metrics.queue_delay_ms)
+    add_metric("world_time", metrics.world_time_ms)
+    add_metric("mole", metrics.mole_ms)
 
     local queue_delay_ms = tonumber(metrics.queue_delay_ms) or 0.0
     local total_ms = tonumber(metrics.total_ms) or 0.0
@@ -482,6 +617,17 @@ function Diagnostics.record_update(metrics)
     Diagnostics.maybe_report(mode, metrics.state_sequence)
 end
 
+function Diagnostics.record_player_location(root_ms, actor_ms)
+    if not debug_enabled then return end
+    root_ms = math.max(0.0, tonumber(root_ms) or 0.0)
+    actor_ms = math.max(0.0, tonumber(actor_ms) or 0.0)
+    counters.player_location_samples = counters.player_location_samples + 1
+    counters.player_root_total_ms = counters.player_root_total_ms + root_ms
+    counters.player_root_max_ms = math.max(counters.player_root_max_ms, root_ms)
+    counters.actor_location_total_ms = counters.actor_location_total_ms + actor_ms
+    counters.actor_location_max_ms = math.max(counters.actor_location_max_ms, actor_ms)
+end
+
 local function average(total, count)
     if count == nil or count <= 0 then
         return 0.0
@@ -517,7 +663,34 @@ function Diagnostics.maybe_report(mode, state_sequence)
         update_hz = counters.updates / elapsed,
         updates = counters.updates,
         world_updates = counters.world_updates,
+        world_map_producer_hz = counters.world_map_producer_ticks / elapsed,
+        world_map_producer_ticks = counters.world_map_producer_ticks,
+        world_map_read_hz = counters.world_map_read_count / elapsed,
+        world_map_read_count = counters.world_map_read_count,
+        world_map_read_visible = counters.world_map_read_visible,
+        world_map_read_avg_ms = average(
+            counters.world_map_read_total_ms,
+            counters.world_map_read_count
+        ),
+        world_map_read_max_ms = counters.world_map_read_max_ms,
+        world_candidate_retained = counters.world_candidate_retained,
+        world_candidate_scan_results = counters.world_candidate_scan_results,
+        world_candidate_admitted = counters.world_candidate_admitted,
+        world_candidate_rejected_stale =
+            counters.world_candidate_rejected_stale,
+        world_candidate_rejected_cap = counters.world_candidate_rejected_cap,
+        world_candidate_epoch = counters.world_candidate_epoch,
+        world_candidate_token = counters.world_candidate_token,
+        compact_loop_starts = counters.compact_loop_starts,
+        world_loop_starts = counters.world_loop_starts,
+        loop_stops = counters.loop_stops,
+        loop_stale_exits = counters.loop_stale_exits,
+        logical_compact_active = counters.logical_compact_active,
+        logical_world_active = counters.logical_world_active,
+        max_logical_loops = counters.max_logical_loops,
+        mode_transitions = counters.mode_transitions,
         radar_updates = counters.radar_updates,
+        status_updates = counters.status_updates,
         failed_updates = counters.failed_updates,
         state_writes = counters.state_writes,
         state_write_failures = counters.state_write_failures,
@@ -527,6 +700,18 @@ function Diagnostics.maybe_report(mode, state_sequence)
         player_missing = counters.player_missing,
         player_avg_ms = average(counters.player_total_ms, count),
         player_max_ms = counters.player_max_ms,
+        player_location_samples = counters.player_location_samples,
+        player_location_hz = counters.player_location_samples / elapsed,
+        player_root_avg_ms = average(
+            counters.player_root_total_ms,
+            counters.player_location_samples
+        ),
+        player_root_max_ms = counters.player_root_max_ms,
+        actor_location_avg_ms = average(
+            counters.actor_location_total_ms,
+            counters.player_location_samples
+        ),
+        actor_location_max_ms = counters.actor_location_max_ms,
         world_read_avg_ms = average(counters.world_total_ms, count),
         world_read_max_ms = counters.world_max_ms,
         build_avg_ms = average(counters.build_total_ms, count),
@@ -543,6 +728,24 @@ function Diagnostics.maybe_report(mode, state_sequence)
         total_over_50_ms = counters.total_over_50_ms,
         total_over_100_ms = counters.total_over_100_ms,
         total_over_250_ms = counters.total_over_250_ms,
+        world_time_avg_ms = average(counters.world_time_total_ms, count),
+        world_time_max_ms = counters.world_time_max_ms,
+        mole_callback_avg_ms = average(counters.mole_total_ms, count),
+        mole_callback_max_ms = counters.mole_max_ms,
+        mole_queries = counters.mole_queries,
+        mole_valid = counters.mole_valid,
+        mole_failures = counters.mole_failures,
+        mole_completions = counters.mole_completions,
+        mole_query_avg_ms = average(counters.mole_query_total_ms, counters.mole_queries),
+        mole_query_max_ms = counters.mole_query_max_ms,
+        mole_query_over_1_ms = counters.mole_query_over_1_ms,
+        mole_query_over_2_ms = counters.mole_query_over_2_ms,
+        mole_suspended = counters.mole_suspended,
+        mole_backoff = counters.mole_backoff,
+        mole_paced = counters.mole_paced,
+        mole_unfinished = counters.mole_unfinished,
+        mole_sweep_cursor = counters.mole_sweep_cursor,
+        mole_retry_ticks = counters.mole_retry_ticks,
         world_input_changed = counters.world_input_changed,
         world_input_unchanged = counters.world_input_unchanged,
         world_input_change_hz = counters.world_input_changed / elapsed,
@@ -555,6 +758,12 @@ function Diagnostics.maybe_report(mode, state_sequence)
         motion_skip_percent = motion_skip_percent,
         motion_write_hz = counters.motion_writes / elapsed,
         motion_writes = counters.motion_writes,
+        bridge_motion_writes = counters.bridge_cause_motion,
+        bridge_world_map_writes = counters.bridge_cause_world_map,
+        bridge_mole_writes = counters.bridge_cause_mole,
+        bridge_world_time_writes = counters.bridge_cause_world_time,
+        bridge_heartbeat_writes = counters.bridge_cause_heartbeat,
+        bridge_lifecycle_writes = counters.bridge_cause_lifecycle,
         motion_write_failures = counters.motion_write_failures,
         motion_write_avg_ms = average(
             counters.motion_write_total_ms,

@@ -31,7 +31,9 @@ namespace DragonSwordWorldRadar
 
         private int _processId;
         private ulong _ownerPointerRva;
+        private ulong _generatedOwnerPointerRva;
         private string _key;
+        private string _successfulRoute;
         private DateTime _patternScanEligibleUtc;
         private bool _patternScanAttempted;
 
@@ -39,7 +41,9 @@ namespace DragonSwordWorldRadar
         {
             _processId = 0;
             _ownerPointerRva = 0;
+            _generatedOwnerPointerRva = 0;
             _key = null;
+            _successfulRoute = null;
             _patternScanEligibleUtc = DateTime.MinValue;
             _patternScanAttempted = false;
         }
@@ -68,17 +72,24 @@ namespace DragonSwordWorldRadar
                 ulong moduleBase = unchecked(
                     (ulong)game.MainModule.BaseAddress.ToInt64());
                 Exception lastError = null;
-                foreach (ulong rva in CandidateRvas(game))
+                foreach (OwnerPointerCandidate candidate in CandidateRvas(game))
                 {
                     try
                     {
                         string key = ReadAtRva(
                             process,
                             moduleBase,
-                            rva);
+                            candidate.Rva);
                         _processId = game.Id;
-                        _ownerPointerRva = rva;
+                        _ownerPointerRva = candidate.Rva;
                         _key = key;
+                        _successfulRoute = candidate.Route;
+                        ErrorLog.WriteMessage(
+                            "Save database key owner route: source=" +
+                            _successfulRoute +
+                            "; rva=0x" +
+                            _ownerPointerRva.ToString("X") +
+                            "; keyPersisted=false.");
                         return _key;
                     }
                     catch (Exception exception)
@@ -97,27 +108,62 @@ namespace DragonSwordWorldRadar
             }
         }
 
-        private System.Collections.Generic.IEnumerable<ulong>
+        private System.Collections.Generic.IEnumerable<OwnerPointerCandidate>
             CandidateRvas(Process game)
         {
             if (_processId != game.Id)
             {
                 _processId = game.Id;
                 _ownerPointerRva = 0;
+                _generatedOwnerPointerRva = 0;
                 _key = null;
+                _successfulRoute = null;
                 _patternScanEligibleUtc =
                     DateTime.UtcNow.Add(PatternScanDelay);
                 _patternScanAttempted = false;
+                try
+                {
+                    GeneratedOwnerPointerConfig generated =
+                        GeneratedOwnerPointerConfig.LoadForGame(game);
+                    _generatedOwnerPointerRva = generated.Rva;
+                    ErrorLog.WriteDebug(
+                        "Generated save owner-pointer configuration accepted: " +
+                        "fingerprint=" + generated.GameFingerprint +
+                        "; rva=0x" + generated.Rva.ToString("X") +
+                        "; provenance=install-time-exact-executable-pattern.");
+                }
+                catch (Exception exception)
+                {
+                    ErrorLog.WriteDebug(
+                        "Generated save owner-pointer configuration unavailable; " +
+                        "known RVAs and delayed fallback remain enabled. reason=" +
+                        exception.GetType().Name + ": " + exception.Message);
+                }
+            }
+
+            if (_generatedOwnerPointerRva != 0)
+            {
+                yield return new OwnerPointerCandidate(
+                    _generatedOwnerPointerRva,
+                    "generated-fingerprint-bound");
             }
 
             // Known RVAs are effectively free compared with reading and
             // pattern-scanning the full shipping executable. Yield them before
             // the fallback scan; iterator execution stops immediately after a
             // successful key read.
-            yield return CurrentOwnerPointerRva;
-            if (LegacyOwnerPointerRva != CurrentOwnerPointerRva)
+            if (CurrentOwnerPointerRva != _generatedOwnerPointerRva)
             {
-                yield return LegacyOwnerPointerRva;
+                yield return new OwnerPointerCandidate(
+                    CurrentOwnerPointerRva,
+                    "known-current");
+            }
+            if (LegacyOwnerPointerRva != CurrentOwnerPointerRva
+                && LegacyOwnerPointerRva != _generatedOwnerPointerRva)
+            {
+                yield return new OwnerPointerCandidate(
+                    LegacyOwnerPointerRva,
+                    "known-legacy");
             }
 
             // A known owner pointer can be temporarily unready during startup.
@@ -136,7 +182,21 @@ namespace DragonSwordWorldRadar
                 && _ownerPointerRva != CurrentOwnerPointerRva
                 && _ownerPointerRva != LegacyOwnerPointerRva)
             {
-                yield return _ownerPointerRva;
+                yield return new OwnerPointerCandidate(
+                    _ownerPointerRva,
+                    "delayed-pattern-fallback");
+            }
+        }
+
+        private sealed class OwnerPointerCandidate
+        {
+            public readonly ulong Rva;
+            public readonly string Route;
+
+            public OwnerPointerCandidate(ulong rva, string route)
+            {
+                Rva = rva;
+                Route = route;
             }
         }
 

@@ -19,6 +19,8 @@ function Invoke-Gate([string]$ScriptName) {
 & (Join-Path $PSScriptRoot 'Verify-Source.ps1')
 Invoke-Gate 'Compile-Source.ps1'
 Invoke-Gate 'Test-Refactor.ps1'
+Invoke-Gate 'Test-AssaultIntegration.ps1'
+Invoke-Gate 'Test-MoleFlightCatalog.ps1'
 
 $release = Get-Content -LiteralPath (Join-Path $root 'metadata\release.json') -Raw | ConvertFrom-Json
 $version = [string]$release.version
@@ -44,7 +46,19 @@ function Copy-One([string]$Source,[string]$Destination) {
 Copy-One (Join-Path $root 'src\installer\Install.cmd') (Join-Path $mod 'Install.cmd')
 Copy-One (Join-Path $root 'src\installer\Install.ps1') (Join-Path $mod 'installer\Install.ps1')
 Copy-Tree (Join-Path $root 'src\installer\Core') (Join-Path $mod 'src\installer')
+foreach ($generatedDirectory in @('obj','bin')) {
+    $generatedPath = Join-Path $mod ('src\installer\' + $generatedDirectory)
+    if (Test-Path -LiteralPath $generatedPath) {
+        Remove-Item -LiteralPath $generatedPath -Recurse -Force
+    }
+}
 Copy-Tree (Join-Path $root 'src\overlay') (Join-Path $mod 'src\overlay')
+foreach ($generatedDirectory in @('obj','bin')) {
+    $generatedPath = Join-Path $mod ('src\overlay\' + $generatedDirectory)
+    if (Test-Path -LiteralPath $generatedPath) {
+        Remove-Item -LiteralPath $generatedPath -Recurse -Force
+    }
+}
 Copy-Tree (Join-Path $root 'src\host') (Join-Path $mod 'host')
 Copy-Tree (Join-Path $root 'src\tools') (Join-Path $mod 'tools')
 Copy-One (Join-Path $root 'vendor\ooz\ooz.exe') (Join-Path $mod 'tools\ooz.exe')
@@ -53,6 +67,7 @@ Copy-Tree (Join-Path $root 'resources\defaults') (Join-Path $mod 'data\defaults'
 Copy-One (Join-Path $root 'vendor\sqlcipher\e_sqlcipher.dll') (Join-Path $mod 'vendor\sqlcipher\e_sqlcipher.dll')
 Copy-One (Join-Path $root 'metadata\release.json') (Join-Path $mod 'metadata\release.json')
 Copy-One (Join-Path $root 'metadata\data-providers.json') (Join-Path $mod 'metadata\data-providers.json')
+Copy-One (Join-Path $root 'metadata\assault-inference-policy.xml') (Join-Path $mod 'metadata\assault-inference-policy.xml')
 Copy-One (Join-Path $root 'metadata\build-validation.json') (Join-Path $mod 'metadata\build-validation.json')
 Copy-One (Join-Path $root 'LICENSE') (Join-Path $mod 'licenses\GPL-3.0.txt')
 Copy-One (Join-Path $root 'licenses\APACHE-2.0.txt') (Join-Path $mod 'licenses\APACHE-2.0.txt')
@@ -117,5 +132,9 @@ finally { $stream.Dispose() }
 
 if (-not (Test-Path -LiteralPath $archive -PathType Leaf) -or (Get-Item -LiteralPath $archive).Length -lt 1000000) {
     throw 'Release archive was not created or is unexpectedly small.'
+}
+& (Join-Path $PSScriptRoot 'Refresh-SourceMetadata.ps1')
+if ($LASTEXITCODE -ne 0) {
+    throw "Source metadata refresh failed (exit=$LASTEXITCODE)"
 }
 Write-Host "Built: $archive"

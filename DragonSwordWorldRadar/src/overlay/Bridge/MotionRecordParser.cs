@@ -4,9 +4,9 @@ namespace DragonSwordWorldRadar
 {
     internal static class MotionRecordParser
     {
-        private const int SupportedProtocolVersion = 2;
+        private const int SupportedProtocolVersion = 5;
 
-        // Parses the fixed 27-field compact ASCII motion/control record directly
+        // Parses the fixed 37-field compact ASCII motion/control record directly
         // from a reusable byte buffer. The explicit protocol version prevents a
         // mixed old/new deployment from interpreting shifted fields, and the
         // leading/trailing sequence values reject partial slot rewrites.
@@ -29,12 +29,22 @@ namespace DragonSwordWorldRadar
             long sequence;
             int protocolVersion;
             int generation;
+            int worldEpoch;
+            double sampleTimestampMs;
             int enabled;
             string mode;
             int showHeight;
             int showTreasureTypes;
             int showTreasures;
             int showBosses;
+            int showMoles;
+            long moleMask;
+            int showWorldStatus;
+            int worldTimeAvailable;
+            int worldTimeSeconds;
+            int weatherAvailable;
+            int weatherState;
+            int weatherBtState;
             double textScale;
             double playerX;
             double playerY;
@@ -57,12 +67,22 @@ namespace DragonSwordWorldRadar
             if (!reader.TryReadInt64(out sequence)
                 || !reader.TryReadInt32(out protocolVersion)
                 || !reader.TryReadInt32(out generation)
+                || !reader.TryReadInt32(out worldEpoch)
+                || !reader.TryReadDouble(out sampleTimestampMs)
                 || !reader.TryReadInt32(out enabled)
                 || !reader.TryReadMode(out mode)
                 || !reader.TryReadInt32(out showHeight)
                 || !reader.TryReadInt32(out showTreasureTypes)
                 || !reader.TryReadInt32(out showTreasures)
                 || !reader.TryReadInt32(out showBosses)
+                || !reader.TryReadInt32(out showMoles)
+                || !reader.TryReadInt64(out moleMask)
+                || !reader.TryReadInt32(out showWorldStatus)
+                || !reader.TryReadInt32(out worldTimeAvailable)
+                || !reader.TryReadInt32(out worldTimeSeconds)
+                || !reader.TryReadInt32(out weatherAvailable)
+                || !reader.TryReadInt32(out weatherState)
+                || !reader.TryReadInt32(out weatherBtState)
                 || !reader.TryReadDouble(out textScale)
                 || !reader.TryReadDouble(out playerX)
                 || !reader.TryReadDouble(out playerY)
@@ -86,11 +106,30 @@ namespace DragonSwordWorldRadar
                 || sequence < 0
                 || protocolVersion != SupportedProtocolVersion
                 || generation < 0
+                || worldEpoch < 0
+                || Double.IsNaN(sampleTimestampMs)
+                || Double.IsInfinity(sampleTimestampMs)
+                || sampleTimestampMs < 0
                 || (enabled != 0 && enabled != 1)
                 || (showHeight != 0 && showHeight != 1)
                 || (showTreasureTypes != 0 && showTreasureTypes != 1)
                 || (showTreasures != 0 && showTreasures != 1)
                 || (showBosses != 0 && showBosses != 1)
+                || (showMoles != 0 && showMoles != 1)
+                || moleMask < 0
+                || moleMask >= (1L << 34)
+                || (showWorldStatus != 0 && showWorldStatus != 1)
+                || (worldTimeAvailable != 0 && worldTimeAvailable != 1)
+                || worldTimeSeconds < 0
+                || worldTimeSeconds >= 86400
+                || (worldTimeAvailable == 0 && worldTimeSeconds != 0)
+                || (weatherAvailable != 0 && weatherAvailable != 1)
+                || weatherState < -1000000
+                || weatherState > 1000000
+                || weatherBtState < -1000000
+                || weatherBtState > 1000000
+                || (weatherAvailable == 0
+                    && (weatherState != 0 || weatherBtState != 0))
                 || (hasPlayerZ != 0 && hasPlayerZ != 1)
                 || (enabled == 0
                     && !String.Equals(
@@ -144,12 +183,22 @@ namespace DragonSwordWorldRadar
             frame.Sequence = sequence;
             frame.ProtocolVersion = protocolVersion;
             frame.Generation = generation;
+            frame.WorldEpoch = worldEpoch;
+            frame.SampleTimestampMs = sampleTimestampMs;
             frame.Enabled = enabled != 0;
             frame.Mode = mode;
             frame.ShowHeight = showHeight != 0;
             frame.ShowTreasureTypes = showTreasureTypes != 0;
             frame.ShowTreasures = showTreasures != 0;
             frame.ShowBosses = showBosses != 0;
+            frame.ShowMoles = showMoles != 0;
+            frame.MoleMask = moleMask;
+            frame.ShowWorldStatus = showWorldStatus != 0;
+            frame.WorldTimeAvailable = worldTimeAvailable != 0;
+            frame.WorldTimeSeconds = worldTimeSeconds;
+            frame.WeatherAvailable = weatherAvailable != 0;
+            frame.WeatherState = weatherState;
+            frame.WeatherBtState = weatherBtState;
             frame.TextScale = textScale;
             frame.PlayerX = playerX;
             frame.PlayerY = playerY;

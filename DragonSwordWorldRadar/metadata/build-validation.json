@@ -1,6 +1,7 @@
 {
   "schema_version": 3,
-  "version": "0.4.0-dev9-performance1.8-singlebridge1",
+  "version": "0.4.0-dev21-dev15rollback1",
+  "preserved_evidence_scope": "The comparison, compatibility, validation, and package_validation sections below preserve the accepted 0.4.0-dev9-performance1.8-singlebridge1 evidence and are not claims about the Mole/Fly successor package.",
   "generated_at_utc": "2026-08-08T03:29:46.424873Z",
   "comparison": {
     "source_baseline": "0.4.0-dev9-performance1.7-stablecore1",
@@ -32,7 +33,7 @@
     "runtime_hooks_added": false,
     "f7_f8_behavior_changed": false,
     "marker_style_changed": false,
-    "window_lifecycle_changed": false,
+    "window_lifecycle_changed": true,
     "source_only_upgrade_required": false,
     "full_folder_overwrite_supported": true,
     "installer_removes_known_1_7_obsolete_sources": [
@@ -42,13 +43,13 @@
     ]
   },
   "preserved_1_7_invariants": [
-    "24 ms radar motion sampling",
-    "24 ms active world-map motion sampling",
+    "33 ms radar motion sampling",
+    "33 ms active world-map motion sampling",
     "250 ms low-frequency control sampling",
-    "24/50/75/125/500 ms Overlay active/world-idle/radar-idle/disabled/background timing",
+    "33/50/75/125/500 ms Overlay active/world-idle/radar-idle/disabled/background timing",
     "20 XY and 10 Z movement thresholds",
     "exactly three textual LoopAsync registrations with radar/world motion mutually exclusive",
-    "cached Pawn fast path and 250 ms full context recovery",
+    "cached Engine with current Controller/Pawn traversal and no retained Pawn wrapper",
     "Overlay-owned treasure selection and save filtering",
     "serial save refresh; no QueueRefresh ThreadPool polling chain",
     "no Flush(true)",
@@ -172,5 +173,22 @@
     "only_bundled_executable": "tools/ooz.exe",
     "only_bundled_dll": "vendor/sqlcipher/e_sqlcipher.dll"
   },
-  "important_note": "This is a deliberate IPC architecture change. Mixed 1.7/1.8 Motion records are rejected by protocol version, and Install.cmd removes the exact obsolete 1.7 source files that a Windows folder overwrite would otherwise leave behind. Windows compilation and in-game behavior must still be confirmed after running the installer."
+  "successor_validation": {
+    "version": "0.4.0-dev48-clockrestore1",
+    "motion_protocol_version": 5,
+    "motion_field_count": 37,
+    "source_shape": { "overlay_csharp_files": 41, "installer_core_csharp_files": 18, "ue4ss_lua_files": 9 },
+    "assault_catalog": { "record_count": 40, "conditioned_targets": 1, "real_pak_fingerprint": "d4fa7c994927537651ba3f4ef69c61e7bc7262e586457cf8ce18c1207960dee0", "policy": "versioned exact-identity inference input" },
+    "mole_fly_catalog": { "record_count": 34, "ids": "11001-11034", "mask_bits": "0-33", "controller_real_pak_roles": "NPC_Start=33, Teleport_Start=1", "controller_real_pak_maps": "100=34" },
+    "completion_bounds": { "initial_reads_per_250ms_max": 5, "steady_reads_per_250ms_max": 1, "failure_mask": 0 },
+    "world_status_bounds": { "production_provider": "disconnected matching dev38", "scalar_property_reads_per_activation_max": 0, "retry_or_recalibration_reads": 0, "stable_context_delay_ms": 0, "new_loopasync_registrations": 0, "new_bridges": 0, "expanded_world_map_rendering": false, "weather_reads": 0 },
+    "save_refresh_bounds": { "f8_metadata_or_sqlcipher_work": 0, "metadata_interval_ms": 2000, "stable_change_debounce_ms": 4000, "key_setups_per_connection": 1, "database_cache_scope": "in-memory exact fingerprint per db/bak sibling", "worker_priority": "BelowNormal best effort", "debug_phase_timings": true },
+    "mole_overlay_parser": { "status": "passed", "records": 34, "boolean_literals": ["true", "false", "nil"], "regression_assertions_included": true },
+    "windows_gates": ["Verify-Source.ps1", "Compile-Source.ps1", "Test-Refactor.ps1", "Test-PerformanceScheduling.ps1", "Test-AssaultIntegration.ps1", "Test-MoleFlightCatalog.ps1", "Build-Release.ps1"],
+    "windows_gate_status": "passed in Windows PowerShell 5.1 after the final feature-source update",
+    "package_audit_claim": "post-build independent audit passed for ZIP decompression/CRC reads, duplicate and path safety, manifest size/hash verification, and exact ZIP-to-staging byte equality",
+    "recovery_lifecycle": { "cooldown_ms": 3000, "uobject_reads_during_cooldown": 0, "probe": "normal player location only", "failed_probe_behavior": "rearm full cooldown", "world_identity_reads": 0 },
+    "in_game_status": "Dev40 scalar sampling/prediction smoothness, travel reset, and dev30-relative performance pending owner validation"
+  },
+  "important_note": "Dev40 uses dev38 features, samples fresh current-Pawn scalars at 250 ms, and predicts in Overlay at 50 ms. Static/build gates do not prove gameplay smoothness or travel correctness."
 }

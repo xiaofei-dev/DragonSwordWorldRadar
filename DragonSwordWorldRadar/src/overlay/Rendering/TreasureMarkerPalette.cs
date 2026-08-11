@@ -31,6 +31,11 @@ namespace DragonSwordWorldRadar
         public static readonly Color BossIcon =
             Color.FromArgb(255, 255, 248, 235);
 
+        public static readonly Color FlyWing =
+            Color.FromArgb(255, 154, 219, 255);
+        public static readonly Color FlyArrow =
+            Color.FromArgb(255, 105, 199, 255);
+
         public static Color GetTreasureFill(TreasureKind kind)
         {
             if (kind == TreasureKind.MiniGame)
@@ -65,6 +70,11 @@ namespace DragonSwordWorldRadar
             float displayScale)
         {
             return Math.Max(1f, 1.15f * displayScale);
+        }
+
+        public static float GetFlyOutlineWidth(float displayScale)
+        {
+            return Math.Max(1.2f, 1.8f * displayScale);
         }
     }
 }

@@ -9,7 +9,7 @@ namespace DragonSwordWorldRadar
     internal sealed class WorldTreasureCatalog
     {
         private static readonly Regex FieldPattern = new Regex(
-            @"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:""([^""]*)""|([-+0-9.eE]+))",
+            @"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:""([^""]*)""|([-+0-9.eE]+)|(true|false|nil))",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         private readonly string _path;
@@ -42,6 +42,14 @@ namespace DragonSwordWorldRadar
 
         public void Refresh()
         {
+            // Installer-generated coordinates are immutable for one Overlay
+            // process. Once validated, avoid recurring filesystem metadata
+            // checks on the maintenance path; an install/reinstall starts a
+            // new process and performs a fresh validation.
+            if (_hasLoaded)
+            {
+                return;
+            }
             DateTime now = DateTime.UtcNow;
             if (now < _nextRefreshUtc)
             {
@@ -187,7 +195,9 @@ namespace DragonSwordWorldRadar
             {
                 string value = match.Groups[2].Success
                     ? match.Groups[2].Value
-                    : match.Groups[3].Value;
+                    : (match.Groups[3].Success
+                        ? match.Groups[3].Value
+                        : match.Groups[4].Value);
                 fields[match.Groups[1].Value] = value;
             }
             return fields;
