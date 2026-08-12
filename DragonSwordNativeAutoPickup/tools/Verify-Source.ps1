@@ -82,7 +82,7 @@ if ($defaultConfig -notmatch 'read_only_diagnostic=true' -or
 $fingerprints = Get-Content -Raw (Join-Path $projectRoot 'metadata\build-fingerprints.json') | ConvertFrom-Json
 if ($fingerprints.source_build.version -ne '0.6.0-dropitem-closed-loop-diagnostic' -or
     $fingerprints.source_build.deployed -ne $true -or $fingerprints.source_build.runtime_validated -ne $false -or
-    $fingerprints.source_build.installed_path -notmatch 'Win64\\ue4ss\\Mods\\DragonSwordNativeAutoPickup$') {
+    ($fingerprints.source_build.installed_path -replace '\\', '/') -notmatch 'Win64/ue4ss/Mods/DragonSwordNativeAutoPickup$') {
     throw 'Build metadata does not identify the deployed but runtime-unvalidated diagnostic.'
 }
 

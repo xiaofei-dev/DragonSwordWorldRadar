@@ -19,7 +19,7 @@
     "toolchain": {"cmake": "3.29.6", "generator": "Ninja", "rust": "1.97.1", "msvc": "19.44.35228"},
     "deployed": true,
     "deployed_utc": "2026-08-12T06:04:00Z",
-    "installed_path": "G:\\SteamLibrary\\steamapps\\common\\DragonSword  Awakening\\DS\\Binaries\\Win64\\ue4ss\\Mods\\DragonSwordNativeAutoPickup",
+    "installed_path": "DS/Binaries/Win64/ue4ss/Mods/DragonSwordNativeAutoPickup",
     "runtime_validated": false
   },
   "diagnostics": {
