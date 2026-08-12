@@ -1,23 +1,29 @@
 # DragonSword Native Auto Pickup Project Context
 
-## Purpose
-
-This is an independent native C++ auto-pickup canary with a marker-only Lua entry point. It does not share runtime state or game-thread scheduling with Radar or DataProbe.
-
 ## Current milestone
 
-`0.3.2-relocated-runtime-canary` retains the queue-free native pulse and updates all runtime, fingerprint, package, and deployment paths for `Win64/ue4ss/Mods`. It builds against the exact relocated UE4SS revision; static and native build success do not prove runtime behavior.
+Version `0.6.0-dropitem-closed-loop-diagnostic` is a deployed read-only evidence build. It removes the failed 0.5.2-0.5.4 `Vitality_Leave_01_C` target assumptions and restores the only target-discovery route that previously captured real derived `DropItemActor` instances. Deployment is hash-verified; runtime evidence remains pending.
 
-## Non-negotiable rules
+## Confirmed evidence
 
-- No recurring Lua work, UObject scan, `FindAllOf`, global ProcessEvent hook, ActorTick/ReceiveTick hook, or LoadMap hook.
-- Lifecycle callbacks may only perform exact class comparison and weak capture/delete bookkeeping.
-- Require exact DropItemActor owner, component ownership, values 2 and 7, exact DS controller/player, bidirectional Pawn/Controller identity, distance, and KeyAction 13.
-- Native input-frame processing is throttled to 150 ms; queue, due candidates, retries, backoff, and actions are bounded.
-- Unknown fingerprints, missing pulse metadata, absent natural pulses, stale weak pointers, transitions, or access faults fail closed.
-- F9 cannot bypass fingerprint or fresh accepted-pulse gates.
-- Runtime label is `OWNER_AUTHORIZED_RUNTIME_CANARY`; acceptance remains false until owner testing.
+- 0.3.8 captured three derived `DropItemActor` instances and one candidate passed every state and distance gate at 2.441 m.
+- `Server_InputInteractKeyAction(13, candidate, Pawn)` did not collect that item and is rejected.
+- The 0.5.1 manual trace observed two `Server_RunInteractV2` calls for a `Vitality_Leave_01_C` target, but it did not prove that ordinary `DropItemActor` loot uses the same contract.
+- `ExecuteTargetComponent` is transient manual-interaction context and cannot be polled as persistent target discovery.
+- UObject deletion is not a universal pickup-success condition.
 
-## Handoff
+## 0.6.0 invariants
 
-Read `README.md`, `docs/ARCHITECTURE.md`, `docs/THREAT_AND_FAILURE_MODEL.md`, and `metadata/interaction-contract.json`. Run `tools/Verify-Source.ps1` before packaging or runtime work.
+- F9 starts one 60-second read-only diagnostic window. No automatic pickup action is present.
+- F9 and `on_update` remain scalar-only. UObject access is EngineTick-owned.
+- One budgeted UObject-index sweep plus armed lifecycle capture finds non-template `DropItemActor` instances and derived classes.
+- A target is locked only when exactly one eligible ordinary drop is inside the configured radius in the current player World.
+- Hooks observe overlap, player interaction, `AniPickUp`, and `SetDestroy` calls. Pre/post records are retained only when receiver, parameters, or target fields correlate to the locked weak identity.
+- The diagnostic never writes receiver target fields, persists a replay contract, calls an interaction UFunction, or treats deletion alone as success.
+- World transition cancels the window, clears all weak identities, and schedules hook/listener cleanup.
+
+## Acceptance boundary
+
+Static checks and compilation prove only that the diagnostic is bounded and mutation-free. An owner test must lock one real ordinary drop, manually collect that same item, and preserve both logs. Only that exact trace may define a later automatic interaction contract.
+
+Do not deploy, commit, or push without explicit authorization. Radar and DataProbe remain outside this change.

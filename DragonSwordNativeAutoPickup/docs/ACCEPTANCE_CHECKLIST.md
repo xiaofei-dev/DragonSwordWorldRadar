@@ -1,27 +1,30 @@
 # Acceptance Checklist
 
-## Static and build
+## Static and build acceptance for 0.6.0
 
-- [x] Marker-only Lua with zero recurring scheduling or game-thread queue calls.
-- [x] Exact `ServerRecvClientInputFrame` post hook with native 150 ms throttle.
-- [x] No DropItemActor scan, `FindAllOf`, global ProcessEvent, ActorTick/ReceiveTick, or LoadMap hook.
-- [x] Exact Controller/Pawn classes and bidirectional identity are required.
-- [x] Lifecycle callbacks perform exact class weak capture/delete bookkeeping only.
-- [x] Candidate count, per-pulse work, retries, backoff, and action rate are bounded.
-- [x] Reflected access and invocation have fail-closed SEH boundaries.
-- [x] Diagnostics separate raw hooks, accepted pulses, throttle rejects, and gate rejects.
-- [x] Native adapter compiles against pinned UE4SS 3.0.1.
-- [ ] Final source verifier and package-layout checks pass after documentation closure.
+- [x] Version is `0.6.0-dropitem-closed-loop-diagnostic`.
+- [x] F9 and `on_update` perform no UObject work.
+- [x] The diagnostic filters non-template `DropItemActor` instances and derived classes.
+- [x] Discovery is budgeted and limited to one 60-second owner-triggered window.
+- [x] Exactly one eligible current-World candidate is required before locking.
+- [x] Hook output is filtered to the locked owner/component relation.
+- [x] Both pre and post state are recorded.
+- [x] Overlap, player-interaction, `AniPickUp`, and `SetDestroy` paths are observed.
+- [x] No target property is written and no pickup UFunction is invoked.
+- [x] No replay contract is loaded, persisted, validated, or quarantined.
+- [x] Travel cancels the window and clears all weak identities.
+- [x] Exact pinned `/W4 /WX` native build passes.
+- [x] Source, core, and staged-package verification pass after metadata closure.
 
-## Owner runtime canary
+## Owner evidence capture
 
-- [ ] Trusted fingerprint logs `READY`; unknown fingerprint remains inactive.
-- [ ] With Radar enabled, F9 then F7 no longer blocks Radar's game-thread activation callback or crashes.
-- [ ] `raw_hook_callbacks` and `accepted_pulses` increase in normal open-world play.
-- [ ] Missing-pulse scenes stay inactive without scans or Tick fallback.
-- [ ] Nearby ordinary ground loot is picked up once; excluded and distant objects are untouched.
-- [ ] World travel clears old candidates and requires a fresh accepted pulse.
-- [ ] Menus, cutscenes, dungeons, travel, and long sessions do not crash.
-- [ ] Enabled/disabled frametime remains within the agreed budget.
+- [ ] `DIAGNOSTIC_ARMED` occurs after one physical F9 press.
+- [ ] Discovery completes without an exception or runaway callback count.
+- [ ] Exactly one nearby ordinary drop produces `DIAGNOSTIC_TARGET_LOCKED`.
+- [ ] The owner manually collects that same item exactly once.
+- [ ] Correlated pre/post `TRACE_INTERACTION_CALL` records identify the actual manual sequence.
+- [ ] The result records the real state transition, whether or not UObject deletion occurs.
+- [ ] Logs contain no action-invocation event; the 0.6 source has no automatic action path.
+- [ ] F9 Off, timeout, normal exit, and world cancellation are crash-free.
 
-Unchecked runtime items are not accepted by a clean build or package.
+No automatic pickup implementation is accepted until the exact same-object trace is reviewed.

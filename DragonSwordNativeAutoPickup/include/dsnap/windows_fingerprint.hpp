@@ -19,5 +19,6 @@ struct FingerprintResult {
 
 [[nodiscard]] std::optional<std::string> sha256_file(const std::filesystem::path& path);
 [[nodiscard]] FingerprintResult verify_build_fingerprint(const std::filesystem::path& binary_directory);
+[[nodiscard]] bool atomic_replace_text(const std::filesystem::path& path, std::string_view text);
 
 } // namespace dsnap

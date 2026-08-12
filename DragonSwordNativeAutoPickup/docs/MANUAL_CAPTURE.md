@@ -1,13 +1,30 @@
-# Owner Runtime Canary Procedure
+# Manual DropItemActor Capture
 
-1. Review and install only the exact authorized package while the game is closed.
-2. Start with Radar and AutoPickup enabled; confirm `READY` and trusted fingerprints.
-3. Press F9, then activate Radar with F7. Confirm no queue stall or crash.
-4. Confirm `raw_hook_callbacks` and `accepted_pulses` increase, with throttle rejects expected between accepted 150 ms pulses.
-5. Approach ordinary ground loot and confirm exactly one `AUTO_PICKUP` per nearby item.
-6. Verify outside-radius loot and excluded interactables remain untouched.
-7. Travel through open world, dungeon, menu, and cutscene states. Confirm `WORLD_RESET`, no stale action, and recovery only after a fresh accepted input-frame pulse.
-8. Press F9 to disarm and confirm automatic pickup stops immediately.
-9. Capture AutoPickup/Radar user and debug logs, crash evidence, and enabled/disabled frametime.
+## Evidence correction
 
-This procedure supplies owner evidence only for the exact tested package and fingerprints.
+The accepted 0.5.1 trace proved the manual chain only for the observed `Vitality_Leave_01_C` interaction. It did not prove a general ordinary `DropItemActor` contract. Versions 0.5.2-0.5.4 incorrectly generalized that evidence and are rejected as implementation bases.
+
+## 0.6.0 procedure
+
+1. Install only after explicit authorization and record the staged DLL hash.
+2. Start on foot in a stable open-world scene.
+3. Place exactly one ordinary ground drop within 4.5 m; move other drops away.
+4. Press and release F9 once.
+5. Require `DIAGNOSTIC_ARMED`, `DISCOVERY_COMPLETE`, and `DIAGNOSTIC_TARGET_LOCKED`.
+6. Manually collect that same locked item through normal game interaction once.
+7. Do not interact with NPCs, chests, resources, or another drop during the window.
+8. Wait at least five seconds, then press F9 Off or allow the 60-second timeout.
+9. Exit normally and preserve the user and debug logs.
+
+## Decisive evidence
+
+- locked owner and component weak identities;
+- candidate class, World, location, state fields, and distance;
+- correlated overlap and interaction pre/post ordering;
+- receiver and parameter identities;
+- receiver target fields before and after each call;
+- `AniPickUp` and `SetDestroy` involvement, if any;
+- exact owner/component invalidation or state change;
+- `actions_invoked=0` throughout the session.
+
+This trace defines only the exact observed drop category. Mounted play and other interactable categories require separate traces.

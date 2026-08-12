@@ -2,17 +2,14 @@
 
 | Hazard | Mitigation |
 |---|---|
-| Shared Lua game-thread queue conflict | Marker-only Lua schedules no work; natural native UFunction supplies the pulse. |
-| Wrong controller/player | Exact DS classes plus bidirectional `Controller.Pawn` / `Player.Controller` identity. |
-| Natural pulse absent | Active mode remains false; no scan or Tick fallback. |
-| Excess hook frequency | Native `steady_clock` throttle rejects callbacks until 150 ms elapses. |
-| Wrong interactable | Exact DropItemActor owner, owned component, and values 2 and 7. |
-| Stale actor after travel | FWeakObjectPtr resolution only on an accepted pulse; transition clears the queue. |
-| Newly created actor not initialized | Missing component/state returns RetryLater, not permanent rejection. |
-| Distant item | Squared world-unit distance is checked against configured meters. |
-| Excess candidate work | Queue, candidates per pulse, retries, backoff, and action rate are bounded. |
-| Unknown build | Exact fingerprint gate keeps active false. |
-| Access violation | Class capture, pulse gates, property reads, location, and invocation fail closed under SEH. |
-| Hook after unload | UFunction hook unregisters; callbacks reject stale generations. |
-
-Runtime acceptance still requires input-pulse evidence, item/exclusion tests, Radar compatibility, travel, dungeon, menu, cutscene, long-session, crash, and frametime testing.
+| Another guessed action damages state or crashes | 0.6.0 contains no automatic interaction invocation or target-field writes. |
+| Vitality evidence is generalized to ordinary drops | Discovery and correlation require a real non-template `DropItemActor` weak identity. |
+| A template is mistaken for live loot | CDO, archetype, and default-subobject flags are rejected. |
+| Two nearby drops make correlation ambiguous | The target is not locked unless exactly one candidate passes all gates. |
+| Unrelated interaction hooks flood logs | Records are retained only when receiver, parameter, or target fields correlate to the locked identity. |
+| Global discovery stalls a frame | The initial sweep is incremental with a 2 ms batch budget. |
+| Always-on listeners create permanent overhead | Listeners and hooks exist only inside the owner-triggered 60-second window. |
+| Stale objects survive travel | World transition resets the state to Off, clears weak identities, and requests safe cleanup. |
+| Shutdown dereferences invalid UFunctions | UObject-array shutdown abandons local hook records and removes listeners without unregistering stale UFunction pointers. |
+| Deletion is mistaken for universal success | Deletion is logged as one possible transition and never validates a contract. |
+| Build success is called gameplay success | Owner evidence capture remains mandatory. |

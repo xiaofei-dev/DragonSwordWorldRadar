@@ -55,7 +55,7 @@ std::optional<ActionRequest> PickupController::plan_action(MonotonicTime now) {
         return std::nullopt;
     }
     next_global_action_ = now + std::chrono::milliseconds{configuration_.action_interval_ms};
-    return ActionRequest{.candidate = candidate->id, .epoch = epoch_, .key_action = contract_.key_action};
+    return ActionRequest{.candidate = candidate->id, .epoch = epoch_, .replay_function = contract_.replay_function};
 }
 
 void PickupController::record_action_result(WeakObjectId id, ActionResult result, MonotonicTime now) {
