@@ -1,7 +1,7 @@
 {
     "schema_version":  3,
     "version":  "0.4.0-dev74-minigamecatalog2",
-    "generated_at_utc":  "2026-08-12T06:19:47.4972078Z",
+    "generated_at_utc":  "2026-08-12T06:31:01.4831399Z",
     "hash_mode":  "sha256_raw_file_bytes",
     "excludes":  [
                      "metadata/source-manifest.json",
@@ -13,7 +13,7 @@
                      "src/installer/Core/obj/",
                      "src/installer/Core/bin/"
                  ],
-    "baseline_commit":  "38ff6549cffb519b4e21537c40966a0f541db5ce",
+    "baseline_commit":  "889ec3ad161d0fec53a58668e6cfaa781fc36520",
     "scope":  "complete DragonSwordWorldRadar repository source inventory",
     "file_count":  122,
     "files":  [
@@ -54,8 +54,8 @@
                   },
                   {
                       "path":  "build/Refresh-SourceMetadata.ps1",
-                      "size":  8647,
-                      "sha256":  "a4ad202603d44c526cf96b144513856ee920e4c454bd5d8159b08209878a051e"
+                      "size":  8670,
+                      "sha256":  "5f19fedc268623fa49aebf9d52cc2e974d53ebfe6202e6bc5882bb33e72b3253"
                   },
                   {
                       "path":  "build/Test-AssaultIntegration.ps1",
@@ -179,8 +179,8 @@
                   },
                   {
                       "path":  "metadata/source-snapshot.json",
-                      "size":  940,
-                      "sha256":  "256be341cf9cb2475edd65c2ace4e2e02167d6c02ef40d48f2887464e47e3667"
+                      "size":  963,
+                      "sha256":  "bf9c72c684c8c62a4370a584355ebc71167fe59ce266122ddf2228912563dafd"
                   },
                   {
                       "path":  "PROJECT_CONTEXT.md",

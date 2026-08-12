@@ -2,7 +2,7 @@
     "schema_version":  3,
     "current_source_version":  "0.4.0-dev74-minigamecatalog2",
     "source_layout":  "repository",
-    "source_commit_baseline":  "38ff6549cffb519b4e21537c40966a0f541db5ce",
+    "source_commit_baseline":  "889ec3ad161d0fec53a58668e6cfaa781fc36520",
     "runtime_ipc":  "protocol-v6 single scalar Motion/control Bridge with compact change notifications, 250 ms fallback, and debug-only strict inline A/B mode",
     "motion_protocol_version":  6,
     "motion_field_count":  38,
@@ -12,5 +12,5 @@
     "mole_fly_records":  34,
     "windows_compile_status":  "passed in Windows PowerShell 5.1",
     "in_game_status":  "0.4.0-dev74-minigamecatalog2 Windows source/package gates passed; compact smoothness, F7/F8 latency, travel, and frame-time require independent in-game acceptance",
-    "working_tree_status":  "implementation intentionally left uncommitted and undeployed for owner review"
+    "working_tree_status":  "validated source publication candidate; deployment and in-game acceptance remain separately recorded"
 }
