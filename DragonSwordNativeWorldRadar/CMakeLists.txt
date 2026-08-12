@@ -1,0 +1,26 @@
+cmake_minimum_required(VERSION 3.25)
+
+project(DragonSwordNativeWorldRadar LANGUAGES CXX)
+
+option(DSNWR_BUILD_UE4SS "Build the UE4SS native provider" OFF)
+set(UE4SS_ROOT "" CACHE PATH "Pinned RE-UE4SS v3.0.1 source tree with initialized submodules")
+
+if(DSNWR_BUILD_UE4SS)
+    if(NOT UE4SS_ROOT)
+        message(FATAL_ERROR "DSNWR_BUILD_UE4SS requires -DUE4SS_ROOT=<pinned RE-UE4SS tree>")
+    endif()
+    if(NOT EXISTS "${UE4SS_ROOT}/UE4SS/include/Mod/CppUserModBase.hpp")
+        message(FATAL_ERROR "UE4SS_ROOT is incomplete")
+    endif()
+
+    add_subdirectory("${UE4SS_ROOT}" "${CMAKE_BINARY_DIR}/ue4ss" EXCLUDE_FROM_ALL)
+    add_library(DragonSwordNativeWorldRadar SHARED src/ue4ss/main.cpp)
+    target_link_libraries(DragonSwordNativeWorldRadar PRIVATE UE4SS)
+    target_compile_features(DragonSwordNativeWorldRadar PRIVATE cxx_std_20)
+    target_compile_definitions(DragonSwordNativeWorldRadar PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+    if(MSVC)
+        target_compile_options(DragonSwordNativeWorldRadar PRIVATE /W4 /WX /wd4251 /permissive- /EHsc /utf-8)
+        set_property(SOURCE src/ue4ss/main.cpp APPEND PROPERTY COMPILE_OPTIONS /W4 /WX /wd4251 /wd5038 /permissive- /EHsc /utf-8)
+    endif()
+    set_target_properties(DragonSwordNativeWorldRadar PROPERTIES OUTPUT_NAME "main")
+endif()
