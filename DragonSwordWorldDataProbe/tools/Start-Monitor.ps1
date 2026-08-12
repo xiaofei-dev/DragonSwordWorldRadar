@@ -20,6 +20,20 @@ $monitorMutex = New-Object Threading.Mutex(
 if (-not $createdNew) { exit 0 }
 
 $logPath = Join-Path $Root 'runtime\monitor\monitor.log'
+$modsPath = Join-Path (Split-Path -Parent $Root) 'mods.txt'
+
+function Test-ModsTxtEnabled {
+    if (-not (Test-Path -LiteralPath $modsPath -PathType Leaf)) { return $false }
+    try {
+        foreach ($line in [IO.File]::ReadAllLines($modsPath)) {
+            if ($line -match '^\s*DragonSwordWorldDataProbe\s*:\s*([01])\s*(?:;.*)?$') {
+                return $Matches[1] -eq '1'
+            }
+        }
+    }
+    catch { return $false }
+    return $false
+}
 
 function Write-MonitorLog {
     param([string]$Event,[string]$Text='')
@@ -28,13 +42,22 @@ function Write-MonitorLog {
 }
 
 try {
-    Write-MonitorLog 'MONITOR_START' 'version=1.0.34'
+    Write-MonitorLog 'MONITOR_START' 'version=1.0.45'
+
+    if (-not (Test-ModsTxtEnabled)) {
+        Write-MonitorLog 'MONITOR_DISABLED' 'mods_txt_not_enabled'
+        exit 0
+    }
 
     $pollSeconds = [Math]::Max(1,[int]$suite.monitor.poll_seconds)
     $deadline = (Get-Date).AddMinutes([Math]::Max(1,[int]$suite.monitor.wait_timeout_minutes))
     $gameProcess = $null
 
     while ($null -eq $gameProcess -and (Get-Date) -lt $deadline) {
+        if (-not (Test-ModsTxtEnabled)) {
+            Write-MonitorLog 'MONITOR_DISABLED' 'mods_txt_changed_while_waiting_for_game'
+            exit 0
+        }
         $gameProcess = Get-GameProcessesCompat | Select-Object -First 1
         if ($null -eq $gameProcess) {
             Start-Sleep -Seconds $pollSeconds
@@ -54,6 +77,10 @@ try {
     Write-MonitorLog 'WAIT_GAME_EXIT_BEGIN' ('pid={0}' -f $gameProcessId)
 
     while ($null -ne (Get-Process -Id $gameProcessId -ErrorAction SilentlyContinue)) {
+        if (-not (Test-ModsTxtEnabled)) {
+            Write-MonitorLog 'MONITOR_DISABLED' 'mods_txt_changed_while_game_running'
+            exit 0
+        }
         Start-Sleep -Seconds $pollSeconds
     }
 
@@ -63,6 +90,11 @@ try {
     Write-MonitorLog 'POST_EXIT_GRACE_BEGIN' ('seconds={0}' -f $exitGrace)
     Start-Sleep -Seconds $exitGrace
     Write-MonitorLog 'POST_EXIT_GRACE_COMPLETE' ('seconds={0}' -f $exitGrace)
+
+    if (-not (Test-ModsTxtEnabled)) {
+        Write-MonitorLog 'MONITOR_DISABLED' 'mods_txt_not_enabled_before_collection'
+        exit 0
+    }
 
     Write-MonitorLog 'GAME_EXIT_COLLECTION_BEGIN' ('run=' + $runId)
 

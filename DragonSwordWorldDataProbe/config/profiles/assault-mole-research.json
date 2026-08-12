@@ -11,6 +11,7 @@
     "treasure_static_catalog",
     "treasure_blueprint_analysis",
     "assault_respawn_cycle_fast",
+    "assault_reveal_cycle_fast",
     "transition_capture_analysis",
     "assault_quest_condition_analysis"
   ],

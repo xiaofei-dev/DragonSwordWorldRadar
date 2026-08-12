@@ -34,11 +34,20 @@
     "all 40 MONSTER_ALIVE conditions name their unique target actor in AcceptConditionValue3",
     "weather or time can gate a mission indirectly by controlling local target existence",
     "global coverage of target existence across unloaded world-partition regions is not proven"
+    ,"CID 143 was first observed between 22:51:13 and 23:01:46 game time while weather state remained unchanged"
+    ,"MonsterSpawnBase exposes TableKey_RevealCycle and RevealCycleData exposes RevealIngametime and HideIngametime"
+    ,"the unique RevealCycleData directory entry is at encoded offset 11188 and its 12-byte compact record is deterministically decoded with exact validation"
+    ,"ObjectDump proves TableKey contains one integer Key member, allowing direct read-only runtime extraction of MonsterSpawnBase condition IDs"
+    ,"the first successful MonsterSpawnBase enumeration returned 374 objects, bound PlaceID 109 and PlaceID 120 with RevealCycleKey 0, and was followed four seconds later by an unhandled UE4SS-path C++ exception"
+    ,"automatic MonsterSpawnBase enumeration is disabled as crash-correlated"
+    ,"RevealCycleData.xml now extracts deterministically through an exact validated 12-byte uncompressed compact entry"
+    ,"RevealCycle row 10001 is cemetery_skeleton with reveal hour 23 and hide hour 6"
+    ,"CID 143 to RevealCycle 10001 is strongly inferred by identity and the observed 23:00 boundary but lacks a direct generator-key binding"
   ],
   "remaining_validation": [
-    "compare conditioned PlaceID 104 and control PlaceID 126 while each region is loaded and unloaded",
-    "compare one weather/time-bound target while its region is loaded and unloaded using a bounded non-Actor-scan source",
-    "confirm whether target-existence state already incorporates weather and time",
-    "confirm the DAILY reset boundary used by RespawnCycleID 105"
+    "preserve CID 143 to RevealCycle 10001 as inferred until a direct generator-asset key binding is recovered",
+    "validate the CID 143 23:00 reveal and 06:00 hide behavior in the production Radar after implementation",
+    "keep weather excluded unless future static evidence establishes a target-specific dependency",
+    "the exact DAILY reset boundary used by RespawnCycleID 105 remains unspecified but is not a blocker for the persisted tb_actor_respawn implementation"
   ]
 }

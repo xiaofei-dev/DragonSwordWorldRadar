@@ -8,4 +8,8 @@
 - The existing Radar has already demonstrated stable reads of the required save-state tables. This framework preserves the legacy reader source but does not claim a universal SQLCipher solution or replace the Radar tracker.
 - Static PAK extraction is the correct catalog path.
 - Adjacent encoded-entry recovery produced false positives and is forbidden.
-- The remaining static blocker is an exact encoded-entry decoder for Kind/Place/RespawnCycle entries.
+- The exact 12-byte uncompressed compact entry for `RevealCycleData.xml` is now decoded and validated without guessing.
+- Assault research collection is closed for production implementation: static 40-target identity plus `tb_actor_respawn` supplies the ordinary target loop.
+- RevealCycle row 10001 is confirmed as 23:00-06:00. Applying it to CID 143 is accepted only as a clearly labeled strong inference until a direct generator-asset key binding is recovered.
+- Weather is excluded from the production Assault model because no target-specific weather dependency was established.
+- Further `MonsterSpawnBase` enumeration is prohibited because the first successful enumeration was followed by a UE4SS-path native crash.

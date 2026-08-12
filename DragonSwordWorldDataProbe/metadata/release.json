@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "version": "1.0.42",
+  "version": "1.0.55",
   "name": "DragonSwordWorldDataProbe",
-  "stage": "assault-time-weather-teleport-validation",
+  "stage": "assault-static-reveal-cycle",
   "default_profile": "assault-mole-research",
   "boss_logic_modified": false,
   "default_runtime_modules": [
@@ -48,6 +48,14 @@
     "diagnostic collection survives module-host failures"
   ],
   "changes": [
+    "add strict XOR12 uncompressed compact-entry extraction for RevealCycleData.xml",
+    "validate the exact directory offset, PAK DataEntry metadata, XML root identity, and payload hash",
+    "preserve five static reveal cycles and the evidence-labeled CID 143 to cycle 10001 candidate",
+    "disable automatic MonsterSpawnBase diagnostics after a runtime-correlated UE4SS native crash",
+    "preserve the 374-spawner partial capture and bound-target condition keys for offline analysis",
+    "add bounded MonsterSpawnBase discovery and fixed-coordinate binding for three known Assault targets",
+    "read TableKey.Key directly for monster, spawn condition, respawn cycle, and reveal cycle without unknown function calls",
+    "cache valid fixed spawners and retry incomplete discovery at most once per 30 seconds",
     "proven PakReaderCore+ooz backend retained",
     "critical Kind/Place/Respawn entries now receive one exact recovery attempt using the real inferred numberMask and exact directory offset",
     "critical recovery never searches adjacent offsets and never enumerates 0..255 masks",
@@ -475,5 +483,67 @@
     "read bounded environment custom-time, speed, weather-state, and teleport scalars",
     "write a new v3 report for before-and-after teleport continuity analysis",
     "do not enumerate environment maps or invoke world-time or weather functions"
+  ],
+  "changes_1_0_43": [
+    "replace the completed PlaceID 126 control with PlaceID 109 / CID 148",
+    "compare the only two Assault targets whose raw SectionMonster GroupID is zero",
+    "enumerate only DsMon_Skeleton_leader_Named02_C and DsMon_Hound_Named02_C",
+    "preserve the bounded 10-second cadence and loaded-object-set-only absence semantics",
+    "write separate assault-special-spawn-v4 current and history reports"
+  ],
+  "changes_1_0_44": [
+    "add a build-pinned exact RevealCycleData extractor",
+    "parse RevealIngametime and HideIngametime without assuming field semantics beyond their names",
+    "isolate rows near the observed CID 143 23:00 reveal boundary",
+    "preserve MonsterSpawnBase TableKey_RevealCycle identity binding as an unresolved gate",
+    "perform no broad Spawner or Actor enumeration"
+  ],
+  "changes_1_0_45": [
+    "make the automatic external Monitor honor the exact DragonSwordWorldDataProbe entry in mods.txt",
+    "recheck mods.txt during game wait, game runtime, and immediately before post-exit collection",
+    "stop automatic collection fail closed when the entry is missing, unreadable, malformed, or disabled",
+    "keep explicit manual diagnostics independent of mods.txt"
+  ],
+  "changes_1_0_46": [
+    "add PlaceID 120 CID 106 as the ordinary Assault reveal control",
+    "enumerate only its observed exact generated class DsMon_Goblin_s_C in addition to the existing two exact classes",
+    "bind the control by exact UIDName, CID, and static coordinates",
+    "do not interpret an Actor property absence as an empty MonsterSpawnBase RevealCycle key"
+  ],
+  "changes_1_0_47": [
+    "add a bounded DsPCTargetingComponent LockOnTarget identity route for the CID 106 control",
+    "record the actual target class only after UIDName or CID plus static-coordinate validation",
+    "retain the exact-class route as a comparison without treating its zero count as target absence",
+    "perform no Character or Actor enumeration"
+  ],
+  "changes_1_0_48": [
+    "enumerate only the exact DsPCTargetingComponent class",
+    "inspect each valid component for a nonempty LockOnTarget",
+    "accept only the identity-validated CID 106 target",
+    "record component and nonempty-target counts without enumerating Character or Actor"
+  ],
+  "changes_1_0_49": [
+    "record bounded identity summaries for up to three nonempty LockOnTarget objects",
+    "include actual class, candidate UIDName, CID, and first-target coordinates",
+    "keep CID 106 promotion gated by exact UIDName or CID plus static coordinates",
+    "record that visible sunny, fog, and rain observations all shared weather scalars 2 and 3"
+  ],
+  "changes_1_0_50": [
+    "resolve LockOnTarget components through the proven ActorComponent GetOwner method",
+    "read CID 106 identity only from the resolved valid owner Actor",
+    "record bounded weather actor, current payload, default FX, and forced-weather object identities",
+    "invoke no weather function and enumerate no weather container"
+  ],
+  "changes_1_0_51": [
+    "disable all runtime reads of weather actor, current payload, default FX, and forced-weather object references",
+    "retain only the previously stable scalar time and raw weather-state reads",
+    "preserve the owner-resolution route but execute it only for an already valid nonempty lock target",
+    "record the 1.0.50 startup crash boundary as weather-object-reference-related rather than owner-related"
+  ],
+  "changes_1_0_52": [
+    "replace the provisional CID 106 class with observed DsMon_Goblin_berserker_Named_C",
+    "accept the ordinary control through exact class plus the existing 200-unit static-coordinate bound",
+    "retain lock-target owner evidence as the provenance for the generated-class correction",
+    "do not infer an empty RevealCycle key from the actor-class observation"
   ]
 }

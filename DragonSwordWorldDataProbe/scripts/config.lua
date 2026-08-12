@@ -1,10 +1,10 @@
 return {
-    version = "1.0.42",
-    state_schema = 142,
+    version = "1.0.55",
+    state_schema = 155,
     auto_start_external_monitor = true,
 
     probe_order = {
-        "assault_target_presence_pair",
+        "healthcheck",
     },
 
     probe_modules = {
@@ -22,6 +22,7 @@ return {
         treasure_actor_snapshot = "modules\\treasure_actor_snapshot.lua",
         assault_condition_transition = "modules\\assault_condition_transition.lua",
         assault_target_presence_pair = "modules\\assault_target_presence_pair.lua",
+        assault_spawn_condition_diagnostics = "modules\\assault_spawn_condition_diagnostics.lua",
         assault_condition_correlation = "modules\\assault_condition_correlation.lua",
         class_presence = "modules\\class_presence.lua",
         property_snapshot = "modules\\property_snapshot.lua",
@@ -37,7 +38,6 @@ return {
         pass_pause_ms = 500,
         scheduler_tick_ms = 500,
         probe_intervals_ms = {
-            assault_target_presence_pair = 10000,
         },
         stalled_pending_warning_ms = 60000,
         status_refresh_ms = 15000,

@@ -170,6 +170,20 @@
     "description": "Build-pinned single-table RespawnCycleData extractor for assault cycle 105."
   },
   {
+    "id": "assault_reveal_cycle_fast",
+    "enabled": true,
+    "engine": "powershell",
+    "risk": "read-only",
+    "triggers": [
+      "game_exit",
+      "collect"
+    ],
+    "entry": "tools\\modules\\assault_reveal_cycle_fast\\Run.ps1",
+    "timeout_seconds": 75,
+    "order": 15,
+    "description": "Build-pinned single-table RevealCycleData extractor for Assault target reveal and hide windows."
+  },
+  {
     "id": "assault_quest_condition_analysis",
     "enabled": true,
     "engine": "powershell",

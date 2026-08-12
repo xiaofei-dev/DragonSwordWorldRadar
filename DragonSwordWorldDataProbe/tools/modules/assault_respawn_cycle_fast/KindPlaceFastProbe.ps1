@@ -1,13 +1,21 @@
+param(
+    [string]$TargetFile = "RespawnCycleData.xml",
+    [string]$OutputRoot = "",
+    [string]$OutputStem = "respawn_cycle_fast"
+)
 $ErrorActionPreference = "Stop"
 $modDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$probeRoot = if ([string]::IsNullOrWhiteSpace($OutputRoot)) { $modDir } else { [IO.Path]::GetFullPath($OutputRoot) }
+if ($TargetFile -notmatch '^[A-Za-z0-9_\-]+\.xml$') { throw "Unsafe target XML name: $TargetFile" }
+if ($OutputStem -notmatch '^[A-Za-z0-9_\-]+$') { throw "Unsafe output stem: $OutputStem" }
 $toolsDir = Join-Path $modDir "tools"
 $corePath = Join-Path $toolsDir "PakReaderCore.exe"
 $oozPath = Join-Path $toolsDir "ooz.exe"
-$outputDir = Join-Path $modDir "respawn_cycle_fast_probe"
+$outputDir = Join-Path $probeRoot ($OutputStem + "_probe")
 $rawDir = Join-Path $outputDir "xml"
-$tempDir = Join-Path ([IO.Path]::GetTempPath()) ("DSRespawnCycleFast-" + [Guid]::NewGuid().ToString("N"))
-$stagePath = Join-Path $modDir "respawn_cycle_fast_last_stage.txt"
-$logPath = Join-Path $modDir "respawn_cycle_fast.log"
+$tempDir = Join-Path ([IO.Path]::GetTempPath()) ("DSExactTableFast-" + [Guid]::NewGuid().ToString("N"))
+$stagePath = Join-Path $probeRoot ($OutputStem + "_last_stage.txt")
+$logPath = Join-Path $probeRoot ($OutputStem + ".log")
 $utf8 = New-Object System.Text.UTF8Encoding -ArgumentList $false
 $flagsStatic = [Reflection.BindingFlags]::Static -bor [Reflection.BindingFlags]::Public -bor [Reflection.BindingFlags]::NonPublic
 $flagsInstance = [Reflection.BindingFlags]::Instance -bor [Reflection.BindingFlags]::Public -bor [Reflection.BindingFlags]::NonPublic
@@ -316,7 +324,7 @@ function Log([string]$Message) {
 }
 function Stage([string]$Name, [string]$Details) {
     $text = @(
-        "DragonSword Assault RespawnCycleData PAK probe",
+        ("DragonSword exact table PAK probe: " + $TargetFile),
         "Version: 1.0.22-xor16-accept-success",
         ("Updated: " + [DateTime]::Now.ToString("yyyy-MM-dd HH:mm:ss")),
         ("Stage: " + $Name),
@@ -600,6 +608,149 @@ function Write-Xor16Debug(
         )
     }
     catch {}
+}
+
+function Try-Extract-UncompressedXor12CompactEntry(
+    $ProgramType,
+    [byte[]]$EncodedEntries,
+    [int]$EncodedOffset,
+    [int]$NextEncodedOffset,
+    $Binary,
+    [byte[]]$AesKey,
+    [string]$OozPath,
+    [string]$TempDir,
+    [string]$OutputPath,
+    [string]$ExpectedFullName)
+{
+    try {
+        if ($EncodedOffset -lt 0 -or
+            $NextEncodedOffset - $EncodedOffset -ne 12 -or
+            $EncodedOffset + 12 -gt $EncodedEntries.Length)
+        {
+            return $null
+        }
+
+        [byte[]]$raw = New-Object byte[] 12
+        [Array]::Copy($EncodedEntries, $EncodedOffset, $raw, 0, 12)
+        [byte]$mask = $raw[1]
+
+        # The compact number mask must be self-identifying. Requiring the
+        # first three bytes to agree avoids a mask search or an inferred
+        # adjacent-record substitution.
+        if ($raw[0] -ne $mask -or $raw[2] -ne $mask) {
+            return $null
+        }
+
+        [byte[]]$decoded = New-Object byte[] 12
+        for ($i = 0; $i -lt 12; $i++) {
+            $decoded[$i] = [byte]($raw[$i] -bxor $mask)
+        }
+
+        [uint32]$bits = Read-UInt32LE $decoded 0
+        [int]$compressionCode = [int](($bits -shr 23) -band 0x3F)
+        [bool]$encrypted = ($bits -band ([uint32]1 -shl 22)) -ne 0
+        [uint32]$blockCount = ($bits -shr 6) -band 0xFFFF
+        [uint32]$blockSizeCode = $bits -band 0x3F
+        [bool]$offset32 = ($bits -band ([uint32]1 -shl 31)) -ne 0
+        [bool]$uncompressed32 = ($bits -band ([uint32]1 -shl 30)) -ne 0
+        [bool]$compressed32 = ($bits -band ([uint32]1 -shl 29)) -ne 0
+
+        if ($compressionCode -ne 0 -or
+            $encrypted -or
+            $blockCount -ne 0 -or
+            $blockSizeCode -ne 0 -or
+            -not $offset32 -or
+            -not $uncompressed32 -or
+            -not $compressed32)
+        {
+            return $null
+        }
+
+        [uint64]$pakOffset = Read-UInt32LE $decoded 4
+        [uint64]$uncompressedSize = Read-UInt32LE $decoded 8
+        Log ('XOR12_CANDIDATE | file=' + $ExpectedFullName +
+            ' | mask=' + $mask + ' | bits=0x{0:X8}' -f $bits +
+            ' | pakOffset=' + $pakOffset + ' | size=' + $uncompressedSize)
+        if ($pakOffset -eq 0 -or
+            $pakOffset -ge [uint64]$Binary.BaseStream.Length -or
+            $uncompressedSize -eq 0 -or
+            $uncompressedSize -gt 268435456)
+        {
+            return $null
+        }
+
+        $a = New-Args 2
+        $a[0] = $Binary
+        $a[1] = $pakOffset
+        $data = Invoke-Static $ProgramType 'ReadDataEntry' $a
+
+        Log ('XOR12_DATA | offset=' + (Get-Value $data 'Offset') +
+            ' | compressed=' + (Get-Value $data 'CompressedSize') +
+            ' | uncompressed=' + (Get-Value $data 'UncompressedSize') +
+            ' | compressionIndex=' + (Get-Value $data 'CompressionIndex') +
+            ' | flags=' + (Get-Value $data 'Flags'))
+
+        $dataMatches = (
+            ([uint64](Get-Value $data 'Offset') -eq 0) -and
+            ([uint64](Get-Value $data 'CompressedSize') -eq $uncompressedSize) -and
+            ([uint64](Get-Value $data 'UncompressedSize') -eq $uncompressedSize) -and
+            ([uint32](Get-Value $data 'CompressionIndex') -eq 0) -and
+            (([byte](Get-Value $data 'Flags') -band 1) -eq 0)
+        )
+        if (-not $dataMatches) {
+            Log 'XOR12_REJECT | data_entry_mismatch'
+            return $null
+        }
+
+        # An uncompressed DataEntry has a fixed 53-byte header:
+        # three UInt64 values, compression index, SHA1, flags, and block size.
+        # PakReaderCore's writer is intentionally Oodle-only, so copy the
+        # validated raw payload directly for this exact layout.
+        [uint64]$payloadOffset = $pakOffset + 53
+        if ($payloadOffset + $uncompressedSize -gt
+            [uint64]$Binary.BaseStream.Length)
+        {
+            Log 'XOR12_REJECT | payload_out_of_bounds'
+            return $null
+        }
+        $Binary.BaseStream.Position = [int64]$payloadOffset
+        [byte[]]$payload = $Binary.ReadBytes([int]$uncompressedSize)
+        if ($payload.Length -ne [int]$uncompressedSize) {
+            Log ('XOR12_REJECT | payload_short_read=' + $payload.Length)
+            return $null
+        }
+        [IO.File]::WriteAllBytes($OutputPath, $payload)
+        Log ('XOR12_PAYLOAD_WRITTEN | path=' + $OutputPath +
+            ' | bytes=' + $payload.Length)
+
+        if (-not (Test-TargetXmlIdentity `
+            -XmlPath $OutputPath `
+            -ExpectedFullName $ExpectedFullName))
+        {
+            Log 'XOR12_REJECT | xml_identity_failed'
+            Remove-Item -LiteralPath $OutputPath -Force -ErrorAction SilentlyContinue
+            return $null
+        }
+
+        Log 'XOR12_ACCEPT | xml_identity_validated'
+
+        return [pscustomobject]@{
+            Mode = 'EXACT_XOR12_UNCOMPRESSED'
+            XorMask = [int]$mask
+            EncodedOffset = $EncodedOffset
+            PakOffset = $pakOffset
+            CompressedSize = $uncompressedSize
+            UncompressedSize = $uncompressedSize
+            CompressionCode = $compressionCode
+            BlockCount = $blockCount
+            BlockSizeCode = $blockSizeCode
+        }
+    }
+    catch {
+        Log ('XOR12_EXCEPTION | ' + $_.Exception.Message)
+        Remove-Item -LiteralPath $OutputPath -Force -ErrorAction SilentlyContinue
+        return $null
+    }
 }
 
 function Try-Extract-SingleBlockXorCompactEntry(
@@ -1328,21 +1479,21 @@ try {
             Export-Csv -LiteralPath (Join-Path $outputDir 'all_game_data_xml_entries.csv') -NoTypeInformation -Encoding UTF8
 
         function Rank-Candidate($Entry) {
-            if ([string]$Entry.File -ieq 'RespawnCycleData.xml') { return 0 }
+            if ([string]$Entry.File -ieq $TargetFile) { return 0 }
             return 100
         }
 
         $candidates = @(
             $entries |
                 Where-Object {
-                    ([string]$_.File -ieq 'RespawnCycleData.xml')
+                    ([string]$_.File -ieq $TargetFile)
                 } |
                 Sort-Object @{Expression={Rank-Candidate $_}}, FullName
         )
 
         Stage "EXTRACT_XML" ("candidates=" + $candidates.Count)
         if ($candidates.Count -ne 1) {
-            throw ("Expected exactly 1 RespawnCycleData candidate, found " + $candidates.Count)
+            throw ("Expected exactly 1 " + $TargetFile + " candidate, found " + $candidates.Count)
         }
         $manifest = New-Object Collections.Generic.List[string]
         $manifest.Add("MountPoint: " + $mountPoint)
@@ -1390,7 +1541,7 @@ try {
                         $isCritical = @(
                             '/UnexpectedMissionKindData.xml',
                             '/UnexpectedMissionPlaceData.xml',
-                            '/RespawnCycleData.xml',
+                            ('/' + $TargetFile),
                             '/MiniGameData.xml'
                         ) -contains [string]$entry.FullName
 
@@ -1408,7 +1559,7 @@ try {
                                 $nextEncodedOffset = [int]$nextEntry.EncodedOffset
                             }
 
-                            $xor16 = Try-Extract-SingleBlockXorCompactEntry `
+                            $xor12 = Try-Extract-UncompressedXor12CompactEntry `
                                 -ProgramType $programType `
                                 -EncodedEntries $encodedEntries `
                                 -EncodedOffset ([int]$entry.EncodedOffset) `
@@ -1420,11 +1571,31 @@ try {
                                 -OutputPath $outputPath `
                                 -ExpectedFullName ([string]$entry.FullName)
 
+                            if ($null -ne $xor12) {
+                                $fallback = $xor12
+                                $mode = [string]$xor12.Mode
+                            }
+
+                            $xor16 = $null
+                            if ($null -eq $fallback) {
+                                $xor16 = Try-Extract-SingleBlockXorCompactEntry `
+                                -ProgramType $programType `
+                                -EncodedEntries $encodedEntries `
+                                -EncodedOffset ([int]$entry.EncodedOffset) `
+                                -NextEncodedOffset $nextEncodedOffset `
+                                -Binary $binary `
+                                -AesKey $aesKey `
+                                -OozPath $oozPath `
+                                -TempDir $tempDir `
+                                -OutputPath $outputPath `
+                                -ExpectedFullName ([string]$entry.FullName)
+                            }
+
                             if ($null -ne $xor16) {
                                 $fallback = $xor16
                                 $mode = [string]$xor16.Mode
                             }
-                            else {
+                            elseif ($null -eq $fallback) {
                                 Write-CompactEntryEvidence `
                                     -ProgramType $programType `
                                     -ReaderType $readerType `
@@ -1437,7 +1608,7 @@ try {
 
                                 throw (
                                     $primaryError +
-                                    ' | XOR16 single-block recovery failed; evidence captured'
+                                    ' | XOR12/XOR16 deterministic recovery failed; evidence captured'
                                 )
                             }
                         }
@@ -1490,6 +1661,13 @@ try {
                         ' | pakOffset=' + $fallback.PakOffset +
                         ' | compressionCode=' + $fallback.CompressionCode +
                         ' | blockCount=' + $fallback.BlockCount +
+                        ' | compressed=' + $fallback.CompressedSize +
+                        ' | uncompressed=' + $fallback.UncompressedSize
+                }
+                elseif ($null -ne $fallback -and $mode -eq 'EXACT_XOR12_UNCOMPRESSED') {
+                    $detail =
+                        ' | xorMask=' + $fallback.XorMask +
+                        ' | pakOffset=' + $fallback.PakOffset +
                         ' | compressed=' + $fallback.CompressedSize +
                         ' | uncompressed=' + $fallback.UncompressedSize
                 }
