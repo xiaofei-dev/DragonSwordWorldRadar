@@ -57,8 +57,12 @@ namespace DragonSwordWorldRadar
                 // catalog point and hiding opened records a few seconds later.
                 if (hasSave)
                 {
-                    foreach (WorldTreasure treasure in catalog.Points)
+                    IList<WorldTreasure> points = catalog.Points;
+                    for (int index = 0;
+                        index < points.Count;
+                        index++)
                     {
+                        WorldTreasure treasure = points[index];
                         if (saveState.IsOpened(
                                 treasure.SaveId,
                                 opened))

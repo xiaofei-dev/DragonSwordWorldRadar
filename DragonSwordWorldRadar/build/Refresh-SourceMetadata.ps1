@@ -80,6 +80,15 @@ Add-Mapping $mappings 'README.md' 'README.txt'
 Add-Mapping $mappings 'resources\enabled.txt' 'enabled.txt'
 
 $byteIdentical = @($mappings | Where-Object { $_.byte_identical }).Count
+if ($byteIdentical -ne $mappings.Count) {
+    $mismatches = @($mappings |
+        Where-Object { -not $_.byte_identical } |
+        ForEach-Object {
+            "$($_.source_path) -> $($_.release_path)"
+        })
+    throw ('Source/release byte mismatch: ' +
+        ($mismatches -join ', '))
+}
 $releaseMap = [ordered]@{
     schema_version = 3
     version = $version
@@ -116,15 +125,15 @@ $sourceSnapshot = [ordered]@{
     current_source_version = $version
     source_layout = 'repository'
     source_commit_baseline = $baselineCommit.Trim()
-    runtime_ipc = 'protocol-v5 single scalar Motion/control Bridge'
-    motion_protocol_version = 5
-    motion_field_count = 37
+    runtime_ipc = 'protocol-v6 single scalar Motion/control Bridge with compact change notifications, 250 ms fallback, and debug-only strict inline A/B mode'
+    motion_protocol_version = 6
+    motion_field_count = 38
     overlay_source_files = @(Get-ChildItem -LiteralPath (Join-Path $root 'src\overlay') -Recurse -Filter '*.cs' -File | Where-Object { $_.FullName -notmatch '[\\/](?:obj|bin)[\\/]' }).Count
     installer_core_source_files = @(Get-ChildItem -LiteralPath (Join-Path $root 'src\installer\Core') -Recurse -Filter '*.cs' -File | Where-Object { $_.FullName -notmatch '[\\/](?:obj|bin)[\\/]' }).Count
     ue4ss_lua_modules = @(Get-ChildItem -LiteralPath (Join-Path $root 'src\ue4ss') -Filter '*.lua' -File).Count
     mole_fly_records = 34
     windows_compile_status = 'passed in Windows PowerShell 5.1'
-    in_game_status = 'dev37 fail-closed clock rollback source gates passed; repeated F7, dungeon travel, and performance require independent in-game acceptance'
+    in_game_status = "$version Windows source/package gates passed; compact smoothness, F7/F8 latency, travel, and frame-time require independent in-game acceptance"
     working_tree_status = 'implementation intentionally left uncommitted and undeployed for owner review'
 }
 [IO.File]::WriteAllText(
@@ -138,17 +147,22 @@ foreach ($file in @(Get-ChildItem -LiteralPath $root -Recurse -File | Sort-Objec
     if (($relative -eq 'metadata/source-manifest.json') -or
         $relative.StartsWith('dist/', [StringComparison]::OrdinalIgnoreCase) -or
         $relative.StartsWith('runtime/', [StringComparison]::OrdinalIgnoreCase) -or
-        $relative -match '(?i)^src/installer/Core/(?:obj|bin)/') {
+        $relative -match '(?i)^src/(?:overlay|installer/Core)/(?:obj|bin)/') {
         continue
     }
     $manifestFiles += Get-FileRecord $root $file
+}
+if (@($manifestFiles | Where-Object {
+        $_.path -match '(?i)^src/(?:overlay|installer/Core)/(?:obj|bin)/'
+    }).Count -ne 0) {
+    throw 'Source manifest contains excluded obj/bin build output.'
 }
 $manifest = [ordered]@{
     schema_version = 3
     version = $version
     generated_at_utc = [DateTime]::UtcNow.ToString('O')
     hash_mode = 'sha256_raw_file_bytes'
-    excludes = @('metadata/source-manifest.json','.git/','dist/','runtime/','src/installer/Core/obj/','src/installer/Core/bin/')
+    excludes = @('metadata/source-manifest.json','.git/','dist/','runtime/','src/overlay/obj/','src/overlay/bin/','src/installer/Core/obj/','src/installer/Core/bin/')
     baseline_commit = $baselineCommit.Trim()
     scope = 'complete DragonSwordWorldRadar repository source inventory'
     file_count = $manifestFiles.Count

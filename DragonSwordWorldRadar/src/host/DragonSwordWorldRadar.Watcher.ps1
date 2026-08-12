@@ -42,7 +42,7 @@ $createdNew = $false
 $mutex = New-Object Threading.Mutex($true, 'Local\DragonSwordWorldRadar.TransientHost', [ref]$createdNew)
 if (-not $createdNew) { Log "HOST_ALREADY_RUNNING stamp=$RequestStamp pid=$PID"; exit 0 }
 try {
-Log "HOST_START version=0.4.0-dev59-ue4ssroot1 stamp=$RequestStamp pid=$PID"
+Log "HOST_START version=0.4.0-dev74-minigamecatalog2 stamp=$RequestStamp pid=$PID"
     if (-not (Test-RadarEnabled)) {
         Log "MOD_DISABLED DragonSwordWorldRadar=0 stamp=$RequestStamp"
         exit 0

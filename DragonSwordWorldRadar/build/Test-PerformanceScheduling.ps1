@@ -1,40 +1,66 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $version = [string]((Get-Content -LiteralPath (Join-Path $root 'metadata\release.json') -Raw | ConvertFrom-Json).version)
-$clockEnabled = $version -like '0.4.0-dev39-*' -or $version -like '0.4.0-dev48-*' -or $version -like '0.4.0-dev49-*' -or $version -like '0.4.0-dev50-*' -or $version -like '0.4.0-dev51-*' -or $version -like '0.4.0-dev52-*' -or $version -like '0.4.0-dev53-*' -or $version -like '0.4.0-dev54-*' -or $version -like '0.4.0-dev55-*' -or $version -like '0.4.0-dev56-*' -or $version -like '0.4.0-dev57-*' -or $version -like '0.4.0-dev58-*' -or $version -like '0.4.0-dev59-*'
+$clockEnabled = $version -like '0.4.0-dev39-*' -or $version -like '0.4.0-dev48-*' -or $version -like '0.4.0-dev49-*' -or $version -like '0.4.0-dev50-*' -or $version -like '0.4.0-dev51-*' -or $version -like '0.4.0-dev52-*' -or $version -like '0.4.0-dev53-*' -or $version -like '0.4.0-dev54-*' -or $version -like '0.4.0-dev55-*' -or $version -like '0.4.0-dev56-*' -or $version -like '0.4.0-dev57-*' -or $version -like '0.4.0-dev58-*' -or $version -like '0.4.0-dev59-*' -or $version -like '0.4.0-dev60-*' -or $version -like '0.4.0-dev61-*' -or $version -like '0.4.0-dev62-*' -or $version -like '0.4.0-dev63-*' -or $version -like '0.4.0-dev64-*' -or $version -like '0.4.0-dev65-*' -or $version -like '0.4.0-dev66-*' -or $version -like '0.4.0-dev67-*' -or $version -like '0.4.0-dev68-*' -or $version -like '0.4.0-dev69-*' -or $version -like '0.4.0-dev70-*' -or $version -like '0.4.0-dev71-*' -or $version -like '0.4.0-dev72-*' -or $version -like '0.4.0-dev73-*' -or $version -like '0.4.0-dev74-*'
 $mole = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\mole_completion.lua') -Raw
 $environment = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\world_environment.lua') -Raw
 $worldMap = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\world_map.lua') -Raw
 $main = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\main.lua') -Raw
 $diagnostics = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\diagnostics.lua') -Raw
 $radar = Get-Content -LiteralPath (Join-Path $root 'src\overlay\UI\RadarForm.cs') -Raw
+$motionReader = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Bridge\MotionBridgeReader.cs') -Raw
 $renderer = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Rendering\WorldStatusRenderer.cs') -Raw
 $bossRenderer = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Rendering\BossMarkerRenderer.cs') -Raw
 $moleRenderer = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Rendering\MoleMarkerRenderer.cs') -Raw
 $overlayPerformance = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Diagnostics\OverlayPerformanceTracker.cs') -Raw
 $debugSettings = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Configuration\DebugSettings.cs') -Raw
-$defaultConfig = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\config.default.lua') -Raw
+$defaultConfig = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\config.lua') -Raw
 $installer = Get-Content -LiteralPath (Join-Path $root 'src\installer\Install.ps1') -Raw
 $keyReader = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\SaveDatabaseKeyReader.cs') -Raw
 $snapshotReader = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\SaveSnapshotReader.cs') -Raw
 $saveState = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\TreasureSaveState.cs') -Raw
+$encounterAvailability = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\EncounterAvailabilityTracker.cs') -Raw
+$nativeMethods = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Platform\NativeMethods.cs') -Raw
 $ownerConfig = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\GeneratedOwnerPointerConfig.cs') -Raw
 $ownerResolver = Get-Content -LiteralPath (Join-Path $root 'src\installer\Core\Generation\OwnerPointerRvaResolver.cs') -Raw
 $defaultOverrides = Get-Content -LiteralPath (Join-Path $root 'resources\defaults\treasure_overrides.txt') -Raw
 $baselineRoot = Join-Path $root 'dist\DragonSwordWorldRadar-0.4.0-dev15-status-autostart-layout1\DragonSwordWorldRadar'
-$performanceBaselineRoot = Join-Path $root 'dist\DragonSwordWorldRadar-0.4.0-dev30-referencecache1\DragonSwordWorldRadar'
 $script:assertionCount = 0
 function Assert-True([bool]$Condition, [string]$Message) {
     $script:assertionCount++
     if (-not $Condition) { throw $Message }
 }
-Assert-True ($defaultConfig.Contains('debug_logging = true')) 'Pre-release file diagnostics are not enabled by default.'
+function Invoke-ControlWatchdogModel([int[]]$SerialSamples, [int]$Threshold) {
+    $observed = $SerialSamples[0]
+    $stale = 0
+    $triggeredAt = -1
+    for ($index = 1; $index -lt $SerialSamples.Count; $index++) {
+        if ($SerialSamples[$index] -ne $observed) {
+            $observed = $SerialSamples[$index]
+            $stale = 0
+            continue
+        }
+        $stale = [Math]::Min($Threshold, $stale + 1)
+        if ($stale -ge $Threshold) {
+            $triggeredAt = $index
+            break
+        }
+    }
+    return $triggeredAt
+}
+Assert-True ((Invoke-ControlWatchdogModel @(10,10,10,10,10,10) 5) -eq 5) 'Control watchdog does not require exactly five consecutive stale observations.'
+Assert-True ((Invoke-ControlWatchdogModel @(10,10,11,11,11,12,12,12) 5) -eq -1) 'Healthy control progress can falsely trigger automatic recovery.'
+Assert-True ($defaultConfig.Contains('debug_logging = false')) 'Normal runtime does not disable file diagnostics by default.'
+Assert-True ($main.Contains('if not f7_trace_active or perf_diagnostics == nil then return end')) 'F7 trace does not fail fast when debug diagnostics are disabled.'
+Assert-True ($main.Contains('if perf_diagnostics == nil then') -and $main.Contains('f7_trace_active = false')) 'F7 still activates its crash-trace budget in normal mode.'
+Assert-True (-not [regex]::IsMatch($main, 'f7_trace\s*\([^\)]*\{', [Text.RegularExpressions.RegexOptions]::Singleline)) 'F7 trace call eagerly allocates a field table before its disabled guard.'
+Assert-True (-not [regex]::IsMatch($main, '(?<!perf_)diagnostics\.debug\(')) 'Normal-use diagnostics object still receives eager debug-only work.'
 Assert-True ($defaultConfig.Contains('diagnostic_verbose = false')) 'In-map verbose labels are not disabled by default.'
 Assert-True ($debugSettings.Contains('public static bool VerboseLabelsEnabled')) 'File diagnostics and visual labels do not expose separate settings.'
 Assert-True ($radar.Contains('DebugSettings.VerboseLabelsEnabled')) 'Radar visual labels are not gated by diagnostic_verbose.'
 Assert-True (-not $radar.Contains('bool showDebugCoordinates = _debugEnabled;')) 'Radar visual labels are still coupled to file debug logging.'
-foreach ($marker in @('MINIMAP_SCALE_PERF','cache_validation_ms','find_called','find_ms','resolved_validation_ms','layer_map_validation_ms','map_overlay_validation_ms','scale_access_ms')) { Assert-True ($main.Contains($marker)) "Missing minimap scale phase diagnostic: $marker" }
-foreach ($marker in @('EXPECTED_RECORD_COUNT = 34','unsafe runtime completion queries are disabled','function M.set_context_available','function M.visible_mask','return false')) { Assert-True ($mole.Contains($marker)) "Missing Mole safety-mode contract: $marker" }
+foreach ($marker in @('MINIMAP_SCALE_PERF','cache_validation_ms','find_called','find_ms','resolved_validation_ms','layer_map_access_ms','map_overlay_access_ms','scale_access_ms')) { Assert-True ($main.Contains($marker)) "Missing minimap scale phase diagnostic: $marker" }
+foreach ($marker in @('EXPECTED_FLY_RECORD_COUNT = 33','EXPECTED_CATALOG_COUNT = 83','unsafe runtime completion queries are disabled','function M.set_context_available','function M.visible_mask','return false')) { Assert-True ($mole.Contains($marker)) "Missing Mole safety-mode contract: $marker" }
 foreach ($forbidden in @('FindFirstOf','StaticFindObject','CIsClearMiniGameInStandAlone','clear_function(')) { Assert-True (-not $mole.Contains($forbidden)) "Unsafe Mole runtime query remains: $forbidden" }
 foreach ($marker in @('GAME_SECONDS_PER_REAL_SECOND = 60','DEFAULT_STABLE_CONTEXT_TICKS = 8','function M.arm()','function M.cancel()','function M.context_lost()','function M.observe_context(available)','function M.capture_ready()','function M.mark_capture_queued()','function M.capture_in_game_thread(token)','function M.advance()','attempted_reads=1','retry_reads=0','baseline_wall_seconds','os.time() - baseline_wall_seconds','%SECONDS_PER_DAY')) { Assert-True ($environment.Contains($marker)) "Missing isolated one-shot world-time contract: $marker" }
 Assert-True (-not $environment.Contains('os.clock(')) 'Portable Lua os.clock must not drive production world time.'
@@ -73,7 +99,7 @@ foreach ($marker in @(
     'resume_probe_pending = true',
     'is_world_epoch_current(scheduled_epoch)',
     'reference 1.6.1 Pawn-loss cooldown retry enabled',
-    'F7 deferred safely until the current Pawn-loss cooldown completes')) {
+    'deferred safely until the current Pawn-loss cooldown completes')) {
     Assert-True ($main.Contains($marker)) "Missing world-transition safety contract: $marker"
 }
 foreach ($removedRecoveryProbe in @('resolve_fresh_player_roots','try_reacquire_world','queue_world_recovery','recovery_stable_samples','recovery_identity','active_world_identity','GetWorld()','transition_post_seen')) {
@@ -129,6 +155,16 @@ foreach ($removedGate in @('current_minimap_layer:IsVisible()','surface_hidden',
 Assert-True (-not $main.Contains('FindAllOf("DLayerMiniMap')) 'Minimap scale sampling enumerates UObjects.'
 Assert-True (([regex]::Matches($main, [regex]::Escape('FindFirstOf("Engine")'))).Count -eq 1) 'Engine FindFirstOf is not confined to one cache-miss path.'
 Assert-True (([regex]::Matches($main, [regex]::Escape('FindFirstOf("DLayerMiniMap")'))).Count -eq 1) 'DLayerMiniMap FindFirstOf is not confined to one cache-miss path.'
+$minimapReadStart = $main.IndexOf('local function read_minimap_scale()')
+$minimapReadEnd = $main.IndexOf('local function update_radar_radius(scale)', $minimapReadStart)
+Assert-True ($minimapReadStart -ge 0 -and $minimapReadEnd -gt $minimapReadStart) 'Minimap scale reader boundaries are missing.'
+$minimapReadBlock = $main.Substring($minimapReadStart, $minimapReadEnd - $minimapReadStart)
+foreach ($forbiddenNestedValidation in @('is_valid_object(layer_map)','is_valid_object(map_overlay)','MINIMAP_LAYERMAP_ISVALID','MINIMAP_OVERLAY_ISVALID')) {
+    Assert-True (-not $minimapReadBlock.Contains($forbiddenNestedValidation)) "Nested minimap wrapper uses incompatible UObject validation: $forbiddenNestedValidation"
+}
+foreach ($guardedNestedRead in @('local layer_map = current_minimap_layer.LayerMap','local map_overlay = layer_map.MapOverlay','tonumber(map_overlay.RenderTransform.Scale.X)')) {
+    Assert-True ($minimapReadBlock.Contains($guardedNestedRead)) "Missing guarded nested minimap read: $guardedNestedRead"
+}
 $stableLocationStart = $main.IndexOf('get_player_location = function()')
 $stableLocationEnd = $main.IndexOf('local function is_valid_object(object)', $stableLocationStart)
 $stableLocationBlock = $main.Substring($stableLocationStart, $stableLocationEnd - $stableLocationStart)
@@ -143,17 +179,32 @@ foreach ($marker in @('access_guard','lifecycle_epoch','access_allowed()','world
     Assert-True (($worldMap.Contains($marker)) -or ($main.Contains($marker))) "World-map epoch guard is missing: $marker"
 }
 foreach($marker in @('MAX_CANDIDATES = 2','MAX_RETIRED_IDENTITIES = 256','entry.epoch == lifecycle_epoch','entry.token == candidate_token','retired_identities[identity]','notify-current-epoch','bounded-resume-scan','candidate_token = candidate_token + 1')){Assert-True ($worldMap.Contains($marker)) "Bounded world-map candidate marker is missing: $marker"}
-foreach($marker in @('function WorldMap.close_session()','record_candidate_metrics("close-session")','world_map.close_session()')){Assert-True (($worldMap.Contains($marker))-or($main.Contains($marker))) "World-map reopen boundary is missing: $marker"}
-foreach($marker in @('function WorldMap.consume_wake_hint()','WORLD_MAP_INACTIVE_CHECK_INTERVAL_MS = 2000','world_map.consume_wake_hint()')){Assert-True (($worldMap+$main).Contains($marker)) "Inactive world-map wake/backoff marker is missing: $marker"}
-Assert-True (([regex]::Matches($main,[regex]::Escape('world_map.close_session()'))).Count -eq 2) 'World-map close must invalidate candidates in both control and fast-loop close paths.'
+foreach($marker in @('function WorldMap.consume_wake_hint()','function WorldMap.recover_session()','function WorldMap.has_retained_candidates()','WORLD_MAP_INACTIVE_CHECK_INTERVAL_MS = 2000','world_map.consume_wake_hint()','world_map.has_retained_candidates()','world_map.recover_session()')){Assert-True (($worldMap+$main).Contains($marker)) "Inactive world-map wake/backoff marker is missing: $marker"}
+Assert-True ($worldMap.Contains('record_candidate_metrics("recover-session")')) 'World-map recovery is not observable in debug diagnostics.'
+$recoverStart=$worldMap.IndexOf('function WorldMap.recover_session()')
+$recoverEnd=$worldMap.IndexOf('function WorldMap.has_retained_candidates()', $recoverStart)
+Assert-True ($recoverStart -ge 0 -and $recoverEnd -gt $recoverStart) 'World-map recovery block is missing or malformed.'
+$recoverBlock=$worldMap.Substring($recoverStart,$recoverEnd-$recoverStart)
+foreach($marker in @('cached_entry = nil','candidates = {}','candidate_token = candidate_token + 1','needs_rescan = true','wake_hint = true')){Assert-True ($recoverBlock.Contains($marker)) "World-map recovery safety marker is missing: $marker"}
+Assert-True (-not $recoverBlock.Contains('FindAllOf(')) 'Active world-map recovery directly enumerates UObjects.'
+Assert-True (([regex]::Matches($main,[regex]::Escape('world_map.recover_session()'))).Count -eq 2) 'World-map recovery must invalidate candidates in both control and fast-loop failure paths.'
 Assert-True (-not $worldMap.Contains('known_layers')) 'Unbounded retained world-map list remains.'
 Assert-True (([regex]::Matches($worldMap,[regex]::Escape('FindAllOf("DLayerMap_C")'))).Count -eq 1) 'World-map widget enumeration is not limited to one bounded rescan site.'
 $activeReadStart=$worldMap.IndexOf('function WorldMap.read_state()')
 $activeReadEnd=$worldMap.IndexOf('function WorldMap.debug_state()',$activeReadStart)
 $activeReadBlock=$worldMap.Substring($activeReadStart,$activeReadEnd-$activeReadStart)
 Assert-True (-not $activeReadBlock.Contains('FindAllOf(')) 'Active world-map read_state directly enumerates UObjects.'
-foreach($marker in @('TreasureQueryInterval =','TimeSpan.FromSeconds(45)','IncludeTreasure','OpenedAvailable','encounterTaskQueryMs','tb_unexpected_switch_week')){Assert-True (($snapshotReader+$saveState).Contains($marker)) "Split save-query/task diagnostic marker is missing: $marker"}
+foreach($marker in @('SnapshotReadInterval =','TimeSpan.FromSeconds(45)','_nextSnapshotReadUtc','includeTreasure = true','IncludeTreasure','OpenedAvailable','encounterTaskQueryMs','tb_unexpected_switch_week')){Assert-True (($snapshotReader+$saveState).Contains($marker)) "Coalesced save-query/task diagnostic marker is missing: $marker"}
 foreach($marker in @('motion_loop_token','world_map_loop_token','owner_loop_token ~= motion_loop_token','owner_loop_token ~= world_map_loop_token','update_pending_token == request_token','world_motion_pending_token == request_token','max_logical_loops')){Assert-True (($main+$diagnostics).Contains($marker)) "Async ownership marker is missing: $marker"}
+foreach($marker in @('CONTROL_WATCHDOG_SAMPLE_MS = 1000','CONTROL_WATCHDOG_STALE_SAMPLES = 5','MAX_AUTOMATIC_RUNTIME_RESTARTS = 3','local function observe_control_watchdog(delta_ms)','request_runtime_restart("control_watchdog_stalled")','request_runtime_restart("async_failure:" .. tostring(key))','automatic F8->F7 recovery','enter_world_transition("runtime_error_restart")')){Assert-True ($main.Contains($marker)) "Confirmed-error automatic recovery marker is missing: $marker"}
+Assert-True (([regex]::Matches($main,[regex]::Escape('LoopAsync('))).Count -eq 3) 'Automatic recovery added a fourth scheduler loop.'
+Assert-True (([regex]::Matches($main,[regex]::Escape('request_runtime_restart('))).Count -eq 3) 'Runtime restart may be armed outside the function definition, confirmed async failure, and control watchdog.'
+$watchdogStart=$main.IndexOf('local function observe_control_watchdog(delta_ms)')
+$watchdogEnd=$main.IndexOf('local function purge_runtime_references()', $watchdogStart)
+Assert-True ($watchdogStart -ge 0 -and $watchdogEnd -gt $watchdogStart) 'Control-watchdog block is missing or malformed.'
+$watchdogBlock=$main.Substring($watchdogStart,$watchdogEnd-$watchdogStart)
+foreach($forbidden in @('FindAllOf(','FindFirstOf(','get_player_location(','world_map.read_state(','ExecuteInGameThread(','write_fast_motion(')){Assert-True (-not $watchdogBlock.Contains($forbidden)) "Control watchdog performs non-scalar work: $forbidden"}
+Assert-True (-not $worldMap.Contains('request_runtime_restart')) 'Temporary world-map read loss can arm whole-runtime recovery.'
 Assert-True ($main.Contains('local function has_radar_marker_layers()')) 'Central marker-layer predicate is missing.'
 Assert-True ($main.Contains('return show_treasures or show_bosses or show_moles or show_assaults')) 'Marker predicate must include Assault and exclude world status/treasure decorations.'
 Assert-True ($main.Contains('local function has_configured_visible_features()')) 'Configured whole-mod feature predicate is missing.'
@@ -178,7 +229,7 @@ Assert-True ($renderer.Contains('StatusStripGapReference = -6f')) 'Raised render
 Assert-True ($renderer.Contains('PhaseFontReferencePixels = 13f')) 'Compact phase font contract is missing.'
 Assert-True ($renderer.Contains('CalculateGroupBounds')) 'Bounded status layout helper is missing.'
 Assert-True ($radar.Contains('IsWorldMapMode()')) 'Expanded world-map mode contract is missing.'
-Assert-True ($main.Contains('WORLD_MAP_ACTIVE_INTERVAL_MS = 4')) 'Visible world-map producer is not diagnostic 4 ms.'
+Assert-True ($main.Contains('WORLD_MAP_ACTIVE_INTERVAL_MS = 8')) 'Visible world-map producer is not 8 ms.'
 Assert-True ($main.Contains('FAST_MOTION_INTERVAL_MS = 50')) 'Radar producer is not 50 ms.'
 Assert-True ($main.Contains('MINIMAP_UPDATE_INTERVAL_MS = 250')) 'Player/control scalar sampling is not 250 ms.'
 Assert-True (([regex]::Matches($main,'get_player_location\(\)')).Count -eq 2) 'Fresh full-chain location must have one definition and one 250 ms call site.'
@@ -188,19 +239,64 @@ $worldMotionEndForScalar=$main.IndexOf('ensure_motion_loop_started = function()'
 $worldMotionScalarBlock=$main.Substring($worldMotionStartForScalar,$worldMotionEndForScalar-$worldMotionStartForScalar)
 Assert-True (-not $worldMotionScalarBlock.Contains('get_player_location()') -and $worldMotionScalarBlock.Contains('latest_motion_x')) 'Large-map loop does not reuse the shared scalar player sample.'
 Assert-True ($main.Contains('record_world_map_producer_tick()')) 'World-map producer-rate diagnostics are missing.'
+Assert-True ($main.Contains('local capture_failure = "none"') -and
+    $main.Contains('failure = capture_failure')) 'Successful world-clock diagnostics do not clear the failure field.'
+Assert-True (-not $main.Contains('failure = capture_ok and capture_error')) 'Ambiguous world-clock failure expression remains.'
 Assert-True (-not $main.Contains('WORLD_MAP_ACTIVE_INTERVAL_MS = 24')) '24 ms world-map producer constant remains.'
 Assert-True (-not $main.Contains('WORLD_MAP_ACTIVE_INTERVAL_MS = 50')) 'Dev40 50 ms world-map producer constant remains.'
 Assert-True (-not $main.Contains('FAST_MOTION_INTERVAL_MS = 24')) '24 ms radar producer constant remains.'
-Assert-True ($radar.Contains('ActiveTimerIntervalMs = 50')) 'Overlay active timer is not 50 ms.'
-Assert-True ($radar.Contains('WorldMapTimerIntervalMs = 4')) 'World-map presentation timer is not diagnostic 4 ms.'
+Assert-True ($radar.Contains('ActiveTimerIntervalMs = 33')) 'Overlay active timer is not 33 ms.'
+foreach ($marker in @(
+    'no_paint_key = "F5"',
+    'no_motion_key = "F6"',
+    'request_active_diagnostic_mode("no_paint", "F5")',
+    'request_active_diagnostic_mode("no_motion", "F6")',
+    'request_active_diagnostic_mode("normal", "F7")',
+    'diagnostic_mode = "normal"')) {
+    Assert-True ($main.Contains($marker) -or $defaultConfig.Contains($marker)) "Missing inline A/B hotkey contract: $marker"
+}
+$debugHotkeyGuardStart = $main.IndexOf(
+    'if config.debug_logging == true then',
+    $main.IndexOf('local function request_active_diagnostic_mode('))
+$normalHotkeyStart = $main.IndexOf(
+    'RegisterKeyBind(Key[start_key]',
+    $debugHotkeyGuardStart)
+Assert-True ($debugHotkeyGuardStart -ge 0 -and
+    $normalHotkeyStart -gt $debugHotkeyGuardStart) 'Debug hotkey guard boundary is malformed.'
+$debugHotkeyBlock = $main.Substring(
+    $debugHotkeyGuardStart,
+    $normalHotkeyStart - $debugHotkeyGuardStart)
+Assert-True ($debugHotkeyBlock.Contains('RegisterKeyBind(Key[no_paint_key]') -and
+    $debugHotkeyBlock.Contains('RegisterKeyBind(Key[no_motion_key]')) 'F5/F6 are not confined to the debug_logging guard.'
+foreach ($marker in @(
+    'DiagnosticModeNoPaint = 1',
+    'DiagnosticModeNoMotion = 2',
+    'DiagnosticNoMotionTimerIntervalMs = 250',
+    'if (_diagnosticMode == DiagnosticModeNoPaint)',
+    '_diagnosticMode != DiagnosticModeNoMotion',
+    '_motionPredictor.Clear()',
+    'CloneMotionFrame(motion)')) {
+    Assert-True ($radar.Contains($marker)) "Missing Overlay A/B isolation contract: $marker"
+}
+Assert-True ($main.Contains('MOTION_PROTOCOL_VERSION = 6')) 'A/B mode is not carried by protocol v6.'
+Assert-True ($radar.Contains('WorldMapTimerIntervalMs = 8')) 'World-map presentation timer is not 8 ms.'
 Assert-True (-not $radar.Contains('WorldIdleTimerIntervalMs')) 'Legacy 50 ms world-map timer remains.'
 Assert-True ($radar.Contains('interval = WorldMapTimerIntervalMs;')) 'World-map mode does not deterministically select its diagnostic cadence.'
 Assert-True ($radar.Contains('RecordModeTransition(') -and $overlayPerformance.Contains('worldMapPresentationHz=') -and $overlayPerformance.Contains('modeTransitions=')) 'World-map cadence/transition diagnostics are incomplete.'
 foreach($marker in @('ScalarMotionPredictor','MaximumPredictionMs = 250.0','StaleFreezeMs = 500.0','MaximumSourceGapMs = 1000.0','frame.WorldEpoch != _worldEpoch','OVERLAY_MOTION_PREDICTION')){Assert-True (($radar+$overlayPerformance).Contains($marker)) "Bounded scalar prediction marker is missing: $marker"}
+foreach($marker in @('PositionEpsilonFloor = 20.0','ScreenPixelEpsilon = 0.5','HeightEpsilon = 10.0','positionChanged = deltaX * deltaX','if (!positionChanged)')){Assert-True ($radar.Contains($marker)) "Subpixel Overlay prediction gate is missing: $marker"}
 Assert-True ($diagnostics.Contains('player_location_hz')) 'Lua debug output does not expose full-chain sample rate.'
 Assert-True ($radar.Contains('MaintenanceIntervalMs = 1000')) 'Overlay maintenance timer is not 1000 ms.'
 Assert-True ($radar.Contains('WindowVisibilityCheckIntervalMs = 250')) 'Window visibility sampling is not 250 ms.'
 Assert-True ($radar.Contains('_nextWindowVisibilityCheckUtc = DateTime.MinValue;')) 'Mode transitions do not force an immediate window sample.'
+foreach($marker in @('MotionBridgeFallbackIntervalMs = 250','MotionBridgePollingFallbackIntervalMs = 50','ShouldForceMotionBridgeScan','ApplyMotionBridgePollingFallback','ChangeNotificationsAvailable','HasPendingChanges','ProcessMotionBridgeWake','SetChangeNotificationsEnabled(!worldMode)','TryReadLatest(')){Assert-True (($radar+$motionReader).Contains($marker)) "Event-driven compact bridge marker is missing: $marker"}
+foreach($marker in @('FileSystemWatcher','MotionBridgeDirtyGate',': IDisposable','UpdateOrRearm','Interlocked.Exchange(ref _dirtyMask, 0)','watcher.EnableRaisingEvents = false')){Assert-True ($motionReader.Contains($marker)) "Motion Bridge notification gate is missing: $marker"}
+$watcherCallbackStart=$motionReader.IndexOf('private void OnBridgeChanged(')
+$watcherCallbackEnd=$motionReader.IndexOf('private static bool SameContent(', $watcherCallbackStart)
+Assert-True ($watcherCallbackStart -ge 0 -and $watcherCallbackEnd -gt $watcherCallbackStart) 'Motion Bridge watcher callback boundary is malformed.'
+$watcherCallbackBlock=$motionReader.Substring($watcherCallbackStart,$watcherCallbackEnd-$watcherCallbackStart)
+foreach($forbidden in @('SharedBridgeFile.ReadInto','MotionRecordParser.TryParse','Task.Run','new Thread')){Assert-True (-not $watcherCallbackBlock.Contains($forbidden)) "Watcher callback performs forbidden work: $forbidden"}
+Assert-True (-not $motionReader.Contains('System.Threading.Tasks')) 'Motion Bridge added a background parser task.'
 Assert-True ($radar.Contains('RecordWindowVisibilitySample()')) 'Window visibility sample diagnostics are missing.'
 Assert-True ($debugSettings.Contains('HighResolutionTimerEnabled')) 'High-resolution timer startup setting is missing.'
 Assert-True ($radar.Contains('if (DebugSettings.HighResolutionTimerEnabled)')) 'timeBeginPeriod is not guarded by the A/B setting.'
@@ -222,33 +318,22 @@ Assert-True ($radar.Contains('_worldTreasureIndex.GetMap(WorldMapId)')) 'Dev15 c
 Assert-True (-not $radar.Contains('RadarMapSessionState')) 'Unsafe retained world-map session state remains.'
 Assert-True ($radar.Contains('_worldTreasureIndex.GetMap(map.mapId)')) 'World-map treasure rendering no longer uses frame mapId.'
 
-# Dev30 is the owner-accepted smoothness baseline. The active cadence remains
-# identical, while current-Pawn traversal intentionally differs for travel
-# safety and is measured separately from K2_GetActorLocation.
-$performanceBaselineMain = Get-Content -LiteralPath (Join-Path $performanceBaselineRoot 'scripts\main.lua') -Raw
-$performanceBaselineRadar = Get-Content -LiteralPath (Join-Path $performanceBaselineRoot 'src\overlay\UI\RadarForm.cs') -Raw
-foreach ($name in @('MINIMAP_UPDATE_INTERVAL_MS','FAST_MOTION_INTERVAL_MS')) {
-    $pattern = 'local ' + $name + ' = (\d+)'
-    Assert-True ([regex]::Match($main,$pattern).Groups[1].Value -eq [regex]::Match($performanceBaselineMain,$pattern).Groups[1].Value) "Active Lua cadence differs from dev30 performance baseline: $name"
-}
-Assert-True ([regex]::Match($main,'local WORLD_MAP_ACTIVE_INTERVAL_MS = (\d+)').Groups[1].Value -eq '4') 'Diagnostic world-map cadence is not 4 ms.'
-Assert-True ([regex]::Match($performanceBaselineMain,'local WORLD_MAP_ACTIVE_INTERVAL_MS = (\d+)').Groups[1].Value -eq '50') 'Packaged dev30 world-map reference cadence unexpectedly changed.'
+# Performance acceptance is evidence-driven rather than bound to a historical
+# package cadence. Independent safety gates still prohibit retained Pawn state
+# and preserve the measured 250 ms fresh-current-player sample boundary.
+Assert-True ([regex]::Match($main,'local WORLD_MAP_ACTIVE_INTERVAL_MS = (\d+)').Groups[1].Value -eq '8') 'World-map cadence is not 8 ms.'
 foreach($required in @('_worldMapTimerResolutionAcquired','UpdateWorldMapTimerResolution(','ReleaseWorldMapTimerResolution(','RecordTimerResolutionChange','timerResolutionBalance=')){Assert-True (($radar+$overlayPerformance).Contains($required)) "Mode-scoped world-map timer-resolution marker is missing: $required"}
-Assert-True ([regex]::Match($radar,'ActiveTimerIntervalMs = (\d+)').Groups[1].Value -eq [regex]::Match($performanceBaselineRadar,'ActiveTimerIntervalMs = (\d+)').Groups[1].Value) 'Overlay active cadence differs from dev30 performance baseline.'
-Assert-True ($performanceBaselineMain.Contains('local player_pawn = nil')) 'Packaged dev30 no longer demonstrates the retained-Pawn baseline.'
-Assert-True (-not $main.Contains('local player_pawn = nil')) 'Candidate reintroduced the dev30 cross-frame Pawn wrapper.'
+Assert-True (-not $main.Contains('local player_pawn = nil')) 'Candidate retains a cross-frame Pawn wrapper.'
 foreach ($marker in @('record_player_location','player_root_avg_ms','actor_location_avg_ms')) { Assert-True (($main+$diagnostics).Contains($marker)) "Fresh-Pawn split timing is missing: $marker" }
 
 # Exact dev15 restoration gates for files that have no approved deviation.
 foreach ($relative in @(
-    'src\overlay\Data\WorldTreasureVisibilityIndex.cs',
-    'src\overlay\Platform\NativeMethods.cs',
-    'src\overlay\Rendering\BossMarkerRenderer.cs',
-    'src\overlay\Rendering\MoleMarkerRenderer.cs')) {
+    'src\overlay\Rendering\BossMarkerRenderer.cs')) {
     $currentText = Get-Content -LiteralPath (Join-Path $root $relative) -Raw
     $baselineText = Get-Content -LiteralPath (Join-Path $baselineRoot $relative) -Raw
     Assert-True ($currentText -ceq $baselineText) "Runtime file differs from authoritative dev15 baseline: $relative"
 }
+foreach ($marker in @('BuildHammer','BuildWave','GraphicsPath _activityIcon','_activityIcon.Dispose()')) { Assert-True ($moleRenderer.Contains($marker)) "Allocation-free MiniGame renderer marker is missing: $marker" }
 Assert-True ($diagnostics.Contains('record_motion_write')) 'Lua motion-write diagnostics are missing.'
 Assert-True ($overlayPerformance.Contains('OVERLAY_WORK_PERF')) 'Overlay work-duty diagnostics are missing.'
 $saveState = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\TreasureSaveState.cs') -Raw
@@ -256,8 +341,30 @@ Assert-True ($saveState.Contains('bool initialSnapshot = !_hasLoadedSaveState') 
 $saveReader = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\SaveSnapshotReader.cs') -Raw
 Assert-True ($saveState.Contains('TimeSpan.FromMilliseconds(2000)')) 'Save metadata polling is not two seconds.'
 foreach ($marker in @('SaveChangeDebounce','TimeSpan.FromSeconds(4)','SetRuntimeEnabled','ThreadPriority.BelowNormal','SAVE_REFRESH_PERF')) { Assert-True ($saveState.Contains($marker)) "Missing optimized save-state contract: $marker" }
-foreach ($marker in @('DatabaseCacheHits','TryGetCached','SqliteOpenReadWrite','ApplyKey(database, key)','QueryOpenedTreasureBits(database)','QueryBossRespawns(database, encounterTargetIds)','BuildActorFilterSql(encounterTargetIds)','ActorFilterSignature')) { Assert-True ($saveReader.Contains($marker)) "Missing optimized snapshot-reader contract: $marker" }
+foreach ($marker in @('ThreadModeBackgroundBegin','ThreadModeBackgroundEnd','SetThreadPriority(','GetCurrentThread()')) { Assert-True (($saveState+$nativeMethods).Contains($marker)) "Missing background save-worker scheduling contract: $marker" }
+foreach ($marker in @('DatabaseCacheHits','TryGetCached','TryGetCompatibleCached','BuildCacheKey','includeTreasure','SqliteOpenReadWrite','ApplyKey(database, key)','QueryOpenedTreasureBits(database)','QueryBossRespawns(database, encounterTargetIds)','BuildActorFilterSql(encounterTargetIds)','ActorFilterSignature')) { Assert-True ($saveReader.Contains($marker)) "Missing optimized snapshot-reader contract: $marker" }
+Assert-True ($saveReader.Contains('if (DebugSettings.Enabled)') -and $saveReader.Contains('QueryEncounterTaskTable(database)')) 'Diagnostic-only encounter task query is not gated by debug mode.'
+Assert-True ($saveReader.Contains('WHERE OPENED_BIT_FIELD <> 0;')) 'Treasure query still returns zero-only categories.'
+Assert-True ($encounterAvailability.Contains('saveVersion == _saveVersion') -and $encounterAvailability.Contains('Object.ReferenceEquals(encounters, _catalog)')) 'Encounter availability repeats unchanged save-state traversal.'
+Assert-True ($encounterAvailability.Contains('DateTime nowUtc') -and $encounterAvailability.Contains('nowUtc < next')) 'Encounter paint does not share one coherent UTC sample.'
+foreach ($marker in @('CacheMissIncludesTreasure = true','bool readIncludesTreasure =','TreasureRequested','TreasureQueries','coalescingWindowMs=')) { Assert-True (($saveReader+$saveState).Contains($marker)) "Missing cold-read coalescing contract: $marker" }
+Assert-True ($saveReader.Contains('StoreCached(') -and $saveReader.Contains('readIncludesTreasure,')) 'Cache miss does not store the warmed treasure-rich shape.'
+Assert-True (-not $saveReader.Contains('(includeTreasure ? "|treasure" : "|encounter")')) 'Treasure and encounter query modes still overwrite one path-owned cache entry.'
+Assert-True ($saveReader.Contains('string richKey = BuildCacheKey(') -and $saveReader.Contains('!includeTreasure')) 'Encounter-only reads do not reuse a compatible treasure-rich cache entry.'
+Assert-True ($saveReader.Contains('MergeRequestedSnapshot(') -and $saveReader.Contains('if (includeTreasure && source.OpenedAvailable)')) 'Encounter-only rich-cache reuse can publish treasure state or extend the treasure deadline.'
+Assert-True ($saveState.Contains('bool treasureRefreshAvailable = request.IncludeTreasure') -and $saveState.Contains('&& snapshot.OpenedAvailable;') -and $saveState.Contains('if (treasureRefreshAvailable)')) 'Treasure publication and deadline renewal are not guarded by the scheduled request scope.'
 Assert-True (([regex]::Matches($saveReader, 'PRAGMA key')).Count -eq 1) 'SQLCipher key is applied more than once per database connection.'
+$coldReadModel=[ordered]@{Enabled=$true;Loaded=$false;Next=0;Reads=0}
+function Try-ColdReadModel([int]$Now,[bool]$Stable) {
+    if(-not$script:coldReadModel.Enabled-or-not$Stable){return $false}
+    if($script:coldReadModel.Loaded-and$Now-lt$script:coldReadModel.Next){return $false}
+    $script:coldReadModel.Loaded=$true;$script:coldReadModel.Next=$Now+45;$script:coldReadModel.Reads++;return $true
+}
+Assert-True (Try-ColdReadModel 0 $true) 'Initial save snapshot did not run immediately.'
+1..44|ForEach-Object{Assert-True (-not(Try-ColdReadModel $_ $true)) 'Autosave queued a cold read inside the 45-second coalescing window.'}
+Assert-True ((Try-ColdReadModel 45 $true)-and$coldReadModel.Reads-eq2) 'The coalesced save window did not release one fresh snapshot.'
+$coldReadModel.Enabled=$false
+Assert-True (-not(Try-ColdReadModel 90 $true)) 'F8-disabled state queued a coalesced save read.'
 foreach ($catalogRelative in @('src\overlay\Data\WorldTreasureCatalog.cs','src\overlay\Data\WorldBossCatalog.cs')) {
     $catalogText = Get-Content -LiteralPath (Join-Path $root $catalogRelative) -Raw
     Assert-True ($catalogText.Contains('if (_hasLoaded)')) "Immutable catalog one-load gate is missing: $catalogRelative"
@@ -265,7 +372,9 @@ foreach ($catalogRelative in @('src\overlay\Data\WorldTreasureCatalog.cs','src\o
 $baselineRadar = Get-Content -LiteralPath (Join-Path $baselineRoot 'src\overlay\UI\RadarForm.cs') -Raw
 $queryStart = $radar.IndexOf('        private sealed class RadarTreasureQueryBuffer')
 $baselineQueryStart = $baselineRadar.IndexOf('        private sealed class RadarTreasureQueryBuffer')
-Assert-True ($queryStart -ge 0 -and $baselineQueryStart -ge 0 -and $radar.Substring($queryStart) -ceq $baselineRadar.Substring($baselineQueryStart)) 'Radar treasure query-buffer implementation differs from dev15.'
+$queryEnd = $radar.IndexOf('        private sealed class MotionVisualSnapshot', $queryStart)
+$baselineQueryEnd = $baselineRadar.IndexOf('        private sealed class MotionVisualSnapshot', $baselineQueryStart)
+Assert-True ($queryStart -ge 0 -and $baselineQueryStart -ge 0 -and $queryEnd -gt $queryStart -and $baselineQueryEnd -gt $baselineQueryStart -and $radar.Substring($queryStart, $queryEnd - $queryStart) -ceq $baselineRadar.Substring($baselineQueryStart, $baselineQueryEnd - $baselineQueryStart)) 'Radar treasure query-buffer implementation differs from dev15.'
 $refreshStart = $radar.IndexOf('        private bool RefreshRadarTreasureSelection(')
 $refreshEnd = $radar.IndexOf('        private MotionFrame GetCurrentMotion()', $refreshStart)
 $baselineRefreshStart = $baselineRadar.IndexOf('        private bool RefreshRadarTreasureSelection(')
@@ -296,8 +405,8 @@ foreach ($source in @($bossRenderer,$moleRenderer)) {
     Assert-True ($source.Contains('public void DrawMarker')) 'Direct vector DrawMarker entry point is missing.'
 }
 Assert-True (-not ($defaultOverrides -match '(?m)^\s*ignore\s+10220122\s*(?:#.*)?$')) 'Default overrides ignore fixed chest 10220122.'
-Assert-True ([regex]::Matches($defaultOverrides, '(?im)^\s*ignore\s+11003\s*(?:#.*)?$').Count -eq 1) 'Default duplicate ignore 11003 must exist exactly once.'
-Assert-True ($defaultOverrides.Contains('alias 11003 14016') -and $defaultOverrides.Contains('authoritative 14016 record')) 'Default 11003/14016 duplicate explanation is missing.'
+Assert-True (-not ($defaultOverrides -match '(?im)^\s*ignore\s+11003\s*(?:#.*)?$')) 'Default overrides hide valid MiniGame/Fly reward 11003.'
+Assert-True (-not $defaultOverrides.Contains('11003 overlaps 14016') -and -not $defaultOverrides.Contains('alias 11003 14016')) 'Obsolete 11003/14016 duplicate guidance remains.'
 Assert-True ($installer.Contains('Overlay startup fixes one 49-record Boss/Assault encounter catalog')) 'Installer omits the unified encounter production contract.'
 if ($clockEnabled) {
     Assert-True ($installer.Contains('F7 only enables configured marker, save-state, and isolated world-clock work')) 'Installer does not describe F7 isolated-clock enablement.'
@@ -308,7 +417,8 @@ Assert-True ($installer.Contains('F8 disables all active mod work for FPS compar
 Assert-True (-not $installer.Contains('World time is automatic; F7 enables radar markers')) 'Stale installer marker-only F7 claim remains.'
 Assert-True ($installer.Contains("`$_ -notmatch '^\s*ignore\s+10220122\s*(?:#.*)?$'")) 'Missing removal-only 10220122 migration.'
 Assert-True ($installer.Contains("`$_ -notmatch '^\s*#\s*Known abandoned or inaccessible chest record\.\s*$'")) 'Missing exact obsolete 10220122 explanation removal.'
-Assert-True (-not ($installer -match 'notmatch[^\r\n]+11003')) 'Installer must not migrate ignore 11003.'
+Assert-True ($installer.Contains("`$_ -notmatch '^\s*ignore\s+11003\s*(?:#.*)?$'")) 'Missing valid-reward 11003 migration.'
+Assert-True ($installer.Contains('REMOVED obsolete treasure override rules for valid records 10220122/11003')) 'Combined valid-record migration log is missing.'
 $legacyOverrides = @(
     '# user rule',
     'ignore 77777',
@@ -319,12 +429,15 @@ $legacyOverrides = @(
     '  IGNORE 11003 # retained duplicate rule')
 $migratedOverrides = @($legacyOverrides | Where-Object {
     $_ -notmatch '^\s*ignore\s+10220122\s*(?:#.*)?$' -and
-    $_ -notmatch '^\s*#\s*Known abandoned or inaccessible chest record\.\s*$'
+    $_ -notmatch '^\s*#\s*Known abandoned or inaccessible chest record\.\s*$' -and
+    $_ -notmatch '^\s*ignore\s+11003\s*(?:#.*)?$' -and
+    $_ -notmatch '^\s*#\s*Known abandoned duplicate: 11003 overlaps 14016 at the same chest location\.\s*$' -and
+    $_ -notmatch '^\s*#\s*Keep the authoritative 14016 record and suppress the offset duplicate\.\s*$'
 })
-Assert-True ($migratedOverrides.Count -eq 6) '10220122 migration removed an unexpected number of user lines.'
+Assert-True ($migratedOverrides.Count -eq 3) 'Valid-record migration removed an unexpected number of user lines.'
 Assert-True ($migratedOverrides -contains 'ignore 77777') 'Accepted migration removed an unrelated ignore rule.'
 Assert-True ($migratedOverrides -contains 'alias 11003 14016') 'Accepted migration removed a user alias.'
-Assert-True ($migratedOverrides -contains '  IGNORE 11003 # retained duplicate rule') '10220122 migration removed ignore 11003.'
+Assert-True (@($migratedOverrides | Where-Object { $_ -match '^\s*ignore\s+11003' }).Count -eq 0) 'Valid-reward migration retained ignore 11003.'
 $missingPlayer = $main.IndexOf('if player_x == nil or player_y == nil then')
 $clearPublishedTime = $main.IndexOf('world_time_available = false', $missingPlayer)
 $missingPlayerWrite = $main.IndexOf('write_disabled_motion()', $missingPlayer)

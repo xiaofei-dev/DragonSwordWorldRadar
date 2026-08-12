@@ -6,7 +6,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $releasePath = Join-Path $root 'metadata\release.json'
 $release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
 $version = [string]$release.version
-$clockEnabled = $version -like '0.4.0-dev39-*' -or $version -like '0.4.0-dev48-*' -or $version -like '0.4.0-dev49-*' -or $version -like '0.4.0-dev50-*' -or $version -like '0.4.0-dev51-*' -or $version -like '0.4.0-dev52-*' -or $version -like '0.4.0-dev53-*' -or $version -like '0.4.0-dev54-*' -or $version -like '0.4.0-dev55-*' -or $version -like '0.4.0-dev56-*' -or $version -like '0.4.0-dev57-*' -or $version -like '0.4.0-dev58-*' -or $version -like '0.4.0-dev59-*'
+$clockEnabled = $version -like '0.4.0-dev39-*' -or $version -like '0.4.0-dev48-*' -or $version -like '0.4.0-dev49-*' -or $version -like '0.4.0-dev50-*' -or $version -like '0.4.0-dev51-*' -or $version -like '0.4.0-dev52-*' -or $version -like '0.4.0-dev53-*' -or $version -like '0.4.0-dev54-*' -or $version -like '0.4.0-dev55-*' -or $version -like '0.4.0-dev56-*' -or $version -like '0.4.0-dev57-*' -or $version -like '0.4.0-dev58-*' -or $version -like '0.4.0-dev59-*' -or $version -like '0.4.0-dev60-*' -or $version -like '0.4.0-dev61-*' -or $version -like '0.4.0-dev62-*' -or $version -like '0.4.0-dev63-*' -or $version -like '0.4.0-dev64-*' -or $version -like '0.4.0-dev65-*' -or $version -like '0.4.0-dev66-*' -or $version -like '0.4.0-dev67-*' -or $version -like '0.4.0-dev68-*' -or $version -like '0.4.0-dev69-*' -or $version -like '0.4.0-dev70-*' -or $version -like '0.4.0-dev71-*' -or $version -like '0.4.0-dev72-*' -or $version -like '0.4.0-dev73-*' -or $version -like '0.4.0-dev74-*'
 if ([string]::IsNullOrWhiteSpace($version)) {
     throw 'metadata/release.json has no version.'
 }
@@ -18,13 +18,14 @@ $required = @(
     'build\Build-Release.ps1',
     'build\Compile-Source.ps1',
     'build\Test-Refactor.ps1',
+    'build\Test-ReleasePackage.ps1',
     'build\ValidationHarness.cs',
     'src\ue4ss\main.lua',
     'src\ue4ss\world_map.lua',
     'src\ue4ss\diagnostics.lua',
     'src\ue4ss\bosses.lua',
     'src\ue4ss\treasures.lua',
-    'src\ue4ss\config.default.lua',
+    'src\ue4ss\config.lua',
     'src\ue4ss\world_environment.lua',
     'src\overlay\Program.cs',
     'src\overlay\Bridge\MotionBridgeReader.cs',
@@ -84,7 +85,7 @@ $installerSources = @(Get-ChildItem -LiteralPath (Join-Path $root 'src\installer
     Where-Object { $_.FullName -notmatch '[\\/](?:obj|bin)[\\/]' })
 $luaSources = @(Get-ChildItem -LiteralPath (Join-Path $root 'src\ue4ss') -Filter '*.lua' -File)
 if ($overlaySources.Count -ne 41) { throw "Expected 41 Overlay C# files; found $($overlaySources.Count)." }
-if ($installerSources.Count -ne 18) { throw "Expected 18 Installer C# files; found $($installerSources.Count)." }
+if ($installerSources.Count -ne 19) { throw "Expected 19 Installer C# files; found $($installerSources.Count)." }
 if ($luaSources.Count -ne 9) { throw "Expected 9 UE4SS Lua files; found $($luaSources.Count)." }
 
 foreach ($project in @(
@@ -158,16 +159,16 @@ if ($deployHelper -notmatch [regex]::Escape("'Binaries\Win64\ue4ss\Mods'")) {
     throw 'The local deployment helper must target Win64/ue4ss/Mods.'
 }
 foreach ($marker in @(
-    'WORLD_MAP_ACTIVE_INTERVAL_MS = 4',
+    'WORLD_MAP_ACTIVE_INTERVAL_MS = 8',
     'MINIMAP_UPDATE_INTERVAL_MS = 250',
     'FAST_MOTION_INTERVAL_MS = 50',
-    'MOTION_PROTOCOL_VERSION = 5',
+    'MOTION_PROTOCOL_VERSION = 6',
     'FAST_MOTION_HEARTBEAT_MS = 1000',
     'MOTION_POSITION_EPSILON_FLOOR = 20.0',
     'MOTION_SCREEN_PIXEL_EPSILON = 0.5',
     'motion_position_epsilon(radius)',
     'MOTION_Z_EPSILON = 10.0',
-    'Protocol-v5 Motion Bridge is the sole runtime IPC channel',
+    'Protocol-v6 Motion Bridge is the sole runtime IPC channel',
     'no JSON Static Bridge is required',
     'report_async_failure',
     'is_mod_enabled_in_mods_file')) {
@@ -185,6 +186,30 @@ foreach ($marker in @('MAX_CANDIDATES = 2','MAX_RETIRED_IDENTITIES = 256','entry
         throw "Bounded world-map candidate marker is missing: $marker"
     }
 }
+foreach ($marker in @('function WorldMap.recover_session()','function WorldMap.has_retained_candidates()','record_candidate_metrics("recover-session")')) {
+    if ($worldMapLua -notmatch [regex]::Escape($marker)) {
+        throw "World-map bounded recovery marker is missing: $marker"
+    }
+}
+foreach ($marker in @('world_map.recover_session()','world_map.has_retained_candidates()')) {
+    if ($mainLua -notmatch [regex]::Escape($marker)) {
+        throw "World-map control recovery marker is missing: $marker"
+    }
+}
+$worldMapRecoverStart = $worldMapLua.IndexOf('function WorldMap.recover_session()')
+$worldMapRecoverEnd = $worldMapLua.IndexOf('function WorldMap.has_retained_candidates()', $worldMapRecoverStart)
+if ($worldMapRecoverStart -lt 0 -or $worldMapRecoverEnd -le $worldMapRecoverStart) {
+    throw 'World-map recovery block is missing or malformed.'
+}
+$worldMapRecoverBlock = $worldMapLua.Substring($worldMapRecoverStart, $worldMapRecoverEnd - $worldMapRecoverStart)
+foreach ($marker in @('cached_entry = nil','candidates = {}','candidate_token = candidate_token + 1','needs_rescan = true','wake_hint = true')) {
+    if ($worldMapRecoverBlock -notmatch [regex]::Escape($marker)) {
+        throw "World-map recovery safety marker is missing: $marker"
+    }
+}
+if ($worldMapRecoverBlock -match [regex]::Escape('FindAllOf(')) {
+    throw 'Active world-map recovery directly enumerates UObjects.'
+}
 if ($worldMapLua -match [regex]::Escape('known_layers')) {
     throw 'Unbounded retained world-map widget list remains.'
 }
@@ -195,6 +220,28 @@ foreach ($marker in @('motion_loop_token','world_map_loop_token','owner_loop_tok
     if ($mainLua -notmatch [regex]::Escape($marker)) {
         throw "Async loop/request ownership marker is missing: $marker"
     }
+}
+foreach ($marker in @('CONTROL_WATCHDOG_SAMPLE_MS = 1000','CONTROL_WATCHDOG_STALE_SAMPLES = 5','MAX_AUTOMATIC_RUNTIME_RESTARTS = 3','local function observe_control_watchdog(delta_ms)','request_runtime_restart("control_watchdog_stalled")','request_runtime_restart("async_failure:" .. tostring(key))','automatic F8->F7 recovery','enter_world_transition("runtime_error_restart")')) {
+    if ($mainLua -notmatch [regex]::Escape($marker)) {
+        throw "Confirmed-error automatic recovery marker is missing: $marker"
+    }
+}
+if (([regex]::Matches($mainLua,[regex]::Escape('request_runtime_restart('))).Count -ne 3) {
+    throw 'Runtime restart may be armed outside the function definition, confirmed async failure, and control watchdog.'
+}
+$controlWatchdogStart = $mainLua.IndexOf('local function observe_control_watchdog(delta_ms)')
+$controlWatchdogEnd = $mainLua.IndexOf('local function purge_runtime_references()', $controlWatchdogStart)
+if ($controlWatchdogStart -lt 0 -or $controlWatchdogEnd -le $controlWatchdogStart) {
+    throw 'Control-watchdog block is missing or malformed.'
+}
+$controlWatchdogBlock = $mainLua.Substring($controlWatchdogStart, $controlWatchdogEnd - $controlWatchdogStart)
+foreach ($forbidden in @('FindAllOf(','FindFirstOf(','get_player_location(','world_map.read_state(','ExecuteInGameThread(','write_fast_motion(')) {
+    if ($controlWatchdogBlock -match [regex]::Escape($forbidden)) {
+        throw "Control watchdog performs non-scalar work: $forbidden"
+    }
+}
+if ($worldMapLua -match [regex]::Escape('request_runtime_restart')) {
+    throw 'Temporary world-map read loss can arm whole-runtime recovery.'
 }
 foreach ($marker in @('require, "mole_catalog"','require, "mole_completion"','mole_completion.refresh','mole_visible_mask')) {
     if ($mainLua -notmatch [regex]::Escape($marker)) { throw "Mole/Fly single-bridge producer marker is missing: $marker" }
@@ -280,6 +327,20 @@ if ($mainLua -match [regex]::Escape('FindAllOf("DLayerMiniMap')) {
 }
 if (([regex]::Matches($mainLua, [regex]::Escape('FindFirstOf("Engine")'))).Count -ne 1) { throw 'Engine must be resolved only by the reference cache-miss path.' }
 if (([regex]::Matches($mainLua, [regex]::Escape('FindFirstOf("DLayerMiniMap")'))).Count -ne 1) { throw 'DLayerMiniMap must be resolved only by the reference cache-miss path.' }
+$minimapReadStart = $mainLua.IndexOf('local function read_minimap_scale()')
+$minimapReadEnd = $mainLua.IndexOf('local function update_radar_radius(scale)', $minimapReadStart)
+if ($minimapReadStart -lt 0 -or $minimapReadEnd -le $minimapReadStart) { throw 'Minimap scale reader boundaries are missing.' }
+$minimapReadBlock = $mainLua.Substring($minimapReadStart, $minimapReadEnd - $minimapReadStart)
+foreach ($forbiddenNestedValidation in @('is_valid_object(layer_map)','is_valid_object(map_overlay)','MINIMAP_LAYERMAP_ISVALID','MINIMAP_OVERLAY_ISVALID')) {
+    if ($minimapReadBlock.Contains($forbiddenNestedValidation)) {
+        throw "Nested minimap wrapper uses incompatible UObject validation: $forbiddenNestedValidation"
+    }
+}
+foreach ($guardedNestedRead in @('local layer_map = current_minimap_layer.LayerMap','local map_overlay = layer_map.MapOverlay','tonumber(map_overlay.RenderTransform.Scale.X)')) {
+    if (-not $minimapReadBlock.Contains($guardedNestedRead)) {
+        throw "Guarded nested minimap read is missing: $guardedNestedRead"
+    }
+}
 $stableLocationStart = $mainLua.IndexOf('get_player_location = function()')
 $stableLocationEnd = $mainLua.IndexOf('local function is_valid_object(object)', $stableLocationStart)
 $stableLocationBlock = $mainLua.Substring($stableLocationStart, $stableLocationEnd - $stableLocationStart)
@@ -322,6 +383,14 @@ if ($mainLua -match [regex]::Escape('Game time is sampled once per second')) {
 if ($clockEnabled -and $mainLua -notmatch [regex]::Escape('one isolated baseline attempt after stable context')) {
     throw 'Isolated world-status Ready diagnostic is missing.'
 }
+if ($clockEnabled -and
+    ($mainLua -notmatch [regex]::Escape('local capture_failure = "none"') -or
+     $mainLua -notmatch [regex]::Escape('failure = capture_failure'))) {
+    throw 'Successful world-clock diagnostics do not clear the failure field.'
+}
+if ($mainLua -match [regex]::Escape('failure = capture_ok and capture_error')) {
+    throw 'Ambiguous world-clock failure expression remains.'
+}
 if (-not $clockEnabled -and $mainLua -notmatch [regex]::Escape('World status is fail-closed')) {
     throw 'Assault-only dev38 fail-closed world-status diagnostic is missing.'
 }
@@ -346,14 +415,14 @@ foreach ($forbiddenMarker in @(
 
 $motionParser = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Bridge\MotionRecordParser.cs') -Raw
 foreach ($marker in @(
-    'SupportedProtocolVersion = 5',
-    'fixed 37-field',
+    'SupportedProtocolVersion = 6',
+    'fixed 38-field',
     'protocolVersion != SupportedProtocolVersion',
     'sequence != trailingSequence',
     'textScale < 0.5',
     'textScale > 2.0')) {
     if ($motionParser -notmatch [regex]::Escape($marker)) {
-        throw "Protocol-v5 parser marker is missing: $marker"
+        throw "Protocol-v6 parser marker is missing: $marker"
     }
 }
 
@@ -363,6 +432,13 @@ $moleRenderer = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Rendering
 $overlayPerformance = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Diagnostics\OverlayPerformanceTracker.cs') -Raw
 $motionReader = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Bridge\MotionBridgeReader.cs') -Raw
 $luaDiagnostics = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\diagnostics.lua') -Raw
+$defaultConfigText = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\config.lua') -Raw
+if ($mainLua -notmatch [regex]::Escape('if not f7_trace_active or perf_diagnostics == nil then return end') -or
+    $mainLua -notmatch [regex]::Escape('if perf_diagnostics == nil then') -or
+    [regex]::IsMatch($mainLua, '(?<!perf_)diagnostics\.debug\(') -or
+    [regex]::IsMatch($mainLua, 'f7_trace\s*\([^\)]*\{', [Text.RegularExpressions.RegexOptions]::Singleline)) {
+    throw 'Normal-mode Lua still performs eager debug/F7-trace work.'
+}
 if (([regex]::Matches($mainLua, 'get_player_location\(\)')).Count -ne 2) {
     throw 'Player full-chain location sampling must have one definition and exactly one 250 ms call site.'
 }
@@ -395,8 +471,11 @@ foreach ($removedMarkerCacheSymbol in @(
     }
 }
 foreach ($marker in @(
-    'ActiveTimerIntervalMs = 50',
-    'WorldMapTimerIntervalMs = 4',
+    'ActiveTimerIntervalMs = 33',
+    'DiagnosticNoMotionTimerIntervalMs = 250',
+    'DiagnosticModeNoPaint = 1',
+    'DiagnosticModeNoMotion = 2',
+    'WorldMapTimerIntervalMs = 8',
     'RadarIdleTimerIntervalMs = 75',
     'DisabledTimerIntervalMs = 125',
     'BackgroundTimerIntervalMs = 500',
@@ -405,6 +484,8 @@ foreach ($marker in @(
     'GameLifetimeCheckIntervalMs = 1000',
     'WindowVisibilityCheckIntervalMs = 250',
     'MotionStaleTimeoutMs = 2500',
+    'MotionBridgeFallbackIntervalMs = 250',
+    'MotionBridgePollingFallbackIntervalMs = 50',
     'ReferenceStatusStripGap = -6',
     'ReferenceStatusStripHeight = 46',
     'new WorldEncounterCatalog()',
@@ -415,6 +496,90 @@ foreach ($marker in @(
     'Update();')) {
     if ($radar -notmatch [regex]::Escape($marker)) {
         throw "Overlay marker is missing: $marker"
+    }
+}
+foreach ($marker in @(
+    'FileSystemWatcher',
+    'MotionBridgeDirtyGate',
+    ': IDisposable',
+    'UpdateOrRearm',
+    'Interlocked.Exchange(ref _dirtyMask, 0)',
+    'watcher.EnableRaisingEvents = false')) {
+    if ($motionReader -notmatch [regex]::Escape($marker)) {
+        throw "Event-driven Motion Bridge marker is missing: $marker"
+    }
+}
+foreach ($marker in @(
+    'ShouldForceMotionBridgeScan',
+    'ApplyMotionBridgePollingFallback',
+    'ProcessMotionBridgeWake',
+    'SetChangeNotificationsEnabled(!worldMode)',
+    'ChangeNotificationsAvailable',
+    'HasPendingChanges')) {
+    if (($radar + $motionReader) -notmatch [regex]::Escape($marker)) {
+        throw "Compact bridge scheduling marker is missing: $marker"
+    }
+}
+$watcherCallbackStart = $motionReader.IndexOf('private void OnBridgeChanged(')
+$watcherCallbackEnd = $motionReader.IndexOf('private static bool SameContent(', $watcherCallbackStart)
+if ($watcherCallbackStart -lt 0 -or $watcherCallbackEnd -le $watcherCallbackStart) {
+    throw 'Motion Bridge watcher callback boundary is malformed.'
+}
+$watcherCallbackBlock = $motionReader.Substring(
+    $watcherCallbackStart,
+    $watcherCallbackEnd - $watcherCallbackStart)
+foreach ($forbiddenWatcherWork in @(
+    'SharedBridgeFile.ReadInto',
+    'MotionRecordParser.TryParse',
+    'Task.Run',
+    'new Thread')) {
+    if ($watcherCallbackBlock -match [regex]::Escape($forbiddenWatcherWork)) {
+        throw "Watcher callback performs forbidden work: $forbiddenWatcherWork"
+    }
+}
+if ($motionReader -match [regex]::Escape('System.Threading.Tasks')) {
+    throw 'Motion Bridge added a background parser task.'
+}
+foreach ($marker in @(
+    'no_paint_key = "F5"',
+    'no_motion_key = "F6"',
+    'request_active_diagnostic_mode("no_paint", "F5")',
+    'request_active_diagnostic_mode("no_motion", "F6")',
+    'request_active_diagnostic_mode("normal", "F7")')) {
+    if ($mainLua -notmatch [regex]::Escape($marker) -and
+        $defaultConfigText -notmatch [regex]::Escape($marker)) {
+        throw "Inline A/B hotkey marker is missing: $marker"
+    }
+}
+$debugHotkeyGuardStart = $mainLua.IndexOf(
+    'if config.debug_logging == true then',
+    $mainLua.IndexOf('local function request_active_diagnostic_mode('))
+$normalHotkeyStart = $mainLua.IndexOf(
+    'RegisterKeyBind(Key[start_key]',
+    $debugHotkeyGuardStart)
+if ($debugHotkeyGuardStart -lt 0 -or
+    $normalHotkeyStart -le $debugHotkeyGuardStart) {
+    throw 'Debug hotkey guard boundary is malformed.'
+}
+$debugHotkeyBlock = $mainLua.Substring(
+    $debugHotkeyGuardStart,
+    $normalHotkeyStart - $debugHotkeyGuardStart)
+foreach ($debugHotkeyMarker in @(
+    'RegisterKeyBind(Key[no_paint_key]',
+    'RegisterKeyBind(Key[no_motion_key]')) {
+    if ($debugHotkeyBlock -notmatch
+        [regex]::Escape($debugHotkeyMarker)) {
+        throw "F5/F6 are not confined to the debug_logging guard: $debugHotkeyMarker"
+    }
+}
+foreach ($marker in @(
+    'if (_diagnosticMode == DiagnosticModeNoPaint)',
+    '_diagnosticMode != DiagnosticModeNoMotion',
+    '_motionPredictor.Clear()',
+    'CloneMotionFrame(motion)',
+    'frame.DiagnosticMode = diagnosticMode')) {
+    if (($radar + $motionParser) -notmatch [regex]::Escape($marker)) {
+        throw "Inline A/B isolation marker is missing: $marker"
     }
 }
 if ($radar -match [regex]::Escape('ActiveTimerIntervalMs = 24')) {
@@ -440,9 +605,27 @@ if ($saveStateText -notmatch [regex]::Escape('TimeSpan.FromMilliseconds(2000)'))
 foreach ($marker in @('SaveChangeDebounce','TimeSpan.FromSeconds(4)','SetRuntimeEnabled','ThreadPriority.BelowNormal','SAVE_REFRESH_PERF')) {
     if ($saveStateText -notmatch [regex]::Escape($marker)) { throw "Optimized save-state marker is missing: $marker" }
 }
+$nativeMethodsText = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Platform\NativeMethods.cs') -Raw
+foreach ($marker in @('ThreadModeBackgroundBegin','ThreadModeBackgroundEnd','SetThreadPriority(','GetCurrentThread()')) {
+    if (($saveStateText + $nativeMethodsText) -notmatch [regex]::Escape($marker)) { throw "Background save-worker scheduling marker is missing: $marker" }
+}
 $saveReaderText = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\SaveSnapshotReader.cs') -Raw
-foreach ($marker in @('DatabaseCacheHits','TryGetCached','SqliteOpenReadWrite','ApplyKey(database, key)','QueryOpenedTreasureBits(database)','QueryBossRespawns(database, encounterTargetIds)','BuildActorFilterSql(encounterTargetIds)','ActorFilterSignature')) {
+foreach ($marker in @('DatabaseCacheHits','TryGetCached','TryGetCompatibleCached','BuildCacheKey','includeTreasure','SqliteOpenReadWrite','ApplyKey(database, key)','QueryOpenedTreasureBits(database)','QueryBossRespawns(database, encounterTargetIds)','BuildActorFilterSql(encounterTargetIds)','ActorFilterSignature')) {
     if ($saveReaderText -notmatch [regex]::Escape($marker)) { throw "Optimized snapshot-reader marker is missing: $marker" }
+}
+if ($saveReaderText -notmatch [regex]::Escape('if (DebugSettings.Enabled)') -or
+    $saveReaderText -notmatch [regex]::Escape('QueryEncounterTaskTable(database)') -or
+    $saveReaderText -notmatch [regex]::Escape('WHERE OPENED_BIT_FIELD <> 0;')) {
+    throw 'Normal save snapshot still performs avoidable diagnostic or zero-row work.'
+}
+foreach ($marker in @('CacheMissIncludesTreasure = true','bool readIncludesTreasure =','TreasureRequested','TreasureQueries','coalescingWindowMs=')) {
+    if (($saveReaderText + $saveStateText) -notmatch [regex]::Escape($marker)) { throw "Cold-read coalescing marker is missing: $marker" }
+}
+foreach ($marker in @('SnapshotReadInterval =','TimeSpan.FromSeconds(45)','_nextSnapshotReadUtc','now < _nextSnapshotReadUtc','includeTreasure = true')) {
+    if ($saveStateText -notmatch [regex]::Escape($marker)) { throw "Bounded save-read scheduler marker is missing: $marker" }
+}
+if (-not $saveReaderText.Contains('StoreCached(') -or -not $saveReaderText.Contains('readIncludesTreasure,')) {
+    throw 'Cache miss does not store the warmed treasure-rich shape.'
 }
 if (([regex]::Matches($saveReaderText, 'PRAGMA key')).Count -ne 1) {
     throw 'SQLCipher key must be applied exactly once per database connection.'
@@ -476,7 +659,10 @@ foreach ($marker in @(
     }
 }
 $debugSettingsText = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Configuration\DebugSettings.cs') -Raw
-$defaultConfigText = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\config.default.lua') -Raw
+$defaultConfigText = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\config.lua') -Raw
+if (Test-Path -LiteralPath (Join-Path $root 'src\ue4ss\config.default.lua')) {
+    throw 'A second default configuration file remains; config.lua must be authoritative.'
+}
 if ($debugSettingsText -notmatch [regex]::Escape('HighResolutionTimerEnabled')) {
     throw 'High-resolution timer startup setting parser is missing.'
 }
@@ -522,11 +708,11 @@ foreach ($marker in @(
 }
 
 $moleCatalog = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Data\WorldMoleCatalog.cs') -Raw
-foreach ($marker in @('ExpectedCount = 34','invalid or duplicate record','GetMap','contiguous mask bits')) {
+foreach ($marker in @('ExpectedCount = 83','invalid or duplicate record','GetMap','contiguous mask bits')) {
     if ($moleCatalog -notmatch [regex]::Escape($marker)) { throw "Mole/Fly catalog invariant is missing: $marker" }
 }
 $moleCompletion = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\mole_completion.lua') -Raw
-foreach ($marker in @('EXPECTED_RECORD_COUNT = 34','unsafe runtime completion queries are disabled','function M.set_context_available','function M.visible_mask')) {
+foreach ($marker in @('EXPECTED_FLY_RECORD_COUNT = 33','EXPECTED_CATALOG_COUNT = 83','unsafe runtime completion queries are disabled','function M.set_context_available','function M.visible_mask')) {
     if ($moleCompletion -notmatch [regex]::Escape($marker)) { throw "Mole/Fly safety-mode invariant is missing: $marker" }
 }
 $moleRewardVisibility = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Data\MoleRewardVisibilityIndex.cs') -Raw
@@ -534,7 +720,7 @@ foreach ($marker in @('FirstMiniGameId = 11001','LastMiniGameId = 11034','IsRawO
     if ($moleRewardVisibility -notmatch [regex]::Escape($marker)) { throw "Mole reward visibility invariant is missing: $marker" }
 }
 $moleProvider = Get-Content -LiteralPath (Join-Path $root 'src\installer\Core\Providers\MoleDataProvider.cs') -Raw
-foreach ($marker in @('DT_MiniGame_G5_','BindRewardTreasureIds','treasures.lua','reward_save_id','rewards.Count != 34')) {
+foreach ($marker in @('DT_MiniGame_G5_','BindRewardTreasureIds','treasures.lua','reward_save_id','rewards.Count != 83','AdditionalMiniGameLuaGenerator.Append','gameId == 13009 && saveId == 13008','rewards.Add(13010, sharedWaveReward)')) {
     if ($moleProvider -notmatch [regex]::Escape($marker)) { throw "Install-generated Mole reward mapping invariant is missing: $marker" }
 }
 $moleCatalogSource = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Data\WorldMoleCatalog.cs') -Raw
@@ -550,7 +736,7 @@ if ($diagnosticsConfigureIndex -lt 0 -or $moleInitializeIndex -le $diagnosticsCo
     throw 'Mole completion must initialize after diagnostics configuration so debug performance recording is available.'
 }
 $moleRenderer = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Rendering\MoleMarkerRenderer.cs') -Raw
-foreach ($marker in @('winged upward-arrow','BuildWing','BuildArrow','GraphicsPath')) {
+foreach ($marker in @('winged upward-arrow','BuildWing','BuildArrow','BuildHammer','BuildWave','GraphicsPath')) {
     if ($moleRenderer -notmatch [regex]::Escape($marker)) { throw "Winged Fly marker invariant is missing: $marker" }
 }
 $environmentSampler = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\world_environment.lua') -Raw
@@ -678,7 +864,7 @@ if (($generatedOwnerConfig + $ownerResolver) -match '(?i)sqlcipher[_ -]?key\s*='
 }
 
 $visibilityIndex = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Data\WorldTreasureVisibilityIndex.cs') -Raw
-foreach ($marker in @('catalogVersion == _catalogVersion','saveVersion == _saveVersion','if (hasSave)','foreach (WorldTreasure treasure in catalog.Points)','saveState.IsOpened(','_catalogVersion = catalogVersion','_saveVersion = saveVersion')) {
+foreach ($marker in @('catalogVersion == _catalogVersion','saveVersion == _saveVersion','if (hasSave)','IList<WorldTreasure> points = catalog.Points','WorldTreasure treasure = points[index]','saveState.IsOpened(','_catalogVersion = catalogVersion','_saveVersion = saveVersion')) {
     if ($visibilityIndex -notmatch [regex]::Escape($marker)) {
         throw "Startup fail-closed treasure visibility marker is missing: $marker"
     }
@@ -695,28 +881,28 @@ $defaultOverrides = Get-Content -LiteralPath (Join-Path $root 'resources\default
 if ($defaultOverrides -match '(?m)^\s*ignore\s+10220122\s*(?:#.*)?$') {
     throw 'Obsolete default treasure override ignore 10220122 is still active.'
 }
-if (([regex]::Matches($defaultOverrides, '(?im)^\s*ignore\s+11003\s*(?:#.*)?$')).Count -ne 1 -or
-    $defaultOverrides -notmatch [regex]::Escape('alias 11003 14016') -or
-    $defaultOverrides -notmatch [regex]::Escape('authoritative 14016 record')) {
-    throw 'Default 11003 duplicate rule and authoritative 14016 explanation are not intact.'
+if ($defaultOverrides -match '(?im)^\s*ignore\s+11003\s*(?:#.*)?$' -or
+    $defaultOverrides -match [regex]::Escape('11003 overlaps 14016') -or
+    $defaultOverrides -match [regex]::Escape('alias 11003 14016')) {
+    throw 'Obsolete default 11003/14016 duplicate override guidance remains.'
 }
 $installScript = Get-Content -LiteralPath (Join-Path $root 'src\installer\Install.ps1') -Raw
 if ($mainLua -match [regex]::Escape('Protocol-v3 Motion Bridge') -or
     $installScript -match [regex]::Escape('single-motion-bridge-v3')) {
     throw 'An active runtime or installer string still identifies the current bridge as protocol v3.'
 }
-if ($installScript -notmatch [regex]::Escape('REMOVED obsolete treasure override ignore 10220122')) {
-    throw 'Dev15 removal-only 10220122 migration log is missing.'
+if ($installScript -notmatch [regex]::Escape('REMOVED obsolete treasure override rules for valid records 10220122/11003')) {
+    throw 'Valid-record override migration log is missing.'
 }
 foreach ($marker in @(
     "`$_ -notmatch '^\s*ignore\s+10220122\s*(?:#.*)?$'",
-    "`$_ -notmatch '^\s*#\s*Known abandoned or inaccessible chest record\.\s*$'")) {
+    "`$_ -notmatch '^\s*#\s*Known abandoned or inaccessible chest record\.\s*$'",
+    "`$_ -notmatch '^\s*ignore\s+11003\s*(?:#.*)?$'",
+    "`$_ -notmatch '^\s*#\s*Known abandoned duplicate: 11003 overlaps 14016 at the same chest location\.\s*$'",
+    "`$_ -notmatch '^\s*#\s*Keep the authoritative 14016 record and suppress the offset duplicate\.\s*$'")) {
     if ($installScript -notmatch [regex]::Escape($marker)) {
         throw "Accepted removal-only installer migration marker is missing: $marker"
     }
-}
-if ($installScript -match "notmatch[^\r\n]+11003") {
-    throw 'Installer still migrates the retained duplicate ignore 11003.'
 }
 foreach ($marker in @('WorldMapId = 100','_worldTreasureIndex.GetMap(WorldMapId)','_worldTreasureIndex.GetMap(map.mapId)')) {
     if ($radar -notmatch [regex]::Escape($marker)) {
@@ -849,4 +1035,4 @@ if ($backupArtifacts.Count -gt 0) {
 }
 
 $worldStatusGate = if ($clockEnabled) { 'isolated-one-shot-wall-time-no-retry' } else { 'disconnected-zero-read' }
-Write-Host "Source verification passed for DragonSwordWorldRadar $version; overlay=41; installer=18; lua=9; motionProtocol=5; fields=37; playerSamples=250ms-scalar-only; compactPrediction=50ms-bounded; visibleWorldMap=4ms-diagnostic; worldCandidates=epoch-bound-cap2; loopOwnership=tokenized; installBoundSaveRva=true; encounters=49-startup-fixed-unified; moles=34; worldStatus=$worldStatusGate."
+Write-Host "Source verification passed for DragonSwordWorldRadar $version; overlay=41; installer=19; lua=9; motionProtocol=6; fields=38; inlineAB=debug-only-F5-no-paint_F6-no-motion_F7-normal_F8-off; playerSamples=250ms-scalar-only; compactPrediction=33ms-event-driven; bridgeFallback=250ms; visibleWorldMap=8ms; worldCandidates=epoch-bound-cap2; loopOwnership=tokenized; installBoundSaveRva=true; encounters=49-startup-fixed-unified; miniGames=83; worldStatus=$worldStatusGate."

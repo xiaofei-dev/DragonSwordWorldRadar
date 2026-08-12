@@ -12,8 +12,11 @@ return {
     -- prove native safety; use F8 for the in-game A/B boundary.
     show_world_status = true,
 
-    -- F7 enables configured marker and world-status layers; F8 temporarily
-    -- disables every mod feature for FPS comparison without rewriting config.
+    -- Debug-only compact-radar A/B controls. F5/F6 are registered only when
+    -- debug_logging is true. F7 restores the normal path and F8 disables every
+    -- feature without rewriting config.
+    no_paint_key = "F5",
+    no_motion_key = "F6",
     refresh_key = "F7",
     toggle_key = "F8",
     auto_start_overlay = true,
@@ -30,10 +33,9 @@ return {
 
     -- Debug log: producer timings, bridge rates, Overlay frame pacing,
     -- CPU/memory samples, geometry transitions, and save/Boss diagnostics.
-    -- Pre-release builds keep file-based performance diagnostics enabled so
-    -- gameplay test sessions remain comparable. Disable this for the final
-    -- release after performance acceptance is complete.
-    debug_logging = true,
+    -- Keep this false for normal play. Enable it only for a bounded diagnostic
+    -- capture; doing so restores detailed counters and crash-trace evidence.
+    debug_logging = false,
     diagnostic_perf_interval_seconds = 5,
 
     -- A/B switch for the Overlay's Windows timer-resolution request. False

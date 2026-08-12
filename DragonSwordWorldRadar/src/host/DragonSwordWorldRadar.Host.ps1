@@ -21,7 +21,7 @@ try {
     $mutex = New-Object Threading.Mutex($true, 'Local\DragonSwordWorldRadar.OverlayHost', [ref]$createdNew)
     if (-not $createdNew) { Log 'ALREADY_RUNNING'; return }
     $ownsMutex = $true
-    Log "START version=0.4.0-dev59-ue4ssroot1 renderer=WinForms pid=$PID host=single_process_watcher"
+    Log "START version=0.4.0-dev74-minigamecatalog2 renderer=WinForms pid=$PID host=single_process_watcher"
 
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
@@ -64,7 +64,7 @@ namespace DragonSwordWorldRadar {
 
     [IO.File]::WriteAllText(
         (Join-Path $runtime 'active-version.txt'),
-        '0.4.0-dev59-ue4ssroot1 WinForms',
+        '0.4.0-dev74-minigamecatalog2 WinForms',
         [Text.UTF8Encoding]::new($false))
     [DragonSwordWorldRadar.Program]::Run()
     Log 'RETURNED'

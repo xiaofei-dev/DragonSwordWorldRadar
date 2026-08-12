@@ -1,34 +1,39 @@
 {
   "schema_version": 3,
   "name": "DragonSwordWorldRadar",
-  "version": "0.4.0-dev59-ue4ssroot1",
-  "stage": "unified-install-bound-boss-assault-encounter-pipeline",
+  "version": "0.4.0-dev74-minigamecatalog2",
+  "stage": "event-driven-compact-ingest-and-33ms-presentation-candidate",
   "mod_folder": "DragonSwordWorldRadar",
   "ue4ss_runtime_root": "DS/Binaries/Win64/ue4ss",
-  "source_baseline": "0.4.0-dev30-referencecache1 (owner-accepted performance baseline; later fresh-Pawn travel safety retained)",
+  "source_baseline": "evidence-driven current architecture; historical packages are diagnostic references only",
   "renderer": "WinForms source compiled in memory by Windows PowerShell 5.1",
   "custom_runtime_executable_count": 0,
   "automatic_start": "per-session hidden WScript watcher launched by the UE4SS mod; host, overlay, and watcher bind to and exit with the exact game process",
   "scheduler": {
     "minimap_motion_interval_ms": 50,
-    "active_world_map_motion_interval_ms": 4,
+    "active_world_map_motion_interval_ms": 8,
     "control_sampling_interval_ms": 250,
     "minimap_visibility_sampling_interval_ms": 0,
     "minimap_scale_sampling_interval_ms": 1000,
-    "world_environment_sampling": "disabled; zero production TimeOfDay reads",
-    "overlay_active_timer_ms": 50,
+    "world_environment_sampling": "one isolated TimeOfDay baseline read after each successful F7 stability gate; zero recurring production reads",
+    "overlay_active_timer_ms": 33,
+    "overlay_no_motion_control_timer_ms": 250,
     "overlay_world_map_timer_ms": 8,
     "overlay_radar_idle_timer_ms": 75,
     "overlay_disabled_timer_ms": 125,
     "overlay_background_timer_ms": 500,
+    "overlay_bridge_change_detection": "one compact-only FileSystemWatcher marks alternating slots dirty; callbacks never read or parse records",
+    "overlay_bridge_healthy_fallback_ms": 250,
+    "overlay_bridge_unavailable_fallback_ms": 50,
     "overlay_maintenance_interval_ms": 1000,
+    "save_snapshot_minimum_interval_ms": 45000,
     "overlay_geometry_interval_ms": 1000,
     "overlay_game_lifetime_interval_ms": 1000,
     "window_visibility_sampling_interval_ms": 250,
     "motion_xy_threshold_game_units": "max(20, radius / 170 * 0.5); approximately 36.8 town and 66.2 field",
     "motion_z_threshold_game_units": 10,
     "lua_loopasync_textual_registrations": 3,
-    "policy": "preserve dev43 epoch-bounded widget and loop ownership plus dev42 install-bound save RVA; use one fresh player scalar per 250 ms, 50 ms compact presentation, and diagnostic 4 ms visible-world-map presentation"
+    "policy": "preserve dev43 epoch-bounded widget and loop ownership plus dev42 install-bound save RVA; use one fresh player scalar per 250 ms, change-driven compact bridge ingestion, 33 ms in-memory prediction/presentation, and 8 ms visible-world-map presentation"
   },
   "platform_timing": {
     "high_resolution_timer_setting": "scripts/config.lua high_resolution_timer",
@@ -45,17 +50,20 @@
     "runtime_acceptance": "pending repeated in-game dungeon, teleport, story-mode, minimap, and expanded-map validation"
   },
   "render_surface_visibility": {
-    "sampling": "the existing 250 ms game-thread control callback reads minimap scale at most once per second; cached Engine and DLayerMiniMap wrappers are resolved only when absent/invalid, with no UObject enumeration or additional worker",
+    "sampling": "the existing 250 ms game-thread control callback reads minimap scale at most once per second; cached Engine and top-level DLayerMiniMap UObjects are resolved only when absent/invalid, while nested LayerMap/MapOverlay property wrappers are read inside one protected access block without incompatible UObject IsValid calls",
     "compact_visible": "no game-HUD visibility UObject query is performed; compact presentation follows player-context/master-enable plus the Overlay foreground/minimize policy, exactly matching the supplied 1.6.1 reference",
     "compact_hidden": "task/cutscene minimap absence is not inferred from UObject visibility; player-context loss or F8 publishes the existing fail-closed disabled bridge frame",
     "world_map": "expanded world-map detection occurs first and remains independent of compact minimap visibility",
     "runtime_acceptance": "pending startup, travel, task/cutscene, expanded-map, smoothness, and object-lookup-frequency validation"
   },
-  "marker_rendering": "one unified Boss/Assault encounter traversal plus direct retained-geometry marker drawing on every paint; no bitmap or layer cache",
+  "marker_rendering": "one unified indexed Boss/Assault encounter traversal plus direct retained-geometry marker drawing on every paint; one coherent paint-time UTC sample; the closest two treasures may show height indicators while only the closest is enlarged and labeled; no bitmap or layer cache",
   "treasure_selection": {
     "interval_ms": 1000,
     "maximum_points": 80,
     "source": "packaged-dev15 WorldTreasureVisibilityIndex and query buffer over map 100 after save-open filtering; expanded world map uses frame WorldMap.mapId",
+    "nearest_height_markers": 2,
+    "enlarged_nearest_markers": 1,
+    "selection_passes": 1,
     "not_save_check": true
   },
   "persistent_completion": {
@@ -65,8 +73,8 @@
   "runtime_ipc": {
     "active_channel_count": 1,
     "channel": "Motion/control bridge",
-    "protocol_version": 5,
-    "field_count": 37,
+    "protocol_version": 6,
+    "field_count": 38,
     "encoding": "compact ASCII pipe-delimited record",
     "slots": [
       "runtime/bridge/radar_motion_a.dat",
@@ -80,7 +88,18 @@
       "strict field validation"
     ],
     "heartbeat_ms": 1000,
+    "compact_change_notifications": "healthy notifications coalesce by slot and are parsed only on the UI thread; slow disabled/F6/idle modes receive one coalesced UI wake",
+    "compact_full_scan_fallback_ms": 250,
+    "notification_unavailable_polling_fallback_ms": 50,
+    "world_map_reader": "notifications disabled; existing forced dual-slot metadata probe remains at the visible 8 ms cadence",
     "overlay_stale_timeout_ms": 2500,
+    "diagnostic_hotkey_registration": "F5/F6 only when scripts/config.lua debug_logging is true; F7/F8 always registered",
+    "diagnostic_modes": {
+      "0_normal_f7": "33 ms compact in-memory motion prediction and conditional rendering; bridge files are consumed only when dirty or fallback-due",
+      "1_no_paint_f5": "producer, bridge, control, maintenance, and Overlay timer remain active; custom paint and paint-triggering invalidation are suppressed after one clear",
+      "2_no_motion_f6": "producer and bridge remain active; Overlay freezes a scalar snapshot, skips prediction and motion invalidation, and reads control transitions at 250 ms",
+      "off_f8": "existing full feature shutdown"
+    },
     "static_bridge_status": "removed from active runtime; legacy radar_state*.json is cleanup-only",
     "static_bridge_removed_work": [
       "Lua JSON construction and heartbeat writes",
@@ -103,15 +122,23 @@
     "encounters": "Overlay startup validates data/generated/bosses.lua and data/generated/assaults.lua, combines exactly 9 Bosses plus 40 Assault targets, fixes one 49-ID tb_actor_respawn filter, and performs no F7 catalog load/cache reset/query-shape change",
     "moles": "Overlay loads exactly 34 MiniGame_Fly records and filters the Lua candidate mask through raw same-ID DT_MiniGame_G5 reward bits from tb_treasure_box",
     "assaults": "show_assaults controls only presentation of the 40 Assault members in the immutable encounter catalog; optional generated conditions are record-owned and fail closed when their scalar source is unavailable",
-    "lua_role": "publishes only numeric scalar player/control data through protocol-v5; no Pawn/Controller wrapper crosses frames or IPC"
+    "lua_role": "publishes only numeric scalar player/control data plus one strict diagnostic-mode enum through protocol-v6; no Pawn/Controller wrapper crosses frames or IPC"
   },
   "world_map": {
     "entry": "hide, resize with SWP_NOCOPYBITS, one hidden Invalidate()+Update(), then reveal immediately",
     "fixed_reveal_delay_ms": 0,
     "recurring_prepaint": false,
-    "exit": "first missing active-map sample invalidates the world-loop token, stops production, and restores radar mode",
+    "exit": "first missing active-map sample invalidates the world-loop token, stops production, restores radar mode, drops every wrapper, and arms one bounded rescan for the next 250 ms control sample",
+    "reopen_detection": "at most two retained hidden current-epoch candidates receive visibility-only checks on the existing 250 ms control sample; no recurring UObject enumeration is added",
     "candidate_ownership": "hard cap 2; every wrapper carries capture epoch and candidate token; reset drops wrappers and bumps the token; bounded resume scan cannot re-promote retired identities while current Notify-created widgets may be admitted",
     "accumulation_status": "structural unbounded retention is removed; attribution of the reported progressive post-travel slowdown remains a runtime hypothesis pending owner acceptance"
+  },
+  "runtime_error_recovery": {
+    "confirmed_errors": "caught asynchronous Lua failures or five consecutive one-second observations with no 250 ms control-loop heartbeat progress",
+    "action": "token- and epoch-invalidating automatic F8-to-F7 lifecycle restart through the existing four-sample activation gate",
+    "false_positive_boundary": "temporary missing expanded-map state uses candidate-only recovery and never arms the runtime restart",
+    "cost_boundary": "existing compact/world presentation loop performs scalar-only observation; no fourth LoopAsync, UObject read, bridge operation, file access, draw, or game-thread request",
+    "restart_limit": 3
   },
   "data_installation": "local game PAK extraction through in-memory C# and the bundled ooz.exe decoder; datasets and Assault catalog carry the locked pre-generation fingerprint and installation rejects pre/post identity drift",
   "game_update_detection": "stored executable/PAK fingerprint checked on launch",
@@ -127,15 +154,15 @@
   "mole_fly_record_count": 34,
   "mole_completion": "Fly IDs 11001-11034 map exactly to same-ID DT_MiniGame_G5 reward treasures; claimed raw tb_treasure_box bits hide markers, bypassing treasure display overrides; no game UObject completion function is resolved or called",
   "world_status": {
-    "display": "disabled, matching dev38",
-    "lifecycle": "production main does not import or call world_environment",
-    "fail_closed": "zero production TimeOfDay reads",
+    "display": "controlled by the single scripts/config.lua; enabled by default in this pre-release candidate",
+    "lifecycle": "F7 arms one capture only after the four-sample activation gate and eight valid context samples; F8 cancels pending work",
+    "fail_closed": "a failed baseline remains unavailable until the next F7; no retry or recurring calibration read",
     "layout": "compact window width 360 and height 400 reference pixels; 138-wide group centered in the 46-pixel strip overlapping the minimap by six pixels; bounds clamped; reference phase font=13",
-    "time_source": "disabled",
-    "startup_gate": "not active",
+    "time_source": "one isolated DGameSingleton.TimeOfDay baseline followed by local wall-time extrapolation",
+    "startup_gate": "four stable activation samples plus eight valid clock-context samples",
     "time_phases": "MORNING 06:00-11:59; AFTERNOON 12:00-17:59; EVENING 18:00-20:59; NIGHT 21:00-05:59",
     "weather_status": "disabled; observed values remained invariant and were not a trustworthy visible-weather source",
-    "cost_bound": "zero clock/weather UObject reads",
+    "cost_bound": "one clock UObject read attempt per F7 activation and zero weather UObject reads",
     "rate_assumption": "approximately 60 game seconds per real second, confirmed in research and used for local extrapolation"
   },
   "boss_runtime_tracking": "tb_actor_respawn read from consistent .db/.bak plus WAL/SHM/journal snapshots; no Character enumeration",
@@ -149,9 +176,9 @@
     "runtime_gate": "F8 performs no new save metadata or SQLCipher work; queued results are invalidated",
     "metadata_interval_ms": 2000,
     "stable_change_debounce_ms": 4000,
-    "database_cache": "in-memory per .db/.bak exact fingerprint; unchanged sibling parsed snapshots are reused; no cross-restart cache",
+    "database_cache": "in-memory per .db/.bak exact fingerprint; continuous autosave fingerprints coalesce into at most one latest stable complete treasure/boss/assault/task snapshot per 45-second window, every required cache miss builds the treasure-rich strict superset, unchanged windows are cache-only, and no cross-restart cache is used",
     "sqlcipher": "isolated temporary snapshot connection with one key/cipher setup per connection; game save files are never opened directly by SQLCipher",
-    "worker_priority": "best-effort BelowNormal",
+    "worker_priority": "best-effort managed BelowNormal plus balanced Windows thread background mode for CPU and I/O scheduling",
     "debug_timings": "copy, key, treasure query, Boss/Assault query, database reads/cache hits, total"
   },
   "bundled_tool_executable_count": 1,
@@ -168,7 +195,7 @@
     "alias"
   ],
   "accepted_data_rule_correction": "fixed ID 10220122 is not ignored and upgrades remove only its obsolete ignore/explanation; duplicate/offset 11003 remains ignored in favor of authoritative 14016",
-  "diagnostics_output": "runtime/diagnostics; pre-release defaults enable file-based debug diagnostics while diagnostic_verbose remains false; debug Lua logs separate fresh current-root traversal, K2_GetActorLocation, and every phase of the one-hertz DLayerMiniMap scale path; Overlay logs prove startup-once encounter catalog/filter ownership, unified availability, and per-type marker counts; the final release must disable debug logging",
-  "validation_status": "Windows source, compile, refactor, protocol-v5, scalar scheduling/prediction, Assault isolation, Mole mapping, metadata, and package gates required; in-game smoothness and teleport behavior remain pending owner acceptance",
-  "performance_claim": "No numeric FPS claim. Normal minimap UE4SS full-chain samples are reduced from about 24/s to about 4/s while retaining fresh-current-Pawn travel safety. Overlay remains 20 Hz and predicts only from two numeric samples, bounded to 250 ms and frozen after 500 ms stale age."
+  "diagnostics_output": "runtime/diagnostics; debug_logging defaults false, so F7 trace budgets, eager trace-field tables, Overlay performance bookkeeping, save performance formatting, and the diagnostic-only encounter-task query are absent from normal execution; successful WORLD_TIME_TASK_PERF captures explicitly report failure=none; diagnostic_verbose remains false and use_logging remains enabled",
+  "validation_status": "Windows source, compile, refactor, protocol-v6 debug-only inline A/B, event-driven bridge, scalar scheduling/prediction, nearest-pair rendering, Assault isolation, Mole mapping, metadata, and independent package gates required; F7/F8 smoothness and teleport behavior remain pending owner acceptance",
+  "performance_claim": "No numeric FPS claim. Normal minimap UE4SS full-chain samples remain about 4/s with fresh-current-Pawn travel safety. Compact presentation targets 33 ms using only bounded in-memory prediction between scalar arrivals; unchanged bridge slots are no longer metadata-probed on every visual tick. Healthy compact mode performs dirty-slot reads plus a 250 ms dual-slot safety scan, with a 50 ms polling fallback only when notifications are unavailable. Prediction remains bounded to 250 ms and freezes after 500 ms stale age. The second height marker is selected in the existing allocation-free pass and adds at most one normal vector marker plus one pointer. Save publication cadence, Lua cadence, world-map 8 ms behavior, and all visible layers are otherwise unchanged."
 }

@@ -18,7 +18,7 @@ Add-Type -Path $installerSources -ReferencedAssemblies $references -ErrorAction 
 
 $firstId = 11001
 $lastId = 11034
-$expectedCount = 34
+$expectedCount = 33
 $temp = Join-Path ([IO.Path]::GetTempPath()) (
     'DragonSwordWorldRadar-RealFlyCatalogTest-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temp -Force | Out-Null
@@ -73,19 +73,32 @@ try {
     if ($count -ne $expectedCount) {
         throw "Generator returned $count records; expected $expectedCount."
     }
+    $additionalPath = Join-Path $temp 'AdditionalMiniGames.xml'
+    $additionalXml = New-Object Text.StringBuilder
+    $null = $additionalXml.AppendLine('<?xml version="1.0" encoding="utf-8"?>')
+    $null = $additionalXml.AppendLine('<ActorPositionDataMap>')
+    foreach ($typeRange in @(@('Mole',12001,12040),@('Wave',13001,13010))) {
+        for ($id = [int]$typeRange[1]; $id -le [int]$typeRange[2]; $id++) {
+            $null = $additionalXml.AppendLine(('  <ActorPositionData MapGroupID="100" Name="MiniGame_{0}_{1}_Teleport_Start" PosX="{2}" PosY="{3}" PosZ="3000" />' -f $typeRange[0],$id,(300000+$id),(400000+$id)))
+        }
+    }
+    $null = $additionalXml.AppendLine('</ActorPositionDataMap>')
+    [IO.File]::WriteAllText($additionalPath,$additionalXml.ToString(),$utf8)
+    [DragonSwordWorldRadar.Installer.AdditionalMiniGameLuaGenerator]::Append(
+        [string[]]@($additionalPath),$outputPath)
 
     $generated = [IO.File]::ReadAllText($outputPath)
     $records = [regex]::Matches(
         $generated,
-        '(?m)^\s*\{[^\r\n]*\bmini_game_id\s*=\s*(?<id>\d+)\b[^\r\n]*\bmask_bit\s*=\s*(?<bit>\d+)\b[^\r\n]*\bmap_id\s*=\s*(?<map>\d+)\b[^\r\n]*\bx\s*=\s*(?<x>[-+0-9.eE]+)\b[^\r\n]*\by\s*=\s*(?<y>[-+0-9.eE]+)\b[^\r\n]*\bposition_role\s*=\s*"(?<role>[^"]+)"')
-    if ($records.Count -ne $expectedCount) {
-        throw "Generated Lua parsed $($records.Count) records; expected $expectedCount."
+        '(?m)^\s*\{[^\r\n]*\bmini_game_id\s*=\s*(?<id>\d+)\b[^\r\n]*\bmask_bit\s*=\s*(?<bit>-?\d+)\b[^\r\n]*\bmap_id\s*=\s*(?<map>\d+)\b[^\r\n]*\bx\s*=\s*(?<x>[-+0-9.eE]+)\b[^\r\n]*\by\s*=\s*(?<y>[-+0-9.eE]+)\b[^\r\n]*\bposition_role\s*=\s*"(?<role>[^"]+)"')
+    if ($records.Count -ne 83) {
+        throw "Generated Lua parsed $($records.Count) records; expected 83."
     }
 
     $seenIds = @{}
     $seenBits = @{}
     $mapCounts = @{}
-    for ($index = 0; $index -lt $records.Count; $index++) {
+    for ($index = 0; $index -lt $expectedCount; $index++) {
         $record = $records[$index]
         $id = [int]$record.Groups['id'].Value
         $bit = [int]$record.Groups['bit'].Value
@@ -93,7 +106,8 @@ try {
         $x = [double]::Parse($record.Groups['x'].Value,[Globalization.CultureInfo]::InvariantCulture)
         $y = [double]::Parse($record.Groups['y'].Value,[Globalization.CultureInfo]::InvariantCulture)
         $role = $record.Groups['role'].Value
-        if ($id -ne ($firstId + $index) -or $bit -ne $index) {
+        $expectedId = if ($index -lt 23) { $firstId + $index } else { $firstId + $index + 1 }
+        if ($id -ne $expectedId -or $bit -ne $index) {
             throw "Fly record ordering/mask mismatch at index ${index}: id=$id bit=$bit."
         }
         if ($seenIds.ContainsKey($id) -or $seenBits.ContainsKey($bit)) {
@@ -103,20 +117,14 @@ try {
         $seenBits[$bit] = $true
         $mapCounts[$map] = 1 + [int]$mapCounts[$map]
 
-        $baseX = 100000 + ($index * 100)
-        $baseY = 200000 + ($index * 100)
-        if ($id -eq 11024) {
-            if ($role -ne 'Teleport_Start' -or $x -ne ($baseX + 5000) -or $y -ne ($baseY + 5000)) {
-                throw 'Fly ID 11024 did not use the Teleport_Start fallback.'
-            }
-        }
-        else {
-            if ($role -ne 'NPC_Start' -or $x -ne $baseX -or $y -ne $baseY) {
-                throw "Fly ID $id did not select NPC_Start."
-            }
+        $sourceIndex = $id - $firstId
+        $baseX = 100000 + ($sourceIndex * 100)
+        $baseY = 200000 + ($sourceIndex * 100)
+        if ($role -ne 'NPC_Start' -or $x -ne $baseX -or $y -ne $baseY) {
+            throw "Fly ID $id did not select NPC_Start."
         }
     }
-    if ($mapCounts.Count -ne 2 -or $mapCounts[100] -ne 17 -or $mapCounts[200] -ne 17) {
+    if ($mapCounts.Count -ne 2 -or $mapCounts[100] -ne 17 -or $mapCounts[200] -ne 16) {
         throw "Fly map grouping changed: $($mapCounts | Out-String)"
     }
 
@@ -124,7 +132,7 @@ try {
         throw 'Generator did not emit the candidate audit report.'
     }
 
-    Write-Host 'REAL_FLY_CATALOG_TEST_OK records=34; uniqueIds=34; role=NPC_Start>Teleport_Start; maskBits=0-33; mapGroups=100:17,200:17.'
+    Write-Host 'MINIGAME_CATALOG_TEST_OK records=83; Fly=33; Mole=40; Wave=10; flyMaskBits=0-32.'
 }
 finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue

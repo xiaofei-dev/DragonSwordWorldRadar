@@ -57,79 +57,16 @@ function Test-LuaConfig {
     return $trimmed -match '\}\s*$'
 }
 
-function Repair-LuaConfig {
-    param(
-        [string]$DefaultPath,
-        [string]$UserPath,
-        [string]$ArchiveDirectory
-    )
-
-    if (-not (Test-LuaConfig -Path $DefaultPath)) {
-        throw 'Bundled scripts\config.default.lua is malformed. Re-extract the complete release package.'
-    }
-
-    if (-not (Test-Path -LiteralPath $UserPath -PathType Leaf)) {
-        Copy-Item -LiteralPath $DefaultPath -Destination $UserPath -Force
-        Log 'CREATED scripts\config.lua from validated default'
-        return
-    }
-
-    if (Test-LuaConfig -Path $UserPath) {
-        Log 'PRESERVED validated scripts\config.lua'
-        return
-    }
-
-    New-Item -ItemType Directory -Path $ArchiveDirectory -Force | Out-Null
-    $backup = Join-Path $ArchiveDirectory (
-        'config.invalid.' +
-        [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmssfff') +
-        '.lua')
-    Move-Item -LiteralPath $UserPath -Destination $backup -Force
-    Copy-Item -LiteralPath $DefaultPath -Destination $UserPath -Force
-    Log ("REPAIRED malformed scripts\config.lua; backup={0}" -f $backup)
-}
-
-function Merge-LuaConfig {
-    param([string]$DefaultPath,[string]$UserPath)
-    if (-not (Test-Path -LiteralPath $UserPath)) {
-        Copy-Item -LiteralPath $DefaultPath -Destination $UserPath
-        return
-    }
-    $existing = @(Get-Content -LiteralPath $UserPath)
-    $default = @(Get-Content -LiteralPath $DefaultPath)
-    $pattern = '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*='
-    $known = @{}
-    foreach ($line in $existing) {
-        $match = [regex]::Match(($line -replace '--.*$',''),$pattern)
-        if ($match.Success) { $known[$match.Groups[1].Value.ToLowerInvariant()] = $true }
-    }
-    $missing = New-Object Collections.Generic.List[string]
-    foreach ($line in $default) {
-        $match = [regex]::Match(($line -replace '--.*$',''),$pattern)
-        if ($match.Success -and -not $known.ContainsKey($match.Groups[1].Value.ToLowerInvariant())) {
-            $missing.Add($line)
-            $known[$match.Groups[1].Value.ToLowerInvariant()] = $true
-        }
-    }
-    if ($missing.Count -eq 0) { return }
-    $closing = -1
-    for ($index = $existing.Count - 1; $index -ge 0; $index--) {
-        if ($existing[$index] -match '^\s*}\s*,?\s*$') { $closing = $index; break }
-    }
-    if ($closing -lt 0) { throw 'scripts\config.lua is malformed; could not merge new settings.' }
-    $updated = @($existing[0..($closing-1)]) + @('','    -- Settings added by DragonSwordWorldRadar upgrade.') + $missing + @($existing[$closing..($existing.Count-1)])
-    [IO.File]::WriteAllLines($UserPath,$updated,$utf8)
-}
-
 function Migrate-AssaultConfig {
     param([string]$UserPath)
     $lines = @([IO.File]::ReadAllLines($UserPath))
-    $legacyIsolation = $null
     $showIndex = -1
+    $legacySettingFound = $false
     for ($index = 0; $index -lt $lines.Count; $index++) {
         $code = ($lines[$index] -split '--',2)[0]
         if ($code -match '^\s*assault_performance_ab_isolation\s*=\s*(true|false)\s*,?\s*$') {
-            $legacyIsolation = $Matches[1] -ieq 'true'
+            $legacySettingFound = $true
+            continue
         }
         if ($code -match '^\s*show_assaults\s*=\s*(true|false)\s*,?\s*$') {
             $showIndex = $index
@@ -141,18 +78,16 @@ function Migrate-AssaultConfig {
         if ($code -match '^\s*assault_performance_ab_isolation\s*=') {
             continue
         }
-        if ($index -eq $showIndex) {
-            $indent = [regex]::Match($lines[$index],'^\s*').Value
-            $migrated.Add($indent + 'show_assaults = true,')
-            continue
-        }
         $migrated.Add($lines[$index])
     }
     if ($showIndex -lt 0) {
         throw 'scripts\config.lua is missing the required show_assaults setting.'
     }
-    [IO.File]::WriteAllLines($UserPath,$migrated,$utf8)
-    Log 'ENABLED diagnostic Assault crash reproduction; show_assaults=true'
+    if ($legacySettingFound) {
+        [IO.File]::WriteAllLines($UserPath,$migrated,$utf8)
+        Log 'REMOVED legacy assault_performance_ab_isolation setting from scripts\config.lua'
+    }
+    Log 'PRESERVED user-owned show_assaults setting in scripts\config.lua'
 }
 
 function Stop-ExistingWatcher {
@@ -187,7 +122,7 @@ try {
     $release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
     $releaseVersion = [string]$release.version
     if ([string]::IsNullOrWhiteSpace($releaseVersion)) { throw 'metadata\release.json does not define a release version.' }
-    Log ("INSTALL_START version={0} mode=single-motion-bridge-v4" -f $releaseVersion)
+    Log ("INSTALL_START version={0} mode=event-driven-single-motion-bridge-v6" -f $releaseVersion)
 
     # A normal Windows folder overwrite does not remove files that were
     # deleted from the new release. Remove the exact 1.7 sources retired by
@@ -240,20 +175,18 @@ try {
 
     $modsRoot = Split-Path -Parent $modRoot
     $oldModRoot = Join-Path $modsRoot 'eventrader'
-    $defaultConfig = Join-Path $modRoot 'scripts\config.default.lua'
     $userConfig = Join-Path $modRoot 'scripts\config.lua'
     if (-not (Test-Path -LiteralPath $userConfig) -and (Test-Path -LiteralPath (Join-Path $oldModRoot 'scripts\config.lua'))) {
         Copy-Item -LiteralPath (Join-Path $oldModRoot 'scripts\config.lua') -Destination $userConfig
         Log 'MIGRATED config.lua from legacy eventrader folder'
     }
-    Repair-LuaConfig `
-        -DefaultPath $defaultConfig `
-        -UserPath $userConfig `
-        -ArchiveDirectory $archiveDir
-    Merge-LuaConfig -DefaultPath $defaultConfig -UserPath $userConfig
+    if (-not (Test-LuaConfig -Path $userConfig)) {
+        throw 'The single authoritative scripts\config.lua is missing or malformed. Restore it from a complete release package before installation.'
+    }
+    Log 'VALIDATED single authoritative scripts\config.lua'
     Migrate-AssaultConfig -UserPath $userConfig
     if (-not (Test-LuaConfig -Path $userConfig)) {
-        throw 'scripts\config.lua failed validation after merge.'
+        throw 'scripts\config.lua failed validation after legacy-setting cleanup.'
     }
 
     $overridePath = Join-Path $dataRoot 'treasure_overrides.txt'
@@ -274,19 +207,22 @@ try {
         Log 'PRESERVED data\treasure_overrides.txt'
     }
 
-    # This chest is valid again. Remove only the obsolete stock rule and its
-    # stock explanation while preserving every other user override.
+    # These records are valid. Remove only the obsolete stock rules and their
+    # exact stock explanations while preserving every other user override.
     $overrideLines = @(Get-Content -LiteralPath $overridePath)
     $cleanOverrideLines = @($overrideLines | Where-Object {
         $_ -notmatch '^\s*ignore\s+10220122\s*(?:#.*)?$' -and
-        $_ -notmatch '^\s*#\s*Known abandoned or inaccessible chest record\.\s*$'
+        $_ -notmatch '^\s*#\s*Known abandoned or inaccessible chest record\.\s*$' -and
+        $_ -notmatch '^\s*ignore\s+11003\s*(?:#.*)?$' -and
+        $_ -notmatch '^\s*#\s*Known abandoned duplicate: 11003 overlaps 14016 at the same chest location\.\s*$' -and
+        $_ -notmatch '^\s*#\s*Keep the authoritative 14016 record and suppress the offset duplicate\.\s*$'
     })
     if ($cleanOverrideLines.Count -ne $overrideLines.Count) {
         [IO.File]::WriteAllLines(
             $overridePath,
             [string[]]$cleanOverrideLines,
             $utf8)
-        Log 'REMOVED obsolete treasure override ignore 10220122'
+        Log 'REMOVED obsolete treasure override rules for valid records 10220122/11003'
     }
 
     Stop-ExistingWatcher
@@ -322,7 +258,7 @@ try {
         $installerSources = @(Get-ChildItem -LiteralPath (Join-Path $modRoot 'src\installer') -Recurse -Filter '*.cs' -File |
             Where-Object { $_.FullName -notmatch '[\\/](?:obj|bin)[\\/]' } |
             Sort-Object FullName | Select-Object -ExpandProperty FullName)
-        if ($installerSources.Count -ne 18) { throw "Installer source set is incomplete: $($installerSources.Count) files." }
+        if ($installerSources.Count -ne 19) { throw "Installer source set is incomplete: $($installerSources.Count) files." }
         Add-Type -AssemblyName System.Xml
         $installerRefs = @(
             [System.Xml.XmlDocument].Assembly.Location,
@@ -487,8 +423,8 @@ try {
     $moleCatalogText = [IO.File]::ReadAllText($moleCatalogPath)
     $moleMatches = [regex]::Matches($moleCatalogText,
         '(?m)^\s*\{[^\r\n]*\bmini_game_id\s*=\s*(?<id>110(?:0[1-9]|[12][0-9]|3[0-4]))\b[^\r\n]*\breward_save_id\s*=\s*(?<reward>[1-9]\d*)\b[^\r\n]*\bmask_bit\s*=\s*(?<bit>\d+)\b[^\r\n]*\bmap_id\s*=\s*(?<map>[1-9]\d*)\b[^\r\n]*\bposition_role\s*=\s*"(?:NPC_Start|Teleport_Start|Fly_Linked)"[^\r\n]*\bnotice_title\s*=\s*"109208"[^\r\n]*\bnotice_description\s*=\s*"109202"')
-    if ($moleMatches.Count -ne 34) {
-        throw "Generated Mole/Fly catalog must contain exactly 34 shape-valid records; found $($moleMatches.Count)."
+    if ($moleMatches.Count -ne 33) {
+        throw "Generated Fly catalog must contain exactly 33 ordinary-world records; found $($moleMatches.Count)."
     }
     $seenMoleIds = @{}
     $seenMoleRewards = @{}
@@ -504,12 +440,33 @@ try {
         $seenMoleRewards[$rewardSaveId] = $true
         $seenMoleBits[$maskBit] = $true
     }
-    for ($maskBit = 0; $maskBit -lt 34; $maskBit++) {
+    for ($maskBit = 0; $maskBit -lt 33; $maskBit++) {
         if (-not $seenMoleBits.ContainsKey($maskBit)) {
             throw "Generated Mole/Fly catalog is missing contiguous mask bit $maskBit."
         }
     }
-    Log ("MOLE_CATALOG_VALIDATED records=34; ids={0}; rewardMappings=34; source=install-generated-current-game-pak" -f (($seenMoleIds.Keys | Sort-Object) -join ','))
+    $additionalMatches = [regex]::Matches($moleCatalogText,
+        '(?m)^\s*\{[^\r\n]*\bmini_game_id\s*=\s*(?<id>12(?:00[1-9]|0[1-3][0-9]|040)|130(?:0[1-9]|10))\b[^\r\n]*\breward_save_id\s*=\s*(?<reward>[1-9]\d*)\b[^\r\n]*\bmask_bit\s*=\s*-1\b[^\r\n]*\bmini_game_type\s*=\s*"(?<type>mole|wave)"[^\r\n]*\bmap_id\s*=\s*(?<map>[1-9]\d*)\b[^\r\n]*\bposition_role\s*=\s*"(?:NPC_Start|Teleport_Start)"')
+    if ($additionalMatches.Count -ne 50) {
+        throw "Generated Mole/Wave catalog must contain exactly 50 shape-valid records; found $($additionalMatches.Count)."
+    }
+    $moleTypeCount = 0
+    $waveTypeCount = 0
+    foreach ($match in $additionalMatches) {
+        $miniGameId = [int]$match.Groups['id'].Value
+        $rewardSaveId = [long]$match.Groups['reward'].Value
+        $sharedWaveAlias = $miniGameId -ge 13008 -and $miniGameId -le 13010 -and $rewardSaveId -eq 13008
+        if ($seenMoleIds.ContainsKey($miniGameId) -or ($seenMoleRewards.ContainsKey($rewardSaveId) -and -not $sharedWaveAlias)) {
+            throw 'Generated mini-game catalog contains an unsupported duplicate ID or reward save ID.'
+        }
+        $seenMoleIds[$miniGameId] = $true
+        $seenMoleRewards[$rewardSaveId] = $true
+        if ($match.Groups['type'].Value -eq 'mole') { $moleTypeCount++ } else { $waveTypeCount++ }
+    }
+    if ($moleTypeCount -ne 40 -or $waveTypeCount -ne 10) {
+        throw "Generated mini-game type counts changed (Mole=$moleTypeCount; Wave=$waveTypeCount)."
+    }
+    Log "MINIGAME_CATALOG_VALIDATED records=83; fly=33; mole=40; wave=10; rewardMappings=83; source=install-generated-current-game-pak"
 
     $identity = Get-DragonSwordWorldRadarGameIdentity -Layout $layout
     if ([string]$identity.fingerprint -ne [string]$identityBeforeData.fingerprint) {
@@ -611,8 +568,8 @@ try {
     if ($allExecutables.Count -ne 1) { throw "Expected exactly one bundled tool executable, found $($allExecutables.Count)." }
 
     Log ("INSTALL_COMPLETE version={0} datasets=treasure,boss,assault,mole encounterRecords=49 assaultRecords=40 encounterConditioned={1} customExe=0 bundledToolExe=1 watcher=per-session-wscript transientPowerShell=true" -f $releaseVersion,$expectedAssaultConditionCount)
-    Write-Host ("DragonSwordWorldRadar {0} installed. Generated {1} treasure, {2} world-boss, 40 Assault ({3} conditioned), and 34 Mole/Fly records for game version {4}." -f $releaseVersion,$recordCount,$bossRecordCount,$expectedAssaultConditionCount,$identity.display_version)
-    Write-Host 'Start the game normally. Overlay startup fixes one 49-record Boss/Assault encounter catalog and save-query shape. F7 only enables configured marker, save-state, and isolated world-clock work; F8 disables all active mod work for FPS comparison. The clock performs one read after stable context and then advances locally.'
+    Write-Host ("DragonSwordWorldRadar {0} installed. Generated {1} treasure, {2} world-boss, 40 Assault ({3} conditioned), and 83 mini-game records (33 Fly, 40 Mole, 10 Wave) for game version {4}." -f $releaseVersion,$recordCount,$bossRecordCount,$expectedAssaultConditionCount,$identity.display_version)
+    Write-Host 'Start the game normally. Overlay startup fixes one 49-record Boss/Assault encounter catalog and save-query shape. F7 only enables configured marker, save-state, and isolated world-clock work with normal rendering; F8 disables all active mod work for FPS comparison. When debug_logging is true, F5 adds no-paint isolation and F6 adds frozen-motion isolation. The clock performs one read after stable context and then advances locally.'
 } catch {
     try { Log ("INSTALL_FAILED " + ($_ | Out-String)) } catch {}
     Write-Error $_

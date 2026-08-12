@@ -133,6 +133,10 @@ finally { $stream.Dispose() }
 if (-not (Test-Path -LiteralPath $archive -PathType Leaf) -or (Get-Item -LiteralPath $archive).Length -lt 1000000) {
     throw 'Release archive was not created or is unexpectedly small.'
 }
+& (Join-Path $PSScriptRoot 'Test-ReleasePackage.ps1') -Version $version
+if ($LASTEXITCODE -ne 0) {
+    throw "Release package audit failed (exit=$LASTEXITCODE)"
+}
 & (Join-Path $PSScriptRoot 'Refresh-SourceMetadata.ps1')
 if ($LASTEXITCODE -ne 0) {
     throw "Source metadata refresh failed (exit=$LASTEXITCODE)"

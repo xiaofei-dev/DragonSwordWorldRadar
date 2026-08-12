@@ -7,7 +7,7 @@ namespace DragonSwordWorldRadar
 {
     internal sealed class WorldMoleCatalog
     {
-        private const int ExpectedCount = 34;
+        private const int ExpectedCount = 83;
         private readonly string _path;
         private DateTime _nextRetryUtc;
         private bool _hasLoaded;
@@ -90,6 +90,7 @@ namespace DragonSwordWorldRadar
                 string roleText;
                 string noticeTitleText;
                 string noticeDescriptionText;
+                string typeText;
                 if (!fields.TryGetValue("mini_game_id", out idText)
                     || !fields.TryGetValue(
                         "reward_save_id",
@@ -107,6 +108,7 @@ namespace DragonSwordWorldRadar
                 {
                     continue;
                 }
+                fields.TryGetValue("mini_game_type", out typeText);
 
                 int id;
                 long rewardSaveId;
@@ -144,9 +146,9 @@ namespace DragonSwordWorldRadar
                         NumberStyles.Float,
                         CultureInfo.InvariantCulture,
                         out y)
-                    || id < 11001 || id > 11034
+                    || !IsSupportedId(id)
                     || rewardSaveId <= 0
-                    || bit < 0 || bit >= ExpectedCount
+                    || (id <= 11034 ? (bit < 0 || bit >= 33) : bit != -1)
                     || mapId <= 0
                     || Double.IsNaN(x) || Double.IsInfinity(x)
                     || Double.IsNaN(y) || Double.IsInfinity(y)
@@ -163,16 +165,12 @@ namespace DragonSwordWorldRadar
                             roleText,
                             "Fly_Linked",
                             StringComparison.OrdinalIgnoreCase))
-                    || !String.Equals(
-                        noticeTitleText,
-                        "109208",
-                        StringComparison.Ordinal)
-                    || !String.Equals(
-                        noticeDescriptionText,
-                        "109202",
-                        StringComparison.Ordinal)
+                    || (id <= 11034 && (!String.Equals(noticeTitleText, "109208", StringComparison.Ordinal)
+                        || !String.Equals(noticeDescriptionText, "109202", StringComparison.Ordinal)))
+                    || (id >= 12001 && id <= 12040 && !String.Equals(typeText, "mole", StringComparison.Ordinal))
+                    || (id >= 13001 && id <= 13010 && !String.Equals(typeText, "wave", StringComparison.Ordinal))
                     || !ids.Add(id)
-                    || !bits.Add(bit))
+                    || (bit >= 0 && !bits.Add(bit)))
                 {
                     throw new InvalidDataException(
                         "The generated Mole catalog contains an invalid or duplicate record.");
@@ -212,6 +210,7 @@ namespace DragonSwordWorldRadar
                 loaded.Add(new WorldMole
                 {
                     MiniGameId = id,
+                    MiniGameType = id <= 11034 ? "fly" : typeText,
                     RewardSaveId = rewardSaveId,
                     MaskBit = bit,
                     MapId = mapId,
@@ -226,19 +225,17 @@ namespace DragonSwordWorldRadar
 
             if (loaded.Count != ExpectedCount
                 || ids.Count != ExpectedCount
-                || bits.Count != ExpectedCount)
+                || bits.Count != 33)
             {
                 throw new InvalidDataException(
-                    "The generated Mole catalog must contain exactly 34 validated Fly records.");
+                    "The generated mini-game catalog must contain exactly 83 validated records.");
             }
 
-            loaded.Sort(delegate(WorldMole left, WorldMole right)
+            for (int index = 0; index < 33; index++)
             {
-                return left.MaskBit.CompareTo(right.MaskBit);
-            });
-            for (int index = 0; index < loaded.Count; index++)
-            {
-                if (loaded[index].MaskBit != index)
+                bool found = false;
+                foreach (WorldMole point in loaded) if (point.MaskBit == index) { found = true; break; }
+                if (!found)
                 {
                     throw new InvalidDataException(
                         "The generated Mole catalog must use contiguous mask bits starting at 0.");
@@ -276,6 +273,13 @@ namespace DragonSwordWorldRadar
             _hasLoaded = true;
             _version++;
             return true;
+        }
+
+        private static bool IsSupportedId(int id)
+        {
+            return (id >= 11001 && id <= 11034 && id != 11024)
+                || (id >= 12001 && id <= 12040)
+                || (id >= 13001 && id <= 13010);
         }
     }
 }

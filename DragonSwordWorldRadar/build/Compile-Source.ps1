@@ -29,8 +29,8 @@ Add-Type -AssemblyName System.Xml
 $installerSources = @(Get-ChildItem -LiteralPath (Join-Path $root 'src\installer\Core') -Recurse -Filter '*.cs' -File |
     Where-Object { $_.FullName -notmatch '[\\/](?:obj|bin)[\\/]' } |
     Sort-Object FullName | Select-Object -ExpandProperty FullName)
-if ($installerSources.Count -ne 18) {
-    throw "Installer source set must contain exactly 18 files; found $($installerSources.Count)."
+if ($installerSources.Count -ne 19) {
+    throw "Installer source set must contain exactly 19 files; found $($installerSources.Count)."
 }
 $installerReferences = @(
     [System.Xml.XmlDocument].Assembly.Location,

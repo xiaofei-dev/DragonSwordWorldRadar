@@ -324,17 +324,23 @@ function WorldMap.reset()
     record_candidate_metrics("reset")
 end
 
-function WorldMap.close_session()
-    -- A normal map close is not a world transition. Drop only UObject
-    -- candidates from this presentation session so hidden widgets cannot fill
-    -- the bounded cap and block the next newly-created map layer. Cached map
-    -- dimensions are scalar data and remain reusable.
+function WorldMap.recover_session()
+    -- A failed active read may be a transient UMG property gap rather than a
+    -- confirmed map close. Drop every wrapper immediately, then request one
+    -- bounded current-epoch rescan on the next 250 ms control sample. No
+    -- UObject survives the failure and no active-loop enumeration is added.
     cached_entry = nil
     candidates = {}
     candidate_token = candidate_token + 1
     needs_rescan = true
-    wake_hint = false
-    record_candidate_metrics("close-session")
+    wake_hint = true
+    record_candidate_metrics("recover-session")
+end
+
+function WorldMap.has_retained_candidates()
+    -- Pure scalar hint: the control loop may cheaply test the visibility of
+    -- at most two already-bounded candidates without enumerating UObjects.
+    return not suspended and #candidates > 0
 end
 
 function WorldMap.consume_wake_hint()
