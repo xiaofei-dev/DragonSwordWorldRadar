@@ -89,7 +89,7 @@
   "powershell_runtime_test": "not_available_in_build_container; requires Windows PowerShell 5.1 and the current game PAK",
   "overall": "pass",
   "schema_version": 1,
-  "version": "1.0.42",
+  "version": "1.0.55",
   "audit_status": "static_pass_runtime_gate_required",
   "boss_runtime_monitoring": false,
   "dangerous_defaults": {
@@ -320,10 +320,83 @@
   ],
   "assault_target_pair_gate_1_0_40": [
     "active probe_order contains assault_target_presence_pair only",
-    "exact target pair is PlaceID 104 conditioned and PlaceID 126 control",
+    "exact target pair is PlaceID 104 CID 143 and PlaceID 109 CID 148, the two raw SectionMonster GroupID zero targets",
     "only two exact generated monster classes are enumerated",
     "UIDName, CID, and static coordinates bound identity matching",
     "absence is labeled loaded-object-set only",
     "no global Character or Actor scan, unknown function call, hook, or mutation is introduced"
+  ],
+  "mods_txt_monitor_control_gate_1_0_45": [
+    "the automatic Monitor requires an exact enabled DragonSwordWorldDataProbe entry in the sibling mods.txt",
+    "the Monitor rechecks mods.txt while waiting for the game, while the game is running, and before post-exit collection",
+    "a missing, unreadable, absent, malformed, or disabled entry stops automatic collection fail closed",
+    "Collect-Diagnostics.cmd remains an explicit manual workflow independent of mods.txt"
+  ],
+  "assault_ordinary_control_gate_1_0_46": [
+    "PlaceID 120 CID 106 is the only added target",
+    "DsMon_Goblin_s_C is proven by the current ObjectDump before use",
+    "UIDName, CID, and static coordinates constrain identity matching",
+    "exact class enumeration count increases from two to three",
+    "MonsterSpawnBase RevealCycle state remains unknown until a bounded spawner identity binding is found"
+  ],
+  "assault_lock_on_identity_gate_1_0_47": [
+    "DsPCTargetingComponent LockOnTarget is a property-read-only discovery route",
+    "the target is accepted only by exact UIDName or CID plus a 500-unit static-coordinate bound",
+    "the actual generated class is recorded from the identity-validated target",
+    "no Character or Actor class is enumerated by the lock-on route"
+  ],
+  "assault_targeting_component_gate_1_0_48": [
+    "only DsPCTargetingComponent is enumerated",
+    "all components and LockOnTarget objects are validity checked",
+    "only exact UIDName or CID plus static-coordinate identity can match CID 106",
+    "Character and Actor enumeration remain disabled"
+  ],
+  "assault_lock_target_summary_gate_1_0_49": [
+    "at most three already discovered nonempty LockOnTarget objects are summarized",
+    "summaries contain read-only class, UIDName, CID, and bounded coordinate evidence",
+    "candidate summaries do not promote an object to CID 106 without identity validation",
+    "no Character or Actor enumeration is introduced"
+  ],
+  "assault_owner_weather_identity_gate_1_0_50": [
+    "LockOnTarget component owners are resolved only through proven ActorComponent GetOwner",
+    "owner validity is checked before identity reads",
+    "weather evidence is limited to four named object references and their object/class names",
+    "no weather function, map, array, Character, or Actor enumeration is introduced"
+  ],
+  "weather_object_reference_hotfix_gate_1_0_51": [
+    "read_weather_identity is not invoked by the active runtime path",
+    "weather actor, payload, default FX, and forced-weather references are not dereferenced",
+    "stable TimeOfDay, CurrentWeatherState, and CurrentWeatherBTState scalar reads remain",
+    "GetOwner remains conditional on a valid nonempty LockOnTarget"
+  ],
+  "quaku_exact_class_gate_1_0_52": [
+    "CID 106 uses the runtime-observed DsMon_Goblin_berserker_Named_C class",
+    "the correcting observation came from a valid locked defence component owner",
+    "the owner coordinates were within 200 units of the static PlaceID 120 target",
+    "RevealCycle binding remains unknown"
+  ],
+  "assault_spawn_condition_gate_1_0_53": [
+    "active probe order contains only assault_spawn_condition_diagnostics",
+    "discovery enumerates MonsterSpawnBase only and never generic Actor or Character",
+    "only three build-pinned target coordinates can be bound",
+    "TableKey is read only through its proven integer Key member",
+    "valid spawners are cached and incomplete discovery retries no more than once per 30 seconds",
+    "no map or array container enumeration, unknown function invocation, hook, or mutation is introduced",
+    "all results remain diagnostic until runtime observations bind exact condition semantics"
+  ],
+  "assault_spawn_condition_crash_hotfix_gate_1_0_54": [
+    "active probe order contains healthcheck only",
+    "assault_spawn_condition_diagnostics remains preserved but is not automatically loaded",
+    "automatic MonsterSpawnBase enumeration is prohibited after the correlated native crash",
+    "partial 1.0.53 runtime evidence remains diagnostic and preserved"
+  ],
+  "assault_static_reveal_cycle_gate_1_0_55": [
+    "RevealCycleData uses one exact directory entry at encoded offset 11188",
+    "the compact record is exactly 12 bytes and self-identifies XOR mask 27",
+    "decoded bits require uncompressed, unencrypted, zero blocks, and 32-bit offset and size fields",
+    "PAK DataEntry metadata must match offset 6585123 and payload size 754",
+    "the XML root must be RevealCycleDataMap and the payload SHA-256 must match preserved evidence",
+    "CID 143 to cycle 10001 remains inferred until a direct generator-asset binding is recovered",
+    "active runtime remains healthcheck only"
   ]
 }

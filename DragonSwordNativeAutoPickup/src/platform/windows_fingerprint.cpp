@@ -87,4 +87,22 @@ FingerprintResult verify_build_fingerprint(const std::filesystem::path& binary_d
     return result;
 }
 
+bool atomic_replace_text(const std::filesystem::path& path, std::string_view text) {
+    std::error_code error;
+    std::filesystem::create_directories(path.parent_path(), error);
+    const auto temporary = path.wstring() + L".tmp";
+    {
+        std::ofstream output{temporary, std::ios::binary | std::ios::trunc};
+        if (!output) return false;
+        output.write(text.data(), static_cast<std::streamsize>(text.size()));
+        output.flush();
+        if (!output) return false;
+    }
+    if (!MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::filesystem::remove(temporary, error);
+        return false;
+    }
+    return true;
+}
+
 } // namespace dsnap

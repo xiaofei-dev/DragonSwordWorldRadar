@@ -1,6 +1,8 @@
 # DragonSwordWorldRadar
 
-DragonSwordWorldRadar is a modular radar for **DragonSword Awakening**. This repository snapshot contains the complete development source for version `0.4.0-dev59-ue4ssroot1` in the original repository layout.
+DragonSwordWorldRadar is a modular radar for **DragonSword Awakening**. This repository snapshot contains the complete development source for version `0.4.0-dev74-minigamecatalog2` in the original repository layout.
+
+This optimization candidate keeps the proven 250 ms fresh-current-Pawn sample and 50 ms Lua scalar-flush loop, but changes the compact Overlay consumer to a 33 ms in-memory prediction/presentation path. A compact-only file notification marks the changed Motion Bridge slot dirty; parsing remains serialized on the UI thread, healthy notification loss is covered by a 250 ms dual-slot scan, and an unavailable watcher falls back to 50 ms polling. The visible expanded map retains its existing 8 ms producer/consumer path with compact notifications disabled. At most two hidden current-epoch map candidates are visibility-tested at 250 ms; a failed active read drops every wrapper and arms one bounded rescan on the next control sample. Confirmed async failures or five seconds of missing control-heartbeat progress trigger a bounded automatic F8-to-F7 restart; temporary missing map state never does. Normal play registers only F7/F8; F5/F6 runtime-attribution controls are registered only when `debug_logging = true`. Static validation does not constitute gameplay acceptance.
 
 The Assault layer is generated from the current game PAK, validates exactly 40 map-100 targets, reuses `tb_actor_respawn`, and interprets generic per-target time conditions. Its versioned inference-policy input is locked to the exact game fingerprint and resolved against freshly extracted target/cycle tables. It adds no runtime actor scan, save reader, bridge channel, hook, or bitmap cache.
 
@@ -29,9 +31,10 @@ Run from Windows PowerShell 5.1:
 & .\build\Compile-Source.ps1
 & .\build\Test-Refactor.ps1
 & .\build\Build-Release.ps1
+& .\build\Test-ReleasePackage.ps1
 ```
 
-The build creates `dist/DragonSwordWorldRadar-v0.4.0-dev59-ue4ssroot1.zip`. Windows PowerShell 5.1 `Add-Type` is the authoritative compiler path because installation uses the same compiler.
+The build creates `dist/DragonSwordWorldRadar-v0.4.0-dev74-minigamecatalog2.zip`. Windows PowerShell 5.1 `Add-Type` is the authoritative compiler path because installation uses the same compiler. `Build-Release.ps1` also runs the independent ZIP/manifest/path/byte-identity audit.
 
 ---
 
@@ -39,10 +42,10 @@ The build creates `dist/DragonSwordWorldRadar-v0.4.0-dev59-ue4ssroot1.zip`. Wind
 
 The dev18 active path retains the dev17 cadence contract:
 
-- 50 ms minimap position sampling.
-- Diagnostic 4 ms world-map transform production and Overlay presentation only while the expanded map is visible; closing it immediately restores the normal 50 ms compact cadence and releases the temporary 1 ms Windows timer-resolution request.
-- 250 ms low-frequency control sampling through a cached Engine root, plus one `DLayerMiniMap` scale sample per second; both objects are resolved only on cache miss/invalidity, matching the supplied 1.6.1 reference.
-- 50 ms active Overlay timer, with the existing lower-frequency idle/background modes.
+- 250 ms fresh current-Controller/Pawn position sampling; the 50 ms compact Lua loop only flushes a pending scalar or heartbeat and performs no UObject read.
+- 8 ms world-map transform production and Overlay presentation only while the expanded map is visible; closing it immediately restores the normal 33 ms compact presentation cadence and releases the temporary 1 ms Windows timer-resolution request.
+- 250 ms low-frequency control sampling through a cached Engine root, plus one `DLayerMiniMap` scale sample per second. Only retained top-level UObject roots use `IsValid()`; nested minimap property wrappers are read inside a protected block so a usable `LayerMap` cannot trigger a one-hertz global lookup loop.
+- 33 ms active compact Overlay prediction/presentation, with bridge files consumed only on dirty-slot notification or a bounded fallback scan; existing lower-frequency idle/background modes remain.
 - 250 ms foreground/minimize/visibility sampling with immediate sampling on F7/F8 and radar/world transitions.
 - 20 XY and 10 Z movement thresholds.
 - Exactly the existing three textual `LoopAsync` registrations; no new worker loop, prime-number staggering, or ThreadPool polling chain.
@@ -67,15 +70,15 @@ UE4SS Lua
 鈹斺攢 radar_motion_a/b.dat     (all live control and motion data)
 
 Overlay
-鈹溾攢 fixed protocol-v5 scalar parser
+鈹溾攢 fixed protocol-v6 scalar parser
 鈹溾攢 local treasure catalog
 鈹溾攢 local nine-boss catalog
 鈹斺攢 save/Boss availability filtering
 ```
 
-### Motion protocol v4
+### Motion protocol v6
 
-Each alternating Motion slot is one fixed 37-field ASCII record. Protocol v5 adds world epoch and scalar sample timestamp for UObject-free Overlay prediction. It contains:
+Each alternating Motion slot is one fixed 38-field ASCII record. Protocol v6 retains the world epoch and scalar sample timestamp for UObject-free Overlay prediction and adds one strict normal/no-paint/no-motion diagnostic enum. It contains:
 
 - leading and trailing sequence numbers;
 - explicit protocol version and Lua generation;
@@ -109,12 +112,12 @@ The 250 ms Lua callback reads only the low-frequency UObject/control state neede
 - F8 hides all mod visuals and stops marker motion, Mole/Fly work, save refresh, and clock work for clean FPS A/B comparison without rewriting configuration.
 - The compact window is 360×400 reference pixels. Its smaller 138-pixel time/phase group starts six pixels above the minimap square's lower edge and remains clamped inside the transparent window.
 - The dev16 Win32 composition-region experiment is removed; compact and expanded modes use the dev15 rectangular layered-window behavior.
-- Compact active movement uses a coherent 20 Hz cadence (50 ms) in Lua and the Overlay. The visible expanded world map alone uses an 8 ms transform/presentation cadence while reusing the same 250 ms numeric player sample. Its retained widget set is capped at two and bound to the current lifecycle epoch/candidate token; transition reset drops all wrappers. Compact player deltas below half a projected radar pixel are suppressed before bridge writes. The dev15 compact radar selects the nearest unopened treasure set once per second from the save-filtered map-100 index. Expanded world-map rendering continues to use each frame's `WorldMap.mapId`; this selector is not the save-open check.
+- Compact player scalars are sampled at 250 ms and flushed by the unchanged 50 ms Lua loop, while the Overlay presents bounded in-memory prediction at 33 ms. Compact bridge records are read only when a slot is dirty, every 250 ms as a healthy safety scan, or every 50 ms if notifications are unavailable. The visible expanded world map alone uses an 8 ms transform/presentation cadence while reusing the same numeric player sample. Its retained widget set is capped at two and bound to the current lifecycle epoch/candidate token; transition reset drops all wrappers. Compact player deltas below half a projected radar pixel are suppressed before bridge writes. The dev15 compact radar selects the nearest unopened treasure set once per second from the save-filtered map-100 index. Expanded world-map rendering continues to use each frame's `WorldMap.mapId`; this selector is not the save-open check.
 
 Installation resolves the current executable's save-owner pointer through the existing PE pattern while the executable/PAK fingerprint is locked. The generated `data/generated/save_owner_pointer.cfg` contains only schema, fingerprint, EXE length, RVA, and provenance—never the SQLCipher key. Runtime recomputes the exact fingerprint before using it, then retains known-RVA and one delayed pattern-scan fallback paths for update compatibility.
 - Boss and Mole markers use direct retained-geometry vector drawing on every paint, exactly matching dev15 behavior.
-- Dev40 returns to the user-tested dev38 feature boundary: Assault is force-isolated and production clock access is disconnected.
-- Lua samples one fresh current Pawn per 250 ms control callback. The 50 ms Overlay predicts from two scalar samples, clamps at 250 ms, and freezes after 500 ms stale age without UE access.
+- Assault and the isolated one-shot world clock follow the single authoritative `scripts/config.lua`; neither adds recurring UObject scans or an additional bridge.
+- Lua samples one fresh current Pawn per 250 ms control callback. The 33 ms Overlay predicts from two scalar samples, accumulates movement below the existing half-pixel threshold instead of repainting it, clamps at 250 ms, and freezes after 500 ms stale age without UE access.
 - `show_world_status` defaults true. F8 hides it with every other Mod feature; a failed one-shot baseline remains hidden until the next F7.
 
 ### Local static data ownership
@@ -167,7 +170,7 @@ There is no fixed one-second reveal delay and no recurring warm-up render loop. 
 
 - Minimap and world-map markers generated locally from the game PAK.
 - SQLCipher save filtering, overrides, aliases, type colors, nearest marker, and height indicator.
-- F7-gated two-second save metadata checks, a four-second stable-change debounce, one SQLCipher key setup per isolated temporary snapshot connection, below-normal refresh workers, and independent in-memory `.db`/`.bak` fingerprint caches. F8 performs no new save work.
+- F7-gated two-second save metadata checks, a four-second stable-change debounce, and a shared 45-second complete-snapshot window. Continuous 20-30 second game autosaves update only the pending fingerprint; at most one managed-below-normal, Windows-background-mode SQLCipher worker opens per window and reads the latest stable Treasure-rich snapshot. Zero-only categories are not materialized, and the research-only encounter-task table is queried only when debug logging is enabled. Independent `.db`/`.bak` fingerprint caches still eliminate the read entirely when the snapshot is unchanged. F8 performs no new save work.
 - Player-height comparison offset: `-150`.
 - Until the first complete save snapshot is available, treasure visibility fails closed and no treasure points are published. The first valid snapshot immediately rebuilds the index and publishes only records not confirmed open.
 
@@ -190,14 +193,14 @@ Configure logging in `scripts/config.lua`:
 
 ```lua
 use_logging = true,
-debug_logging = true,
+debug_logging = false,
 diagnostic_perf_interval_seconds = 5,
 ```
 
-Pre-release builds keep `debug_logging = true` so performance and lifecycle
-tests remain comparable. Keep `diagnostic_verbose = false`; it enables dense
-in-map marker labels and is intended only for short visual-diagnostics runs.
-The final release should restore `debug_logging = false` after acceptance.
+Dev68 keeps `debug_logging = false`; normal execution does not arm the F7 crash trace, allocate its field tables, collect Overlay performance counters, format save timings, or query the diagnostic-only encounter-task table.
+Normal-use lifecycle logging remains enabled. Set it to `true` only for a
+short detailed diagnostic capture, then restart the game. Keep
+`diagnostic_verbose = false`; it enables dense in-map marker labels.
 
 | Purpose | Path |
 |---|---|
@@ -206,7 +209,7 @@ The final release should restore `debug_logging = false` after acceptance.
 | Overlay normal-use/error log | `runtime/logs/DragonSwordWorldRadar.Overlay.Use.log` |
 | Overlay debug/performance log | `runtime/logs/DragonSwordWorldRadar.Overlay.Debug.log` |
 
-Overlay debug output reports the single Bridge's read rate, complete frames, redraw-producing frames, suppressed frames, timer gaps, paint gaps, CPU, and working set. `SAVE_REFRESH_PERF` separates copy, key, treasure-query, Boss/Assault-query, database-read/cache-hit, and total time. `overlayPaintFps` is the WinForms paint rate, not the game's Present FPS.
+Overlay debug output reports the single Bridge's read rate, complete frames, redraw-producing frames, suppressed frames, timer gaps, paint gaps, CPU, and working set. `SAVE_REFRESH_PERF` separates copy, key, treasure-query, Boss/Assault-query, database-read/cache-hit, request scope, executed treasure-query count, and total time. `overlayPaintFps` is the WinForms paint rate, not the game's Present FPS.
 
 `Collect-Diagnostics.cmd` captures both Motion slots, logs, generated data, metadata, process state, UE4SS log tail, and relevant source hashes. It no longer collects active Static Bridge files.
 
@@ -224,13 +227,13 @@ SESSION_WATCHER_READY
 INSTALL_COMPLETE
 ```
 
-5. Start the game normally. Press **F7** to enable and **F8** to disable.
+5. Start the game normally. Use **F7** for normal Radar and **F8** for the complete-off baseline. When `debug_logging = true`, **F5** adds the no-paint diagnostic and **F6** adds the frozen-motion diagnostic.
 
-The installer preserves a valid `scripts/config.lua`, `data/treasure_overrides.txt`, and unrelated `mods.txt` entries. It also removes the three exact 1.7 source files retired by the single-Bridge architecture, so a normal full-folder overwrite followed by `Install.cmd` does not retain duplicate C# models or the old Lua Boss tracker.
+`scripts/config.lua` is the sole configuration file used by Lua, the Overlay, installer validation, diagnostics, and local deployment preservation. The installer also preserves `data/treasure_overrides.txt` and unrelated `mods.txt` entries, and removes the three exact 1.7 source files retired by the single-Bridge architecture.
 
 ## Validation status
 
-The release preparation validates Lua syntax, disabled/radar/world protocol-v5 records, scalar prediction bounds, protocol positive and negative cases, C# lexical structure and Windows PowerShell 5.1 CodeDOM compatibility patterns, JSON/XML structure, PowerShell delimiter structure, catalog shape, source invariants, manifest hashes, ZIP CRC, path safety, duplicate entries, extracted-byte equality, and bundled binary hashes.
+The release preparation validates Lua syntax, disabled/radar/world protocol-v6 records, all three diagnostic enum values, scalar prediction bounds, protocol positive and negative cases, C# lexical structure and Windows PowerShell 5.1 CodeDOM compatibility patterns, JSON/XML structure, PowerShell delimiter structure, catalog shape, source invariants, manifest hashes, ZIP CRC, path safety, duplicate entries, extracted-byte equality, and bundled binary hashes.
 
 Windows PowerShell 5.1 `Add-Type` compilation passes for the current source and is also enforced by `Install.cmd`. Same-route in-game testing remains the authoritative behavior and performance gate. No specific FPS increase is claimed from build-time validation alone.
 

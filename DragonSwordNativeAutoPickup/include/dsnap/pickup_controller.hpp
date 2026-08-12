@@ -9,21 +9,18 @@
 namespace dsnap {
 
 struct InteractionContract {
-    bool manual_capture_accepted{};
-    std::uint8_t key_action{};
-    bool target_is_drop_item_actor{};
-    bool in_actor_is_current_pawn{};
+    bool positively_validated{};
+    std::uint8_t replay_function{};
 
     [[nodiscard]] bool approved() const noexcept {
-        return manual_capture_accepted && key_action == kDropItemKeyActionEnumCandidate &&
-               target_is_drop_item_actor && in_actor_is_current_pawn;
+        return positively_validated && replay_function != 0;
     }
 };
 
 struct ActionRequest {
     WeakObjectId candidate{};
     std::uint64_t epoch{};
-    std::uint8_t key_action{};
+    std::uint8_t replay_function{};
 };
 
 class PickupController {

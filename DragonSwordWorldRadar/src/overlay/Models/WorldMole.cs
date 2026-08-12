@@ -3,6 +3,7 @@ namespace DragonSwordWorldRadar
     internal sealed class WorldMole
     {
         public int MiniGameId { get; set; }
+        public string MiniGameType { get; set; }
         public long RewardSaveId { get; set; }
         public int MaskBit { get; set; }
         public int MapId { get; set; }

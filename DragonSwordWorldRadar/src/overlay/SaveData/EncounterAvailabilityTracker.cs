@@ -9,17 +9,27 @@ namespace DragonSwordWorldRadar
             new Dictionary<int, DateTime>();
         private readonly HashSet<int> _seen = new HashSet<int>();
         private readonly List<int> _removed = new List<int>();
+        private IList<WorldEncounter> _catalog;
+        private int _saveVersion = -1;
 
         public bool Refresh(
             IList<WorldEncounter> encounters,
             TreasureSaveState saveState)
         {
+            int saveVersion = saveState.Version;
+            if (Object.ReferenceEquals(encounters, _catalog)
+                && saveVersion == _saveVersion)
+            {
+                return false;
+            }
+
             bool changed = false;
             _seen.Clear();
             if (encounters != null)
             {
-                foreach (WorldEncounter encounter in encounters)
+                for (int index = 0; index < encounters.Count; index++)
                 {
+                    WorldEncounter encounter = encounters[index];
                     if (encounter == null || !_seen.Add(encounter.Id))
                     {
                         continue;
@@ -52,13 +62,16 @@ namespace DragonSwordWorldRadar
                 _nextAvailable.Remove(id);
                 changed = true;
             }
+            _catalog = encounters;
+            _saveVersion = saveVersion;
             return changed;
         }
 
         public bool IsAvailable(
             WorldEncounter encounter,
             bool timeAvailable,
-            int timeSeconds)
+            int timeSeconds,
+            DateTime nowUtc)
         {
             if (encounter == null)
             {
@@ -67,7 +80,7 @@ namespace DragonSwordWorldRadar
             DateTime next;
             if (_nextAvailable.TryGetValue(encounter.Id, out next)
                 && next != DateTime.MinValue
-                && DateTime.UtcNow < next)
+                && nowUtc < next)
             {
                 return false;
             }
@@ -105,6 +118,8 @@ namespace DragonSwordWorldRadar
             _nextAvailable.Clear();
             _seen.Clear();
             _removed.Clear();
+            _catalog = null;
+            _saveVersion = -1;
         }
 
         internal static bool IsConditionSatisfied(

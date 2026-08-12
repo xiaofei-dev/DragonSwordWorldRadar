@@ -1,4 +1,4 @@
-DragonSwordWorldDataProbe 1.0.42 — 模块化多方式数据采集框架
+DragonSwordWorldDataProbe 1.0.52 — 模块化多方式数据采集框架
 
 目标
 - 将此前的静态 PAK、存档、运行时反射、对象快照、UI、Hook、原生数据库实验和离线分析统一到一个可插拔框架。
@@ -165,3 +165,23 @@ DragonSwordWorldDataProbe 1.0.42 — 模块化多方式数据采集框架
 1.0.40: Add a bounded 10-second loaded-object comparison for conditioned PlaceID 104 and control PlaceID 126. Only two exact generated monster classes are enumerated. Exact UIDName/CID/static-coordinate matching is recorded; absence remains loaded-region evidence only.
 1.0.41: Extend the two-target report with read-only DsEnvironmentManager CurrentWeatherState and CurrentWeatherBTState scalars. Write a new v2 report schema while the production Radar diagnostic records the same 40 target CIDs from tb_actor_respawn.
 1.0.42: Add DGameSingleton TimeOfDay/LoginStartTimeOfDay, sky TimeOfDay/RealTimeOfDay, and environment custom-time/teleport scalars. The v3 report distinguishes continuous global time from region-local time or weather changes across teleport.
+1.0.43: Replace the completed PlaceID 126 control with PlaceID 109 / CID 148, the only other Assault target whose raw SectionMonster GroupID is zero. Preserve exactly two bounded exact-class scans and write separate v4 reports for special-spawn comparison.
+1.0.44: Add a build-pinned post-exit RevealCycleData extractor. Parse RevealIngametime and HideIngametime, isolate rows near the observed CID 143 23:00 reveal boundary, and preserve runtime MonsterSpawnBase TableKey_RevealCycle as the remaining identity-binding step.
+1.0.45: Make the external post-exit Monitor fail closed against the exact `DragonSwordWorldDataProbe : 1` entry in `mods.txt`. Disabling the mod while the game is running now stops the Monitor before collection; manual diagnostics remain independent.
+1.0.46: Add PlaceID 120 / CID 106 Quaku as an ordinary-spawn control using the observed exact `DsMon_Goblin_s_C` class plus UIDName, CID, and static-coordinate identity constraints. Keep MonsterSpawnBase RevealCycle binding explicitly unresolved.
+1.0.47: Add a bounded `DsPCTargetingComponent.LockOnTarget` route for CID 106. Record the actual generated class only after exact UIDName or CID-plus-coordinate validation; do not enumerate Character or Actor.
+1.0.48: Enumerate only exact `DsPCTargetingComponent` objects, inspect valid nonempty `LockOnTarget` values, and accept only identity-validated CID 106. Character and Actor enumeration remain disabled.
+1.0.49: Record bounded read-only identity summaries for up to three nonempty lock-on targets while retaining strict CID 106 promotion. Sunny, fog, and rain observations all shared weather scalars `2/3`, so those fields are not treated as visible weather type.
+1.0.50: Resolve locked defence components through proven `ActorComponent.GetOwner()` and record the valid owner Actor identity. Add bounded object-name evidence for weather actor, current payload, default FX, and forced weather without invoking weather functions or enumerating containers.
+1.0.51: Hotfix the 1.0.50 startup crash by disabling runtime dereference of weather actor, current payload, default FX, and forced-weather object references. Retain stable scalar time/raw-weather reads and conditional lock-target owner resolution.
+1.0.52: Replace the provisional CID 106 class with runtime-observed `DsMon_Goblin_berserker_Named_C`. The ordinary control can now be identified without lock-on by exact class plus the existing static-coordinate bound; RevealCycle binding remains unresolved.
+1.0.53:
+- Added bounded `MonsterSpawnBase` discovery for three known Assault targets.
+- Reads exact `TableKey.Key` values for monster, spawn condition, respawn cycle, and reveal cycle.
+- Caches fixed spawners; incomplete discovery retries at most once per 30 seconds.
+- No generic Actor/Character scan, unknown function call, hook, or mutation is used.
+1.0.55:
+- Added deterministic XOR12 uncompressed PAK entry extraction.
+- Confirmed five RevealCycleData rows, including cemetery skeleton hours 23 through 6.
+- Preserved CID 143 to cycle 10001 as an evidence-labeled inference pending direct asset binding.
+- Runtime remains healthcheck-only; MonsterSpawnBase enumeration remains prohibited.

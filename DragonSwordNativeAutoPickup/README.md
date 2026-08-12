@@ -1,29 +1,35 @@
 # DragonSword Native Auto Pickup
 
-`DragonSwordNativeAutoPickup` is an isolated native C++ UE4SS canary for ordinary ground loot in **DragonSword Awakening**. A marker-only Lua entry point schedules no work; C++ owns the natural game-thread pulse, lifecycle capture, validation, range checks, retry policy, and server interaction.
+`DragonSwordNativeAutoPickup` is an isolated native UE4SS research Mod for owner-authorized ordinary ground-loot pickup. Version `0.6.0-dropitem-closed-loop-diagnostic` does not perform automatic pickup. It captures the missing exact manual interaction contract for one real `DropItemActor`.
 
-## Status
+## Why this diagnostic exists
 
-Version `0.3.2-relocated-runtime-canary` is labeled `OWNER_AUTHORIZED_RUNTIME_CANARY`. It targets the relocated `Win64/ue4ss/Mods` runtime and builds against its exact UE4SS 3.0.1 revision. Deployment is permitted for owner testing, but the build is not accepted until gameplay evidence confirms correct pickup and transition behavior.
+Earlier builds proved target discovery and action selection separately but never for the same ordinary drop:
 
-F9 arms or disarms the canary. Active pickup additionally requires exact trusted game/UE4SS fingerprints plus a fresh accepted input-frame pulse after any world transition. Unknown fingerprints remain off.
+- 0.3.8 found real derived `DropItemActor` candidates, but its KeyAction call did not pick them up.
+- 0.5.1 traced a manual `Vitality_Leave_01_C` interaction, not a proven ordinary `DropItemActor` interaction.
+- 0.5.2-0.5.4 incorrectly treated transient target fields or the Vitality instance name as persistent general discovery and found no usable target.
 
-## Runtime design
+The 0.6.0 build closes that evidence gap without guessing another action.
 
-- C++ post-hooks only `/Script/Engine.PlayerController:ServerRecvClientInputFrame`, a naturally occurring game-thread UFunction. It is throttled with `steady_clock` to one accepted pulse per 150 ms.
-- Every accepted pulse requires an exact `DsPlayerController`, a fresh exact `DsPlayerCharacter`, and bidirectional identity: `Controller.Pawn == Player` and `Player.Controller == Controller`.
-- UObject lifecycle callbacks capture only exact `/Script/DS.DropItemActor` objects as `FWeakObjectPtr` values under a mutex. They never read gameplay properties or call `ProcessEvent`.
-- On an accepted pulse, C++ resolves due weak candidates, requires exact owner/component ownership, `InteractableValue == 2`, `InteractTypeValue == 7`, radius, and invokes `Server_InputInteractKeyAction` with `KeyAction == 13`.
-- Work is bounded to eight due candidates per pulse and at most one action per configured interval, with bounded retry/backoff.
-- `InitGameStatePre` disables active mode and clears candidates. A fresh accepted input-frame pulse is required before reactivation.
+## Current behavior
 
-There is no recurring Lua scheduler, `FindAllOf`, DropItemActor scan, global ProcessEvent hook, ActorTick/ReceiveTick hook, LoadMap hook, or retained Pawn/Controller wrapper. If the natural input-frame function is missing or does not fire in a scene, pickup stays inactive.
+- F9 starts or stops one bounded 60-second read-only window.
+- A budgeted sweep and lifecycle filter capture real non-template `DropItemActor` instances.
+- The current player chain and candidate locations are resolved on EngineTick.
+- Exactly one eligible candidate inside 4.5 m is locked by UObject index and serial.
+- Correlated pre/post calls are logged for overlap, player interaction, `AniPickUp`, and `SetDestroy` paths.
+- World transition cancels the diagnostic and clears all weak references.
+- There is no automatic interaction call, target-field mutation, runtime contract file, or deletion-based success claim.
 
-## Verification
+## Owner capture
 
-```powershell
-& .\tools\Verify-Source.ps1
-& .\tools\Build-Native.ps1 <pinned toolchain parameters>
-```
+1. Start on foot in stable open-world play.
+2. Leave exactly one ordinary ground drop within 4.5 m.
+3. Press and release F9 once.
+4. Wait for `DIAGNOSTIC_TARGET_LOCKED`.
+5. Manually collect that same item once through the normal game interaction.
+6. Wait several seconds or until the 60-second window ends.
+7. Exit normally and preserve both runtime logs.
 
-Do not deploy, launch the game, commit, push, or claim runtime acceptance without explicit owner authorization and gameplay evidence.
+Do not test travel, dungeons, or mounted pickup in this capture. Compilation and packaging do not establish a pickup implementation.

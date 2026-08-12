@@ -37,8 +37,11 @@ function Assert-GitCommit {
     if ($LASTEXITCODE -ne 0 -or $actual -ne $Expected) {
         throw "$Description must be pinned to $Expected; found $actual"
     }
-    $status = (& git -C $Repository status --porcelain --untracked-files=no)
-    if ($LASTEXITCODE -ne 0 -or $status) {
+    & git -C $Repository diff --quiet --ignore-submodules=all --
+    $worktreeDiff = $LASTEXITCODE
+    & git -C $Repository diff --cached --quiet --ignore-submodules=all --
+    $indexDiff = $LASTEXITCODE
+    if ($worktreeDiff -ne 0 -or $indexDiff -ne 0) {
         throw "$Description checkout is not clean. Third-party source edits are not accepted."
     }
 }
@@ -115,20 +118,35 @@ $env:GIT_CONFIG_KEY_1 = 'url.https://github.com/.insteadOf'
 $env:GIT_CONFIG_VALUE_1 = 'ssh://git@github.com/'
 
 $buildDirectory = Join-Path $projectRoot 'build-native'
-& $cmake --fresh -S $projectRoot -B $buildDirectory -G Ninja `
-    "-DCMAKE_BUILD_TYPE=$Configuration" `
-    "-DCMAKE_MAKE_PROGRAM=$ninja" `
-    '-DDSNAP_BUILD_TESTS=ON' `
-    '-DDSNAP_BUILD_UE4SS=ON' `
-    "-DUE4SS_ROOT=$resolvedUE4SS" `
-    "-DRust_COMPILER=$rustCompiler" `
-    "-DRust_CARGO=$rustCargo" `
-    '-DRust_RESOLVE_RUSTUP_TOOLCHAINS=OFF' `
-    "-DFETCHCONTENT_SOURCE_DIR_IMGUITEXTEDIT=$resolvedImGui"
-if ($LASTEXITCODE -ne 0) { throw "Native configure failed: $LASTEXITCODE" }
+$patternSleuthBindLock = Join-Path $resolvedUE4SS 'deps\first\patternsleuth_bind\Cargo.lock'
+$patternSleuthBindLockBytes = [System.IO.File]::ReadAllBytes($patternSleuthBindLock)
+try {
+    & $cmake --fresh -S $projectRoot -B $buildDirectory -G Ninja `
+        "-DCMAKE_BUILD_TYPE=$Configuration" `
+        "-DCMAKE_MAKE_PROGRAM=$ninja" `
+        '-DDSNAP_BUILD_TESTS=ON' `
+        '-DDSNAP_BUILD_UE4SS=ON' `
+        "-DUE4SS_ROOT=$resolvedUE4SS" `
+        "-DRust_COMPILER=$rustCompiler" `
+        "-DRust_CARGO=$rustCargo" `
+        '-DRust_RESOLVE_RUSTUP_TOOLCHAINS=OFF' `
+        "-DFETCHCONTENT_SOURCE_DIR_IMGUITEXTEDIT=$resolvedImGui"
+    if ($LASTEXITCODE -ne 0) { throw "Native configure failed: $LASTEXITCODE" }
 
-& $cmake --build $buildDirectory --target DragonSwordNativeAutoPickup
-if ($LASTEXITCODE -ne 0) { throw "Native build failed: $LASTEXITCODE" }
+    & $cmake --build $buildDirectory --target DragonSwordNativeAutoPickup
+    if ($LASTEXITCODE -ne 0) { throw "Native build failed: $LASTEXITCODE" }
+}
+finally {
+    # Cargo 1.97 may rewrite this pinned upstream lockfile while resolving the
+    # selected crate. Restore the exact pre-build bytes even when the build
+    # fails, then let the strict repository checks reject any other mutation.
+    [System.IO.File]::WriteAllBytes($patternSleuthBindLock, $patternSleuthBindLockBytes)
+}
+
+Assert-GitCommit $resolvedUE4SS $expectedCommits.UE4SS 'RE-UE4SS after build'
+Assert-GitCommit $unrealRoot $expectedCommits.UEPseudo 'UEPseudo after build'
+Assert-GitCommit $patternSleuthRoot $expectedCommits.PatternSleuth 'patternsleuth after build'
+Assert-GitCommit $resolvedImGui $expectedCommits.ImGuiColorTextEdit 'ImGuiColorTextEdit after build'
 
 $dll = Get-ChildItem -LiteralPath $buildDirectory -Recurse -Filter main.dll -File |
     Sort-Object LastWriteTimeUtc -Descending |

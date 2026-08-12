@@ -1,0 +1,17 @@
+{
+  "name": "DragonSword Native All-Mount Free Flight",
+  "version": "1.4.0",
+  "artifact": "DS_NativeAllMountsFreeFlight_P.pak",
+  "game_build_executable_timestamp": "2026-08-06T20:25:18",
+  "source_table": "VehicleComboData",
+  "target_mount_count": 30,
+  "target_combo_index": 10,
+  "change": {
+    "field": "OpenCondition",
+    "from": "COLLECT_REWARD",
+    "to": "NONE_CONDITION"
+  },
+  "deployment_performed": true,
+  "deployed_sha256": "13628EB7B1F8A068D13F6DD70AE71A1F5D333E640230092FB5F206B2D2239D0C",
+  "in_game_acceptance": "NOT_VALIDATED"
+}

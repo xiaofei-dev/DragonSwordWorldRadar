@@ -1,34 +1,42 @@
 # Architecture
 
-## Event flow
+## Read-only control flow
 
 ```text
-natural PlayerController:ServerRecvClientInputFrame post hook
-  -> count raw callback
-  -> exact DsPlayerController
-  -> native steady-clock 150 ms throttle
-  -> fresh Controller.Pawn + exact DsPlayerCharacter
-  -> require Player.Controller == Controller
-  -> guarded player location
-  -> active = F9 armed + trusted fingerprint + fresh accepted pulse
-  -> resolve up to 8 due DropItemActor weak candidates
-  -> exact state/owner/radius gates
-  -> at most one guarded KeyAction 13 call
+on_update / Windows F9 scalar poll
+  -> one physical rising-edge request
+  -> no UObject access
 
-UObject create/delete listeners
-  -> exact DropItemActor class pointer comparison only
-  -> add/remove FWeakObjectPtr under mutex
-
-InitGameStatePre
-  -> active=false, world_ready=false, clear weak candidates and pulse timers
+EngineTick post callback (150 ms throttle)
+  -> consume F9 request
+  -> start a 60-second diagnostic window
+  -> bounded UObject-index sweep for non-template DropItemActor instances
+  -> lifecycle capture for new DropItemActor instances while the window is active
+  -> resolve current Engine -> LocalPlayer -> Controller -> Pawn -> Location
+  -> require current World, InteractComponent ownership, state values, and radius
+  -> lock only one unambiguous weak candidate identity
+  -> observe correlated manual interaction calls
+  -> never invoke pickup
 ```
 
-## Lifetime and thread rules
+## Correlation
 
-The marker-only Lua file schedules nothing. The natural input-frame UFunction supplies the game-thread context. C++ retains static class/UFunction metadata and weak object identities; weak candidates are resolved only during an accepted pulse. Create/delete callbacks never inspect gameplay properties or invoke reflected functions.
+The locked identity includes UObject index and serial for the drop owner and its `InteractComponent`. A hook record is retained only when at least one of these is true:
 
-Reflected property reads and ProcessEvent calls are enclosed by MSVC SEH fail-closed boundaries. Hook/global callbacks also use generation checks to reject stale mod instances.
+- receiver or receiver Outer equals the locked owner/component;
+- an object parameter equals the locked owner/component;
+- receiver `ExecuteTargetObject` or `ExecuteTargetComponent` equals the locked owner/component.
 
-## Performance and compatibility
+Each retained call records pre/post phase, receiver, parameters, selected object fields, locked component state, World relation, and bounded related object properties.
 
-The input-frame hook is class-specific and throttled to 150 ms before Pawn/property work. Diagnostics separate raw hook callbacks, accepted pulses, throttle rejects, and gate rejects. UE4SS `RegisterAActorTick` is deliberately excluded because it runs around every Actor tick, is documented as extremely performance-sensitive, and has no matching unregister API in the pinned SDK. No Tick fallback is permitted; missing natural pulses fail closed.
+## Observed functions
+
+- `DInteractableComponent`: `OnBeginOverlap`, `OnEndOverlap`, `CallActivePlayer`, `Server_RunInteractV2`, input-action helpers, UI helpers, and return-state helpers.
+- `DsPlayerController`: local interaction press/release and related client/server state helpers.
+- `DropItemActor`: `AniPickUp` and `SetDestroy`.
+
+Every hook is observation-only. All replay-eligible flags are false.
+
+## Lifecycle safety
+
+F9 Off, timeout, world transition, and shutdown invalidate the active state and remove hooks/listeners from the safe EngineTick control path. UObject-array shutdown abandons saved UFunction pointers rather than dereferencing them.

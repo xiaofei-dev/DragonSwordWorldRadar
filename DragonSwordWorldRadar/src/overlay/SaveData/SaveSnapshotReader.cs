@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -46,6 +45,8 @@ namespace DragonSwordWorldRadar
     {
         public int DatabaseReads;
         public int DatabaseCacheHits;
+        public bool TreasureRequested;
+        public int TreasureQueries;
         public double CopyMilliseconds;
         public double KeyMilliseconds;
         public double TreasureQueryMilliseconds;
@@ -57,10 +58,13 @@ namespace DragonSwordWorldRadar
     internal sealed class SaveSnapshotReader
     {
         private const int SqliteOpenReadWrite = 0x00000002;
+        private const bool CacheMissIncludesTreasure = true;
         private readonly object _cacheSync = new object();
         private readonly Dictionary<string, CachedDatabaseSnapshot> _cache =
             new Dictionary<string, CachedDatabaseSnapshot>(
                 StringComparer.OrdinalIgnoreCase);
+        private readonly List<string> _staleCacheKeys =
+            new List<string>();
 
         public SaveSnapshot Read(
             SaveSlotFingerprint slot,
@@ -70,9 +74,9 @@ namespace DragonSwordWorldRadar
             out SaveSnapshotReadMetrics metrics)
         {
             string actorFilterSignature = BuildActorFilterSignature(
-                encounterTargetIds) +
-                (includeTreasure ? "|treasure" : "|encounter");
+                encounterTargetIds);
             metrics = new SaveSnapshotReadMetrics();
+            metrics.TreasureRequested = includeTreasure;
             Stopwatch totalWatch = Stopwatch.StartNew();
             SaveSnapshot merged = new SaveSnapshot
             {
@@ -104,20 +108,14 @@ namespace DragonSwordWorldRadar
                                 database,
                                 key,
                                 actorFilterSignature,
+                                includeTreasure,
                                 out current))
                         {
                             metrics.DatabaseCacheHits++;
-                            if (current.OpenedAvailable)
-                            {
-                                MergeOpened(merged.Opened, current.Opened);
-                                merged.OpenedAvailable = true;
-                            }
-                            MergeBossRespawns(
-                                merged.BossRespawns,
-                                current.BossRespawns);
-                            MergeEncounterTasks(
-                                merged.EncounterTasks,
-                                current.EncounterTasks);
+                            MergeRequestedSnapshot(
+                                merged,
+                                current,
+                                includeTreasure);
                             loaded++;
                             continue;
                         }
@@ -129,30 +127,31 @@ namespace DragonSwordWorldRadar
                         copyWatch.Stop();
                         metrics.CopyMilliseconds +=
                             copyWatch.Elapsed.TotalMilliseconds;
+                        // The first SQL statement on a new encrypted snapshot
+                        // connection owns nearly all observed cold-read cost.
+                        // Warm the strict-superset shape during that required
+                        // read so the next scheduled treasure pass can reuse
+                        // it without opening a second cold connection.
+                        bool readIncludesTreasure =
+                            CacheMissIncludesTreasure;
                         current = ReadFile(
                             snapshotPath,
                             key,
                             encounterTargetIds,
-                            includeTreasure,
+                            readIncludesTreasure,
                             Path.GetFileName(database.Path),
                             metrics);
                         StoreCached(
                             database,
                             key,
                             actorFilterSignature,
+                            readIncludesTreasure,
                             current);
                         metrics.DatabaseReads++;
-                        if (current.OpenedAvailable)
-                        {
-                            MergeOpened(merged.Opened, current.Opened);
-                            merged.OpenedAvailable = true;
-                        }
-                        MergeBossRespawns(
-                            merged.BossRespawns,
-                            current.BossRespawns);
-                        MergeEncounterTasks(
-                            merged.EncounterTasks,
-                            current.EncounterTasks);
+                        MergeRequestedSnapshot(
+                            merged,
+                            current,
+                            includeTreasure);
                         loaded++;
                     }
                     catch (Exception exception)
@@ -199,16 +198,40 @@ namespace DragonSwordWorldRadar
             SaveDatabaseFingerprint database,
             string key,
             string actorFilterSignature,
+            bool includeTreasure,
             out SaveSnapshot snapshot)
         {
             lock (_cacheSync)
             {
                 CachedDatabaseSnapshot cached;
-                if (_cache.TryGetValue(database.Path, out cached)
-                    && cached.Signature == database.Signature
-                    && cached.Key == key
-                    && cached.ActorFilterSignature ==
-                        actorFilterSignature)
+                // A treasure snapshot is a strict superset of an encounter-
+                // only snapshot, so it may satisfy either request. Keep both
+                // query shapes independently: alternating the 45-second
+                // treasure pass with save-triggered encounter passes must not
+                // evict the unchanged sibling database from the cache.
+                string richKey = BuildCacheKey(
+                    database.Path,
+                    actorFilterSignature,
+                    true);
+                string requestedKey = BuildCacheKey(
+                    database.Path,
+                    actorFilterSignature,
+                    includeTreasure);
+                if ((!includeTreasure
+                        && TryGetCompatibleCached(
+                            richKey,
+                            database,
+                            key,
+                            actorFilterSignature,
+                            true,
+                            out cached))
+                    || TryGetCompatibleCached(
+                        requestedKey,
+                        database,
+                        key,
+                        actorFilterSignature,
+                        includeTreasure,
+                        out cached))
                 {
                     snapshot = cached.Snapshot;
                     return true;
@@ -218,43 +241,100 @@ namespace DragonSwordWorldRadar
             return false;
         }
 
+        private bool TryGetCompatibleCached(
+            string cacheKey,
+            SaveDatabaseFingerprint database,
+            string key,
+            string actorFilterSignature,
+            bool requireTreasure,
+            out CachedDatabaseSnapshot cached)
+        {
+            if (_cache.TryGetValue(cacheKey, out cached)
+                    && cached.Signature == database.Signature
+                    && cached.Key == key
+                    && cached.ActorFilterSignature ==
+                        actorFilterSignature
+                    && (!requireTreasure || cached.IncludesTreasure))
+            {
+                return true;
+            }
+            cached = null;
+            return false;
+        }
+
         private void StoreCached(
             SaveDatabaseFingerprint database,
             string key,
             string actorFilterSignature,
+            bool includeTreasure,
             SaveSnapshot snapshot)
         {
             lock (_cacheSync)
             {
-                _cache[database.Path] = new CachedDatabaseSnapshot
+                string cacheKey = BuildCacheKey(
+                    database.Path,
+                    actorFilterSignature,
+                    includeTreasure);
+                _cache[cacheKey] = new CachedDatabaseSnapshot
                 {
+                    DatabasePath = database.Path,
                     Signature = database.Signature,
                     Key = key,
                     ActorFilterSignature = actorFilterSignature,
+                    IncludesTreasure = includeTreasure,
                     Snapshot = snapshot
                 };
             }
+        }
+
+        private static string BuildCacheKey(
+            string databasePath,
+            string actorFilterSignature,
+            bool includeTreasure)
+        {
+            return databasePath + "\n" + actorFilterSignature + "\n" +
+                (includeTreasure ? "treasure" : "encounter");
         }
 
         private void PruneCache(
             SaveSlotFingerprint slot,
             string key)
         {
-            HashSet<string> active = new HashSet<string>(
-                slot.Databases.Where(item => item.Exists)
-                    .Select(item => item.Path),
-                StringComparer.OrdinalIgnoreCase);
             lock (_cacheSync)
             {
-                List<string> removed = _cache
-                    .Where(pair => !active.Contains(pair.Key)
-                        || pair.Value.Key != key)
-                    .Select(pair => pair.Key)
-                    .ToList();
-                foreach (string path in removed)
+                _staleCacheKeys.Clear();
+                foreach (KeyValuePair<string, CachedDatabaseSnapshot> pair
+                    in _cache)
                 {
-                    _cache.Remove(path);
+                    bool active = false;
+                    for (int index = 0;
+                        index < slot.Databases.Count;
+                        index++)
+                    {
+                        SaveDatabaseFingerprint database =
+                            slot.Databases[index];
+                        if (database.Exists
+                            && String.Equals(
+                                database.Path,
+                                pair.Value.DatabasePath,
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            active = true;
+                            break;
+                        }
+                    }
+                    if (!active || pair.Value.Key != key)
+                    {
+                        _staleCacheKeys.Add(pair.Key);
+                    }
                 }
+                for (int index = 0;
+                    index < _staleCacheKeys.Count;
+                    index++)
+                {
+                    _cache.Remove(_staleCacheKeys[index]);
+                }
+                _staleCacheKeys.Clear();
             }
         }
 
@@ -291,6 +371,7 @@ namespace DragonSwordWorldRadar
                     new Dictionary<int, ulong>();
                 if (includeTreasure)
                 {
+                    metrics.TreasureQueries++;
                     Stopwatch treasureWatch = Stopwatch.StartNew();
                     opened = QueryOpenedTreasureBits(database);
                     treasureWatch.Stop();
@@ -304,13 +385,17 @@ namespace DragonSwordWorldRadar
                 bossWatch.Stop();
                 metrics.BossQueryMilliseconds +=
                     bossWatch.Elapsed.TotalMilliseconds;
-                Stopwatch taskWatch = Stopwatch.StartNew();
                 EncounterTaskTableSnapshot encounterTasks =
-                    QueryEncounterTaskTable(database);
-                encounterTasks.Source = taskSource;
-                taskWatch.Stop();
-                metrics.EncounterTaskQueryMilliseconds +=
-                    taskWatch.Elapsed.TotalMilliseconds;
+                    new EncounterTaskTableSnapshot();
+                if (DebugSettings.Enabled)
+                {
+                    Stopwatch taskWatch = Stopwatch.StartNew();
+                    encounterTasks = QueryEncounterTaskTable(database);
+                    encounterTasks.Source = taskSource;
+                    taskWatch.Stop();
+                    metrics.EncounterTaskQueryMilliseconds +=
+                        taskWatch.Elapsed.TotalMilliseconds;
+                }
                 return new SaveSnapshot
                 {
                     Opened = opened,
@@ -338,6 +423,29 @@ namespace DragonSwordWorldRadar
                 target.TryGetValue(pair.Key, out existing);
                 target[pair.Key] = existing | pair.Value;
             }
+        }
+
+        private static void MergeRequestedSnapshot(
+            SaveSnapshot target,
+            SaveSnapshot source,
+            bool includeTreasure)
+        {
+            // A rich cached snapshot may satisfy the encounter portion of a
+            // narrow request, but opened treasure state is only authoritative
+            // when this request explicitly scheduled a treasure refresh.
+            // Keeping this request-scoped prevents encounter-only save changes
+            // from indefinitely extending the 45-second treasure deadline.
+            if (includeTreasure && source.OpenedAvailable)
+            {
+                MergeOpened(target.Opened, source.Opened);
+                target.OpenedAvailable = true;
+            }
+            MergeBossRespawns(
+                target.BossRespawns,
+                source.BossRespawns);
+            MergeEncounterTasks(
+                target.EncounterTasks,
+                source.EncounterTasks);
         }
 
         private static void MergeBossRespawns(
@@ -529,7 +637,8 @@ namespace DragonSwordWorldRadar
                 new Dictionary<int, ulong>();
             string sql =
                 "SELECT CATEGORY,OPENED_BIT_FIELD " +
-                "FROM tb_treasure_box;";
+                "FROM tb_treasure_box " +
+                "WHERE OPENED_BIT_FIELD <> 0;";
             CallbackFailure failure = new CallbackFailure();
             NativeMethods.ExecCallback callback = delegate(
                 IntPtr context,
@@ -759,9 +868,11 @@ namespace DragonSwordWorldRadar
 
         private sealed class CachedDatabaseSnapshot
         {
+            public string DatabasePath;
             public string Signature;
             public string Key;
             public string ActorFilterSignature;
+            public bool IncludesTreasure;
             public SaveSnapshot Snapshot;
         }
 

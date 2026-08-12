@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": "1.0.42",
+  "version": "1.0.55",
   "policy": "Preserve historical collection methods and data; add new modules rather than replacing or deleting old ones.",
   "default_active_research": "assault_availability_conditions",
   "preservation_rules": [

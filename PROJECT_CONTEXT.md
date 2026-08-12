@@ -10,15 +10,23 @@ Use this file as the first cross-chat orientation document. Then read the select
 
 ### `DragonSwordWorldRadar/`
 
-Primary production Mod and authoritative owner of the integrated treasure, Boss, Assault, and Mole/Fly radar. Current source is the deployed `0.4.0-dev59-ue4ssroot1` candidate with one protocol-v5 Motion/control bridge. Preserve its existing dirty working tree and validate changes through the project's Windows PowerShell 5.1 gates.
+Primary production Mod and authoritative owner of the integrated treasure, Boss, Assault, and Mole/Fly radar. Current source is `0.4.0-dev74-minigamecatalog2` with one protocol-v6 Motion/control bridge. Development is feature-complete for the current cycle; preserve the acceptance boundary between passed Windows/package gates and owner gameplay validation.
 
 ### `DragonSwordNativeAutoPickup/`
 
-Native C++ UE4SS canary for bounded ordinary ground-loot pickup. It targets the exact relocated UE4SS runtime fingerprint, is armed independently with F9, performs no recurring Lua scan, and remains fail-closed on unknown builds. Compilation and deployment do not establish gameplay acceptance.
+Native C++ UE4SS research Mod for bounded ordinary ground-loot pickup. The current `0.6.0-dropitem-closed-loop-diagnostic` is deliberately read-only: it discovers one non-template current-World `DropItemActor`, locks the exact owner/component weak identities, and traces only manual interaction calls correlated to that same object. The rejected 0.5.2-0.5.4 Vitality target/action assumptions are not used. Compilation and packaging do not establish gameplay acceptance.
 
 ### `DragonSwordWorldDataProbe/`
 
 Research and diagnostics framework. It may contain active, disabled, manual-only, experimental, prohibited, and archived methods in the same tree. File presence never proves that a module is active or accepted. Keep game access bounded and read-only, preserve raw evidence, and distinguish confirmed observations from inference.
+
+### `DragonSwordNativeWorldRadar/`
+
+Isolated medium-architecture proof of concept. Native C++ owns bounded player-coordinate publication while its external Overlay reuses the Radar rendering model. It is not the production Radar, must not run alongside it, and remains not deployed/runtime-unaccepted.
+
+### `DragonSwordNativeAllMountsFreeFlight/`
+
+Pure-resource all-mount native free-dash Mod. Git contains its reproducible implementation, metadata, and build tooling; extracted game assets, staging trees, backups, PAK artifacts, and local verification copies remain excluded.
 
 ## Runtime standard
 
@@ -46,8 +54,8 @@ The canonical UE4SS root is `DS/Binaries/Win64/ue4ss`; Mod installations belong 
 
 ## Current handoff state
 
-- Main Radar `0.4.0-dev59-ue4ssroot1` and Native Auto Pickup `0.3.2-relocated-runtime-canary` are deployed under the canonical UE4SS Mods root and are awaiting combined F7/F9 gameplay validation.
+- Main Radar remains an independent deployed production candidate. Native Auto Pickup 0.6.0 is deployed under the canonical UE4SS root with verified hashes: it corrects the evidence boundary by requiring a same-object DropItemActor/manual-call trace before any later automatic action is implemented. Automatic pickup remains unaccepted.
 - Static, compile, package, and scheduling gates passed locally; this is not a substitute for in-game acceptance.
-- DataProbe remains dirty local research work and is outside the current publication scope.
+- DataProbe research source and evidence documentation are publishable, while runtime reports, diagnostics, generated local data, and installed state remain excluded.
 
 Before starting work, verify this state against the current filesystem and Git status; it may have changed since this context was written.

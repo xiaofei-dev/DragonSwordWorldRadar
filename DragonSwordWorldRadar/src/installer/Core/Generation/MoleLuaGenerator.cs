@@ -13,7 +13,7 @@ namespace DragonSwordWorldRadar.Installer
     {
         private const int FirstMoleId = 11001;
         private const int LastMoleId = 11034;
-        private const int ExpectedOrdinaryFlightCount = 34;
+        private const int ExpectedOrdinaryFlightCount = 33;
         private const string OrdinaryFlightNoticeTitle = "109208";
         private const string OrdinaryFlightNoticeDescription = "109202";
         private const string TeleportStartRole = "Teleport_Start";
@@ -209,6 +209,7 @@ namespace DragonSwordWorldRadar.Installer
 
             List<int> eligibleIds = miniGameRules.Values
                 .Where(IsOrdinaryFlightMiniGame)
+                .Where(value => value.Id != 11024)
                 .Select(value => value.Id)
                 .Distinct()
                 .OrderBy(value => value)

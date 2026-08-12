@@ -3,88 +3,90 @@ param([switch]$SkipBuild)
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$adapterText = Get-Content -Raw -LiteralPath (Join-Path $projectRoot 'src\ue4ss\main.cpp')
-$luaText = Get-Content -Raw -LiteralPath (Join-Path $projectRoot 'Scripts\main.lua')
-$fingerprintText = Get-Content -Raw -LiteralPath (Join-Path $projectRoot 'src\platform\windows_fingerprint.cpp')
+$adapter = Get-Content -Raw (Join-Path $projectRoot 'src\ue4ss\main.cpp')
+$lua = Get-Content -Raw (Join-Path $projectRoot 'Scripts\main.lua')
+$cmake = Get-Content -Raw (Join-Path $projectRoot 'CMakeLists.txt')
+$nativeBuild = Get-Content -Raw (Join-Path $projectRoot 'tools\Build-Native.ps1')
 
-foreach ($pattern in @('FindAllOf', 'FindObjects\s*\(', 'RegisterProcessEvent',
-        'RegisterStaticConstructObject', 'RegisterAActorTick', 'ReceiveTick', 'RegisterLoadMap',
-        'OnBeginOverlap', 'ExecuteWithDelay', 'ExecuteInGameThread')) {
-    if ($adapterText -match $pattern -or $luaText -match $pattern) { throw "Forbidden runtime pattern found: $pattern" }
+foreach ($pattern in @('FindAllOf','FindFirstOf','FindObjects\s*\(','RegisterProcessEvent','RegisterAActorTick',
+        'ReceiveTick','RegisterLoadMap','SendInput','ExecuteWithDelay','ExecuteInGameThread','ForEachUObjectInRange','ForEachUObject\s*\(')) {
+    if ($adapter -match $pattern -or $lua -match $pattern) { throw "Forbidden runtime pattern: $pattern" }
 }
-if ($luaText -match 'Find(First|All)Of|GameViewport|GameInstance|LocalPlayers|PlayerController|Pawn|function\s*\(') {
-    throw 'Lua must remain a marker-only entry point.'
+foreach ($pattern in @('SetObjectPropertyValue','CANARY_ACTION_INVOKED','ACTION_INVOKED_PENDING','invoke_contract_',
+        'process_vitality_candidates','process_single_target_canary','capture_vitality_candidate',
+        'Vitality_Leave_01_C_','auto_pickup\.contract','persist_confirmed_contract','validate_calibration_delete',
+        'action_invocation_total_us_','actions_invoked_','CANARY_PERF','OWNER_AUTHORIZED_RUNTIME_CANARY')) {
+    if ($adapter -match $pattern) { throw "Mutation or rejected discovery path remains: $pattern" }
 }
-if ($fingerprintText -notmatch 'binary_directory / "ue4ss" / "UE4SS\.dll"') {
-    throw 'Fingerprint source must read UE4SS from Win64/ue4ss.'
+if ($adapter -notmatch '0\.6\.0-dropitem-closed-loop-diagnostic') { throw 'Wrong adapter version.' }
+if ($adapter -notmatch 'OWNER_AUTHORIZED_READ_ONLY_DIAGNOSTIC') { throw 'Read-only diagnostic label is missing.' }
+foreach ($pattern in @('configuration_result_\.value\.action_interval_ms',
+        'configuration_result_\.value\.max_retries','configuration_result_\.value\.retry_backoff_ms')) {
+    if ($adapter -match $pattern) { throw "Native diagnostic reads a legacy action setting: $pattern" }
 }
-if ($luaText -notmatch 'Native input-frame pulse enabled; Lua scheduler disabled' -or
-    $luaText -notmatch 'OWNER_AUTHORIZED_RUNTIME_CANARY') {
-    throw 'Lua marker does not identify the native pulse canary.'
-}
-
-foreach ($pattern in @(
-        'FUObjectCreateListener', 'FUObjectDeleteListener', 'AddUObjectCreateListener', 'AddUObjectDeleteListener',
-        'RemoveUObjectCreateListener', 'RemoveUObjectDeleteListener', 'FWeakObjectPtr', 'std::scoped_lock',
-        '/Script/Engine\.PlayerController:ServerRecvClientInputFrame',
-        'binary_directory\(\) / "ue4ss" / "Mods" / "DragonSwordNativeAutoPickup"',
-        'kPulseInterval = std::chrono::milliseconds\{150\}', 'RegisterPostHook\(&input_frame_post',
-        'UnregisterHook\(pulse_hook_post_\)', '/Script/Engine\.Actor:K2_GetActorLocation',
-        '/Script/DS\.DInteractableComponent:Server_InputInteractKeyAction', '/Script/DS\.DropItemActor',
-        'GetClassPrivate\(\) == self->drop_item_class_', 'InteractComponent', 'InteractableValue', 'InteractTypeValue',
-        'kRequiredInteractableValue = 2', 'kDropItemInteractType',
-        'GetValuePtrByPropertyNameInChain<UObject\*>\(STR\("Pawn"\)\)',
-        'GetValuePtrByPropertyNameInChain<UObject\*>\(STR\("Controller"\)\)',
-        '\*controller_value != controller', 'IsA\(player_character_class_\)', 'IsA\(player_controller_class_\)',
-        'next_pulse_due_ = now \+ kPulseInterval', 'radius_meters \* 100\.0', 'kCandidatesPerPulse = 8',
-        'max_retries', 'retry_backoff_ms', 'action_interval_ms', 'GetParmsSize\(\)',
-        'ProcessEvent\(interaction_function_', 'RegisterInitGameStatePreCallback', 'OWNER_AUTHORIZED_RUNTIME_CANARY',
-        '__try', 'raw_hook_callbacks_', 'accepted_pulses_', 'throttle_rejects_', 'gate_rejections_', 'PERF_AGGREGATE')) {
-    if ($adapterText -notmatch $pattern) { throw "Required native-pulse canary gate is missing: $pattern" }
+if ($cmake -match '/WX-' -or $cmake -notmatch '/W4 /WX /wd4324 /external:anglebrackets /external:W0') { throw 'Strict native /W4 /WX is missing.' }
+if ($lua -match 'function\s*\(|Find(All|First)Of|GameViewport|ProcessEvent') { throw 'Lua must remain marker-only.' }
+foreach ($pattern in @('patternSleuthBindLockBytes','try \{','finally \{','WriteAllBytes\(\$patternSleuthBindLock',
+        'Assert-GitCommit \$resolvedUE4SS \$expectedCommits\.UE4SS ''RE-UE4SS after build''')) {
+    if ($nativeBuild -notmatch $pattern) { throw "Pinned SDK post-build restoration invariant missing: $pattern" }
 }
 
-$createCallback = [regex]::Match($adapterText,
-    '(?s)void NotifyUObjectCreated\(.*?\) override \{(.*?)\n    \}\n\n    void NotifyUObjectDeleted')
-if (-not $createCallback.Success) { throw 'Could not isolate NotifyUObjectCreated.' }
-foreach ($pattern in @('GetValuePtr', 'ProcessEvent', 'GetOuterPrivate', 'GetFullName', 'GetName')) {
-    if ($createCallback.Groups[1].Value -match $pattern) { throw "Create callback performs forbidden gameplay work: $pattern" }
+foreach ($pattern in @('GetAsyncKeyState\(VK_F9\)','f9_toggle_requested_','RegisterEngineTickPostCallback',
+        'RegisterInitGameStatePreCallback','UObjectArray::GetNumElements\(\)','UObjectArray::IndexToObject\(index\)',
+        'item->IsValid\(false\)','!item->IsUnreachable\(\)','capture_drop_item_guarded',
+        'RF_ClassDefaultObject','RF_ArchetypeObject','RF_DefaultSubObject',
+        'kDiscoveryBatchBudget = std::chrono::microseconds\{2000\}','kCalibrationWindow = std::chrono::seconds\{60\}',
+        'update_diagnostic_lock\(context\)','eligible_count != 1','diagnostic_candidate_identity_',
+        'diagnostic_component_identity_','OnBeginOverlap','OnEndOverlap','DropItemActor:AniPickUp',
+        'DropItemActor:SetDestroy','trace_interaction_call_guarded\(spec_index, context, "pre"\)',
+        'trace_interaction_call_guarded\(spec_index, context, "post", true\)','correlated_pre_pending_',
+        'parameter_locked_relation',
+        'receiver_field_locked_relation','RemoveUObjectCreateListener','RemoveUObjectDeleteListener',
+        'runtime_state_\.reset_off\(\)','diagnostic_cancelled=1')) {
+    if ($adapter -notmatch $pattern) { throw "Required read-only diagnostic invariant missing: $pattern" }
 }
 
-$onUpdate = [regex]::Match($adapterText, '(?s)void on_update\(\) override \{(.*?)\n    \}\n\n    void NotifyUObjectCreated')
+$f9 = [regex]::Match($adapter, '(?s)void f9_keydown\(\) noexcept \{(.*?)\n    \}')
+if (-not $f9.Success) { throw 'Could not isolate F9 callback.' }
+foreach ($forbidden in @('UObject','StaticFindObject','RegisterHook','UnregisterHook','register_object_listeners','start_discovery','candidates_')) {
+    if ($f9.Groups[1].Value -match $forbidden) { throw "F9 callback violates scalar-only affinity: $forbidden" }
+}
+$onUpdate = [regex]::Match($adapter, '(?s)void on_update\(\) override \{(.*?)\n    \}\n\n    void NotifyUObjectCreated')
 if (-not $onUpdate.Success) { throw 'Could not isolate on_update.' }
-foreach ($pattern in @('UObject', 'ProcessEvent', 'GetValuePtrByPropertyName', 'GetOuterPrivate', 'IsA\(')) {
-    if ($onUpdate.Groups[1].Value -match $pattern) { throw "on_update performs forbidden UObject work: $pattern" }
+foreach ($forbidden in @('StaticFindObject','RegisterHook','UnregisterHook','AddUObject','RemoveUObject','IndexToObject',
+        'start_discovery','clear_activation_state','ProcessEvent')) {
+    if ($onUpdate.Groups[1].Value -match $forbidden) { throw "on_update violates scalar-only affinity: $forbidden" }
 }
+$create = [regex]::Match($adapter, '(?s)void NotifyUObjectCreated\(.*?\) override \{(.*?)\n    \}\n\n    void NotifyUObjectDeleted')
+foreach ($forbidden in @('GetValuePtr','ProcessEvent','GetOuterPrivate','logger_\.write')) {
+    if ($create.Groups[1].Value -match $forbidden) { throw "Create callback performs forbidden work: $forbidden" }
+}
+$shutdown = [regex]::Match($adapter, '(?s)void OnUObjectArrayShutdown\(\) override \{(.*?)\n    \}\n\nprivate:')
+foreach ($required in @('uobject_array_shutdown_seen_\.store\(true','shutting_down_\.store\(true','callback_gate_\.invalidate',
+        'abandon_calibration_hooks_after_uobject_shutdown','unregister_object_listeners')) {
+    if ($shutdown.Groups[1].Value -notmatch $required) { throw "Shutdown cleanup missing: $required" }
+}
+if ($shutdown.Groups[1].Value -match 'unregister_calibration_hooks') { throw 'Shutdown must not dereference saved UFunction pointers.' }
 
-$configText = Get-Content -Raw -LiteralPath (Join-Path $projectRoot 'config\default.ini')
-if ($configText -notmatch '(?m)^enabled_on_launch=false$' -or $configText -notmatch '(?m)^toggle_hotkey=F9$') {
-    throw 'Default config must remain off and use exact F9.'
+$metadata = Get-Content -Raw (Join-Path $projectRoot 'metadata\interaction-contract.json') | ConvertFrom-Json
+if ($metadata.schema_version -ne 15 -or $metadata.status -ne 'DROPITEM_CLOSED_LOOP_DIAGNOSTIC' -or
+    $metadata.active_mode_approved -ne $false -or $metadata.runtime_acceptance -ne $false -or
+    $metadata.automatic_action.enabled -ne $false -or $metadata.automatic_action.target_field_writes -ne $false -or
+    $metadata.automatic_action.process_event_pickup_calls -ne $false -or $metadata.automatic_action.contract_io -ne $false -or
+    $metadata.window_seconds -ne 60) { throw 'Interaction metadata does not match the read-only diagnostic.' }
+$defaultConfig = Get-Content -Raw (Join-Path $projectRoot 'config\default.ini')
+if ($defaultConfig -notmatch 'read_only_diagnostic=true' -or
+    $defaultConfig -match '(?m)^(action_interval_ms|max_retries|retry_backoff_ms)=') {
+    throw 'Default config exposes a rejected action/canary setting.'
 }
-$contract = Get-Content -Raw -LiteralPath (Join-Path $projectRoot 'metadata\interaction-contract.json') | ConvertFrom-Json
-if ($contract.schema_version -ne 4 -or $contract.status -ne 'OWNER_AUTHORIZED_RUNTIME_CANARY' -or
-    $contract.active_mode_approved -ne $true -or $contract.runtime_acceptance -ne $false -or
-    $contract.pulse_function -ne '/Script/Engine.PlayerController:ServerRecvClientInputFrame' -or
-    $contract.pulse_interval_ms -ne 150 -or
-    $contract.required_identity_rule -ne 'controller.Pawn == player && player.Controller == controller' -or
-    $contract.interaction.key_action -ne 13) {
-    throw 'Metadata does not match the unaccepted owner-authorized native-pulse canary.'
-}
-
-$fingerprints = Get-Content -Raw -LiteralPath (Join-Path $projectRoot 'metadata\build-fingerprints.json') | ConvertFrom-Json
-if ($fingerprints.unknown_build_policy -ne 'passive_off') { throw 'Unknown build policy must remain passive_off.' }
-$headerText = Get-Content -Raw -LiteralPath (Join-Path $projectRoot 'include\dsnap\windows_fingerprint.hpp')
-function Read-HeaderConstant([string]$Name) {
-    $match = [regex]::Match($headerText, [regex]::Escape($Name) + '\s*=\s*"([^"]+)"')
-    if (-not $match.Success) { throw "Missing fingerprint constant: $Name" }
-    $match.Groups[1].Value
-}
-if ((Read-HeaderConstant 'kExpectedGameSha256') -ne $fingerprints.game.sha256 -or
-    (Read-HeaderConstant 'kExpectedUe4ssSha256') -ne $fingerprints.ue4ss.sha256 -or
-    (Read-HeaderConstant 'kExpectedUe4ssGitSha') -ne $fingerprints.ue4ss.git_sha) {
-    throw 'Compiled fingerprint constants do not match metadata.'
+$fingerprints = Get-Content -Raw (Join-Path $projectRoot 'metadata\build-fingerprints.json') | ConvertFrom-Json
+if ($fingerprints.source_build.version -ne '0.6.0-dropitem-closed-loop-diagnostic' -or
+    $fingerprints.source_build.deployed -ne $true -or $fingerprints.source_build.runtime_validated -ne $false -or
+    ($fingerprints.source_build.installed_path -replace '\\', '/') -notmatch 'Win64/ue4ss/Mods/DragonSwordNativeAutoPickup$') {
+    throw 'Build metadata does not identify the deployed but runtime-unvalidated diagnostic.'
 }
 
 & (Join-Path $PSScriptRoot 'Verify-Manifest.ps1')
 & (Join-Path $PSScriptRoot 'Test-PackageLayout.ps1')
 if (-not $SkipBuild) { & (Join-Path $PSScriptRoot 'Build-Core.ps1') }
-Write-Host 'DragonSwordNativeAutoPickup native-pulse canary source verification passed.'
+Write-Host 'DragonSwordNativeAutoPickup 0.6.0 read-only diagnostic source verification passed.'

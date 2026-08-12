@@ -16,6 +16,8 @@ namespace DragonSwordWorldRadar
         public const int SwShowNoActivate = 4;
         public const uint SwpNoActivate = 0x0010;
         public const uint SwpNoCopyBits = 0x0100;
+        public const int ThreadModeBackgroundBegin = 0x00010000;
+        public const int ThreadModeBackgroundEnd = 0x00020000;
         public static readonly IntPtr HwndTopmost =
             new IntPtr(-1);
 
@@ -116,6 +118,14 @@ namespace DragonSwordWorldRadar
 
         [DllImport("kernel32.dll")]
         public static extern bool CloseHandle(IntPtr handle);
+
+        [DllImport("kernel32.dll")]
+        public static extern IntPtr GetCurrentThread();
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool SetThreadPriority(
+            IntPtr thread,
+            int priority);
 
         [DllImport(
             SqlCipherLibrary,

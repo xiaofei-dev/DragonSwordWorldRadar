@@ -10,16 +10,18 @@ Use this file as the first orientation document when continuing the project in a
 
 ## Current identity and research focus
 
-- Framework version: `1.0.42`
-- State schema: `142`
-- Package lineage: `DragonSwordWorldDataProbe-1.0.42-assault-time-weather-teleport.zip`
+- Framework version: `1.0.55`
+- State schema: `155`
+- Package lineage: `DragonSwordWorldDataProbe-1.0.55-static-reveal-cycle.zip`
 - `enabled.txt`: the runtime framework runs only when this contains `1`
 - Active Lua probe order in `scripts/config.lua`:
-  1. `assault_target_presence_pair`
+  1. `healthcheck`
 
 Treasure research is archived as of 1.0.38. The exact catalog, implementation, historical reports, and confirmed presence-to-absence observation remain preserved, but the Treasure runtime module is disabled and removed from the automatic probe order. No Treasure Actor enumeration runs in the active configuration.
 
-The Assault trigger sampler remains archived. Version 1.0.40 runs one bounded comparison every 10 seconds between PlaceID 104 (conditioned target) and PlaceID 126 (control target). It enumerates only their two exact generated classes and never performs a global Character or Actor scan. Absence is recorded only as not observed in the loaded object set. Boss research remains frozen and must not be expanded.
+The Assault trigger sampler and the 1.0.53 `MonsterSpawnBase` diagnostic are archived and disabled. The first successful 1.0.53 enumeration returned 374 spawners and bound two targets, then the game crashed four seconds later with an unhandled C++ exception through UE4SS. Version 1.0.54 therefore runs healthcheck only and prohibits automatic `MonsterSpawnBase` enumeration. The partial condition-key evidence remains preserved for offline analysis. Boss research remains frozen and must not be expanded.
+
+Version 1.0.55 adds a deterministic 12-byte uncompressed compact PAK decoder. `RevealCycleData.xml` now extracts with full directory, DataEntry, XML identity, and SHA-256 validation. Static row 10001 is a cemetery-skeleton window from hour 23 through hour 6 and matches the observed CID 143 reveal boundary. The row is confirmed; the CID-to-row binding remains inferred until a direct static asset binding is recovered.
 
 ## Architecture
 
@@ -110,14 +112,15 @@ Do not launch the diagnostics command twice. Progress is recorded under `runtime
 - `metadata/known-findings.json`: concise known findings and remaining validation
 - `metadata/method-matrix.json`: approved, optional, experimental, and prohibited methods
 - `docs/DECISION_LOG.md`: durable research decisions
+- `docs/history/README.md`: consolidated historical module, data, evidence, and production-migration archive
 
 Some older documentation files contain mojibake from an earlier encoding problem. Prefer the current source, JSON metadata, `README.txt`, and this context file when the corrupted text is ambiguous; do not silently reinterpret damaged text as authoritative evidence.
 
-## Current limitations and next evidence
+## Current limitations and production handoff
 
-The project still lacks a production-quality global availability model for Assault events. Weather, switch, task-state, and RespawnCycle evidence are incomplete as a combined semantic model. Treasure actor proximity inference also remains diagnostic and must not replace save-database truth yet.
+Assault research collection is closed for the current build. The production handoff consists of the build-pinned 40-target catalog, persisted `tb_actor_respawn` death/respawn state, and the CID 143 special schedule inferred from confirmed RevealCycle row 10001 (23:00-06:00). Weather and `CUnexpectedMissionInStandAlone` are excluded from production availability logic.
 
-The most useful next evidence is a controlled before/during/after capture while the user completes one relevant Assault task, followed by the normal wait-for-game-exit diagnostics workflow. Any semantic conclusion should bind the exact game-build fingerprint and preserve the raw reports used to reach it.
+The CID 143 to row 10001 mapping remains a strong inference rather than a directly observed key binding, and the 06:00 hide transition has not been observed at runtime. These limitations must remain explicit during Radar implementation. The next useful activity is a bounded production gameplay validation after implementation, not additional DataProbe runtime collection.
 
 ## Safe continuation checklist
 

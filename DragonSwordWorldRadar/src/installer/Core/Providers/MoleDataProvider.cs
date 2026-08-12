@@ -79,11 +79,13 @@ namespace DragonSwordWorldRadar.Installer
                 recordCount = MoleLuaGenerator.Generate(
                     xmlPaths,
                     stagedOutputPath);
-                if (recordCount != 34)
+                if (recordCount != 33)
                 {
                     throw new InvalidDataException(
-                        "The generated Mole catalog must contain exactly 34 Fly records.");
+                    "The base Fly catalog must contain exactly 33 ordinary-world records.");
                 }
+                AdditionalMiniGameLuaGenerator.Append(xmlPaths, stagedOutputPath);
+                recordCount = 83;
                 BindRewardTreasureIds(
                     stagedOutputPath,
                     Path.Combine(context.GeneratedDataRoot, "treasures.lua"));
@@ -129,8 +131,19 @@ namespace DragonSwordWorldRadar.Installer
                     || !Int64.TryParse(match.Groups["save"].Value,
                         NumberStyles.Integer, CultureInfo.InvariantCulture,
                         out saveId)
-                    || gameId < 11001 || gameId > 11034
                     || saveId <= 0)
+                {
+                    continue;
+                }
+                // The current PAK labels Wave 13008's reward asset as 13009,
+                // while its authoritative save ID remains 13008 and its
+                // activity/start record is 13008. Bind only this exact proven
+                // tuple; never apply a general numeric offset.
+                if (gameId == 13009 && saveId == 13008)
+                {
+                    gameId = 13008;
+                }
+                if (!IsSupportedMiniGameId(gameId))
                 {
                     continue;
                 }
@@ -142,10 +155,18 @@ namespace DragonSwordWorldRadar.Installer
                 }
                 rewards.Add(gameId, saveId);
             }
-            if (rewards.Count != 34)
+            long sharedWaveReward;
+            if (!rewards.TryGetValue(13008, out sharedWaveReward)
+                || sharedWaveReward != 13008)
+            {
+                throw new InvalidDataException("The shared Wave 13008-13010 reward tuple is missing or changed.");
+            }
+            rewards.Add(13009, sharedWaveReward);
+            rewards.Add(13010, sharedWaveReward);
+            if (rewards.Count != 83)
             {
                 throw new InvalidDataException(
-                    "The current-game treasure table must provide exactly 34 DT_MiniGame_G5 reward mappings; found "
+                    "The current-game treasure table must provide exactly 83 supported MiniGame activity mappings; found "
                     + rewards.Count.ToString(CultureInfo.InvariantCulture) + ".");
             }
 
@@ -178,15 +199,22 @@ namespace DragonSwordWorldRadar.Installer
                     lines[index], replacement, 1);
                 bound++;
             }
-            if (bound != 34)
+            if (bound != 83)
             {
                 throw new InvalidDataException(
-                    "Exactly 34 generated Fly records must receive current-game reward mappings.");
+                    "Exactly 83 generated mini-game records must receive current-game reward mappings.");
             }
             File.WriteAllLines(
                 moleCatalogPath,
                 lines,
                 new UTF8Encoding(false));
+        }
+
+        private static bool IsSupportedMiniGameId(int id)
+        {
+            return (id >= 11001 && id <= 11034 && id != 11024)
+                || (id >= 12001 && id <= 12040)
+                || (id >= 13001 && id <= 13010);
         }
 
         private static void DeleteIfPresent(string path)

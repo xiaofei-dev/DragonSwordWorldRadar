@@ -20,7 +20,7 @@ $tracker=Get-Content -Raw (Join-Path $root 'src\overlay\SaveData\EncounterAvaila
 if($tracker-match'new\s+BossPoint|new\s+WorldAssault'){throw 'Unified encounter refresh must not allocate feature adapters.'}
 $main=Get-Content -Raw (Join-Path $root 'src\ue4ss\main.lua')
 if($main-match'FindAllOf|RegisterHook'){throw 'Assault candidate must preserve no-scan/no-hook architecture.'}
-$defaultConfig=Get-Content -Raw (Join-Path $root 'src\ue4ss\config.default.lua')
+$defaultConfig=Get-Content -Raw (Join-Path $root 'src\ue4ss\config.lua')
 if($defaultConfig-match'(?m)^\s*show_groundhog\s*=|(?m)^\s*show_assault\s*='){throw 'Stale singular Assault/Groundhog defaults remain.'}
 if($defaultConfig-match'(?m)^\s*assault_performance_ab_isolation\s*='-or$defaultConfig-notmatch'(?m)^\s*show_assaults\s*=\s*true\s*,'){throw 'Assault diagnostic reproduction default contract is missing.'}
 $debugSettings=Get-Content -Raw (Join-Path $root 'src\overlay\Configuration\DebugSettings.cs')
@@ -32,7 +32,7 @@ foreach($obsolete in @('_worldAssaults','_worldBosses','_assaultAvailability','_
 foreach($required in @('_worldEncounters.Load();','ConfigureEncounterTargets(','_encounterAvailability.Refresh(','RecordEncounterDraw(','WORLD_ENCOUNTER_LIFECYCLE')){if(-not$radar.Contains($required)){throw "Unified encounter runtime marker is missing: $required"}}
 $constructor=$radar.Substring($radar.IndexOf('public RadarForm()'),$radar.IndexOf('protected override void OnPaint')-$radar.IndexOf('public RadarForm()'))
 if(-not$constructor.Contains('_worldEncounters.Load();')-or-not$constructor.Contains('ConfigureEncounterTargets(')){throw 'Encounter catalog/filter must be fixed during Overlay construction.'}
-$maintenance=$radar.Substring($radar.IndexOf('if (now >= _nextMaintenanceUtc)'),$radar.IndexOf('string rawMode = GetEffectiveMode();')-$radar.IndexOf('if (now >= _nextMaintenanceUtc)'))
+$maintenance=$radar.Substring($radar.IndexOf('if (now >= _nextMaintenanceUtc)'),$radar.IndexOf('string rawMode = GetEffectiveMode')-$radar.IndexOf('if (now >= _nextMaintenanceUtc)'))
 if($maintenance.Contains('_worldEncounters.Load')-or$maintenance.Contains('ConfigureEncounterTargets')){throw 'F7/maintenance must not load or reconfigure encounter targets.'}
 $saveState=Get-Content -Raw (Join-Path $root 'src\overlay\SaveData\TreasureSaveState.cs')
 $snapshotReader=Get-Content -Raw (Join-Path $root 'src\overlay\SaveData\SaveSnapshotReader.cs')
@@ -45,7 +45,7 @@ $catalog=Get-Content -Raw (Join-Path $root 'src\overlay\Data\WorldEncounterCatal
 foreach($marker in @('ExpectedBossCount = 9','ExpectedAssaultCount = 40','WORLD_ENCOUNTER_CATALOG_LOADED','lifecycle=overlay_startup_once','f7_reconfiguration=false')){if(-not$catalog.Contains($marker)){throw "Unified encounter catalog marker is missing: $marker"}}
 $install=Get-Content -Raw (Join-Path $root 'src\installer\Install.ps1')
 foreach($required in @('identityBeforeData','identityAfterData','game_fingerprint_before_generation','game_fingerprint_after_generation','Game executable or PAK identity changed while datasets were being generated')){if(-not$install.Contains($required)){throw "Install fingerprint transaction contract missing: $required"}}
-foreach($required in @('Migrate-AssaultConfig','ENABLED diagnostic Assault crash reproduction','show_assaults = true')){if(-not$install.Contains($required)){throw "Installer Assault diagnostic migration is missing: $required"}}
+foreach($required in @('Migrate-AssaultConfig','PRESERVED user-owned show_assaults setting','show_assaults = true')){if(-not($install+$defaultConfig).Contains($required)){throw "Installer Assault configuration ownership is missing: $required"}}
 if($install-match'assaultConditionCount\s*-ne\s*1'){throw 'Install must derive expected Assault condition count from policy.'}
 foreach($required in @('expectedAssaultConditionCount','SelectNodes(''./Condition'')','Game executable or PAK identity changed after dataset validation','40 Assault')){if(-not$install.Contains($required)){throw "Install Assault policy/final-identity contract missing: $required"}}
 if($install-notmatch'\(\?m\)\^\\s\*\\\{\[\^\\r\\n\]\*\\bgame_fingerprint'){throw 'Installer Assault fingerprint validation must count data records only, not the generated header comment.'}

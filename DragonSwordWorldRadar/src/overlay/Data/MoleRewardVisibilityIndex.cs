@@ -12,6 +12,7 @@ namespace DragonSwordWorldRadar
         private int _catalogVersion = -1;
         private int _saveVersion = -1;
         private long _visibleMask;
+        private readonly HashSet<int> _visibleAdditionalIds = new HashSet<int>();
 
         public long VisibleMask
         {
@@ -31,15 +32,14 @@ namespace DragonSwordWorldRadar
             }
 
             long nextMask = 0;
+            HashSet<int> nextAdditionalIds = new HashSet<int>();
             if (hasSave)
             {
-                foreach (WorldMole mole in catalog.Points)
+                IList<WorldMole> points = catalog.Points;
+                for (int index = 0; index < points.Count; index++)
                 {
-                    if (mole == null
-                        || mole.MiniGameId < FirstMiniGameId
-                        || mole.MiniGameId > LastMiniGameId
-                        || mole.MaskBit < 0
-                        || mole.MaskBit >= 34)
+                    WorldMole mole = points[index];
+                    if (mole == null)
                     {
                         continue;
                     }
@@ -47,16 +47,38 @@ namespace DragonSwordWorldRadar
                     // not alter the raw same-ID Fly completion bit.
                     if (!TreasureSaveState.IsRawOpened(mole.RewardSaveId, opened))
                     {
-                        nextMask |= 1L << mole.MaskBit;
+                        if (mole.MiniGameId >= FirstMiniGameId
+                            && mole.MiniGameId <= LastMiniGameId
+                            && mole.MaskBit >= 0 && mole.MaskBit < 33)
+                        {
+                            nextMask |= 1L << mole.MaskBit;
+                        }
+                        else
+                        {
+                            nextAdditionalIds.Add(mole.MiniGameId);
+                        }
                     }
                 }
             }
 
-            bool changed = nextMask != _visibleMask;
+            bool changed = nextMask != _visibleMask
+                || !_visibleAdditionalIds.SetEquals(nextAdditionalIds);
             _visibleMask = nextMask;
+            _visibleAdditionalIds.Clear();
+            _visibleAdditionalIds.UnionWith(nextAdditionalIds);
             _catalogVersion = catalogVersion;
             _saveVersion = saveVersion;
             return changed;
+        }
+
+        public bool IsVisible(WorldMole miniGame, long flyMask)
+        {
+            if (miniGame == null) return false;
+            if (miniGame.MaskBit >= 0 && miniGame.MaskBit < 33)
+            {
+                return (flyMask & (1L << miniGame.MaskBit)) != 0;
+            }
+            return _visibleAdditionalIds.Contains(miniGame.MiniGameId);
         }
 
         public void Reset()
@@ -64,6 +86,7 @@ namespace DragonSwordWorldRadar
             _catalogVersion = -1;
             _saveVersion = -1;
             _visibleMask = 0;
+            _visibleAdditionalIds.Clear();
         }
     }
 }

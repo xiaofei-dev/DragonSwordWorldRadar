@@ -1,5 +1,94 @@
 # Changelog
 
+## 0.4.0-dev74-minigamecatalog2
+
+- Kept the established 250 ms control loop alive during bounded runtime recovery instead of replacing its active UE4SS Lua callback.
+- Expanded the install-generated reward mini-game catalog to 83 records: 33 ordinary-world Fly, 40 Mole, and 10 Wave.
+- Added allocation-free code-native hammer and wave markers for Mole and Wave activities.
+- Bound Wave 13008 to the current PAK's exact mislabelled reward tuple `save_id=13008`, `DT_MiniGame_G5_13009` without introducing a general offset rule.
+
+## 0.4.0-dev72-runtimewatchdog1
+
+- Added bounded automatic F8-to-F7 lifecycle recovery for confirmed asynchronous Lua failures and a confirmed stalled 250 ms control loop. The existing compact or expanded-map presentation loop observes only scalar control-heartbeat progress once per second and requires five consecutive stale observations before recovery.
+- Kept temporary expanded-map read loss on the dev71 candidate-only recovery path; missing map state does not arm whole-runtime recovery. The watchdog performs no UObject, bridge, drawing, game-thread queue, or file work and adds no fourth `LoopAsync` registration.
+- Automatic recovery invalidates all pending tokens and UObject wrappers, publishes disabled state, registers one replacement control loop, and reuses the four-sample F7 stability gate. Three consecutive automatic failures fail closed instead of creating an unbounded restart loop.
+
+## 0.4.0-dev71-worldmaprecovery1
+
+- Replaced the two-second expanded-map rediscovery gap after an active read failure with one next-control-sample bounded rescan. The failed candidate wrappers are still dropped immediately, the candidate token is advanced, and no UObject survives the failure.
+- Added a 250 ms visibility probe for at most two already-bounded hidden current-epoch candidates, allowing the first map opening and later reopenings to be detected without recurring UObject enumeration.
+- Preserved the visible 8 ms expanded-map path, retired-identity protection, epoch/token travel invalidation, F8 suspension, and compact scheduling. Added structural gates that reject direct enumeration or wrapper retention in the recovery block.
+
+## 0.4.0-dev70-clocklogfix1
+
+- Corrected the debug-only `WORLD_TIME_TASK_PERF.failure` field so a successful one-shot clock capture records `none` instead of the misleading string `true`.
+- Preserved thrown `pcall` errors and normal capture-failure reasons without changing clock capture, scheduling, publication, or normal-play execution.
+- Added source and scheduling gates that reject the ambiguous Lua truthiness expression. All dev69 marker, control, cadence, bridge, and lifecycle behavior remains unchanged.
+
+## 0.4.0-dev69-heightpairdebug1
+
+- Extended the existing nearest-treasure height indicator to the two closest visible treasures in one allocation-free selection pass. The closest marker remains enlarged and labeled; the second-closest marker keeps the normal diameter and receives only its height indicator.
+- Applied the same two-marker rule to the expanded map while preserving projected-pixel deduplication; an exactly overlapping second marker remains suppressed instead of producing indistinguishable duplicate geometry.
+- Restricted F5 no-paint and F6 frozen-motion A/B hotkey registration to `debug_logging = true`. F7 and F8 remain the only registered normal-play controls, while the protocol and diagnostic implementations remain available for bounded debugging.
+- Added deterministic nearest-pair and debug-hotkey guard tests without adding runtime queries, catalogs, timers, bridge traffic, or allocations.
+
+## 0.4.0-dev68-moleoverridefix1
+
+- Removed the obsolete stock `ignore 11003` treasure override after gameplay identification confirmed that the apparent overlap belongs to the valid MiniGame/Fly reward path.
+- Added an exact installer migration that removes only the old `11003` ignore and its two stock explanation lines while preserving unrelated ignores and user-authored aliases.
+- Added source and scheduling gates that prohibit the obsolete default rule. All dev67 performance scheduling and runtime behavior remain unchanged.
+
+## 0.4.0-dev67-compactingest1
+
+- Changed only compact Overlay prediction/presentation from 50 ms to 33 ms while retaining 250 ms fresh current-Pawn sampling, the 50 ms scalar-only Lua flush loop, the 1000 ms heartbeat, and the visible expanded-map 8 ms path.
+- Replaced unchanged compact bridge polling with one slot-dirty `FileSystemWatcher` gate. Callbacks only coalesce a dirty bit; fixed-buffer parsing remains serialized on the UI thread, healthy notification loss is covered by a 250 ms dual-slot scan, and unavailable notifications fall back to 50 ms polling.
+- Added coalesced slow-mode UI wakes for F7/F8/mode/epoch frames, disabled compact notifications during world-map presentation, added epoch-only visual invalidation, bounded partial-record retry, deterministic reader/gate tests, independent package byte/path/manifest auditing, and source-manifest build-output exclusions.
+- Retired the dev30 cadence comparison as a performance acceptance gate. Runtime acceptance is now based on same-session F5/F6/F7/F8 and frame-time evidence; static/build/package gates do not claim a gameplay result.
+
+## 0.4.0-dev66-inlineab1
+
+- Added one-session compact-radar attribution controls: F5 suppresses custom Overlay painting while retaining the active producer/bridge/control/maintenance chain; F6 freezes the rendered scalar snapshot, skips prediction and motion-triggered repaint, and reduces control-only bridge reads to 250 ms; F7 restores the existing normal path; F8 remains complete-off.
+- Upgraded the sole scalar Motion Bridge to protocol v6 with one strict three-value diagnostic enum so mixed source/Overlay packages fail closed.
+- Added protocol, hotkey, no-paint, frozen-snapshot, timer, source-verifier, and package gates. Runtime smoothness attribution remains pending owner A/B testing.
+
+## 0.4.0-dev65-hotpathopt1
+
+- Removed normal-mode Lua F7 trace activation and eager trace-field table allocation while retaining the complete bounded trace when debug logging is explicitly enabled.
+- Removed disabled Overlay performance bookkeeping, repeated per-marker UTC reads, interface-enumerator allocation in paint/query loops, unchanged encounter-availability rebuilds, and sub-half-pixel prediction invalidations without changing any feature, cadence, or marker precision threshold.
+- Kept complete save snapshots and moved their worker into balanced Windows background mode; zero-only treasure categories are no longer materialized, and the diagnostic-only encounter-task table is queried only in debug mode.
+- Preserved 250 ms fresh current-Pawn sampling, 50 ms compact presentation, 8 ms visible expanded-map presentation, direct vector rendering, all configured layers, and every fail-closed travel invariant.
+
+## 0.4.0-dev64-debugoffab1
+
+- Disabled detailed file diagnostics by default for a no-feature-loss runtime performance A/B. Normal-use lifecycle logging remains enabled.
+- Preserved every dev63 radar layer, 50 ms compact presentation, 250 ms current-Pawn sampling, 8 ms visible world-map path, 45-second complete save-snapshot window, and fail-closed lifecycle boundary.
+- Kept `diagnostic_verbose=false`; detailed diagnostics can still be enabled temporarily through the single authoritative `scripts/config.lua` followed by a game restart.
+
+## 0.4.0-dev63-coldreadcoalesce1
+
+- Coalesced continuous save fingerprints into one latest stable complete snapshot per 45-second window. The dev62 log opened a database on all 69 refreshes because `Slot1.bak` changed roughly every 20-30 seconds; the same 24-minute span is now structurally bounded to about 33 cold refreshes while two-second metadata observation remains enabled.
+- Changed each permitted cache miss to build one Treasure-rich strict-superset snapshot for Treasure, Boss, Assault, and task state together. An unchanged window is served entirely from the independent `.db`/`.bak` caches.
+- Retained immediate first-load, four-second stable-copy, below-normal worker, F8 invalidation, and request-scoped fail-closed publication boundaries. Added explicit requested-versus-executed Treasure-query diagnostics plus executable and structural scheduling gates.
+
+## 0.4.0-dev62-treasuredeadlinefix1
+
+- Kept treasure-rich cache entries compatible with encounter-only reads while making snapshot publication request-scoped: a narrow read reuses Boss/Assault and task data but never publishes cached treasure bits as a fresh treasure result.
+- Prevented save-triggered encounter refreshes from indefinitely extending the 45-second treasure deadline. Only a request that explicitly includes Treasure and returns opened data may advance the next Treasure query time.
+- Added executable regression coverage for narrow rich-cache reuse, retained encounter publication, and full Treasure publication.
+
+## 0.4.0-dev61-savecacheconfig1
+
+- Replaced the path-only save snapshot cache with query-shape-aware entries. Treasure-rich snapshots satisfy encounter-only reads, while the 45-second treasure pass and save-triggered encounter pass no longer evict each other for an unchanged `.db` or `.bak` sibling.
+- Preserved exact database fingerprints, independent `.db`/`.bak` merging, the four-second change debounce, the 45-second treasure cadence, BelowNormal workers, and fail-closed publication; the optimization removes redundant SQLCipher work without weakening freshness or consistency.
+- Restored visible expanded-map Lua transform production and Overlay presentation from the diagnostic 4 ms cadence to 8 ms. Compact presentation and player UObject sampling remain 50 ms and 250 ms respectively.
+- Replaced the installed `config.default.lua` plus generated `config.lua` pair with one authoritative `scripts/config.lua`; runtime, Overlay, installer validation, diagnostics, and local deployment preservation now share that file.
+
+## 0.4.0-dev60-minimapcachefix1
+
+- Fixed the one-hertz `DLayerMiniMap` cache miss loop: only the retained top-level widget is checked with UObject `IsValid()`, while `LayerMap`, `MapOverlay`, and scale are read inside the existing protected access block.
+- Missing or throwing nested-property access still fails closed and clears the top-level cache, but a usable nested UE4SS property wrapper is no longer rejected solely because its incompatible `IsValid()` result is false.
+- Added regression gates that prohibit nested `LayerMap`/`MapOverlay` UObject validation while preserving one cache-miss-only `FindFirstOf("DLayerMiniMap")` site and phase timing diagnostics.
+
 ## 0.4.0-dev59-ue4ssroot1
 
 - Standardized the runtime root on `DS/Binaries/Win64/ue4ss` and the Mod root on `DS/Binaries/Win64/ue4ss/Mods/DragonSwordWorldRadar`.

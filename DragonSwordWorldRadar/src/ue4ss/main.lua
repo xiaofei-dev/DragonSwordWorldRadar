@@ -58,9 +58,11 @@ local weather_bt_state = 0
 local auto_start_overlay = config.auto_start_overlay ~= false
 local start_key = config.start_key or config.refresh_key or "F7"
 local stop_key = config.stop_key or config.toggle_key or "F8"
+local no_paint_key = config.no_paint_key or "F5"
+local no_motion_key = config.no_motion_key or "F6"
 if diagnostics ~= nil then
     diagnostics.configure({
-        version = "0.4.0-dev59-ue4ssroot1",
+        version = "0.4.0-dev74-minigamecatalog2",
         generation = generation,
         use_enabled = config.use_logging ~= false
             and config.diagnostic_logging ~= false,
@@ -81,11 +83,9 @@ if show_world_status then
         local initialized, initialize_error = pcall(
             environment_module.initialize,
             log,
-            function(event, fields)
-                if diagnostics ~= nil then
-                    diagnostics.debug(event, nil, fields or {})
-                end
-            end,
+            perf_diagnostics ~= nil and function(event, fields)
+                perf_diagnostics.debug(event, nil, fields or {})
+            end or nil,
             { stable_context_ticks = 8 }
         )
         if initialized then
@@ -172,6 +172,8 @@ if world_map_markers_enabled then
             show_world_status = show_world_status,
             start_key = start_key,
             stop_key = stop_key,
+            no_paint_key = no_paint_key,
+            no_motion_key = no_motion_key,
         })
     end
 end
@@ -180,13 +182,13 @@ local TOWN_RADAR_RADIUS = 12500.0
 local FIELD_RADAR_RADIUS = 22500.0
 local MINIMAP_SCALE_THRESHOLD = 2.7
 local MINIMAP_SCALE_CHECK_INTERVAL_MS = 1000
--- Protocol-v5 Motion Bridge is the sole runtime IPC channel. Player UObject
+-- Protocol-v6 Motion Bridge is the sole runtime IPC channel. Player UObject
 -- sampling occurs only in the 250 ms control callback; the 50 ms loops publish
 -- or transform the latest scalar sample without another player-root traversal.
 -- Both compact and world-map modes reuse that 250 ms numeric player sample.
--- Only the visible world map transforms that scalar at 4 ms; compact bridge
+-- Only the visible world map transforms that scalar at 8 ms; compact bridge
 -- presentation remains 50 ms and neither loop performs another player read.
-local WORLD_MAP_ACTIVE_INTERVAL_MS = 4
+local WORLD_MAP_ACTIVE_INTERVAL_MS = 8
 local MAP_LOAD_RESUME_DELAY_MS = 3000
 local MOD_SWITCH_CHECK_INTERVAL_MS = 5000
 local MINIMAP_UPDATE_INTERVAL_MS = 250
@@ -194,9 +196,12 @@ local WORLD_MAP_INACTIVE_CHECK_INTERVAL_MS = 2000
 local world_map_inactive_elapsed_ms =
     WORLD_MAP_INACTIVE_CHECK_INTERVAL_MS
 local FAST_MOTION_INTERVAL_MS = 50
-local MOTION_PROTOCOL_VERSION = 5
+local MOTION_PROTOCOL_VERSION = 6
 local FAST_MOTION_RECORD_SIZE = 768
 local FAST_MOTION_HEARTBEAT_MS = 1000
+local CONTROL_WATCHDOG_SAMPLE_MS = 1000
+local CONTROL_WATCHDOG_STALE_SAMPLES = 5
+local MAX_AUTOMATIC_RUNTIME_RESTARTS = 3
 local MOTION_POSITION_EPSILON_FLOOR = 20.0
 local MOTION_SCREEN_PIXEL_EPSILON = 0.5
 local REFERENCE_RADAR_RADIUS_PIXELS = 170.0
@@ -209,8 +214,17 @@ local WORLD_MAP_ID = 100
 local overlay_catalogs_delegated = false
 local radar_radius = FIELD_RADAR_RADIUS
 local enabled = false
+local diagnostic_mode = "normal"
 local loop_started = false
 local world_map_loop_started = false
+local control_tick_serial = 0
+local control_watchdog_observed_serial = 0
+local control_watchdog_elapsed_ms = 0
+local control_watchdog_stale_samples = 0
+local runtime_restart_requested = false
+local runtime_restart_reason = nil
+local runtime_restart_in_progress = false
+local automatic_runtime_restart_count = 0
 local motion_loop_token = 0
 local world_map_loop_token = 0
 local update_pending = false
@@ -223,6 +237,7 @@ local last_written_motion = {
     initialized = false,
     is_enabled = false,
     mode = "disabled",
+    diagnostic_mode = "normal",
     show_height = show_height,
     show_treasure_types = show_treasure_types,
     show_treasures = show_treasures,
@@ -298,8 +313,8 @@ local f7_trace_deadline_ms = 0.0
 -- Diagnostic-only, bounded breadcrumbs. These file-only scalar records make
 -- the last completed native boundary durable if UE4SS terminates inside the
 -- next UObject operation. They perform no additional UObject access.
-local function f7_trace(stage, fields)
-    if not f7_trace_active or diagnostics == nil then return end
+local function f7_trace(stage, ...)
+    if not f7_trace_active or perf_diagnostics == nil then return end
     if f7_trace_remaining <= 0
         or os.clock() * 1000.0 > f7_trace_deadline_ms
     then
@@ -307,20 +322,31 @@ local function f7_trace(stage, fields)
         return
     end
     f7_trace_remaining = f7_trace_remaining - 1
-    fields = fields or {}
+    local fields = {}
+    local field_count = select("#", ...)
+    for index = 1, field_count, 2 do
+        local key = select(index, ...)
+        if key ~= nil then
+            fields[key] = select(index + 1, ...)
+        end
+    end
     fields.trace_id = f7_trace_id
     fields.stage = stage
     fields.epoch = world_epoch
     fields.control_sequence = control_sequence
-    diagnostics.debug("F7_CRASH_TRACE", nil, fields)
+    perf_diagnostics.debug("F7_CRASH_TRACE", nil, fields)
 end
 
 local function begin_f7_trace()
+    if perf_diagnostics == nil then
+        f7_trace_active = false
+        return
+    end
     f7_trace_id = f7_trace_id + 1
     f7_trace_remaining = 220
     f7_trace_deadline_ms = os.clock() * 1000.0 + 6000.0
     f7_trace_active = true
-    f7_trace("F7_ENTER", { budget = f7_trace_remaining })
+    f7_trace("F7_ENTER", "budget", f7_trace_remaining)
 end
 
 -- Height and treasure-type flags decorate treasure markers; they are not
@@ -423,6 +449,8 @@ local function is_mod_enabled_in_mods_file()
 end
 
 local function disable_for_mod_switch()
+    runtime_restart_requested = false
+    runtime_restart_reason = nil
     activation_requested = false
     enter_world_transition("mods_txt_disabled")
     log("DragonSwordWorldRadar disabled because mods.txt is set to 0.")
@@ -609,6 +637,7 @@ local function motion_has_visual_change(
     previous,
     is_enabled,
     mode,
+    current_diagnostic_mode,
     player_x,
     player_y,
     player_z,
@@ -629,6 +658,8 @@ local function motion_has_visual_change(
         and tostring(mode or "radar") == "radar"
     if previous.is_enabled ~= (is_enabled == true)
         or previous.mode ~= tostring(mode or "radar")
+        or previous.diagnostic_mode
+            ~= tostring(current_diagnostic_mode or "normal")
         or previous.show_height ~= published_show_height
         or previous.show_treasure_types ~= published_show_treasure_types
         or previous.show_treasures ~= published_show_treasures
@@ -695,6 +726,7 @@ end
 local function remember_written_motion(
     is_enabled,
     mode,
+    current_diagnostic_mode,
     player_x,
     player_y,
     player_z,
@@ -707,6 +739,8 @@ local function remember_written_motion(
     last_written_motion.initialized = true
     last_written_motion.is_enabled = is_enabled == true
     last_written_motion.mode = tostring(mode or "radar")
+    last_written_motion.diagnostic_mode =
+        tostring(current_diagnostic_mode or "normal")
     last_written_motion.show_height = is_enabled == true and show_height
     last_written_motion.show_treasure_types = is_enabled == true and show_treasure_types
     last_written_motion.show_treasures = is_enabled == true and show_treasures
@@ -739,6 +773,11 @@ local function write_fast_motion(
     map_state,
     force
 )
+    local published_diagnostic_mode = is_enabled == true
+        and diagnostic_mode or "normal"
+    local diagnostic_mode_code = published_diagnostic_mode == "no_paint" and 1
+        or published_diagnostic_mode == "no_motion" and 2
+        or 0
     local published_show_height = is_enabled == true and show_height
     local published_show_treasure_types = is_enabled == true and show_treasure_types
     local published_show_treasures = is_enabled == true and show_treasures
@@ -763,6 +802,7 @@ local function write_fast_motion(
         last_written_motion,
         is_enabled,
         mode,
+        published_diagnostic_mode,
         player_x,
         player_y,
         player_z,
@@ -790,18 +830,19 @@ local function write_fast_motion(
 
     local body
     if map_state == nil then
-        -- Protocol v5 adds the world epoch and numeric sample timestamp to
-        -- the existing scalar motion record. No UObject wrapper crosses IPC.
-        -- compact frame, followed by eleven zeroed world-map fields. This is
+        -- Protocol v6 adds one strict diagnostic-mode enum to the existing
+        -- epoch/timestamp scalar record. No UObject wrapper crosses IPC. The
+        -- compact frame is followed by eleven zeroed world-map fields. This is
         -- the sole runtime IPC record; no JSON Static Bridge is required.
         body = string.format(
-            "%d|%d|%d|%.3f|%s|%s|%s|%s|%s|%s|%s|%.0f|%s|%s|%d|%s|%d|%d|%.3f|%.6f|%.6f|%.6f|%s|%.6f|0|0|0|0|0|0|0|0|0|0|0",
+            "%d|%d|%d|%.3f|%s|%s|%d|%s|%s|%s|%s|%s|%.0f|%s|%s|%d|%s|%d|%d|%.3f|%.6f|%.6f|%.6f|%s|%.6f|0|0|0|0|0|0|0|0|0|0|0",
             MOTION_PROTOCOL_VERSION,
             generation,
             world_epoch,
             latest_player_sample_timestamp_ms,
             is_enabled and "1" or "0",
             mode or "radar",
+            diagnostic_mode_code,
             published_show_height and "1" or "0",
             published_show_treasure_types and "1" or "0",
             published_show_treasures and "1" or "0",
@@ -823,13 +864,14 @@ local function write_fast_motion(
         )
     else
         body = string.format(
-            "%d|%d|%d|%.3f|%s|%s|%s|%s|%s|%s|%s|%.0f|%s|%s|%d|%s|%d|%d|%.3f|%.6f|%.6f|%.6f|%s|%.6f|%d|%.6f|%.6f|%.6f|%.6f|%.9f|%.6f|%.6f|%.9f|%.6f|%.6f",
+            "%d|%d|%d|%.3f|%s|%s|%d|%s|%s|%s|%s|%s|%.0f|%s|%s|%d|%s|%d|%d|%.3f|%.6f|%.6f|%.6f|%s|%.6f|%d|%.6f|%.6f|%.6f|%.6f|%.9f|%.6f|%.6f|%.9f|%.6f|%.6f",
             MOTION_PROTOCOL_VERSION,
             generation,
             world_epoch,
             latest_player_sample_timestamp_ms,
             is_enabled and "1" or "0",
             mode or "world",
+            diagnostic_mode_code,
             published_show_height and "1" or "0",
             published_show_treasure_types and "1" or "0",
             published_show_treasures and "1" or "0",
@@ -912,6 +954,7 @@ local function write_fast_motion(
         remember_written_motion(
             is_enabled,
             mode,
+            published_diagnostic_mode,
             player_x,
             player_y,
             player_z,
@@ -1017,6 +1060,53 @@ local function invalidate_motion_loops(reason)
     record_loop_event("all", "invalidate-" .. tostring(reason), 0)
 end
 
+local function reset_control_watchdog()
+    control_watchdog_observed_serial = control_tick_serial
+    control_watchdog_elapsed_ms = 0
+    control_watchdog_stale_samples = 0
+end
+
+local function request_runtime_restart(reason)
+    if runtime_restart_requested or runtime_restart_in_progress then
+        return
+    end
+    runtime_restart_requested = true
+    runtime_restart_reason = tostring(reason or "runtime_error")
+end
+
+local function observe_control_watchdog(delta_ms)
+    if not enabled or transition_active then
+        reset_control_watchdog()
+        return false
+    end
+
+    control_watchdog_elapsed_ms = math.min(
+        CONTROL_WATCHDOG_SAMPLE_MS,
+        control_watchdog_elapsed_ms + delta_ms
+    )
+    if control_watchdog_elapsed_ms < CONTROL_WATCHDOG_SAMPLE_MS then
+        return false
+    end
+    control_watchdog_elapsed_ms = 0
+
+    if control_tick_serial ~= control_watchdog_observed_serial then
+        control_watchdog_observed_serial = control_tick_serial
+        control_watchdog_stale_samples = 0
+        return false
+    end
+
+    control_watchdog_stale_samples = math.min(
+        CONTROL_WATCHDOG_STALE_SAMPLES,
+        control_watchdog_stale_samples + 1
+    )
+    if control_watchdog_stale_samples < CONTROL_WATCHDOG_STALE_SAMPLES then
+        return false
+    end
+
+    request_runtime_restart("control_watchdog_stalled")
+    return true
+end
+
 local function purge_runtime_references()
     invalidate_motion_loops("reference-purge")
     reset_player_context()
@@ -1071,6 +1161,7 @@ local function purge_runtime_references()
     weather_available = false
     weather_state = 0
     weather_bt_state = 0
+    reset_control_watchdog()
 end
 
 enter_world_transition = function(reason)
@@ -1079,7 +1170,8 @@ enter_world_transition = function(reason)
     transition_reason = tostring(reason or "world_context_lost")
     if world_environment ~= nil
         and (transition_reason == "f8"
-            or transition_reason == "mods_txt_disabled")
+            or transition_reason == "mods_txt_disabled"
+            or transition_reason == "runtime_error_restart")
     then
         world_environment.cancel()
     end
@@ -1087,6 +1179,7 @@ enter_world_transition = function(reason)
     map_resume_delay_remaining_ms = (
         transition_reason == "f8"
         or transition_reason == "mods_txt_disabled"
+        or transition_reason == "runtime_error_restart"
     ) and 0 or MAP_LOAD_RESUME_DELAY_MS
     purge_runtime_references()
     write_disabled_motion()
@@ -1096,7 +1189,9 @@ enter_world_transition = function(reason)
             reason = transition_reason,
             cooldown_ms = map_resume_delay_remaining_ms,
         })
-        diagnostics.debug("WORLD_REFERENCE_PURGE", nil, {
+    end
+    if perf_diagnostics ~= nil then
+        perf_diagnostics.debug("WORLD_REFERENCE_PURGE", nil, {
             epoch = world_epoch,
             pending_callbacks_invalidated = true,
         })
@@ -1140,10 +1235,13 @@ end
 local function activation_game_thread_callback()
     local request_token = activation_probe_pending_token
     local scheduled_epoch = activation_probe_pending_epoch
-    f7_trace("ACTIVATION_CALLBACK_ENTER", {
-        request_token = request_token,
-        scheduled_epoch = scheduled_epoch,
-    })
+    f7_trace(
+        "ACTIVATION_CALLBACK_ENTER",
+        "request_token",
+        request_token,
+        "scheduled_epoch",
+        scheduled_epoch
+    )
     local callback_ok, callback_error = pcall(function()
         if scheduled_epoch == nil
             or request_token == nil
@@ -1155,14 +1253,19 @@ local function activation_game_thread_callback()
             return
         end
 
-        f7_trace("ACTIVATION_PLAYER_LOCATION_BEFORE", {
-            request_token = request_token,
-        })
+        f7_trace(
+            "ACTIVATION_PLAYER_LOCATION_BEFORE",
+            "request_token",
+            request_token
+        )
         local player_x, player_y = get_player_location()
-        f7_trace("ACTIVATION_PLAYER_LOCATION_AFTER", {
-            request_token = request_token,
-            available = player_x ~= nil and player_y ~= nil,
-        })
+        f7_trace(
+            "ACTIVATION_PLAYER_LOCATION_AFTER",
+            "request_token",
+            request_token,
+            "available",
+            player_x ~= nil and player_y ~= nil
+        )
         if player_x == nil or player_y == nil then
             activation_stable_samples = 0
             return
@@ -1172,8 +1275,8 @@ local function activation_game_thread_callback()
             ACTIVATION_STABLE_SAMPLE_COUNT,
             activation_stable_samples + 1
         )
-        if diagnostics ~= nil then
-            diagnostics.debug("ACTIVATION_STABILITY_SAMPLE", nil, {
+        if perf_diagnostics ~= nil then
+            perf_diagnostics.debug("ACTIVATION_STABILITY_SAMPLE", nil, {
                 epoch = world_epoch,
                 samples = activation_stable_samples,
                 required = ACTIVATION_STABLE_SAMPLE_COUNT,
@@ -1219,11 +1322,15 @@ local function activation_game_thread_callback()
             { epoch = world_epoch }
         )
     end
-    f7_trace("ACTIVATION_CALLBACK_EXIT", {
-        request_token = request_token,
-        callback_ok = callback_ok,
-        samples = activation_stable_samples,
-    })
+    f7_trace(
+        "ACTIVATION_CALLBACK_EXIT",
+        "request_token",
+        request_token,
+        "callback_ok",
+        callback_ok,
+        "samples",
+        activation_stable_samples
+    )
 end
 
 local function queue_activation_probe()
@@ -1244,14 +1351,19 @@ local function queue_activation_probe()
     local scheduled_epoch = world_epoch
     activation_probe_pending_epoch = scheduled_epoch
     local queue_ok, queue_error = pcall(function()
-        f7_trace("ACTIVATION_EXECUTE_QUEUE_BEFORE", {
-            request_token = request_token,
-            scheduled_epoch = scheduled_epoch,
-        })
+        f7_trace(
+            "ACTIVATION_EXECUTE_QUEUE_BEFORE",
+            "request_token",
+            request_token,
+            "scheduled_epoch",
+            scheduled_epoch
+        )
         ExecuteInGameThread(activation_game_thread_callback)
-        f7_trace("ACTIVATION_EXECUTE_QUEUE_AFTER", {
-            request_token = request_token,
-        })
+        f7_trace(
+            "ACTIVATION_EXECUTE_QUEUE_AFTER",
+            "request_token",
+            request_token
+        )
     end)
     if not queue_ok then
         if activation_probe_pending_token == request_token then
@@ -1293,28 +1405,44 @@ local function resolve_player_controller()
     if engine == nil then
         f7_trace("ENGINE_FIND_BEFORE")
         engine = FindFirstOf("Engine")
-        f7_trace("ENGINE_FIND_AFTER", { present = engine ~= nil })
+        f7_trace("ENGINE_FIND_AFTER", "present", engine ~= nil)
     end
     if engine == nil then return nil end
     f7_trace("ENGINE_VIEWPORT_BEFORE")
     local viewport = engine.GameViewport
-    f7_trace("ENGINE_VIEWPORT_AFTER", { present = viewport ~= nil })
+    f7_trace("ENGINE_VIEWPORT_AFTER", "present", viewport ~= nil)
     if viewport == nil then return nil end
     f7_trace("VIEWPORT_GAMEINSTANCE_BEFORE")
     local game_instance = viewport.GameInstance
-    f7_trace("VIEWPORT_GAMEINSTANCE_AFTER", { present = game_instance ~= nil })
+    f7_trace(
+        "VIEWPORT_GAMEINSTANCE_AFTER",
+        "present",
+        game_instance ~= nil
+    )
     if game_instance == nil then return nil end
     f7_trace("GAMEINSTANCE_LOCALPLAYERS_BEFORE")
     local local_players = game_instance.LocalPlayers
-    f7_trace("GAMEINSTANCE_LOCALPLAYERS_AFTER", { present = local_players ~= nil })
+    f7_trace(
+        "GAMEINSTANCE_LOCALPLAYERS_AFTER",
+        "present",
+        local_players ~= nil
+    )
     if local_players == nil then return nil end
     f7_trace("LOCALPLAYERS_INDEX_BEFORE")
     local local_player = local_players[1]
-    f7_trace("LOCALPLAYERS_INDEX_AFTER", { present = local_player ~= nil })
+    f7_trace(
+        "LOCALPLAYERS_INDEX_AFTER",
+        "present",
+        local_player ~= nil
+    )
     if local_player == nil then return nil end
     f7_trace("LOCALPLAYER_CONTROLLER_BEFORE")
     local controller = local_player.PlayerController
-    f7_trace("LOCALPLAYER_CONTROLLER_AFTER", { present = controller ~= nil })
+    f7_trace(
+        "LOCALPLAYER_CONTROLLER_AFTER",
+        "present",
+        controller ~= nil
+    )
     if controller == nil then return nil end
     return controller
 end
@@ -1337,7 +1465,11 @@ get_player_location = function()
         if controller == nil then return nil, nil, nil end
         f7_trace("CONTROLLER_PAWN_BEFORE")
         local current_pawn = controller.Pawn
-        f7_trace("CONTROLLER_PAWN_AFTER", { present = current_pawn ~= nil })
+        f7_trace(
+            "CONTROLLER_PAWN_AFTER",
+            "present",
+            current_pawn ~= nil
+        )
         if current_pawn == nil then return nil, nil, nil end
 
         if perf_diagnostics ~= nil then
@@ -1347,7 +1479,7 @@ get_player_location = function()
             and perf_diagnostics.now_ms() or 0.0
         f7_trace("PAWN_LOCATION_BEFORE")
         local location = current_pawn:K2_GetActorLocation()
-        f7_trace("PAWN_LOCATION_AFTER", { present = location ~= nil })
+        f7_trace("PAWN_LOCATION_AFTER", "present", location ~= nil)
         if perf_diagnostics ~= nil then
             actor_ms = perf_diagnostics.now_ms() - actor_started_ms
         end
@@ -1355,7 +1487,15 @@ get_player_location = function()
 
         f7_trace("LOCATION_FIELDS_BEFORE")
         local x, y, z = tonumber(location.X), tonumber(location.Y), tonumber(location.Z)
-        f7_trace("LOCATION_FIELDS_AFTER", { x_ok = x ~= nil, y_ok = y ~= nil, z_ok = z ~= nil })
+        f7_trace(
+            "LOCATION_FIELDS_AFTER",
+            "x_ok",
+            x ~= nil,
+            "y_ok",
+            y ~= nil,
+            "z_ok",
+            z ~= nil
+        )
         return x, y, z
     end)
     if perf_diagnostics ~= nil then
@@ -1391,9 +1531,7 @@ local function read_minimap_scale()
     local find_ms = 0.0
     local resolved_validation_ms = 0.0
     local layer_map_access_ms = 0.0
-    local layer_map_validation_ms = 0.0
     local map_overlay_access_ms = 0.0
-    local map_overlay_validation_ms = 0.0
     local scale_access_ms = 0.0
     local find_called = false
     local cache_hit = false
@@ -1410,9 +1548,7 @@ local function read_minimap_scale()
             find_ms = find_ms,
             resolved_validation_ms = resolved_validation_ms,
             layer_map_access_ms = layer_map_access_ms,
-            layer_map_validation_ms = layer_map_validation_ms,
             map_overlay_access_ms = map_overlay_access_ms,
-            map_overlay_validation_ms = map_overlay_validation_ms,
             scale_access_ms = scale_access_ms,
             total_ms = perf_diagnostics.now_ms() - diagnostic_started_ms,
             outcome = outcome,
@@ -1426,7 +1562,7 @@ local function read_minimap_scale()
         and perf_diagnostics.now_ms() or 0.0
     f7_trace("MINIMAP_CACHE_ISVALID_BEFORE")
     cache_hit = is_valid_object(minimap_layer)
-    f7_trace("MINIMAP_CACHE_ISVALID_AFTER", { valid = cache_hit })
+    f7_trace("MINIMAP_CACHE_ISVALID_AFTER", "valid", cache_hit)
     if perf_diagnostics ~= nil then
         cache_validation_ms = perf_diagnostics.now_ms() - phase_started_ms
     end
@@ -1436,7 +1572,11 @@ local function read_minimap_scale()
             and perf_diagnostics.now_ms() or 0.0
         f7_trace("MINIMAP_FIND_BEFORE")
         minimap_layer = FindFirstOf("DLayerMiniMap")
-        f7_trace("MINIMAP_FIND_AFTER", { present = minimap_layer ~= nil })
+        f7_trace(
+            "MINIMAP_FIND_AFTER",
+            "present",
+            minimap_layer ~= nil
+        )
         find_result_present = minimap_layer ~= nil
         if perf_diagnostics ~= nil then
             find_ms = perf_diagnostics.now_ms() - phase_started_ms
@@ -1446,7 +1586,11 @@ local function read_minimap_scale()
         and perf_diagnostics.now_ms() or 0.0
     f7_trace("MINIMAP_RESOLVED_ISVALID_BEFORE")
     local resolved_valid = is_valid_object(minimap_layer)
-    f7_trace("MINIMAP_RESOLVED_ISVALID_AFTER", { valid = resolved_valid })
+    f7_trace(
+        "MINIMAP_RESOLVED_ISVALID_AFTER",
+        "valid",
+        resolved_valid
+    )
     if perf_diagnostics ~= nil then
         resolved_validation_ms = perf_diagnostics.now_ms() - phase_started_ms
     end
@@ -1465,20 +1609,21 @@ local function read_minimap_scale()
             and perf_diagnostics.now_ms() or 0.0
         f7_trace("MINIMAP_LAYERMAP_BEFORE")
         local layer_map = current_minimap_layer.LayerMap
-        f7_trace("MINIMAP_LAYERMAP_AFTER", { present = layer_map ~= nil })
+        f7_trace(
+            "MINIMAP_LAYERMAP_AFTER",
+            "present",
+            layer_map ~= nil
+        )
         if perf_diagnostics ~= nil then
             layer_map_access_ms = perf_diagnostics.now_ms() - phase_started_ms
         end
-        phase_started_ms = perf_diagnostics ~= nil
-            and perf_diagnostics.now_ms() or 0.0
-        f7_trace("MINIMAP_LAYERMAP_ISVALID_BEFORE")
-        local layer_map_valid = is_valid_object(layer_map)
-        f7_trace("MINIMAP_LAYERMAP_ISVALID_AFTER", { valid = layer_map_valid })
-        if perf_diagnostics ~= nil then
-            layer_map_validation_ms = perf_diagnostics.now_ms() - phase_started_ms
-        end
-        if not layer_map_valid then
-            outcome = "layer_map_invalid"
+        -- LayerMap and MapOverlay are nested property wrappers, not retained
+        -- top-level UObject cache roots. UE4SS can report IsValid=false for
+        -- these usable wrappers, so lifetime safety comes from this pcall and
+        -- the validated DLayerMiniMap root above. Missing or throwing property
+        -- access still fails closed and clears the root cache below.
+        if layer_map == nil then
+            outcome = "layer_map_missing"
             return nil
         end
 
@@ -1486,20 +1631,16 @@ local function read_minimap_scale()
             and perf_diagnostics.now_ms() or 0.0
         f7_trace("MINIMAP_OVERLAY_BEFORE")
         local map_overlay = layer_map.MapOverlay
-        f7_trace("MINIMAP_OVERLAY_AFTER", { present = map_overlay ~= nil })
+        f7_trace(
+            "MINIMAP_OVERLAY_AFTER",
+            "present",
+            map_overlay ~= nil
+        )
         if perf_diagnostics ~= nil then
             map_overlay_access_ms = perf_diagnostics.now_ms() - phase_started_ms
         end
-        phase_started_ms = perf_diagnostics ~= nil
-            and perf_diagnostics.now_ms() or 0.0
-        f7_trace("MINIMAP_OVERLAY_ISVALID_BEFORE")
-        local map_overlay_valid = is_valid_object(map_overlay)
-        f7_trace("MINIMAP_OVERLAY_ISVALID_AFTER", { valid = map_overlay_valid })
-        if perf_diagnostics ~= nil then
-            map_overlay_validation_ms = perf_diagnostics.now_ms() - phase_started_ms
-        end
-        if not map_overlay_valid then
-            outcome = "map_overlay_invalid"
+        if map_overlay == nil then
+            outcome = "map_overlay_missing"
             return nil
         end
 
@@ -1507,7 +1648,7 @@ local function read_minimap_scale()
             and perf_diagnostics.now_ms() or 0.0
         f7_trace("MINIMAP_SCALE_BEFORE")
         local result = tonumber(map_overlay.RenderTransform.Scale.X)
-        f7_trace("MINIMAP_SCALE_AFTER", { available = result ~= nil })
+        f7_trace("MINIMAP_SCALE_AFTER", "available", result ~= nil)
         if perf_diagnostics ~= nil then
             scale_access_ms = perf_diagnostics.now_ms() - phase_started_ms
         end
@@ -1566,7 +1707,11 @@ local function update_radar_state(queue_delay_ms)
         and perf_diagnostics.now_ms() or 0.0
     f7_trace("PLAYER_LOCATION_CHAIN_BEFORE")
     local player_x, player_y, player_z = get_player_location()
-    f7_trace("PLAYER_LOCATION_CHAIN_AFTER", { available = player_x ~= nil and player_y ~= nil })
+    f7_trace(
+        "PLAYER_LOCATION_CHAIN_AFTER",
+        "available",
+        player_x ~= nil and player_y ~= nil
+    )
     local player_ms = perf_diagnostics ~= nil
         and (perf_diagnostics.now_ms() - player_started_ms) or 0.0
     if player_x == nil or player_y == nil then
@@ -1621,6 +1766,7 @@ local function update_radar_state(queue_delay_ms)
         local wake_hint = world_map.consume_wake_hint()
         local should_check_world_map = world_map_was_active
             or wake_hint
+            or world_map.has_retained_candidates()
             or world_map_inactive_elapsed_ms
                 >= WORLD_MAP_INACTIVE_CHECK_INTERVAL_MS
         if world_map_was_active and latest_motion_map_state ~= nil then
@@ -1631,7 +1777,11 @@ local function update_radar_state(queue_delay_ms)
                 and perf_diagnostics.now_ms() or 0.0
             f7_trace("WORLD_MAP_READ_BEFORE")
             map_state = world_map.read_state()
-            f7_trace("WORLD_MAP_READ_AFTER", { active = map_state ~= nil })
+            f7_trace(
+                "WORLD_MAP_READ_AFTER",
+                "active",
+                map_state ~= nil
+            )
             if perf_diagnostics ~= nil then
                 perf_diagnostics.record_world_map_read(
                     perf_diagnostics.now_ms() - world_read_started_ms,
@@ -1658,7 +1808,11 @@ local function update_radar_state(queue_delay_ms)
             minimap_scale_elapsed_ms = 0
             f7_trace("MINIMAP_SCALE_READ_BEFORE")
             local minimap_scale = read_minimap_scale()
-            f7_trace("MINIMAP_SCALE_READ_AFTER", { available = minimap_scale ~= nil })
+            f7_trace(
+                "MINIMAP_SCALE_READ_AFTER",
+                "available",
+                minimap_scale ~= nil
+            )
             if minimap_scale ~= nil then
                 update_radar_radius(minimap_scale)
             end
@@ -1700,7 +1854,7 @@ local function update_radar_state(queue_delay_ms)
         )
     else
         if world_map_was_active then
-            world_map.close_session()
+            world_map.recover_session()
             world_map_inactive_elapsed_ms = 0
         end
         world_map_was_active = false
@@ -1749,6 +1903,7 @@ end
 
 local ensure_world_map_loop_started
 local ensure_motion_loop_started
+local perform_runtime_restart
 
 report_async_failure = function(
     key,
@@ -1768,6 +1923,7 @@ report_async_failure = function(
     else
         log(fallback_prefix .. tostring(failure))
     end
+    request_runtime_restart("async_failure:" .. tostring(key))
 end
 
 local function queue_world_time_capture()
@@ -1782,24 +1938,32 @@ local function queue_world_time_capture()
 
     f7_trace("CLOCK_MARK_QUEUED_BEFORE")
     local token = world_environment.mark_capture_queued()
-    f7_trace("CLOCK_MARK_QUEUED_AFTER", { token = token })
+    f7_trace("CLOCK_MARK_QUEUED_AFTER", "token", token)
     if token == nil then return false end
     clock_capture_task_pending = true
     clock_capture_task_token = token
     local queued_ms = perf_diagnostics ~= nil
         and perf_diagnostics.now_ms() or 0.0
     local queue_ok, queue_error = pcall(function()
-        f7_trace("CLOCK_EXECUTE_QUEUE_BEFORE", { token = token })
+        f7_trace("CLOCK_EXECUTE_QUEUE_BEFORE", "token", token)
         ExecuteInGameThread(function()
-            f7_trace("CLOCK_CALLBACK_ENTER", { token = token })
+            f7_trace("CLOCK_CALLBACK_ENTER", "token", token)
             local started_ms = perf_diagnostics ~= nil
                 and perf_diagnostics.now_ms() or 0.0
-            f7_trace("CLOCK_CAPTURE_CALL_BEFORE", { token = token })
+            f7_trace("CLOCK_CAPTURE_CALL_BEFORE", "token", token)
             local capture_ok, captured, capture_error = pcall(
                 world_environment.capture_in_game_thread,
                 token
             )
-            f7_trace("CLOCK_CAPTURE_CALL_AFTER", { token = token, call_ok = capture_ok, captured = captured == true })
+            f7_trace(
+                "CLOCK_CAPTURE_CALL_AFTER",
+                "token",
+                token,
+                "call_ok",
+                capture_ok,
+                "captured",
+                captured == true
+            )
             local owns_task = clock_capture_task_token == token
             if owns_task then
                 clock_capture_task_pending = false
@@ -1814,20 +1978,27 @@ local function queue_world_time_capture()
                 end
             end
             if perf_diagnostics ~= nil then
+                local capture_failure = "none"
+                if not capture_ok then
+                    capture_failure = tostring(captured)
+                elseif captured ~= true then
+                    capture_failure = tostring(
+                        capture_error or "capture failed"
+                    )
+                end
                 perf_diagnostics.debug("WORLD_TIME_TASK_PERF", nil, {
                     token = token,
                     queue_delay_ms = started_ms - queued_ms,
                     task_ms = perf_diagnostics.now_ms() - started_ms,
                     outcome = capture_ok and captured == true
                         and "captured" or "failed",
-                    failure = capture_ok and capture_error
-                        or tostring(captured),
+                    failure = capture_failure,
                     stale_task = not owns_task,
                 })
             end
-            f7_trace("CLOCK_CALLBACK_EXIT", { token = token })
+            f7_trace("CLOCK_CALLBACK_EXIT", "token", token)
         end)
-        f7_trace("CLOCK_EXECUTE_QUEUE_AFTER", { token = token })
+        f7_trace("CLOCK_EXECUTE_QUEUE_AFTER", "token", token)
     end)
     if not queue_ok then
         if clock_capture_task_token == token then
@@ -1896,7 +2067,7 @@ local function queue_world_motion_update(owner_loop_token)
                         -- Match the reference behavior: stop fullscreen output
                         -- and immediately resume reference-style current-Pawn
                         -- sampling for the compact radar.
-                        world_map.close_session()
+                        world_map.recover_session()
                         world_map_was_active = false
                         latest_motion_map_state = nil
                         last_world_left = nil
@@ -1999,6 +2170,12 @@ ensure_motion_loop_started = function()
             record_loop_event("compact", "world-stop", owner_loop_token)
             return true
         end
+        if runtime_restart_requested
+            or observe_control_watchdog(FAST_MOTION_INTERVAL_MS)
+        then
+            perform_runtime_restart()
+            return true
+        end
         motion_heartbeat_elapsed_ms = math.min(
             FAST_MOTION_HEARTBEAT_MS,
             motion_heartbeat_elapsed_ms + FAST_MOTION_INTERVAL_MS
@@ -2014,7 +2191,13 @@ end
 local function radar_game_thread_callback()
     local request_token = update_pending_token
     local scheduled_epoch = update_pending_epoch
-    f7_trace("RADAR_CALLBACK_ENTER", { request_token = request_token, scheduled_epoch = scheduled_epoch })
+    f7_trace(
+        "RADAR_CALLBACK_ENTER",
+        "request_token",
+        request_token,
+        "scheduled_epoch",
+        scheduled_epoch
+    )
     local queue_delay_ms = perf_diagnostics ~= nil
         and queued_update_started_ms ~= nil
         and (perf_diagnostics.now_ms() - queued_update_started_ms)
@@ -2027,9 +2210,19 @@ local function radar_game_thread_callback()
             and enabled
             and map_resume_delay_remaining_ms <= 0
         then
-            f7_trace("RADAR_UPDATE_CALL_BEFORE", { request_token = request_token })
+            f7_trace(
+                "RADAR_UPDATE_CALL_BEFORE",
+                "request_token",
+                request_token
+            )
             local update_ok, update_error = pcall(update_radar_state, queue_delay_ms)
-            f7_trace("RADAR_UPDATE_CALL_AFTER", { request_token = request_token, call_ok = update_ok })
+            f7_trace(
+                "RADAR_UPDATE_CALL_AFTER",
+                "request_token",
+                request_token,
+                "call_ok",
+                update_ok
+            )
             if not update_ok then
                 report_async_failure("update_radar_state", "UPDATE_FAILED", "Radar state update failed: ", update_error, {
                     queue_delay_ms = queue_delay_ms,
@@ -2074,7 +2267,13 @@ local function radar_game_thread_callback()
             state_sequence = control_sequence,
         })
     end
-    f7_trace("RADAR_CALLBACK_EXIT", { request_token = request_token, callback_ok = callback_ok })
+    f7_trace(
+        "RADAR_CALLBACK_EXIT",
+        "request_token",
+        request_token,
+        "callback_ok",
+        callback_ok
+    )
 end
 
 local function queue_radar_update()
@@ -2099,9 +2298,19 @@ local function queue_radar_update()
     update_pending_epoch = scheduled_epoch
     queued_update_started_ms = perf_diagnostics ~= nil and perf_diagnostics.now_ms() or nil
     local queue_ok, queue_error = pcall(function()
-        f7_trace("RADAR_EXECUTE_QUEUE_BEFORE", { request_token = request_token, scheduled_epoch = scheduled_epoch })
+        f7_trace(
+            "RADAR_EXECUTE_QUEUE_BEFORE",
+            "request_token",
+            request_token,
+            "scheduled_epoch",
+            scheduled_epoch
+        )
         ExecuteInGameThread(radar_game_thread_callback)
-        f7_trace("RADAR_EXECUTE_QUEUE_AFTER", { request_token = request_token })
+        f7_trace(
+            "RADAR_EXECUTE_QUEUE_AFTER",
+            "request_token",
+            request_token
+        )
     end)
     if not queue_ok then
         if update_pending_token == request_token then
@@ -2148,6 +2357,13 @@ ensure_world_map_loop_started = function()
             return true
         end
 
+        if runtime_restart_requested
+            or observe_control_watchdog(WORLD_MAP_ACTIVE_INTERVAL_MS)
+        then
+            perform_runtime_restart()
+            return true
+        end
+
         if perf_diagnostics ~= nil then
             perf_diagnostics.record_world_map_producer_tick()
         end
@@ -2171,8 +2387,16 @@ local function ensure_loop_started()
     loop_started = true
 
     LoopAsync(MINIMAP_UPDATE_INTERVAL_MS, function()
+        control_tick_serial = control_tick_serial + 1
         if not is_current_generation() then
             return true
+        end
+
+        if runtime_restart_requested then
+            perform_runtime_restart()
+            -- Keep the established control LoopAsync callback alive. Replacing
+            -- it from inside its own callback can invalidate UE4SS's active Lua
+            -- function reference and trigger a native assertion.
         end
 
         mod_switch_elapsed_ms =
@@ -2244,48 +2468,115 @@ local function ensure_loop_started()
     end)
 end
 
-RegisterKeyBind(Key[start_key], function()
-    begin_f7_trace()
+local function request_active_diagnostic_mode(requested_mode, key_name)
     if not is_current_generation() then
         return
     end
     if not is_mod_enabled_in_mods_file() then
         disable_for_mod_switch()
-        log("F7 ignored because DragonSwordWorldRadar is 0 in mods.txt.")
+        log(tostring(key_name) .. " ignored because DragonSwordWorldRadar is 0 in mods.txt.")
         return
     end
-    f7_trace("F7_START_OVERLAY_BEFORE")
+    diagnostic_mode = requested_mode
+    f7_trace("ACTIVE_MODE_START_OVERLAY_BEFORE", "key", key_name)
     start_overlay()
-    f7_trace("F7_START_OVERLAY_AFTER")
+    f7_trace("ACTIVE_MODE_START_OVERLAY_AFTER", "key", key_name)
     if not has_configured_visible_features() then
-        log("F7 ignored because all configured visible features are disabled.")
+        log(tostring(key_name) .. " ignored because all configured visible features are disabled.")
+        return
+    end
+    if enabled and not transition_active then
+        latest_motion_sample = latest_motion_sample + 1
+        flush_latest_motion()
+        log("DragonSwordWorldRadar diagnostic mode changed by "
+            .. tostring(key_name) .. ": " .. tostring(requested_mode) .. ".")
         return
     end
     if ensure_layers_loaded() then
         activation_requested = true
         activation_stable_samples = 0
-        f7_trace("F7_LOOP_START_BEFORE")
+        f7_trace("ACTIVE_MODE_LOOP_START_BEFORE", "key", key_name)
         ensure_loop_started()
-        f7_trace("F7_LOOP_START_AFTER")
+        f7_trace("ACTIVE_MODE_LOOP_START_AFTER", "key", key_name)
         if transition_active then
-            if not begin_post_cooldown_probe(world_epoch, "f7") then
-                log("F7 deferred safely until the current Pawn-loss cooldown completes.")
+            if not begin_post_cooldown_probe(
+                world_epoch,
+                string.lower(tostring(key_name))
+            ) then
+                log(tostring(key_name)
+                    .. " deferred safely until the current Pawn-loss cooldown completes.")
                 return
             end
         end
         enabled = false
-        log("DragonSwordWorldRadar activation pending; all feature work remains dormant until four consecutive stable 250 ms player-location samples succeed.")
-        f7_trace("F7_ACTIVATION_QUEUE_BEFORE")
+        log("DragonSwordWorldRadar " .. tostring(requested_mode)
+            .. " activation pending; all feature work remains dormant until four consecutive stable 250 ms player-location samples succeed.")
+        f7_trace("ACTIVE_MODE_ACTIVATION_QUEUE_BEFORE", "key", key_name)
         queue_activation_probe()
-        f7_trace("F7_ACTIVATION_QUEUE_AFTER")
+        f7_trace("ACTIVE_MODE_ACTIVATION_QUEUE_AFTER", "key", key_name)
     end
+end
+
+perform_runtime_restart = function()
+    if not runtime_restart_requested or runtime_restart_in_progress then
+        return false
+    end
+
+    local reason = tostring(runtime_restart_reason or "runtime_error")
+    runtime_restart_requested = false
+    runtime_restart_reason = nil
+    runtime_restart_in_progress = true
+
+    if automatic_runtime_restart_count >= MAX_AUTOMATIC_RUNTIME_RESTARTS then
+        activation_requested = false
+        diagnostic_mode = "normal"
+        enter_world_transition("runtime_error_limit")
+        loop_started = false
+        runtime_restart_in_progress = false
+        log("DragonSwordWorldRadar automatic recovery stopped after "
+            .. tostring(MAX_AUTOMATIC_RUNTIME_RESTARTS)
+            .. " confirmed runtime failures; the mod remains safely disabled. reason="
+            .. reason)
+        return true
+    end
+
+    automatic_runtime_restart_count = automatic_runtime_restart_count + 1
+    activation_requested = false
+    diagnostic_mode = "normal"
+    enter_world_transition("runtime_error_restart")
+    runtime_restart_in_progress = false
+    log("DragonSwordWorldRadar confirmed a runtime error and is performing automatic F8->F7 recovery: reason="
+        .. reason
+        .. "; attempt="
+        .. tostring(automatic_runtime_restart_count))
+    request_active_diagnostic_mode("normal", "AUTO_RECOVERY")
+    return true
+end
+
+if config.debug_logging == true then
+    RegisterKeyBind(Key[no_paint_key], function()
+        request_active_diagnostic_mode("no_paint", "F5")
+    end)
+
+    RegisterKeyBind(Key[no_motion_key], function()
+        request_active_diagnostic_mode("no_motion", "F6")
+    end)
+end
+
+RegisterKeyBind(Key[start_key], function()
+    begin_f7_trace()
+    request_active_diagnostic_mode("normal", "F7")
 end)
 
 RegisterKeyBind(Key[stop_key], function()
     if not is_current_generation() then
         return
     end
+    runtime_restart_requested = false
+    runtime_restart_reason = nil
+    automatic_runtime_restart_count = 0
     activation_requested = false
+    diagnostic_mode = "normal"
     enter_world_transition("f8")
     log("DragonSwordWorldRadar disabled by F8; all markers, world status, completion polling, and time sampling are stopped for FPS comparison.")
 end)
@@ -2293,4 +2584,8 @@ end)
 reset_bridge_files()
 start_overlay()
 write_disabled_motion()
-log("Ready. F7 enables configured marker, save-state, and world-status work; the clock performs one isolated baseline attempt after stable context (eight valid 250 ms player samples) and then advances locally. F8 disables all mod work for FPS comparison. Assault uses the install-generated current-PAK catalog and cached save/time scalars. Player UObject sampling is 250 ms scalar-only; compact presentation is 50 ms and the visible world map uses a diagnostic 4 ms epoch-bounded transform/presentation path through the sole Protocol-v5 Motion Bridge. Use log: runtime/logs/DragonSwordWorldRadar.Lua.Use.log. Debug log: runtime/logs/DragonSwordWorldRadar.Lua.Debug.log.")
+if config.debug_logging == true then
+    log("Ready for debug compact-radar A/B: F5 keeps producer/bridge/control work active but suppresses Overlay painting; F6 freezes the rendered motion path and slows control-only bridge consumption to 250 ms; F7 enables configured marker, save-state, and world-status work with normal rendering; F8 disables all active mod work. Confirmed async failures or five stale one-second control-heartbeat observations perform bounded automatic F8-to-F7 recovery; temporary missing map state does not. The clock performs one isolated baseline attempt after stable context. The sole Protocol-v6 Motion Bridge carries a strict diagnostic-mode enum. Use log: runtime/logs/DragonSwordWorldRadar.Lua.Use.log. Debug log: runtime/logs/DragonSwordWorldRadar.Lua.Debug.log.")
+else
+    log("Ready for normal play: F7 enables configured marker, save-state, and world-status work; F8 disables all active mod work. Confirmed async failures or five stale one-second control-heartbeat observations perform bounded automatic F8-to-F7 recovery; temporary missing map state does not. F5/F6 diagnostic A/B keys are not registered while debug_logging is false. The clock performs one isolated baseline attempt after stable context. Use log: runtime/logs/DragonSwordWorldRadar.Lua.Use.log.")
+end

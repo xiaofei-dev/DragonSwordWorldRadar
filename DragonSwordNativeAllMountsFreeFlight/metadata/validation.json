@@ -1,0 +1,26 @@
+{
+  "status": "STATIC_VALIDATED",
+  "version": "1.4.0",
+  "free_flight": {
+    "table": "VehicleComboData",
+    "combo_index": 10,
+    "action_state_type": "GLIDE_FREE_DASH",
+    "open_condition": "NONE_CONDITION",
+    "mount_records": 30,
+    "combo_rows": 330,
+    "cool_time": 3
+  },
+  "pak_version": "V4",
+  "pak_mount_point": "../../../DS/Content/",
+  "pak_file_count": 2,
+  "pak_sha256": "13628EB7B1F8A068D13F6DD70AE71A1F5D333E640230092FB5F206B2D2239D0C",
+  "files": {
+    "VehicleComboData.xml": "6CFB1C5646AD468CAEB8BB61E1F64D34FDCD715BEA550BB2FAA1987563FE0BD5",
+    "VehicleComboData.table": "4A9386AB19CB6FAC372201E849DEF3F9F91B4CA3C80057AB8FD33DF65C6EAEE2"
+  },
+  "deployment_performed": true,
+  "deployed_path": "DS/Content/Paks/~mods/DS_NativeAllMountsFreeFlight_P.pak",
+  "deployed_sha256": "13628EB7B1F8A068D13F6DD70AE71A1F5D333E640230092FB5F206B2D2239D0C",
+  "previous_version_backup": "backups/DS_NativeAllMountsFreeFlight_P.v1.3-test5x-before-v1.4.pak",
+  "in_game_acceptance": "NOT_VALIDATED"
+}

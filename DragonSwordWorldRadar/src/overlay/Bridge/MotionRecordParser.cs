@@ -4,9 +4,9 @@ namespace DragonSwordWorldRadar
 {
     internal static class MotionRecordParser
     {
-        private const int SupportedProtocolVersion = 5;
+        private const int SupportedProtocolVersion = 6;
 
-        // Parses the fixed 37-field compact ASCII motion/control record directly
+        // Parses the fixed 38-field compact ASCII motion/control record directly
         // from a reusable byte buffer. The explicit protocol version prevents a
         // mixed old/new deployment from interpreting shifted fields, and the
         // leading/trailing sequence values reject partial slot rewrites.
@@ -33,6 +33,7 @@ namespace DragonSwordWorldRadar
             double sampleTimestampMs;
             int enabled;
             string mode;
+            int diagnosticMode;
             int showHeight;
             int showTreasureTypes;
             int showTreasures;
@@ -71,6 +72,7 @@ namespace DragonSwordWorldRadar
                 || !reader.TryReadDouble(out sampleTimestampMs)
                 || !reader.TryReadInt32(out enabled)
                 || !reader.TryReadMode(out mode)
+                || !reader.TryReadInt32(out diagnosticMode)
                 || !reader.TryReadInt32(out showHeight)
                 || !reader.TryReadInt32(out showTreasureTypes)
                 || !reader.TryReadInt32(out showTreasures)
@@ -111,6 +113,9 @@ namespace DragonSwordWorldRadar
                 || Double.IsInfinity(sampleTimestampMs)
                 || sampleTimestampMs < 0
                 || (enabled != 0 && enabled != 1)
+                || diagnosticMode < 0
+                || diagnosticMode > 2
+                || (enabled == 0 && diagnosticMode != 0)
                 || (showHeight != 0 && showHeight != 1)
                 || (showTreasureTypes != 0 && showTreasureTypes != 1)
                 || (showTreasures != 0 && showTreasures != 1)
@@ -187,6 +192,7 @@ namespace DragonSwordWorldRadar
             frame.SampleTimestampMs = sampleTimestampMs;
             frame.Enabled = enabled != 0;
             frame.Mode = mode;
+            frame.DiagnosticMode = diagnosticMode;
             frame.ShowHeight = showHeight != 0;
             frame.ShowTreasureTypes = showTreasureTypes != 0;
             frame.ShowTreasures = showTreasures != 0;

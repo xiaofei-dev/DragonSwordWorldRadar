@@ -1,25 +1,46 @@
 {
-  "schema_version": 4,
-  "status": "OWNER_AUTHORIZED_RUNTIME_CANARY",
-  "active_mode_approved": true,
-  "active_mode_scope": "exact F9 runtime canary on trusted fingerprints only",
+  "schema_version": 15,
+  "status": "DROPITEM_CLOSED_LOOP_DIAGNOSTIC",
+  "active_mode_approved": false,
   "runtime_acceptance": false,
-  "pulse_function": "/Script/Engine.PlayerController:ServerRecvClientInputFrame",
+  "automatic_mutation_without_valid_contract": false,
+  "speculative_key_action_fallback": null,
+  "pulse_function": "UE4SS.RegisterEngineTickPostCallback",
   "pulse_interval_ms": 150,
-  "pulse_absence_policy": "fail_closed_no_scan_no_tick_fallback",
-  "allowed_class": "/Script/DS.DropItemActor",
-  "required_interactable_value": 2,
-  "required_interact_type": 7,
-  "required_player_class": "/Script/DS.DsPlayerCharacter",
-  "required_controller_class": "/Script/DS.DsPlayerController",
-  "required_identity_rule": "controller.Pawn == player && player.Controller == controller",
-  "interaction": {
-    "function": "/Script/DS.DInteractableComponent:Server_InputInteractKeyAction",
-    "key_action": 13,
-    "owner_authorized": true
+  "target_source": "bounded_DropItemActor_sweep_plus_windowed_lifecycle_capture",
+  "locked_identity": "exactly_one_current_world_eligible_owner_and_component_weak_identity",
+  "automatic_action": {
+    "enabled": false,
+    "target_field_writes": false,
+    "process_event_pickup_calls": false,
+    "contract_io": false
   },
-  "activation_rule": "armed && trusted_fingerprint && fresh_accepted_input_frame_pulse",
-  "candidate_rule": "exact DropItemActor lifecycle capture as FWeakObjectPtr; gameplay reads only on an accepted pulse",
-  "world_transition_rule": "clear candidates and fail closed until a fresh accepted input-frame pulse",
+  "observed_functions": {
+    "component": [
+      "CallActivePlayer",
+      "Server_RunInteractV2",
+      "Server_InputInteractKeyAfterAction",
+      "Server_InputInteractKeyAction",
+      "ServerReturnInteract_EnableState",
+      "SetInteractUIV2",
+      "ClientSetInteractUIV2",
+      "OnBeginOverlap",
+      "OnEndOverlap"
+    ],
+    "controller": [
+      "Interact",
+      "OnPressInteractionButton",
+      "OnReleaseInteractionButton",
+      "Client_InteractActionSetting",
+      "Client_InteractActionSetting_Restore",
+      "ServerReturnInteractState"
+    ],
+    "drop_item": ["AniPickUp", "SetDestroy"]
+  },
+  "correlation": "receiver_or_parameter_or_receiver_target_field_matches_locked_owner_or_component",
+  "trace_phases": ["pre", "post"],
+  "window_seconds": 60,
+  "world_transition_policy": "cancel_clear_weak_identities_and_cleanup",
+  "thread_affinity": "F9_and_on_update_scalar_only_all_UObject_work_on_EngineTick",
   "unknown_build_policy": "passive_off"
 }
