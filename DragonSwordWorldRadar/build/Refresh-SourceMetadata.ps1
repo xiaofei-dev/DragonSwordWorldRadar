@@ -134,7 +134,7 @@ $sourceSnapshot = [ordered]@{
     mole_fly_records = 34
     windows_compile_status = 'passed in Windows PowerShell 5.1'
     in_game_status = "$version Windows source/package gates passed; compact smoothness, F7/F8 latency, travel, and frame-time require independent in-game acceptance"
-    working_tree_status = 'validated source publication candidate; deployment and in-game acceptance remain separately recorded'
+    working_tree_status = 'implementation intentionally left uncommitted and undeployed for owner review'
 }
 [IO.File]::WriteAllText(
     (Join-Path $root 'metadata\source-snapshot.json'),

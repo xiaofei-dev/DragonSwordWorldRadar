@@ -35,9 +35,14 @@ namespace DragonSwordWorldRadar.Installer
             new BossDefinition(9000012, 100, 90003),
             new BossDefinition(9000007, 100, 90004),
             new BossDefinition(9000019, 100, 90005),
-            new BossDefinition(9000022, 200, 90006),
-            new BossDefinition(9000023, 200, 90007),
-            new BossDefinition(9000025, 200, 90008),
+            // These three eastern field bosses use WorldMapSectionID 102xxx,
+            // but their authoritative SectionUID values end in map group 100
+            // and their world positions are on the playable map-100 surface.
+            // Keep this explicit correction separate from the genuine map-200
+            // treasure dataset, whose ownership remains unchanged.
+            new BossDefinition(9000022, 100, 90006),
+            new BossDefinition(9000023, 100, 90007),
+            new BossDefinition(9000025, 100, 90008),
         };
 
         public static int Generate(

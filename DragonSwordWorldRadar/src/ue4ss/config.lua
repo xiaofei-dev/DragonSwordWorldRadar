@@ -33,15 +33,15 @@ return {
 
     -- Debug log: producer timings, bridge rates, Overlay frame pacing,
     -- CPU/memory samples, geometry transitions, and save/Boss diagnostics.
-    -- Keep this false for normal play. Enable it only for a bounded diagnostic
-    -- capture; doing so restores detailed counters and crash-trace evidence.
-    debug_logging = false,
+    -- Enabled by default for final runtime acceptance and performance evidence.
+    -- Disable it after the diagnostic build has been accepted.
+    debug_logging = true,
     diagnostic_perf_interval_seconds = 5,
 
-    -- A/B switch for the Overlay's Windows timer-resolution request. False
-    -- uses the process/system default; true requests timeBeginPeriod(1).
+    -- A/B switch for the Overlay's Windows timer-resolution request. True
+    -- requests timeBeginPeriod(1); false uses the process/system default.
     -- Restart the game after changing this value.
-    high_resolution_timer = false,
+    high_resolution_timer = true,
 
     -- Backward-compatible aliases retained for existing user config files.
     diagnostic_logging = true,

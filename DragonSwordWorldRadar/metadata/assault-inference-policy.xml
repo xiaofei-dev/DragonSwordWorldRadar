@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<AssaultInferencePolicy schema_version="1" expected_game_fingerprint="d4fa7c994927537651ba3f4ef69c61e7bc7262e586457cf8ce18c1207960dee0">
+<AssaultInferencePolicy schema_version="1" expected_game_fingerprint="f7c6734b99d40a6068f06a2d34c98a0dbf2349db5320da5d5b8a6b6ba91280d7">
   <Condition place_id="104"
              cid="143"
              uid="5945914773662957327"

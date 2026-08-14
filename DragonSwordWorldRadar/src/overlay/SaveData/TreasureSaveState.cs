@@ -9,18 +9,15 @@ namespace DragonSwordWorldRadar
 {
     internal sealed class TreasureSaveState
     {
-        // Metadata checks are cheap and run only while F7 is active. A changed
-        // slot must remain stable before any copy/decrypt work is queued.
+        // One non-harmonic interval owns both change detection and refresh.
+        // Unchanged fingerprints never queue copy/decrypt work.
         private static readonly TimeSpan RefreshInterval =
-            TimeSpan.FromMilliseconds(2000);
-        private static readonly TimeSpan SaveChangeDebounce =
-            TimeSpan.FromSeconds(4);
-        // The game rewrites the active encrypted save roughly every 20-30
-        // seconds during normal play. Coalesce those continuous fingerprints
-        // into one complete snapshot window instead of opening a new cold
-        // SQLCipher connection for every autosave.
-        private static readonly TimeSpan SnapshotReadInterval =
-            TimeSpan.FromSeconds(45);
+            TimeSpan.FromSeconds(19);
+        // A slow SQLCipher snapshot must not make the expired change-check
+        // deadline queue an immediate catch-up snapshot. The cooldown starts
+        // when the worker finishes, including a failed read.
+        private static readonly TimeSpan SnapshotCompletionCooldown =
+            TimeSpan.FromSeconds(19);
         private readonly object _sync = new object();
         private volatile Dictionary<int, ulong> _opened =
             new Dictionary<int, ulong>();
@@ -39,14 +36,14 @@ namespace DragonSwordWorldRadar
         private volatile int[] _encounterTargetIds = Array.Empty<int>();
 
         private DateTime _nextRefreshUtc;
-        private DateTime _nextSnapshotReadUtc;
+        private DateTime _nextSnapshotEligibleUtc;
         private string _lastDatabasePath;
         private DateTime _lastDatabaseWriteUtc;
         private string _lastSlotSignature;
         private string _lastKey;
+        private string _pendingDatabasePath;
         private string _pendingSlotSignature;
         private string _pendingKey;
-        private DateTime _pendingSinceUtc;
         private string _lastError;
         private string _lastDatabaseAttemptLog;
         private string _lastDatabaseSuccessLog;
@@ -54,13 +51,16 @@ namespace DragonSwordWorldRadar
         private int _version;
         private int _openedBitCount;
         private bool _hasLoadedSaveState;
-        private bool _initialDebounceBypassConsumed;
         private bool _loadInProgress;
         private volatile bool _runtimeEnabled;
         private int _loadToken;
-        private int _lastOverrideVersion = -1;
         private string _lastEncounterStateLog;
         private string _encounterTaskSignature;
+
+        public TreasureSaveState()
+        {
+            _overrides.LoadOnce();
+        }
 
         public bool ConfigureEncounterTargets(
             IList<WorldEncounter> points)
@@ -360,15 +360,13 @@ namespace DragonSwordWorldRadar
                 }
                 _runtimeEnabled = enabled;
                 _nextRefreshUtc = DateTime.MinValue;
-                _pendingSlotSignature = null;
-                _pendingKey = null;
-                _pendingSinceUtc = DateTime.MinValue;
                 if (!enabled)
                 {
                     // Invalidate an already queued result so F8 cannot publish
                     // save work after the master gate has closed.
                     _loadToken++;
                     _loadInProgress = false;
+                    ClearPendingChange();
                 }
             }
         }
@@ -379,17 +377,6 @@ namespace DragonSwordWorldRadar
             {
                 return;
             }
-            _overrides.Refresh();
-            int overrideVersion = _overrides.Version;
-            lock (_sync)
-            {
-                if (overrideVersion != _lastOverrideVersion)
-                {
-                    _lastOverrideVersion = overrideVersion;
-                    _version++;
-                }
-            }
-
             if (DateTime.UtcNow < _nextRefreshUtc)
             {
                 return;
@@ -443,65 +430,29 @@ namespace DragonSwordWorldRadar
                 {
                     return;
                 }
-                if (slot.Stem == _lastDatabasePath
+                if (_hasLoadedSaveState
+                    && slot.Stem == _lastDatabasePath
                     && slot.Signature == _lastSlotSignature
-                    && key == _lastKey
-                    && DateTime.UtcNow < _nextSnapshotReadUtc)
+                    && key == _lastKey)
                 {
-                    _pendingSlotSignature = null;
-                    _pendingKey = null;
-                    _pendingSinceUtc = DateTime.MinValue;
+                    ClearPendingChange();
                     return;
                 }
+
+                RememberPendingChange(slot, key);
                 if (_loadInProgress)
                 {
                     return;
                 }
+                if (DateTime.UtcNow < _nextSnapshotEligibleUtc)
+                {
+                    // A changed fingerprint was observed during cooldown.
+                    // Revalidate it as soon as the completion cooldown ends
+                    // instead of adding another full check interval.
+                    _nextRefreshUtc = _nextSnapshotEligibleUtc;
+                    return;
+                }
 
-                DateTime now = DateTime.UtcNow;
-                bool initialSnapshot = !_hasLoadedSaveState
-                    && !_initialDebounceBypassConsumed;
-                if (_pendingSlotSignature != slot.Signature
-                    || _pendingKey != key)
-                {
-                    _pendingSlotSignature = slot.Signature;
-                    _pendingKey = key;
-                    _pendingSinceUtc = now;
-                    if (!initialSnapshot)
-                    {
-                        if (DebugSettings.Enabled)
-                        {
-                            ErrorLog.WriteDebug(
-                                "Save-state change detected; waiting for a stable " +
-                                SaveChangeDebounce.TotalSeconds.ToString(
-                                    "F0",
-                                    CultureInfo.InvariantCulture) +
-                                " second window before SQLCipher refresh.");
-                        }
-                        return;
-                    }
-                    if (DebugSettings.Enabled)
-                    {
-                        ErrorLog.WriteDebug(
-                            "Initial save-state snapshot bypasses change debounce; " +
-                            "the worker still requires an unchanged source " +
-                            "fingerprint before/after its copy.");
-                    }
-                    _initialDebounceBypassConsumed = true;
-                }
-                if (!initialSnapshot
-                    && now - _pendingSinceUtc < SaveChangeDebounce)
-                {
-                    return;
-                }
-                if (_hasLoadedSaveState
-                    && now < _nextSnapshotReadUtc)
-                {
-                    // Keep the newest pending fingerprint. Once the shared
-                    // interval expires, the latest stable save is read once;
-                    // intermediate autosaves never queue their own worker.
-                    return;
-                }
                 _loadInProgress = true;
                 loadToken = ++_loadToken;
                 includeTreasure = true;
@@ -525,6 +476,9 @@ namespace DragonSwordWorldRadar
                     if (_loadToken == request.LoadToken)
                     {
                         _loadInProgress = false;
+                        _nextSnapshotEligibleUtc =
+                            DateTime.UtcNow.Add(
+                                SnapshotCompletionCooldown);
                     }
                 }
                 throw new InvalidOperationException(
@@ -647,14 +601,10 @@ namespace DragonSwordWorldRadar
                     _lastDatabaseWriteUtc = request.Slot.LatestWriteUtc;
                     _lastSlotSignature = request.Slot.Signature;
                     _lastKey = request.Key;
-                    if (treasureRefreshAvailable)
+                    if (PendingChangeMatches(request))
                     {
-                        _nextSnapshotReadUtc = DateTime.UtcNow.Add(
-                            SnapshotReadInterval);
+                        ClearPendingChange();
                     }
-                    _pendingSlotSignature = null;
-                    _pendingKey = null;
-                    _pendingSinceUtc = DateTime.MinValue;
                     _lastError = null;
                     _hasLoadedSaveState = true;
                     if (firstSuccessfulLoad
@@ -673,7 +623,7 @@ namespace DragonSwordWorldRadar
                 {
                     ErrorLog.WriteDebug(String.Format(
                         CultureInfo.InvariantCulture,
-                        "SAVE_REFRESH_PERF totalMs={0:F3}; copyMs={1:F3}; keyMs={2:F3}; treasureQueryMs={3:F3}; bossQueryMs={4:F3}; encounterTaskQueryMs={5:F3}; databaseReads={6}; databaseCacheHits={7}; treasureRequested={8}; treasureQueries={9}; coalescingWindowMs={10:F0}",
+                        "SAVE_REFRESH_PERF totalMs={0:F3}; copyMs={1:F3}; keyMs={2:F3}; treasureQueryMs={3:F3}; bossQueryMs={4:F3}; encounterTaskQueryMs={5:F3}; databaseReads={6}; databaseCacheHits={7}; treasureRequested={8}; treasureQueries={9}; changeCheckIntervalMs={10:F0}; completionCooldownMs={11:F0}",
                         metrics.TotalMilliseconds,
                         metrics.CopyMilliseconds,
                         metrics.KeyMilliseconds,
@@ -684,7 +634,8 @@ namespace DragonSwordWorldRadar
                         metrics.DatabaseCacheHits,
                         metrics.TreasureRequested ? 1 : 0,
                         metrics.TreasureQueries,
-                        SnapshotReadInterval.TotalMilliseconds));
+                        RefreshInterval.TotalMilliseconds,
+                        SnapshotCompletionCooldown.TotalMilliseconds));
                 }
                 if (firstSuccessfulLoad)
                 {
@@ -715,7 +666,6 @@ namespace DragonSwordWorldRadar
                     if (_gameProcessId == request.GameProcessId
                         && _loadToken == request.LoadToken)
                     {
-                        _pendingSinceUtc = DateTime.UtcNow;
                         LogRefreshError(exception);
                     }
                 }
@@ -727,6 +677,9 @@ namespace DragonSwordWorldRadar
                     if (_loadToken == request.LoadToken)
                     {
                         _loadInProgress = false;
+                        _nextSnapshotEligibleUtc =
+                            DateTime.UtcNow.Add(
+                                SnapshotCompletionCooldown);
                     }
                 }
                 if (backgroundMode)
@@ -952,17 +905,14 @@ namespace DragonSwordWorldRadar
                     new Dictionary<int, BossRespawnRecord>();
                 _lastDatabasePath = null;
                 _lastDatabaseWriteUtc = DateTime.MinValue;
-                _nextSnapshotReadUtc = DateTime.MinValue;
                 _lastSlotSignature = null;
                 _lastKey = null;
-                _pendingSlotSignature = null;
-                _pendingKey = null;
-                _pendingSinceUtc = DateTime.MinValue;
+                ClearPendingChange();
+                _nextSnapshotEligibleUtc = DateTime.MinValue;
                 _lastError = null;
                 _lastDatabaseAttemptLog = null;
                 _lastDatabaseSuccessLog = null;
                 _hasLoadedSaveState = false;
-                _initialDebounceBypassConsumed = false;
                 _loadToken++;
                 _loadInProgress = false;
                 _lastEncounterStateLog = null;
@@ -972,6 +922,29 @@ namespace DragonSwordWorldRadar
             _keyReader.Reset();
             _databaseLocator.Reset();
             _snapshotReader.Reset();
+        }
+
+        private void RememberPendingChange(
+            SaveSlotFingerprint slot,
+            string key)
+        {
+            _pendingDatabasePath = slot.Stem;
+            _pendingSlotSignature = slot.Signature;
+            _pendingKey = key;
+        }
+
+        private bool PendingChangeMatches(SaveLoadRequest request)
+        {
+            return request.Slot.Stem == _pendingDatabasePath
+                && request.Slot.Signature == _pendingSlotSignature
+                && request.Key == _pendingKey;
+        }
+
+        private void ClearPendingChange()
+        {
+            _pendingDatabasePath = null;
+            _pendingSlotSignature = null;
+            _pendingKey = null;
         }
 
         private static List<long> FindNewlySetIds(

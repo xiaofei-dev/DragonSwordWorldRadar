@@ -63,7 +63,7 @@
     "real_pak_acceptance": "Mole retained its accepted 34-record catalog; Assault current-PAK generation passed with 40 records, one generic conditioned target, and fingerprint d4fa7c994927537651ba3f4ef69c61e7bc7262e586457cf8ce18c1207960dee0",
     "publication": "uncommitted, undeployed, unpushed, and unpublished",
     "world_status": "one isolated TimeOfDay baseline attempt after the F7 stability gate; zero retry, recalibration, or weather reads",
-    "save_refresh": "F8-gated; two-second metadata checks, four-second stable-change debounce, per-sibling exact-fingerprint parsed cache, one SQLCipher key setup per isolated temporary connection, below-normal worker, and debug phase timings",
+    "save_refresh": "F8-gated; one nineteen-second active-slot/key fingerprint check, unchanged input exits before SQLCipher, consistent-copy rejection for concurrent writes, per-sibling exact-fingerprint parsed cache, one SQLCipher key setup per isolated temporary connection, below-normal worker, and debug phase timings",
     "runtime_status": "dev72 is undeployed and not runtime-tested; confirmed-error automatic recovery, initial expanded-map entry, transient active-read recovery, reopen recovery, compact smoothness, F7/F8 latency, frame-time, and travel remain under owner in-game acceptance"
   },
   "bundled_binaries": [

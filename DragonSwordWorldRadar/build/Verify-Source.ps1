@@ -141,6 +141,18 @@ if (@($overlayTextFiles | Select-String -Pattern 'StaticStateBridgeReader|\bRada
 }
 
 $mainLua = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\main.lua') -Raw
+$topLevelLocalCount = 0
+foreach ($line in [IO.File]::ReadAllLines((Join-Path $root 'src\ue4ss\main.lua'))) {
+    if ($line -match '^local\s+function\s+[A-Za-z_][A-Za-z0-9_]*') {
+        $topLevelLocalCount++
+    }
+    elseif ($line -match '^local\s+([A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*)\s*(?:=|$)') {
+        $topLevelLocalCount += @($Matches[1] -split ',').Count
+    }
+}
+if ($topLevelLocalCount -gt 190) {
+    throw "main.lua declares $topLevelLocalCount top-level locals; the project ceiling is 190 to preserve headroom below Lua's hard 200-local function limit. Consolidate related state into a table."
+}
 $worldMapLua = Get-Content -LiteralPath (Join-Path $root 'src\ue4ss\world_map.lua') -Raw
 $commonHost = Get-Content -LiteralPath (Join-Path $root 'src\host\DragonSwordWorldRadar.Common.ps1') -Raw
 $deployHelper = Get-Content -LiteralPath (Join-Path $root 'build\Apply-Patch-And-Deploy.ps1') -Raw
@@ -170,8 +182,7 @@ foreach ($marker in @(
     'MOTION_Z_EPSILON = 10.0',
     'Protocol-v6 Motion Bridge is the sole runtime IPC channel',
     'no JSON Static Bridge is required',
-    'report_async_failure',
-    'is_mod_enabled_in_mods_file')) {
+    'report_async_failure')) {
     if ($mainLua -notmatch [regex]::Escape($marker)) {
         throw "Single-Bridge producer marker is missing: $marker"
     }
@@ -216,10 +227,69 @@ if ($worldMapLua -match [regex]::Escape('known_layers')) {
 if (([regex]::Matches($worldMapLua,[regex]::Escape('FindAllOf("DLayerMap_C")'))).Count -ne 1) {
     throw 'World-map widget enumeration is not confined to one bounded resume scan.'
 }
-foreach ($marker in @('motion_loop_token','world_map_loop_token','owner_loop_token ~= motion_loop_token','owner_loop_token ~= world_map_loop_token','update_pending_token == request_token','world_motion_pending_token == request_token','record_loop_event')) {
+foreach ($marker in @('motion_loop_token','world_map_loop_token','owner_loop_token ~= motion_loop_token','owner_loop_token ~= world_map_loop_token','update_pending_token == request_token','world_motion_pending_token == request_token','world_motion_pending_epoch','world_motion_update_pending','record_loop_event')) {
     if ($mainLua -notmatch [regex]::Escape($marker)) {
         throw "Async loop/request ownership marker is missing: $marker"
     }
+}
+foreach ($marker in @('hidden_index = nil','not is_visible(entry.object)','table.remove(candidates, hidden_index)','active visible entries are never')) {
+    if (-not $worldMapLua.Contains($marker)) {
+        throw "World-map hidden-candidate replacement marker is missing: $marker"
+    }
+}
+$bossGenerator = Get-Content -LiteralPath (Join-Path $root 'src\installer\Core\Generation\BossLuaGenerator.cs') -Raw
+foreach ($marker in @('new BossDefinition(9000022, 100, 90006)','new BossDefinition(9000023, 100, 90007)','new BossDefinition(9000025, 100, 90008)','genuine map-200')) {
+    if (-not $bossGenerator.Contains($marker)) {
+        throw "Corrected eastern Boss map ownership marker is missing: $marker"
+    }
+}
+$worldMotionCallbackStart = $mainLua.IndexOf('world_map._main_motion_game_thread_callback = function()')
+$worldMotionQueueStart = $mainLua.IndexOf('local function queue_world_motion_update(owner_loop_token)', $worldMotionCallbackStart)
+$worldMotionEnd = $mainLua.IndexOf('ensure_motion_loop_started = function()', $worldMotionQueueStart)
+if ($worldMotionCallbackStart -lt 0 -or $worldMotionQueueStart -le $worldMotionCallbackStart -or $worldMotionEnd -le $worldMotionQueueStart) {
+    throw 'ProcessEvent world-map request block is missing or malformed.'
+}
+$worldMotionBlock = $mainLua.Substring($worldMotionCallbackStart, $worldMotionEnd - $worldMotionCallbackStart)
+foreach ($marker in @('world_map._main_motion_game_thread_callback','queue_world_motion_update','world_motion_update_pending','world_motion_pending_token','world_motion_pending_epoch','process_event_dispatch.request()')) {
+    if (-not $mainLua.Contains($marker)) {
+        throw "Bounded ProcessEvent world-map request marker is missing: $marker"
+    }
+}
+foreach ($forbidden in @('LoopInGameThreadAfterFrames','PauseDelayedAction','UnpauseDelayedAction','IsValidDelayedActionHandle','IsDelayedActionActive','world_map_frame_action_')) {
+    if ($mainLua.Contains($forbidden)) {
+        throw "Unsafe EngineTick delayed-action marker remains: $forbidden"
+    }
+}
+$processEventHelperStart = $mainLua.IndexOf('local function queue_process_event_callback(callback)')
+$processEventHelperEnd = $mainLua.IndexOf('local function reset_control_watchdog()', $processEventHelperStart)
+if ($processEventHelperStart -lt 0 -or $processEventHelperEnd -le $processEventHelperStart) {
+    throw 'Fail-closed ProcessEvent helper is missing or malformed.'
+}
+$processEventHelperBlock = $mainLua.Substring($processEventHelperStart, $processEventHelperEnd - $processEventHelperStart)
+if (
+    -not $processEventHelperBlock.Contains('ProcessEventAvailable ~= true') -or
+    -not $processEventHelperBlock.Contains('ExecuteInGameThread(callback, EGameThreadMethod.ProcessEvent)') -or
+    ([regex]::Matches($mainLua, [regex]::Escape('ExecuteInGameThread('))).Count -ne 1) {
+    throw 'Game-thread handoffs are not exclusively fail-closed ProcessEvent dispatches.'
+}
+$serializedDispatcherStart = $mainLua.IndexOf('process_event_dispatch.poison = function(reason, failure)')
+$serializedDispatcherEnd = $mainLua.IndexOf('local function queue_radar_update()', $serializedDispatcherStart)
+if ($serializedDispatcherStart -lt 0 -or $serializedDispatcherEnd -le $serializedDispatcherStart) {
+    throw 'Serialized ProcessEvent dispatcher is missing or malformed.'
+}
+$serializedDispatcherBlock = $mainLua.Substring($serializedDispatcherStart, $serializedDispatcherEnd - $serializedDispatcherStart)
+foreach ($marker in @('task_kind = "activation"','task_kind = "radar"','task_kind = "clock"','task_kind = "world_motion"','process_event_dispatch.pending','process_event_dispatch.poisoned','process_event_dispatch.callback','queue_process_event_callback,','activation_game_thread_callback()','radar_game_thread_callback()','process_event_dispatch.clock_task()','world_map._main_motion_game_thread_callback()','PROCESS_EVENT_DISPATCH_POISONED','retry_count = 0','engine_tick_fallback = false')) {
+    if (-not $serializedDispatcherBlock.Contains($marker)) {
+        throw "Serialized ProcessEvent dispatcher marker is missing: $marker"
+    }
+}
+if (([regex]::Matches($mainLua, [regex]::Escape('queue_process_event_callback,')).Count -ne 1)) {
+    throw 'More than one WorldRadar call site can submit a UE4SS ProcessEvent callback.'
+}
+if (-not $worldMotionBlock.Contains('if world_motion_update_pending then') -or
+    -not $worldMotionBlock.Contains('world_motion_update_pending = true') -or
+    -not $worldMotionBlock.Contains('world_motion_update_pending = false')) {
+    throw 'World-map ProcessEvent queue is not bounded to one pending request.'
 }
 foreach ($marker in @('CONTROL_WATCHDOG_SAMPLE_MS = 1000','CONTROL_WATCHDOG_STALE_SAMPLES = 5','MAX_AUTOMATIC_RUNTIME_RESTARTS = 3','local function observe_control_watchdog(delta_ms)','request_runtime_restart("control_watchdog_stalled")','request_runtime_restart("async_failure:" .. tostring(key))','automatic F8->F7 recovery','enter_world_transition("runtime_error_restart")')) {
     if ($mainLua -notmatch [regex]::Escape($marker)) {
@@ -341,6 +411,23 @@ foreach ($guardedNestedRead in @('local layer_map = current_minimap_layer.LayerM
         throw "Guarded nested minimap read is missing: $guardedNestedRead"
     }
 }
+foreach ($retainedRootMarker in @('local root_retained = false','root_retained = true','root_retained = root_retained','local resolved_valid = cache_hit')) {
+    if (-not $minimapReadBlock.Contains($retainedRootMarker)) {
+        throw "Retained validated minimap-root marker is missing: $retainedRootMarker"
+    }
+}
+if (([regex]::Matches($minimapReadBlock, 'minimap_layer\s*=\s*nil')).Count -ne 1) {
+    throw 'Nested minimap read failure can still clear the validated root and restart one-hertz FindFirstOf.'
+}
+$nestedMinimapFailureStart = $minimapReadBlock.IndexOf('if not ok or scale == nil then')
+$nestedMinimapFailureEnd = $minimapReadBlock.IndexOf('emit_minimap_scale_diagnostic(nil)', $nestedMinimapFailureStart)
+if ($nestedMinimapFailureStart -lt 0 -or $nestedMinimapFailureEnd -le $nestedMinimapFailureStart) {
+    throw 'Nested minimap failure block is missing.'
+}
+$nestedMinimapFailureBlock = $minimapReadBlock.Substring($nestedMinimapFailureStart, $nestedMinimapFailureEnd - $nestedMinimapFailureStart)
+if ($nestedMinimapFailureBlock.Contains('minimap_layer = nil')) {
+    throw 'Nested minimap property miss still discards the validated top-level root.'
+}
 $stableLocationStart = $mainLua.IndexOf('get_player_location = function()')
 $stableLocationEnd = $mainLua.IndexOf('local function is_valid_object(object)', $stableLocationStart)
 $stableLocationBlock = $mainLua.Substring($stableLocationStart, $stableLocationEnd - $stableLocationStart)
@@ -371,11 +458,11 @@ $missingPlayerWriteIndex = $mainLua.IndexOf('write_disabled_motion()', $missingP
 if ($missingPlayerClearIndex -lt 0 -or $missingPlayerClearIndex -gt $missingPlayerWriteIndex) {
     throw 'Player-context loss does not clear published world time before the lifecycle frame.'
 }
-$modDisableIndex = $mainLua.IndexOf('local function disable_for_mod_switch()')
-$modClearIndex = $mainLua.IndexOf('world_time_available = false', $modDisableIndex)
-$modWriteIndex = $mainLua.IndexOf('write_disabled_motion()', $modDisableIndex)
-if ($modClearIndex -lt 0 -or $modClearIndex -gt $modWriteIndex) {
-    throw 'mods.txt disable does not clear published world time before the lifecycle frame.'
+foreach ($forbiddenRuntimeModCheck in @('is_mod_enabled_in_mods_file','MOD_SWITCH_CHECK_INTERVAL_MS','IsEnabledInModsFile')) {
+    $radarLifecycleText = Get-Content -LiteralPath (Join-Path $root 'src\overlay\UI\RadarForm.cs') -Raw
+    if (($mainLua + $radarLifecycleText) -match [regex]::Escape($forbiddenRuntimeModCheck)) {
+        throw "Runtime mods.txt polling remains: $forbiddenRuntimeModCheck"
+    }
 }
 if ($mainLua -match [regex]::Escape('Game time is sampled once per second')) {
     throw 'Stale one-hertz Ready log claim remains.'
@@ -445,12 +532,20 @@ if (([regex]::Matches($mainLua, 'get_player_location\(\)')).Count -ne 2) {
 foreach ($removedFastSample in @('local function queue_motion_update()','queue_motion_update()')) {
     if ($mainLua -match [regex]::Escape($removedFastSample)) { throw "Duplicated 50 ms player sampling path remains: $removedFastSample" }
 }
-$worldMotionStart = $mainLua.IndexOf('local function queue_world_motion_update(')
+$worldMotionStart = $mainLua.IndexOf('world_map._main_motion_game_thread_callback = function()')
 $worldMotionEnd = $mainLua.IndexOf('ensure_motion_loop_started = function()', $worldMotionStart)
 $worldMotionBlock = $mainLua.Substring($worldMotionStart, $worldMotionEnd-$worldMotionStart)
 if ($worldMotionBlock -match [regex]::Escape('get_player_location()') -or
     $worldMotionBlock -notmatch [regex]::Escape('latest_motion_x')) {
     throw 'Large-map transform loop does not reuse the shared 250 ms scalar player sample.'
+}
+$worldPresentationStart = $mainLua.IndexOf('ensure_world_map_loop_started = function()')
+$worldPresentationEnd = $mainLua.IndexOf('local function ensure_loop_started()', $worldPresentationStart)
+$worldPresentationBlock = $mainLua.Substring($worldPresentationStart, $worldPresentationEnd - $worldPresentationStart)
+if ($worldPresentationBlock.Contains('ExecuteInGameThread(') -or
+    $worldPresentationBlock.Contains('world_map.read_state(') -or
+    -not $worldPresentationBlock.Contains('flush_latest_motion()')) {
+    throw 'The 8 ms world presentation loop still performs game-thread submission/UObject work or no longer flushes scalar snapshots.'
 }
 foreach ($marker in @('WorldEpoch','SampleTimestampMs','ScalarMotionPredictor','MaximumPredictionMs = 250.0','StaleFreezeMs = 500.0','OVERLAY_MOTION_PREDICTION','player_location_hz')) {
     if (($motionReader + $motionParser + $radar + $overlayPerformance + $luaDiagnostics) -notmatch [regex]::Escape($marker)) {
@@ -599,11 +694,27 @@ foreach ($marker in @('record_world_map_producer_tick','world_map_producer_hz','
     }
 }
 $saveStateText = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\TreasureSaveState.cs') -Raw
-if ($saveStateText -notmatch [regex]::Escape('TimeSpan.FromMilliseconds(2000)')) {
-    throw 'Save-state metadata sampling is not bounded to two seconds.'
+$treasureOverridesText = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\TreasureOverrides.cs') -Raw
+foreach ($marker in @('public void LoadOnce()','private bool _loadAttempted;','_overrides.LoadOnce();')) {
+    if (($treasureOverridesText + $saveStateText) -notmatch [regex]::Escape($marker)) { throw "Startup-only treasure override marker is missing: $marker" }
 }
-foreach ($marker in @('SaveChangeDebounce','TimeSpan.FromSeconds(4)','SetRuntimeEnabled','ThreadPriority.BelowNormal','SAVE_REFRESH_PERF')) {
+if ($treasureOverridesText -match [regex]::Escape('RefreshInterval') -or
+    $saveStateText -match [regex]::Escape('_overrides.Refresh();')) {
+    throw 'Runtime treasure-override filesystem polling remains.'
+}
+if ($saveStateText -notmatch [regex]::Escape('TimeSpan.FromSeconds(19)')) {
+    throw 'Save-state change-check interval is not nineteen seconds.'
+}
+foreach ($marker in @('SetRuntimeEnabled','ThreadPriority.BelowNormal','SAVE_REFRESH_PERF','changeCheckIntervalMs=')) {
     if ($saveStateText -notmatch [regex]::Escape($marker)) { throw "Optimized save-state marker is missing: $marker" }
+}
+foreach ($marker in @('SnapshotCompletionCooldown','_nextSnapshotEligibleUtc','RememberPendingChange(slot, key);','completionCooldownMs=')) {
+    if ($saveStateText -notmatch [regex]::Escape($marker)) { throw "Post-completion save cooldown marker is missing: $marker" }
+}
+if ($radar -match [regex]::Escape('_nextSaveFilterLogUtc') -or
+    $radar -notmatch [regex]::Escape('_lastSaveFilterSaveVersion') -or
+    $radar -notmatch [regex]::Escape('_lastSaveFilterIndexVersion')) {
+    throw 'Detailed treasure diagnostics are not version-gated.'
 }
 $nativeMethodsText = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Platform\NativeMethods.cs') -Raw
 foreach ($marker in @('ThreadModeBackgroundBegin','ThreadModeBackgroundEnd','SetThreadPriority(','GetCurrentThread()')) {
@@ -618,11 +729,11 @@ if ($saveReaderText -notmatch [regex]::Escape('if (DebugSettings.Enabled)') -or
     $saveReaderText -notmatch [regex]::Escape('WHERE OPENED_BIT_FIELD <> 0;')) {
     throw 'Normal save snapshot still performs avoidable diagnostic or zero-row work.'
 }
-foreach ($marker in @('CacheMissIncludesTreasure = true','bool readIncludesTreasure =','TreasureRequested','TreasureQueries','coalescingWindowMs=')) {
+foreach ($marker in @('CacheMissIncludesTreasure = true','bool readIncludesTreasure =','TreasureRequested','TreasureQueries','changeCheckIntervalMs=')) {
     if (($saveReaderText + $saveStateText) -notmatch [regex]::Escape($marker)) { throw "Cold-read coalescing marker is missing: $marker" }
 }
-foreach ($marker in @('SnapshotReadInterval =','TimeSpan.FromSeconds(45)','_nextSnapshotReadUtc','now < _nextSnapshotReadUtc','includeTreasure = true')) {
-    if ($saveStateText -notmatch [regex]::Escape($marker)) { throw "Bounded save-read scheduler marker is missing: $marker" }
+foreach ($marker in @('_hasLoadedSaveState','slot.Signature == _lastSlotSignature','key == _lastKey','includeTreasure = true')) {
+    if ($saveStateText -notmatch [regex]::Escape($marker)) { throw "Change-gated save-read scheduler marker is missing: $marker" }
 }
 if (-not $saveReaderText.Contains('StoreCached(') -or -not $saveReaderText.Contains('readIncludesTreasure,')) {
     throw 'Cache miss does not store the warmed treasure-rich shape.'
@@ -666,8 +777,11 @@ if (Test-Path -LiteralPath (Join-Path $root 'src\ue4ss\config.default.lua')) {
 if ($debugSettingsText -notmatch [regex]::Escape('HighResolutionTimerEnabled')) {
     throw 'High-resolution timer startup setting parser is missing.'
 }
-if ($defaultConfigText -notmatch [regex]::Escape('high_resolution_timer = false')) {
-    throw 'High-resolution timer must default off.'
+if ($defaultConfigText -notmatch [regex]::Escape('high_resolution_timer = true')) {
+    throw 'High-resolution timer must default on.'
+}
+if ($defaultConfigText -notmatch [regex]::Escape('debug_logging = true')) {
+    throw 'Debug logging must default on.'
 }
 if ($defaultConfigText -notmatch '(?m)^\s*show_assaults\s*=\s*true\s*,' -or
     $mainLua -notmatch [regex]::Escape('local show_assaults = config.show_assaults ~= false') -or
@@ -772,7 +886,7 @@ if ($clockEnabled) {
         if ($f7Block -match [regex]::Escape($forbidden)) { throw "F7 directly performs clock/UObject work: $forbidden" }
     }
 }
-foreach ($marker in @('local ACTIVATION_STABLE_SAMPLE_COUNT = 4','local function activation_game_thread_callback()','local function queue_activation_probe()','ExecuteInGameThread(activation_game_thread_callback)','ACTIVATION_STABILITY_SAMPLE','ACTIVATION_STABLE')) {
+foreach ($marker in @('local ACTIVATION_STABLE_SAMPLE_COUNT = 4','local function activation_game_thread_callback()','local function queue_activation_probe()','task_kind = "activation"','process_event_dispatch.request()','ACTIVATION_STABILITY_SAMPLE','ACTIVATION_STABLE')) {
     if ($mainLua -notmatch [regex]::Escape($marker)) { throw "Activation stability marker is missing: $marker" }
 }
 foreach ($marker in @('if (!motion.Enabled) return;','if (motion.ShowWorldStatus)','ClientSize.Width - _overlaySize / 2f','return "disabled";')) {
@@ -846,9 +960,10 @@ foreach ($marker in @(
         throw "Save-state startup safety marker is missing: $marker"
     }
 }
-foreach ($marker in @('bool initialSnapshot = !_hasLoadedSaveState','&& !_initialDebounceBypassConsumed;','_initialDebounceBypassConsumed = true;','if (!initialSnapshot','fingerprint before/after its copy')) {
-    if ($saveState -notmatch [regex]::Escape($marker)) {
-        throw "Initial snapshot debounce safety marker is missing: $marker"
+foreach ($marker in @('CopyConsistentSnapshot(','SaveDatabaseFingerprint before','SaveDatabaseFingerprint after','before.Signature == after.Signature')) {
+    $fingerprintText = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\SaveDatabaseFingerprint.cs') -Raw
+    if (($saveState + $saveReaderText + $fingerprintText) -notmatch [regex]::Escape($marker)) {
+        throw "Consistent snapshot-copy safety marker is missing: $marker"
     }
 }
 

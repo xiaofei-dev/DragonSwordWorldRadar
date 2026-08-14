@@ -19,6 +19,7 @@ $installer = Get-Content -LiteralPath (Join-Path $root 'src\installer\Install.ps
 $keyReader = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\SaveDatabaseKeyReader.cs') -Raw
 $snapshotReader = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\SaveSnapshotReader.cs') -Raw
 $saveState = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\TreasureSaveState.cs') -Raw
+$treasureOverrides = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\TreasureOverrides.cs') -Raw
 $encounterAvailability = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\EncounterAvailabilityTracker.cs') -Raw
 $nativeMethods = Get-Content -LiteralPath (Join-Path $root 'src\overlay\Platform\NativeMethods.cs') -Raw
 $ownerConfig = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\GeneratedOwnerPointerConfig.cs') -Raw
@@ -50,7 +51,7 @@ function Invoke-ControlWatchdogModel([int[]]$SerialSamples, [int]$Threshold) {
 }
 Assert-True ((Invoke-ControlWatchdogModel @(10,10,10,10,10,10) 5) -eq 5) 'Control watchdog does not require exactly five consecutive stale observations.'
 Assert-True ((Invoke-ControlWatchdogModel @(10,10,11,11,11,12,12,12) 5) -eq -1) 'Healthy control progress can falsely trigger automatic recovery.'
-Assert-True ($defaultConfig.Contains('debug_logging = false')) 'Normal runtime does not disable file diagnostics by default.'
+Assert-True ($defaultConfig.Contains('debug_logging = true')) 'Debug logging does not default on.'
 Assert-True ($main.Contains('if not f7_trace_active or perf_diagnostics == nil then return end')) 'F7 trace does not fail fast when debug diagnostics are disabled.'
 Assert-True ($main.Contains('if perf_diagnostics == nil then') -and $main.Contains('f7_trace_active = false')) 'F7 still activates its crash-trace budget in normal mode.'
 Assert-True (-not [regex]::IsMatch($main, 'f7_trace\s*\([^\)]*\{', [Text.RegularExpressions.RegexOptions]::Singleline)) 'F7 trace call eagerly allocates a field table before its disabled guard.'
@@ -68,8 +69,8 @@ foreach ($api in @('record_mole_query','record_mole_state_change','record_mole_s
 Assert-True ($main.Contains('math.floor(previous.world_time_seconds / 60)')) 'Exact-seconds-only bridge suppression is missing.'
 Assert-True (-not $main.Contains('Game time is sampled once per second')) 'Stale Ready log claim remains.'
 Assert-True ($main.Contains('local function radar_game_thread_callback()')) 'Stable compact game-thread callback is missing.'
-Assert-True ($main.Contains('ExecuteInGameThread(radar_game_thread_callback)')) 'Compact control still does not queue the stable callback function.'
-foreach ($marker in @('local ACTIVATION_STABLE_SAMPLE_COUNT = 4','local function activation_game_thread_callback()','local function queue_activation_probe()','ExecuteInGameThread(activation_game_thread_callback)','ACTIVATION_STABILITY_SAMPLE','ACTIVATION_STABLE')) { Assert-True ($main.Contains($marker)) "Missing stable F7 activation contract: $marker" }
+Assert-True ($main.Contains('task_kind = "radar"') -and $main.Contains('radar_game_thread_callback()')) 'Compact control is not owned by the serialized ProcessEvent dispatcher.'
+foreach ($marker in @('local ACTIVATION_STABLE_SAMPLE_COUNT = 4','local function activation_game_thread_callback()','local function queue_activation_probe()','task_kind = "activation"','process_event_dispatch.request()','ACTIVATION_STABILITY_SAMPLE','ACTIVATION_STABLE')) { Assert-True ($main.Contains($marker)) "Missing stable F7 activation contract: $marker" }
 $queueStart = $main.IndexOf('local function queue_radar_update()')
 $queueEnd = $main.IndexOf('ensure_world_map_loop_started = function()', $queueStart)
 $queueBlock = $main.Substring($queueStart, $queueEnd - $queueStart)
@@ -165,6 +166,30 @@ foreach ($forbiddenNestedValidation in @('is_valid_object(layer_map)','is_valid_
 foreach ($guardedNestedRead in @('local layer_map = current_minimap_layer.LayerMap','local map_overlay = layer_map.MapOverlay','tonumber(map_overlay.RenderTransform.Scale.X)')) {
     Assert-True ($minimapReadBlock.Contains($guardedNestedRead)) "Missing guarded nested minimap read: $guardedNestedRead"
 }
+foreach ($retainedRootMarker in @('local root_retained = false','root_retained = true','root_retained = root_retained','local resolved_valid = cache_hit')) {
+    Assert-True ($minimapReadBlock.Contains($retainedRootMarker)) "Missing retained validated minimap-root contract: $retainedRootMarker"
+}
+Assert-True (([regex]::Matches($minimapReadBlock, 'minimap_layer\s*=\s*nil')).Count -eq 1) 'Nested minimap read failure can still clear the validated root and restart one-hertz FindFirstOf.'
+$nestedMinimapFailureStart = $minimapReadBlock.IndexOf('if not ok or scale == nil then')
+$nestedMinimapFailureEnd = $minimapReadBlock.IndexOf('emit_minimap_scale_diagnostic(nil)', $nestedMinimapFailureStart)
+Assert-True ($nestedMinimapFailureStart -ge 0 -and $nestedMinimapFailureEnd -gt $nestedMinimapFailureStart) 'Nested minimap failure block is missing.'
+$nestedMinimapFailureBlock = $minimapReadBlock.Substring($nestedMinimapFailureStart, $nestedMinimapFailureEnd - $nestedMinimapFailureStart)
+Assert-True (-not $nestedMinimapFailureBlock.Contains('minimap_layer = nil')) 'Nested minimap property miss still discards the validated top-level root.'
+$minimapCacheModel = [ordered]@{ RootValid=$false; NestedAvailable=$false; Finds=0; Reads=0 }
+function Step-MinimapCacheModel {
+    if (-not $script:minimapCacheModel.RootValid) {
+        $script:minimapCacheModel.Finds++
+        $script:minimapCacheModel.RootValid=$true
+    }
+    $script:minimapCacheModel.Reads++
+    return $script:minimapCacheModel.NestedAvailable
+}
+1..60 | ForEach-Object { $null=Step-MinimapCacheModel }
+Assert-True ($minimapCacheModel.Finds -eq 1 -and $minimapCacheModel.Reads -eq 60) 'Sixty nested scale misses caused recurring DLayerMiniMap lookup.'
+$minimapCacheModel.NestedAvailable=$true
+Assert-True ((Step-MinimapCacheModel) -and $minimapCacheModel.Finds -eq 1) 'Nested scale recovery unnecessarily performed a new global lookup.'
+$minimapCacheModel.RootValid=$false
+Assert-True ((Step-MinimapCacheModel) -and $minimapCacheModel.Finds -eq 2) 'A genuinely invalid top-level minimap root did not permit one replacement lookup.'
 $stableLocationStart = $main.IndexOf('get_player_location = function()')
 $stableLocationEnd = $main.IndexOf('local function is_valid_object(object)', $stableLocationStart)
 $stableLocationBlock = $main.Substring($stableLocationStart, $stableLocationEnd - $stableLocationStart)
@@ -179,6 +204,7 @@ foreach ($marker in @('access_guard','lifecycle_epoch','access_allowed()','world
     Assert-True (($worldMap.Contains($marker)) -or ($main.Contains($marker))) "World-map epoch guard is missing: $marker"
 }
 foreach($marker in @('MAX_CANDIDATES = 2','MAX_RETIRED_IDENTITIES = 256','entry.epoch == lifecycle_epoch','entry.token == candidate_token','retired_identities[identity]','notify-current-epoch','bounded-resume-scan','candidate_token = candidate_token + 1')){Assert-True ($worldMap.Contains($marker)) "Bounded world-map candidate marker is missing: $marker"}
+foreach($marker in @('hidden_index = nil','not is_visible(entry.object)','table.remove(candidates, hidden_index)','active visible entries are never')){Assert-True ($worldMap.Contains($marker)) "Hidden world-map candidate replacement marker is missing: $marker"}
 foreach($marker in @('function WorldMap.consume_wake_hint()','function WorldMap.recover_session()','function WorldMap.has_retained_candidates()','WORLD_MAP_INACTIVE_CHECK_INTERVAL_MS = 2000','world_map.consume_wake_hint()','world_map.has_retained_candidates()','world_map.recover_session()')){Assert-True (($worldMap+$main).Contains($marker)) "Inactive world-map wake/backoff marker is missing: $marker"}
 Assert-True ($worldMap.Contains('record_candidate_metrics("recover-session")')) 'World-map recovery is not observable in debug diagnostics.'
 $recoverStart=$worldMap.IndexOf('function WorldMap.recover_session()')
@@ -194,8 +220,8 @@ $activeReadStart=$worldMap.IndexOf('function WorldMap.read_state()')
 $activeReadEnd=$worldMap.IndexOf('function WorldMap.debug_state()',$activeReadStart)
 $activeReadBlock=$worldMap.Substring($activeReadStart,$activeReadEnd-$activeReadStart)
 Assert-True (-not $activeReadBlock.Contains('FindAllOf(')) 'Active world-map read_state directly enumerates UObjects.'
-foreach($marker in @('SnapshotReadInterval =','TimeSpan.FromSeconds(45)','_nextSnapshotReadUtc','includeTreasure = true','IncludeTreasure','OpenedAvailable','encounterTaskQueryMs','tb_unexpected_switch_week')){Assert-True (($snapshotReader+$saveState).Contains($marker)) "Coalesced save-query/task diagnostic marker is missing: $marker"}
-foreach($marker in @('motion_loop_token','world_map_loop_token','owner_loop_token ~= motion_loop_token','owner_loop_token ~= world_map_loop_token','update_pending_token == request_token','world_motion_pending_token == request_token','max_logical_loops')){Assert-True (($main+$diagnostics).Contains($marker)) "Async ownership marker is missing: $marker"}
+foreach($marker in @('TimeSpan.FromSeconds(19)','slot.Signature == _lastSlotSignature','key == _lastKey','includeTreasure = true','IncludeTreasure','OpenedAvailable','encounterTaskQueryMs','tb_unexpected_switch_week')){Assert-True (($snapshotReader+$saveState).Contains($marker)) "Change-gated save-query/task diagnostic marker is missing: $marker"}
+foreach($marker in @('motion_loop_token','world_map_loop_token','owner_loop_token ~= motion_loop_token','owner_loop_token ~= world_map_loop_token','update_pending_token == request_token','world_motion_pending_token == request_token','world_motion_pending_epoch','world_motion_update_pending','max_logical_loops')){Assert-True (($main+$diagnostics).Contains($marker)) "Async ownership marker is missing: $marker"}
 foreach($marker in @('CONTROL_WATCHDOG_SAMPLE_MS = 1000','CONTROL_WATCHDOG_STALE_SAMPLES = 5','MAX_AUTOMATIC_RUNTIME_RESTARTS = 3','local function observe_control_watchdog(delta_ms)','request_runtime_restart("control_watchdog_stalled")','request_runtime_restart("async_failure:" .. tostring(key))','automatic F8->F7 recovery','enter_world_transition("runtime_error_restart")')){Assert-True ($main.Contains($marker)) "Confirmed-error automatic recovery marker is missing: $marker"}
 Assert-True (([regex]::Matches($main,[regex]::Escape('LoopAsync('))).Count -eq 3) 'Automatic recovery added a fourth scheduler loop.'
 Assert-True (([regex]::Matches($main,[regex]::Escape('request_runtime_restart('))).Count -eq 3) 'Runtime restart may be armed outside the function definition, confirmed async failure, and control watchdog.'
@@ -229,15 +255,28 @@ Assert-True ($renderer.Contains('StatusStripGapReference = -6f')) 'Raised render
 Assert-True ($renderer.Contains('PhaseFontReferencePixels = 13f')) 'Compact phase font contract is missing.'
 Assert-True ($renderer.Contains('CalculateGroupBounds')) 'Bounded status layout helper is missing.'
 Assert-True ($radar.Contains('IsWorldMapMode()')) 'Expanded world-map mode contract is missing.'
-Assert-True ($main.Contains('WORLD_MAP_ACTIVE_INTERVAL_MS = 8')) 'Visible world-map producer is not 8 ms.'
+Assert-True ($main.Contains('WORLD_MAP_ACTIVE_INTERVAL_MS = 8')) 'Visible world-map scalar presentation is not 8 ms.'
 Assert-True ($main.Contains('FAST_MOTION_INTERVAL_MS = 50')) 'Radar producer is not 50 ms.'
 Assert-True ($main.Contains('MINIMAP_UPDATE_INTERVAL_MS = 250')) 'Player/control scalar sampling is not 250 ms.'
 Assert-True (([regex]::Matches($main,'get_player_location\(\)')).Count -eq 2) 'Fresh full-chain location must have one definition and one 250 ms call site.'
 Assert-True (-not $main.Contains('queue_motion_update()')) 'Duplicated 50 ms player sampling call remains.'
-$worldMotionStartForScalar=$main.IndexOf('local function queue_world_motion_update(')
+$worldMotionStartForScalar=$main.IndexOf('world_map._main_motion_game_thread_callback = function()')
 $worldMotionEndForScalar=$main.IndexOf('ensure_motion_loop_started = function()',$worldMotionStartForScalar)
 $worldMotionScalarBlock=$main.Substring($worldMotionStartForScalar,$worldMotionEndForScalar-$worldMotionStartForScalar)
 Assert-True (-not $worldMotionScalarBlock.Contains('get_player_location()') -and $worldMotionScalarBlock.Contains('latest_motion_x')) 'Large-map loop does not reuse the shared scalar player sample.'
+foreach($forbidden in @('LoopInGameThreadAfterFrames','PauseDelayedAction','UnpauseDelayedAction','IsValidDelayedActionHandle','IsDelayedActionActive','world_map_frame_action_')){Assert-True (-not $main.Contains($forbidden)) "Unsafe EngineTick delayed-action marker remains: $forbidden"}
+Assert-True (([regex]::Matches($main,[regex]::Escape('ExecuteInGameThread('))).Count -eq 1) 'Raw ExecuteInGameThread bypasses the single ProcessEvent helper.'
+Assert-True ($main.Contains('ProcessEventAvailable ~= true') -and $main.Contains('ExecuteInGameThread(callback, EGameThreadMethod.ProcessEvent)') -and $main.Contains('queue_process_event_callback,') -and $main.Contains('process_event_dispatch.callback')) 'Game-thread handoffs are not explicitly serialized fail-closed ProcessEvent dispatches.'
+foreach($marker in @('queue_world_motion_update','world_motion_update_pending','world_motion_update_pending = true','world_motion_update_pending = false','world_motion_pending_token == request_token','process_event_dispatch.request()')){Assert-True ($worldMotionScalarBlock.Contains($marker)) "Bounded world-map ProcessEvent marker is missing: $marker"}
+$serializedDispatchStart=$main.IndexOf('process_event_dispatch.poison = function(reason, failure)')
+$serializedDispatchEnd=$main.IndexOf('local function queue_radar_update()',$serializedDispatchStart)
+$serializedDispatchBlock=$main.Substring($serializedDispatchStart,$serializedDispatchEnd-$serializedDispatchStart)
+foreach($marker in @('task_kind = "activation"','task_kind = "radar"','task_kind = "clock"','task_kind = "world_motion"','process_event_dispatch.pending','process_event_dispatch.poisoned','process_event_dispatch.callback','queue_process_event_callback,','activation_game_thread_callback()','radar_game_thread_callback()','process_event_dispatch.clock_task()','world_map._main_motion_game_thread_callback()')){Assert-True ($serializedDispatchBlock.Contains($marker)) "Serialized ProcessEvent dispatcher marker is missing: $marker"}
+Assert-True (([regex]::Matches($main,[regex]::Escape('queue_process_event_callback,')).Count -eq 1)) 'More than one WorldRadar call site can submit a UE4SS ProcessEvent callback.'
+$worldPresentationStart=$main.IndexOf('ensure_world_map_loop_started = function()')
+$worldPresentationEnd=$main.IndexOf('local function ensure_loop_started()',$worldPresentationStart)
+$worldPresentationBlock=$main.Substring($worldPresentationStart,$worldPresentationEnd-$worldPresentationStart)
+Assert-True (-not $worldPresentationBlock.Contains('ExecuteInGameThread(') -and -not $worldPresentationBlock.Contains('world_map.read_state(') -and $worldPresentationBlock.Contains('flush_latest_motion()') -and $worldPresentationBlock.Contains('queue_world_motion_update(owner_loop_token)')) 'The 8 ms expanded presentation loop does not use the bounded ProcessEvent queue.'
 Assert-True ($main.Contains('record_world_map_producer_tick()')) 'World-map producer-rate diagnostics are missing.'
 Assert-True ($main.Contains('local capture_failure = "none"') -and
     $main.Contains('failure = capture_failure')) 'Successful world-clock diagnostics do not clear the failure field.'
@@ -300,7 +339,7 @@ Assert-True (-not $motionReader.Contains('System.Threading.Tasks')) 'Motion Brid
 Assert-True ($radar.Contains('RecordWindowVisibilitySample()')) 'Window visibility sample diagnostics are missing.'
 Assert-True ($debugSettings.Contains('HighResolutionTimerEnabled')) 'High-resolution timer startup setting is missing.'
 Assert-True ($radar.Contains('if (DebugSettings.HighResolutionTimerEnabled)')) 'timeBeginPeriod is not guarded by the A/B setting.'
-Assert-True ($defaultConfig.Contains('high_resolution_timer = false')) 'High-resolution timer does not default off.'
+Assert-True ($defaultConfig.Contains('high_resolution_timer = true')) 'High-resolution timer does not default on.'
 Assert-True ($overlayPerformance.Contains('treasureDrawCalls=')) 'Treasure layer timing diagnostics are missing.'
 Assert-True ($overlayPerformance.Contains('bossDrawCalls=')) 'Boss layer timing diagnostics are missing.'
 Assert-True ($overlayPerformance.Contains('windowVisibilitySampleHz=')) 'Window sample-rate diagnostics are missing.'
@@ -337,34 +376,79 @@ foreach ($marker in @('BuildHammer','BuildWave','GraphicsPath _activityIcon','_a
 Assert-True ($diagnostics.Contains('record_motion_write')) 'Lua motion-write diagnostics are missing.'
 Assert-True ($overlayPerformance.Contains('OVERLAY_WORK_PERF')) 'Overlay work-duty diagnostics are missing.'
 $saveState = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\TreasureSaveState.cs') -Raw
-Assert-True ($saveState.Contains('bool initialSnapshot = !_hasLoadedSaveState') -and $saveState.Contains('&& !_initialDebounceBypassConsumed;') -and $saveState.Contains('_initialDebounceBypassConsumed = true;') -and $saveState.Contains('if (!initialSnapshot') -and $saveState.Contains('fingerprint before/after its copy')) 'One-shot initial debounce bypass or consistent-copy safety marker is missing.'
 $saveReader = Get-Content -LiteralPath (Join-Path $root 'src\overlay\SaveData\SaveSnapshotReader.cs') -Raw
-Assert-True ($saveState.Contains('TimeSpan.FromMilliseconds(2000)')) 'Save metadata polling is not two seconds.'
-foreach ($marker in @('SaveChangeDebounce','TimeSpan.FromSeconds(4)','SetRuntimeEnabled','ThreadPriority.BelowNormal','SAVE_REFRESH_PERF')) { Assert-True ($saveState.Contains($marker)) "Missing optimized save-state contract: $marker" }
+Assert-True ($saveState.Contains('TimeSpan.FromSeconds(19)')) 'Save change-check interval is not nineteen seconds.'
+Assert-True ($treasureOverrides.Contains('public void LoadOnce()') -and $treasureOverrides.Contains('private bool _loadAttempted;') -and $saveState.Contains('_overrides.LoadOnce();')) 'Treasure overrides are not loaded once at Overlay startup.'
+Assert-True (-not $treasureOverrides.Contains('RefreshInterval') -and -not $saveState.Contains('_overrides.Refresh();')) 'Runtime treasure-override filesystem polling remains.'
+foreach ($marker in @('SetRuntimeEnabled','ThreadPriority.BelowNormal','SAVE_REFRESH_PERF','changeCheckIntervalMs=')) { Assert-True ($saveState.Contains($marker)) "Missing optimized save-state contract: $marker" }
+foreach ($marker in @('SnapshotCompletionCooldown','_nextSnapshotEligibleUtc','RememberPendingChange(slot, key);','completionCooldownMs=')) { Assert-True ($saveState.Contains($marker)) "Missing post-completion save cooldown contract: $marker" }
+Assert-True (-not $radar.Contains('_nextSaveFilterLogUtc') -and $radar.Contains('_lastSaveFilterSaveVersion') -and $radar.Contains('_lastSaveFilterIndexVersion')) 'Detailed treasure diagnostics are not version-gated.'
 foreach ($marker in @('ThreadModeBackgroundBegin','ThreadModeBackgroundEnd','SetThreadPriority(','GetCurrentThread()')) { Assert-True (($saveState+$nativeMethods).Contains($marker)) "Missing background save-worker scheduling contract: $marker" }
 foreach ($marker in @('DatabaseCacheHits','TryGetCached','TryGetCompatibleCached','BuildCacheKey','includeTreasure','SqliteOpenReadWrite','ApplyKey(database, key)','QueryOpenedTreasureBits(database)','QueryBossRespawns(database, encounterTargetIds)','BuildActorFilterSql(encounterTargetIds)','ActorFilterSignature')) { Assert-True ($saveReader.Contains($marker)) "Missing optimized snapshot-reader contract: $marker" }
 Assert-True ($saveReader.Contains('if (DebugSettings.Enabled)') -and $saveReader.Contains('QueryEncounterTaskTable(database)')) 'Diagnostic-only encounter task query is not gated by debug mode.'
 Assert-True ($saveReader.Contains('WHERE OPENED_BIT_FIELD <> 0;')) 'Treasure query still returns zero-only categories.'
 Assert-True ($encounterAvailability.Contains('saveVersion == _saveVersion') -and $encounterAvailability.Contains('Object.ReferenceEquals(encounters, _catalog)')) 'Encounter availability repeats unchanged save-state traversal.'
 Assert-True ($encounterAvailability.Contains('DateTime nowUtc') -and $encounterAvailability.Contains('nowUtc < next')) 'Encounter paint does not share one coherent UTC sample.'
-foreach ($marker in @('CacheMissIncludesTreasure = true','bool readIncludesTreasure =','TreasureRequested','TreasureQueries','coalescingWindowMs=')) { Assert-True (($saveReader+$saveState).Contains($marker)) "Missing cold-read coalescing contract: $marker" }
+foreach ($marker in @('CacheMissIncludesTreasure = true','bool readIncludesTreasure =','TreasureRequested','TreasureQueries','changeCheckIntervalMs=')) { Assert-True (($saveReader+$saveState).Contains($marker)) "Missing change-gated cold-read contract: $marker" }
 Assert-True ($saveReader.Contains('StoreCached(') -and $saveReader.Contains('readIncludesTreasure,')) 'Cache miss does not store the warmed treasure-rich shape.'
 Assert-True (-not $saveReader.Contains('(includeTreasure ? "|treasure" : "|encounter")')) 'Treasure and encounter query modes still overwrite one path-owned cache entry.'
 Assert-True ($saveReader.Contains('string richKey = BuildCacheKey(') -and $saveReader.Contains('!includeTreasure')) 'Encounter-only reads do not reuse a compatible treasure-rich cache entry.'
 Assert-True ($saveReader.Contains('MergeRequestedSnapshot(') -and $saveReader.Contains('if (includeTreasure && source.OpenedAvailable)')) 'Encounter-only rich-cache reuse can publish treasure state or extend the treasure deadline.'
-Assert-True ($saveState.Contains('bool treasureRefreshAvailable = request.IncludeTreasure') -and $saveState.Contains('&& snapshot.OpenedAvailable;') -and $saveState.Contains('if (treasureRefreshAvailable)')) 'Treasure publication and deadline renewal are not guarded by the scheduled request scope.'
+Assert-True ($saveState.Contains('bool treasureRefreshAvailable = request.IncludeTreasure') -and $saveState.Contains('&& snapshot.OpenedAvailable;')) 'Treasure publication is not guarded by the scheduled request scope.'
 Assert-True (([regex]::Matches($saveReader, 'PRAGMA key')).Count -eq 1) 'SQLCipher key is applied more than once per database connection.'
-$coldReadModel=[ordered]@{Enabled=$true;Loaded=$false;Next=0;Reads=0}
-function Try-ColdReadModel([int]$Now,[bool]$Stable) {
-    if(-not$script:coldReadModel.Enabled-or-not$Stable){return $false}
-    if($script:coldReadModel.Loaded-and$Now-lt$script:coldReadModel.Next){return $false}
-    $script:coldReadModel.Loaded=$true;$script:coldReadModel.Next=$Now+45;$script:coldReadModel.Reads++;return $true
+$coldReadModel=[ordered]@{Enabled=$true;Loaded=$false;Fingerprint='';Reads=0}
+function Try-ColdReadModel([string]$Fingerprint) {
+    if(-not$script:coldReadModel.Enabled){return $false}
+    if($script:coldReadModel.Loaded-and$Fingerprint-eq$script:coldReadModel.Fingerprint){return $false}
+    $script:coldReadModel.Loaded=$true;$script:coldReadModel.Fingerprint=$Fingerprint;$script:coldReadModel.Reads++;return $true
 }
-Assert-True (Try-ColdReadModel 0 $true) 'Initial save snapshot did not run immediately.'
-1..44|ForEach-Object{Assert-True (-not(Try-ColdReadModel $_ $true)) 'Autosave queued a cold read inside the 45-second coalescing window.'}
-Assert-True ((Try-ColdReadModel 45 $true)-and$coldReadModel.Reads-eq2) 'The coalesced save window did not release one fresh snapshot.'
+Assert-True (Try-ColdReadModel 'A') 'Initial save snapshot did not run immediately.'
+1..4|ForEach-Object{Assert-True (-not(Try-ColdReadModel 'A')) 'An unchanged fingerprint queued redundant SQLCipher work.'}
+Assert-True ((Try-ColdReadModel 'B')-and$coldReadModel.Reads-eq2) 'A changed fingerprint did not release one fresh snapshot.'
 $coldReadModel.Enabled=$false
-Assert-True (-not(Try-ColdReadModel 90 $true)) 'F8-disabled state queued a coalesced save read.'
+Assert-True (-not(Try-ColdReadModel 'C')) 'F8-disabled state queued a save read.'
+
+# Completion-based scheduling model: a long or failed SQLCipher worker cannot
+# cause an immediate catch-up query, while the newest observed fingerprint is
+# retained until it becomes eligible.
+$saveCooldownModel=[ordered]@{
+    Published='A';Pending=$null;Busy=$false
+    EligibleUtc=[DateTime]::MinValue;Reads=0
+}
+function Try-QueueCooldownModel([string]$Fingerprint,[DateTime]$NowUtc) {
+    if ($Fingerprint -eq $script:saveCooldownModel.Published) {
+        $script:saveCooldownModel.Pending=$null
+        return $false
+    }
+    $script:saveCooldownModel.Pending=$Fingerprint
+    if ($script:saveCooldownModel.Busy -or
+        $NowUtc -lt $script:saveCooldownModel.EligibleUtc) {
+        return $false
+    }
+    $script:saveCooldownModel.Busy=$true
+    $script:saveCooldownModel.Reads++
+    return $true
+}
+function Complete-CooldownModel([string]$Fingerprint,[DateTime]$NowUtc,[bool]$Success) {
+    if ($Success) {
+        $script:saveCooldownModel.Published=$Fingerprint
+        if ($script:saveCooldownModel.Pending -eq $Fingerprint) {
+            $script:saveCooldownModel.Pending=$null
+        }
+    }
+    $script:saveCooldownModel.Busy=$false
+    $script:saveCooldownModel.EligibleUtc=$NowUtc.AddSeconds(19)
+}
+$modelStart=[DateTime]::Parse('2026-08-13T00:00:00Z').ToUniversalTime()
+Assert-True (Try-QueueCooldownModel 'B' $modelStart) 'Changed save did not queue the first snapshot.'
+Assert-True (-not (Try-QueueCooldownModel 'C' $modelStart.AddSeconds(19))) 'Busy worker queued overlapping SQLCipher work.'
+Complete-CooldownModel 'B' $modelStart.AddSeconds(20) $true
+Assert-True ($saveCooldownModel.Pending -eq 'C') 'Newer fingerprint was lost when the older worker completed.'
+Assert-True (-not (Try-QueueCooldownModel 'C' $modelStart.AddSeconds(38))) 'Completion cooldown allowed an early catch-up snapshot.'
+Assert-True (Try-QueueCooldownModel 'C' $modelStart.AddSeconds(39)) 'Pending fingerprint did not queue when completion cooldown expired.'
+Complete-CooldownModel 'C' $modelStart.AddSeconds(40) $false
+Assert-True (-not (Try-QueueCooldownModel 'C' $modelStart.AddSeconds(58))) 'Failed worker did not receive the same retry cooldown.'
+Assert-True (Try-QueueCooldownModel 'C' $modelStart.AddSeconds(59)) 'Failed worker did not become eligible after one bounded cooldown.'
 foreach ($catalogRelative in @('src\overlay\Data\WorldTreasureCatalog.cs','src\overlay\Data\WorldBossCatalog.cs')) {
     $catalogText = Get-Content -LiteralPath (Join-Path $root $catalogRelative) -Raw
     Assert-True ($catalogText.Contains('if (_hasLoaded)')) "Immutable catalog one-load gate is missing: $catalogRelative"
@@ -394,7 +478,7 @@ foreach ($name in $baselineIntervals.Keys) {
     }
 }
 $baselineMain = Get-Content -LiteralPath (Join-Path $baselineRoot 'scripts\main.lua') -Raw
-foreach ($name in @('MINIMAP_SCALE_CHECK_INTERVAL_MS','MAP_LOAD_RESUME_DELAY_MS','MOD_SWITCH_CHECK_INTERVAL_MS','MINIMAP_UPDATE_INTERVAL_MS','FAST_MOTION_HEARTBEAT_MS')) {
+foreach ($name in @('MINIMAP_SCALE_CHECK_INTERVAL_MS','MAP_LOAD_RESUME_DELAY_MS','MINIMAP_UPDATE_INTERVAL_MS','FAST_MOTION_HEARTBEAT_MS')) {
     $pattern = 'local ' + $name + ' = (\d+)'
     Assert-True ([regex]::Match($main,$pattern).Groups[1].Value -eq [regex]::Match($baselineMain,$pattern).Groups[1].Value) "Unapproved Lua cadence deviation: $name"
 }
@@ -442,10 +526,7 @@ $missingPlayer = $main.IndexOf('if player_x == nil or player_y == nil then')
 $clearPublishedTime = $main.IndexOf('world_time_available = false', $missingPlayer)
 $missingPlayerWrite = $main.IndexOf('write_disabled_motion()', $missingPlayer)
 Assert-True ($missingPlayer -ge 0 -and $clearPublishedTime -gt $missingPlayer -and $clearPublishedTime -lt $missingPlayerWrite) 'Context-loss frame can serialize stale world-time availability.'
-$modDisable = $main.IndexOf('local function disable_for_mod_switch()')
-$modClearTime = $main.IndexOf('world_time_available = false', $modDisable)
-$modWrite = $main.IndexOf('write_disabled_motion()', $modDisable)
-Assert-True ($modClearTime -gt $modDisable -and $modClearTime -lt $modWrite) 'mods.txt disable can serialize stale world-time availability.'
+foreach ($forbiddenRuntimeModCheck in @('is_mod_enabled_in_mods_file','MOD_SWITCH_CHECK_INTERVAL_MS','IsEnabledInModsFile')) { Assert-True (-not ($main+$radar).Contains($forbiddenRuntimeModCheck)) "Runtime mods.txt polling remains: $forbiddenRuntimeModCheck" }
 $f7Gate = $main.IndexOf('if not has_configured_visible_features() then')
 $f7Enable = $main.IndexOf('activation_requested = true', $f7Gate)
 $f7Return = $main.IndexOf('return', $f7Gate)
@@ -521,6 +602,45 @@ if ($clockEnabled) {
     $old=Queue-ClockTaskModel;Invalidate-ClockTaskModel;Run-ClockTaskModel $old
     $fresh=Queue-ClockTaskModel;Run-ClockTaskModel $fresh
     Assert-True ($queueModel.FreshQueues-eq 2 -and $queueModel.NativeReads-eq 1 -and $fresh-ne$old) 'Queue -> F8/travel -> stale callback -> next F7 lifecycle is incorrect.'
+}
+
+# Expanded-map lifecycle model: at most one ProcessEvent callback may remain
+# queued. Travel/F8 invalidates its numeric epoch without opening the pending
+# gate; only the stale callback itself drains that gate before a new queue.
+$worldRequest = [ordered]@{ Epoch=1; LoopToken=1; NextToken=0; Pending=$false; PendingToken=$null; PendingEpoch=$null; Owner=$null; Queues=0; Reads=0; PeakPending=0 }
+function Queue-WorldRequestModel {
+    if($script:worldRequest.Pending){return $null}
+    $script:worldRequest.NextToken++
+    $script:worldRequest.Pending=$true
+    $script:worldRequest.PendingToken=$script:worldRequest.NextToken
+    $script:worldRequest.PendingEpoch=$script:worldRequest.Epoch
+    $script:worldRequest.Owner=$script:worldRequest.LoopToken
+    $script:worldRequest.Queues++
+    $script:worldRequest.PeakPending=1
+    return $script:worldRequest.PendingToken
+}
+function Invalidate-WorldRequestModel {
+    $script:worldRequest.Epoch++
+    $script:worldRequest.LoopToken++
+}
+function Run-WorldRequestModel([int]$Token,[int]$Epoch,[int]$Owner) {
+    if($Epoch-eq$script:worldRequest.Epoch-and$Owner-eq$script:worldRequest.LoopToken){$script:worldRequest.Reads++}
+    if($script:worldRequest.PendingToken-eq$Token-and$script:worldRequest.PendingEpoch-eq$Epoch-and$script:worldRequest.Owner-eq$Owner){
+        $script:worldRequest.Pending=$false
+        $script:worldRequest.PendingToken=$null
+        $script:worldRequest.PendingEpoch=$null
+        $script:worldRequest.Owner=$null
+    }
+}
+$oldToken=Queue-WorldRequestModel;$oldEpoch=$worldRequest.PendingEpoch;$oldOwner=$worldRequest.Owner
+Invalidate-WorldRequestModel
+$blockedToken=Queue-WorldRequestModel
+Run-WorldRequestModel $oldToken $oldEpoch $oldOwner
+$newToken=Queue-WorldRequestModel;$newEpoch=$worldRequest.PendingEpoch;$newOwner=$worldRequest.Owner
+Run-WorldRequestModel $newToken $newEpoch $newOwner
+Assert-True ($null-eq$blockedToken-and$worldRequest.Queues-eq2-and$worldRequest.Reads-eq1-and$worldRequest.PeakPending-eq1) 'Expanded-map pending gate allowed overlap or stale UObject reads across a transition.'
+foreach ($marker in @('world_map._main_motion_game_thread_callback = function()','local function queue_world_motion_update(owner_loop_token)','world_motion_update_pending','world_motion_pending_token == request_token','ExecuteInGameThread(callback, EGameThreadMethod.ProcessEvent)','task_kind = "world_motion"')) {
+    Assert-True ($main.Contains($marker)) "Bounded expanded-map ProcessEvent marker is missing: $marker"
 }
 
 # Executable master-gate model: configuration ownership is independent from
@@ -644,5 +764,21 @@ Assert-True ($loopModel.Max-le1) 'Logical compact/world loop concurrency exceede
 $oldPending=++$loopModel.PendingToken;$newPending=++$loopModel.PendingToken
 if($oldPending-eq$loopModel.PendingToken){$loopModel.PendingToken=0}
 Assert-True ($loopModel.PendingToken-eq$newPending) 'Stalled old callback cleared the new pending gate.'
+
+# One shared ProcessEvent slot covers every task type. A callback timeout poisons
+# the route once for the session and never submits a replacement to the dead queue.
+Assert-True ($main.Contains('local process_event_dispatch = {') -and $main.Contains('timeout_ms = 3000')) 'Serialized ProcessEvent timeout/state table is missing.'
+Assert-True ($main.Contains('PROCESS_EVENT_DISPATCH_POISONED')) 'ProcessEvent route poisoning is not observable.'
+Assert-True ($main.Contains('retry_count = 0') -and $main.Contains('engine_tick_fallback = false')) 'Poisoned ProcessEvent policy does not explicitly prohibit retries and fallback.'
+Assert-True (-not $main.Contains('ACTIVATION_CALLBACK_TIMEOUT_RETRY')) 'Obsolete activation-only retry still queues work to a stalled ProcessEvent route.'
+$dispatchModel=[ordered]@{Pending=$true;Elapsed=0;Queues=1;Peak=1;Poisoned=$false;Retries=0;Epoch=1;ScheduledEpoch=1;Reads=0}
+1..20|ForEach-Object{if(-not$dispatchModel.Pending-and-not$dispatchModel.Poisoned){$dispatchModel.Pending=$true;$dispatchModel.Queues++};$dispatchModel.Peak=[Math]::Max($dispatchModel.Peak,[int]$dispatchModel.Pending)}
+Assert-True ($dispatchModel.Queues-eq1-and$dispatchModel.Peak-eq1) 'Cross-task producer pressure created more than one ProcessEvent request.'
+1..12|ForEach-Object{$dispatchModel.Elapsed=[Math]::Min(3000,$dispatchModel.Elapsed+250)}
+if($dispatchModel.Pending-and$dispatchModel.Elapsed-ge3000){$dispatchModel.Poisoned=$true;$dispatchModel.Retries=0}
+Assert-True ($dispatchModel.Poisoned-and$dispatchModel.Retries-eq0-and$dispatchModel.Queues-eq1) 'Stalled ProcessEvent route retried or failed to poison once.'
+$dispatchModel.Epoch=2
+if(-not$dispatchModel.Poisoned-and$dispatchModel.ScheduledEpoch-eq$dispatchModel.Epoch){$dispatchModel.Reads++}
+Assert-True ($dispatchModel.Reads-eq0) 'Poisoned stale ProcessEvent work reached a UObject read after an epoch change.'
 
 Write-Host "PERFORMANCE_SCHEDULING_TESTS_OK assertions=$script:assertionCount; luaExecution=unavailable; stateModels=executed"

@@ -160,8 +160,31 @@ local function remember_world_map_layer(layer, source, allow_retired)
         end
     end
     if #candidates >= MAX_CANDIDATES then
-        rejected_cap = rejected_cap + 1
-        return false
+        if source == "notify-current-epoch" then
+            -- Closed map widgets may remain valid but hidden after UMG removes
+            -- them from presentation. Prefer the newly created current-epoch
+            -- widget over one such hidden entry so two historical wrappers
+            -- cannot permanently block later map opens. This is event-driven
+            -- and bounded by MAX_CANDIDATES; active visible entries are never
+            -- displaced and no recurring UObject work is added.
+            local hidden_index = nil
+            for index = 1, #candidates do
+                local entry = candidates[index]
+                if entry_current(entry)
+                    and not is_visible(entry.object)
+                then
+                    hidden_index = index
+                    break
+                end
+            end
+            if hidden_index ~= nil then
+                table.remove(candidates, hidden_index)
+            end
+        end
+        if #candidates >= MAX_CANDIDATES then
+            rejected_cap = rejected_cap + 1
+            return false
+        end
     end
     table.insert(candidates, {
         object = layer,

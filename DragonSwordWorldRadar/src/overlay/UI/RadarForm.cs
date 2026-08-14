@@ -104,8 +104,9 @@ namespace DragonSwordWorldRadar
         private int _compactOverlayHeight = ReferenceOverlaySize +
             ReferenceStatusStripGap + ReferenceStatusStripHeight;
         private string _lastGeometryLog;
-        private string _lastSaveFilterLog;
-        private DateTime _nextSaveFilterLogUtc;
+        private int _lastSaveFilterSaveVersion = -1;
+        private int _lastSaveFilterCatalogVersion = -1;
+        private int _lastSaveFilterIndexVersion = -1;
         private int _gameProcessId;
         private IntPtr _gameWindowHandle;
         private bool _overlaySuppressed;
@@ -2530,14 +2531,21 @@ namespace DragonSwordWorldRadar
 
         private void LogSaveFilterStatus()
         {
-            if (!_debugEnabled
-                || DateTime.UtcNow < _nextSaveFilterLogUtc)
+            if (!_debugEnabled)
             {
                 return;
             }
 
             DateTime nowUtc = DateTime.UtcNow;
-            _nextSaveFilterLogUtc = nowUtc.AddSeconds(2);
+            int saveVersion = _saveState.Version;
+            int catalogVersion = _worldTreasures.Version;
+            int indexVersion = _worldTreasureIndex.Version;
+            if (saveVersion == _lastSaveFilterSaveVersion
+                && catalogVersion == _lastSaveFilterCatalogVersion
+                && indexVersion == _lastSaveFilterIndexVersion)
+            {
+                return;
+            }
             MotionFrame motion = GetCurrentMotion(nowUtc);
             int catalogCount = _worldTreasures.Points.Count;
             int openFilteredCount = _worldTreasureIndex.Count;
@@ -2575,11 +2583,10 @@ namespace DragonSwordWorldRadar
                 + Environment.NewLine
                 + details;
 
-            if (message != _lastSaveFilterLog)
-            {
-                _lastSaveFilterLog = message;
-                ErrorLog.WriteDebug(message);
-            }
+            ErrorLog.WriteDebug(message);
+            _lastSaveFilterSaveVersion = saveVersion;
+            _lastSaveFilterCatalogVersion = catalogVersion;
+            _lastSaveFilterIndexVersion = indexVersion;
         }
 
         private string BuildRadarDebugDetails()
@@ -2928,14 +2935,6 @@ namespace DragonSwordWorldRadar
             _nextGameLifetimeCheckUtc = now.AddMilliseconds(
                 GameLifetimeCheckIntervalMs);
 
-            if (!IsEnabledInModsFile())
-            {
-                ErrorLog.WriteDebug(
-                    "mods.txt disabled DragonSwordWorldRadar; closing overlay.");
-                Close();
-                return;
-            }
-
             bool gamePresent = false;
             try
             {
@@ -2991,51 +2990,6 @@ namespace DragonSwordWorldRadar
             ErrorLog.WriteDebug(
                 "Game process exited; closing DragonSwordWorldRadar overlay.");
             Close();
-        }
-
-
-        private static bool IsEnabledInModsFile()
-        {
-            try
-            {
-                string modsPath = Path.GetFullPath(
-                    Path.Combine(
-                        ModPath.BaseDirectory,
-                        "..",
-                        "mods.txt"));
-                if (!File.Exists(modsPath))
-                {
-                    return true;
-                }
-
-                string[] lines = File.ReadAllLines(modsPath);
-                for (int index = 0; index < lines.Length; index++)
-                {
-                    string line = lines[index].Trim();
-                    if (!line.StartsWith(
-                            "DragonSwordWorldRadar",
-                            StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-
-                    int colon = line.IndexOf(':');
-                    if (colon < 0 || colon + 1 >= line.Length)
-                    {
-                        continue;
-                    }
-
-                    string value = line.Substring(colon + 1).TrimStart();
-                    return value.StartsWith(
-                        "1",
-                        StringComparison.Ordinal);
-                }
-            }
-            catch
-            {
-                // A transient read failure must not terminate a valid session.
-            }
-            return true;
         }
 
         private void UpdateOverlayVisibility()

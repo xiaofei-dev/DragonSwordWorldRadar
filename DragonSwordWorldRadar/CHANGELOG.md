@@ -1,5 +1,77 @@
 # Changelog
 
+## 0.4.0-dev74-processdispatchguard1-localcapfix1
+
+- Fixes the release-blocking UE4SS load error `too many local variables (limit is 200)` introduced by the serialized dispatcher candidate. Dispatcher constants, ownership state, and stable handlers now share one table without changing scheduling behavior.
+- Adds a source gate capped at 190 top-level Lua locals, preserving ten slots of headroom below the VM limit so a syntactically valid but unloadable `main.lua` cannot pass the normal build again.
+
+## 0.4.0-dev74-processdispatchguard1
+
+- Serializes activation, compact control, one-shot clock, and expanded-map UObject work through one stable ProcessEvent callback and one shared in-flight slot; task producers coalesce behind that slot instead of submitting independent UE4SS actions.
+- Preserves task-owned scalar tokens and the world epoch at both dispatcher and task layers, so F8, travel, or runtime recovery makes queued work stale before any UObject access.
+- Replaces the ineffective activation-only retry with a session-scoped ProcessEvent poison state. One accepted callback that fails to enter within three seconds disables WorldRadar and permanently rejects further F7 submissions for the current game session without retrying the dead route.
+- Keeps EngineTick fallback intentionally absent. Normal sampling and presentation intervals, UObject read counts, bridge traffic, save work, and LoopAsync registration count are unchanged.
+
+## 0.4.0-dev74-savecooldown1
+
+- Starts a fresh 19-second eligibility cooldown after every completed or failed SQLCipher worker, preventing an expired change-check deadline from immediately queuing a catch-up snapshot after a slow query.
+- Retains a changed active-slot fingerprint while a worker is busy or cooling and revalidates the current source before the next eligible queue; unchanged saves still exit before copy or SQLCipher.
+- Replaces the moving-coordinate two-second treasure detail log with save/catalog/filter version gates. Acceptance debug remains enabled by default without repeatedly sorting and formatting nearby treasure details.
+
+## 0.4.0-dev74-startuponlyio1
+
+- Removed runtime `mods.txt` polling from Lua and the Overlay. The existing watcher host performs the single startup enablement check; changing `mods.txt` during a running game now requires a game restart.
+- Loads `data/treasure_overrides.txt` and its generated name catalog once during Overlay construction. Runtime edits require a game restart and no longer cause two filesystem metadata reads per second.
+- Defaults `high_resolution_timer` and `debug_logging` to `true` for final runtime acceptance while keeping `diagnostic_verbose` false.
+
+## 0.4.0-dev74-savechangegate1
+
+- Replaced the two-second metadata poll, four-second debounce, and 45-second periodic snapshot window with one non-harmonic 19-second change-check interval.
+- Exits before snapshot copy or SQLCipher whenever the active slot, exact source fingerprint, and key match the last successful publication; changed input queues one complete background snapshot immediately.
+- Retains fail-closed before/after copy fingerprint validation, so a concurrent game save is discarded instead of publishing a mixed database/WAL snapshot.
+
+## 0.4.0-dev74-processeventfix1
+
+- Removed the expanded-map `LoopInGameThreadAfterFrames` action after runtime evidence showed UE4SS `EngineTick.LuaModImpl` failing with `Ref was not function`, followed by stalled map production and F7 activation callbacks.
+- Routes every WorldRadar game-thread handoff explicitly through `EGameThreadMethod.ProcessEvent` and fails closed when that route is unavailable, avoiding the installed UE4SS EngineTick deferred-action queue whose overlapping-action registry failure matches the observed log.
+- Restores the 8 ms expanded-map request path with one reusable callback object and one strict pending request across F8/travel epochs. A stale queued callback cannot read UObjects and must drain before another lifecycle can queue work; compact sampling, drawing, bridge, save, and presentation cadences are unchanged.
+
+## 0.4.0-dev74-gameupdate1
+
+- Rebound the exact Assault inference policy to game fingerprint `f7c6734b99d4` after a fresh current-PAK audit reproduced all 1693 Treasure, 9 Boss, 83 mini-game, and 40 Assault records without semantic changes.
+- Retains the map-100 correction for eastern Boss IDs `9000022`, `9000023`, and `9000025` and the bounded hidden-candidate replacement fix from `0.4.0-dev74-worldmapcandidatefix1`.
+
+## 0.4.0-dev74-worldmapcandidatefix1
+
+- Corrected eastern field Boss IDs `9000022`, `9000023`, and `9000025` to map group 100. Their authoritative `SectionUID` values end in `100`; genuine map-200 treasure records remain untouched.
+- Fixed expanded-map reopen starvation: a newly created current-epoch map widget can replace one retained hidden candidate when the two-entry cap is full, while active visible candidates remain protected. This adds no recurring scan or polling work.
+- Retains the persistent game-frame world-map sampler introduced by `0.4.0-dev74-worldmapframeloopfix1`.
+
+## 0.4.0-dev74-worldmapframeloopfix1
+
+- Replaced the visible world's repeated 8 ms `LoopAsync -> ExecuteInGameThread` submissions with one UE4SS `LoopInGameThreadAfterFrames(1, ...)` action that is created once, paused while inactive, and resumed for later map sessions.
+- Removed the continuous world-map `luaL_ref`/`luaL_unref` cycle confirmed in the exact installed UE4SS implementation; expanded-map UMG reads now occur once per game frame, while scalar bridge presentation remains at 8 ms.
+- Preserved fail-closed world epoch/loop-token ownership and added bounded handle validation plus pause/resume failure reporting. F8, travel, map close, and generation invalidation revoke numeric ownership before any native pause attempt, so an indeterminate pause can perform only a scalar no-op and cannot admit a duplicate frame action.
+- Retained the dev74 compact radar, top-level minimap cache correction, activation watchdog, catalogs, and rendering behavior unchanged.
+
+## 0.4.0-dev74-worldmapcallbackfix1
+
+- Fixed the confirmed lifecycle overlap after F8 or travel invalidated an outstanding visible-world-map game-thread task: its scalar pending ownership now remains closed until the stale callback drains instead of allowing a second lifecycle to queue over it.
+- Replaced the visible 8 ms world's per-sample anonymous `ExecuteInGameThread` closure with one stable function object, removing continuous native Lua-registry callback-reference churn without adding a timer, thread, UObject read, bridge operation, or render pass.
+- Preserved the dev74 8 ms expanded-map cadence and all existing epoch/token/UObject fail-closed gates, and retained the preceding top-level `DLayerMiniMap` cache correction.
+
+## 0.4.0-dev74-minimapfindfix1
+
+- Fixed the confirmed post-travel one-hertz `DLayerMiniMap` global lookup hitch by separating top-level UObject lifetime from temporary nested-property availability.
+- Retains only the freshly validated top-level `DLayerMiniMap` root when `LayerMap -> MapOverlay -> RenderTransform.Scale.X` is temporarily unavailable; the nested wrappers remain callback-local and protected by `pcall`.
+- Revalidates the root before every scalar sample and still purges it on every world/F8 transition. Stable cache-hit samples perform no `FindFirstOf`, while protected property reads continue so minimap scale can recover without a new timer, hook, enumeration, or retry loop.
+
+## 0.4.0-dev74-activationwatchdog1
+
+- Fixed the confirmed F8-to-F7 permanent-disabled state where `ExecuteInGameThread` accepted an activation probe but never invoked its callback.
+- Added a scalar-only three-second activation callback deadline that invalidates the stale token and queues exactly one replacement probe.
+- Fails closed after the single replacement also times out; automatic retries stop, while a later manual F7 remains available. All dev74 sampling, rendering, catalog, and save-query behavior is unchanged.
+
 ## 0.4.0-dev74-minigamecatalog2
 
 - Kept the established 250 ms control loop alive during bounded runtime recovery instead of replacing its active UE4SS Lua callback.

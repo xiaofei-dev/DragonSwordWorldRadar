@@ -1,7 +1,7 @@
 {
     "schema_version":  3,
-    "version":  "0.4.0-dev74-minigamecatalog2",
-    "generated_at_utc":  "2026-08-12T06:31:01.4831399Z",
+    "version":  "0.4.0-dev74-processdispatchguard1-localcapfix1",
+    "generated_at_utc":  "2026-08-13T16:01:41.0337916Z",
     "hash_mode":  "sha256_raw_file_bytes",
     "excludes":  [
                      "metadata/source-manifest.json",
@@ -13,9 +13,9 @@
                      "src/installer/Core/obj/",
                      "src/installer/Core/bin/"
                  ],
-    "baseline_commit":  "889ec3ad161d0fec53a58668e6cfaa781fc36520",
+    "baseline_commit":  "a7470050569e75816690e12987634f42d2c63327",
     "scope":  "complete DragonSwordWorldRadar repository source inventory",
-    "file_count":  122,
+    "file_count":  123,
     "files":  [
                   {
                       "path":  ".gitattributes",
@@ -44,33 +44,33 @@
                   },
                   {
                       "path":  "build/Build-Release.ps1",
-                      "size":  7771,
-                      "sha256":  "4ba15e393cf6d14ab041f0d9cc0cd1161f29979d2c52309c478aab6921800b81"
+                      "size":  7802,
+                      "sha256":  "57eb1b5f17dae2a4294e93c345221e2fe43bed5fdfdcfd47461c52468be08d8a"
                   },
                   {
                       "path":  "build/Compile-Source.ps1",
-                      "size":  2077,
-                      "sha256":  "4c7516c7b58735bc38fc1b301c6f8ce56f783d82931e1cb694cf38f389694511"
+                      "size":  2088,
+                      "sha256":  "ecb684c76a9ff7bbad8a35dab374032059f72bf02d006f815a3fe9f555d4fe1e"
                   },
                   {
                       "path":  "build/Refresh-SourceMetadata.ps1",
-                      "size":  8670,
-                      "sha256":  "5f19fedc268623fa49aebf9d52cc2e974d53ebfe6202e6bc5882bb33e72b3253"
+                      "size":  8823,
+                      "sha256":  "973c844ce571085a6ae36112510fc2b722d0a5134ec58e018546f14231687e6a"
                   },
                   {
                       "path":  "build/Test-AssaultIntegration.ps1",
-                      "size":  10295,
-                      "sha256":  "de96689681456fd0027076da6ec0cdf056b1a51345a254254734c5bf12b7a68f"
+                      "size":  10362,
+                      "sha256":  "ce841151e2b87d6fa41a677c6fc6c47b3d4d7e1d7826e693e574f4f3b4b31c03"
                   },
                   {
                       "path":  "build/Test-MoleFlightCatalog.ps1",
-                      "size":  6744,
-                      "sha256":  "8380fce991046d2e0810eeef693cb17baa8991d86355969fbcbe881b8a694931"
+                      "size":  6883,
+                      "sha256":  "08c751d666a609b357f3023f7e2fb861b47952096bf7918bbcbf7cf40db67d7f"
                   },
                   {
                       "path":  "build/Test-PerformanceScheduling.ps1",
-                      "size":  64991,
-                      "sha256":  "59a519bb37655bb756e213dd26add45b02f6bc69dc63e53035d6a046cf4387c8"
+                      "size":  77939,
+                      "sha256":  "b83e75329adc8490973d14478f023622aecd70a4b85c65d68b2c9a44dbfbe4a8"
                   },
                   {
                       "path":  "build/Test-Refactor.ps1",
@@ -79,23 +79,23 @@
                   },
                   {
                       "path":  "build/Test-ReleasePackage.ps1",
-                      "size":  8836,
-                      "sha256":  "587ec5fcd265a06a73b10b091fec0b0067172fc0535e892394d133ca50dde459"
+                      "size":  9080,
+                      "sha256":  "45f41e6f5732171db080c196a99c43ea67e793fb8817f6d2a3b882bcb784a711"
                   },
                   {
                       "path":  "build/ValidationHarness.cs",
-                      "size":  59433,
-                      "sha256":  "4b8ec01b0611982440c9d2dd44c9abf34819be1a39c6084413dac6921c1b9c16"
+                      "size":  60544,
+                      "sha256":  "b2f9aa5eb3c7f2e36e435c5c27c6d46efafc6b93d1c52d35f7ad3d6beb264fef"
                   },
                   {
                       "path":  "build/Verify-Source.ps1",
-                      "size":  59700,
-                      "sha256":  "7f0d03e207043fbf479ac717e9b62b12fa7226cd503abac8718a91b6f5e6e247"
+                      "size":  68748,
+                      "sha256":  "60b9cccb95a28af68dd15b5bad149e3144a7de4eaad213e9145c6639434e5dbb"
                   },
                   {
                       "path":  "CHANGELOG.md",
-                      "size":  56175,
-                      "sha256":  "e0492cde502b579ca780b4e126e62ad902d906e8e6ec113a3ca5adef3724e402"
+                      "size":  64205,
+                      "sha256":  "7840b6f34efb64e28296361f43d71d75f9c1f46f2f2e126819aaccbad2b00280"
                   },
                   {
                       "path":  "CONTRIBUTING.md",
@@ -104,8 +104,8 @@
                   },
                   {
                       "path":  "docs/ARCHITECTURE.md",
-                      "size":  15941,
-                      "sha256":  "9acd44df6679b6b1dfba9286625f5119dd9fa74de8c870d8c47aa5d3c487885f"
+                      "size":  17299,
+                      "sha256":  "1b0ae3b83e8f16875d5733f04b646adb73096700cc4473db579b2166ae66f93e"
                   },
                   {
                       "path":  "docs/DATA_PROVIDERS.md",
@@ -114,8 +114,8 @@
                   },
                   {
                       "path":  "docs/PERFORMANCE_BASELINE.md",
-                      "size":  11756,
-                      "sha256":  "1e48697c7f591b63d8813ce2bdf33368ae06b2bbb764d2af415b91afd033bffe"
+                      "size":  13092,
+                      "sha256":  "55006388dc64f0facd047ed27ca1e4deb45a2ed85448a83991d8a06fb55f6181"
                   },
                   {
                       "path":  "docs/UPDATE_DETECTION.md",
@@ -150,12 +150,12 @@
                   {
                       "path":  "metadata/assault-inference-policy.xml",
                       "size":  614,
-                      "sha256":  "b8e3397a8c28a1d0710758ca943d5db2d4282f432ce6adf2a9668514aa7d6475"
+                      "sha256":  "9831cf1d783790ebf8eb955061bd9ecf6b831c04968336cb858a6bac4ba58e35"
                   },
                   {
                       "path":  "metadata/build-validation.json",
-                      "size":  9985,
-                      "sha256":  "5f4c5f98713cb7c1338a98f565bf59be07584f0cd2084a808f892fca8ba9e639"
+                      "size":  10019,
+                      "sha256":  "f6239a425e317cb083dd76cc2ccbc1fb3cd10887797ac3d0a60a9d195da1ac5d"
                   },
                   {
                       "path":  "metadata/data-providers.json",
@@ -164,28 +164,28 @@
                   },
                   {
                       "path":  "metadata/release.json",
-                      "size":  17402,
-                      "sha256":  "c210b516ac4071611697611c9110cac54f8e3d3dc42a7bbbd8eb8bbf1f11b7fb"
+                      "size":  19312,
+                      "sha256":  "9cf1bbfb746836c60f44e4dea59a98b243028929d8fb01705ee80ea377528951"
                   },
                   {
                       "path":  "metadata/repository-source-validation.json",
-                      "size":  4773,
-                      "sha256":  "c2346e371ce58243d3c1c73cbcb717311954981aec52676960a3f05ccb6e33a2"
+                      "size":  4853,
+                      "sha256":  "6eee528be8dae7a8164e0b1a489944c20ca8af43e5da6b992187d211726f121d"
                   },
                   {
                       "path":  "metadata/source-release-map.json",
-                      "size":  55173,
-                      "sha256":  "6ad84a6ecb8a91f7210ac081c8c94094b321535f1c67a34a7d570b7f05749d79"
+                      "size":  55193,
+                      "sha256":  "011ba824f70fa57077855620f8aa518487ca02ba61c17e789c5c8be3b6003ee2"
                   },
                   {
                       "path":  "metadata/source-snapshot.json",
-                      "size":  963,
-                      "sha256":  "bf9c72c684c8c62a4370a584355ebc71167fe59ce266122ddf2228912563dafd"
+                      "size":  976,
+                      "sha256":  "1e550016f1eda593a3a4f6f2d1a5fb99c50ffe7bfbbe602331365fd44e55732a"
                   },
                   {
                       "path":  "PROJECT_CONTEXT.md",
-                      "size":  9441,
-                      "sha256":  "11afb5d0d159ec6840762a8bf7a1a672d16c190a8f173425d5cca9c4a81ed376"
+                      "size":  10084,
+                      "sha256":  "d4250c2e6557f31bfb4e36b80a2ccd5da21469db55e27712742a68c576be7673"
                   },
                   {
                       "path":  "Publish-GitHub.cmd",
@@ -199,8 +199,8 @@
                   },
                   {
                       "path":  "README.md",
-                      "size":  18782,
-                      "sha256":  "99b56df4cf21e27106cc9d450d77e8aed8674b594fd9d3850094e7246e0fc4c4"
+                      "size":  20215,
+                      "sha256":  "cca43feb0b4c4e16d601ce1522fddcdf22183983a61c57f4c0642e5b260e2951"
                   },
                   {
                       "path":  "resources/defaults/treasure_overrides.txt",
@@ -214,8 +214,8 @@
                   },
                   {
                       "path":  "SOURCE_PACKAGE.md",
-                      "size":  3540,
-                      "sha256":  "3904f439347e95a1965be7d5e5df3ba337b754932af4722090cf690f0eec69b5"
+                      "size":  3686,
+                      "sha256":  "9c9af18fdd62c244ef7a9c817a8e104f063fc001a1c4cee8d14fe696c4b22b5e"
                   },
                   {
                       "path":  "src/host/DragonSwordWorldRadar.Common.ps1",
@@ -224,18 +224,18 @@
                   },
                   {
                       "path":  "src/host/DragonSwordWorldRadar.Host.ps1",
-                      "size":  3872,
-                      "sha256":  "2e030f04c2fd0f6ac84d669381cf881b8169a7fb4da098f791ad0d1a2426f381"
+                      "size":  3908,
+                      "sha256":  "fee332ff78d620f34621259fbbb6adf2ef68f52ac8e50358be2fe2bfc7e55f5e"
                   },
                   {
                       "path":  "src/host/DragonSwordWorldRadar.Watcher.ps1",
-                      "size":  4133,
-                      "sha256":  "552a8d9088959d1e066105cb84d665dd5c0f260e3683ecc77105d9ca688f7bf4"
+                      "size":  4151,
+                      "sha256":  "6c3a8ef0392d72dc9b8e56f11c3bf803ac8ce3793648fa8adf14c39a62a16982"
                   },
                   {
                       "path":  "src/host/DragonSwordWorldRadar.Watcher.vbs",
-                      "size":  3313,
-                      "sha256":  "2e309db26710b052c0dbe084b905c1323d69584b164ed04306345a733830473c"
+                      "size":  3331,
+                      "sha256":  "819389fe560b3914fb4c3de5835ee1aee5c58e06649b8b94908c0de76d93509d"
                   },
                   {
                       "path":  "src/installer/Core/Compression/OodleNative.cs",
@@ -249,8 +249,8 @@
                   },
                   {
                       "path":  "src/installer/Core/Generation/AdditionalMiniGameLuaGenerator.cs",
-                      "size":  7488,
-                      "sha256":  "bc81ff817eaf05906969bd239961f2f7ad4f49e686e90ac36a072c472d51af6a"
+                      "size":  7635,
+                      "sha256":  "aad9b359c9c108bd9d1e12b8140b064998e658811028ceb59e301441ec600268"
                   },
                   {
                       "path":  "src/installer/Core/Generation/AssaultLuaGenerator.cs",
@@ -259,13 +259,13 @@
                   },
                   {
                       "path":  "src/installer/Core/Generation/BossLuaGenerator.cs",
-                      "size":  9309,
-                      "sha256":  "eb48e2c45c3149a85fa392b0998d7543031eb38663073dc9f6d70af6f8baf5e5"
+                      "size":  9687,
+                      "sha256":  "c7de857aa5b3a1004d8ff8eaaef35389dcbc0b9ea715bf6d6176acbd09f2aa08"
                   },
                   {
                       "path":  "src/installer/Core/Generation/MoleLuaGenerator.cs",
-                      "size":  47438,
-                      "sha256":  "3d19c268a6234cb268e2b211d2effcecd6748f874d5a3db78aa9a391542ddd9d"
+                      "size":  48755,
+                      "sha256":  "bc662d1b77cfa2902e65031ff9cc0a30c367f9410ebf886d5030abfa6e27d1a5"
                   },
                   {
                       "path":  "src/installer/Core/Generation/OwnerPointerRvaResolver.cs",
@@ -329,8 +329,8 @@
                   },
                   {
                       "path":  "src/installer/Core/Providers/MoleDataProvider.cs",
-                      "size":  9329,
-                      "sha256":  "b1726637565d295810bbc53dff797edd4a3f1810de9f2e84e9f2a57cc94d1c21"
+                      "size":  9564,
+                      "sha256":  "7d9a58184d18f344fdc64a85c674a31402bfb83d03e6900cd662c3539960c840"
                   },
                   {
                       "path":  "src/installer/Core/Providers/TreasureDataProvider.cs",
@@ -344,18 +344,18 @@
                   },
                   {
                       "path":  "src/installer/Install.ps1",
-                      "size":  32248,
-                      "sha256":  "1f6bc249623e0129466cf5835768fbc2e4b2043d336786e1a95da2b229206bf7"
+                      "size":  32457,
+                      "sha256":  "984f99bcd515306e4a54db440580b5bb347448480e3a57fb4ad6a08ac584c85c"
                   },
                   {
                       "path":  "src/overlay/Bridge/MotionBridgeReader.cs",
-                      "size":  21998,
-                      "sha256":  "8ed67fa0360abddc39c1e1ce79128e7b2297c50037c56035a463c14c0202268b"
+                      "size":  22471,
+                      "sha256":  "69ff533b07047428ab7ea9d431ab42dc957915716ae2200304c1cffdc099958a"
                   },
                   {
                       "path":  "src/overlay/Bridge/MotionRecordParser.cs",
-                      "size":  18327,
-                      "sha256":  "2778216a6dfb22bef49b10a82358aeb71d793211f279a9c8eed1c4c0a1768ffb"
+                      "size":  18356,
+                      "sha256":  "afc076a7f28467d4a9a2bcfc98468d8d844e1917c0efc613fa4ed6b76532dbc7"
                   },
                   {
                       "path":  "src/overlay/Bridge/SharedBridgeFile.cs",
@@ -369,8 +369,8 @@
                   },
                   {
                       "path":  "src/overlay/Data/MoleRewardVisibilityIndex.cs",
-                      "size":  3361,
-                      "sha256":  "a19920139a96b79f05d4a9b32396ed99400d01500521f69721cc7d39d9373611"
+                      "size":  3453,
+                      "sha256":  "041c91fb02b5139b51ea3f1806625f6b418bd2fb387c0480956175a925e3fced"
                   },
                   {
                       "path":  "src/overlay/Data/TreasureIdentity.cs",
@@ -394,8 +394,8 @@
                   },
                   {
                       "path":  "src/overlay/Data/WorldMoleCatalog.cs",
-                      "size":  10698,
-                      "sha256":  "af7fab5c1bbe0f3db9a2289212650e9d1bf76c9dd1c35705429ddf0b8eb3589e"
+                      "size":  10983,
+                      "sha256":  "4988bd3c7e78db123e42990e9e8b60f28d576c50c6913ef5c93191d38397e8c7"
                   },
                   {
                       "path":  "src/overlay/Data/WorldTreasureCatalog.cs",
@@ -404,8 +404,8 @@
                   },
                   {
                       "path":  "src/overlay/Data/WorldTreasureVisibilityIndex.cs",
-                      "size":  4787,
-                      "sha256":  "6f97dc757eb77d29f8a1f5a8b30d8f1e52d2063d9521105303ea96bba9d7fe01"
+                      "size":  4797,
+                      "sha256":  "672fcce95ad26ae8032336aff66a0f8e0830cc54565cc53cebc22e0b01950a79"
                   },
                   {
                       "path":  "src/overlay/Diagnostics/ErrorLog.cs",
@@ -439,8 +439,8 @@
                   },
                   {
                       "path":  "src/overlay/Models/WorldMole.cs",
-                      "size":  549,
-                      "sha256":  "4146cea115b09d93d16014fc81bdd1535bfe0c34bf5e1faa72564f1924fd2415"
+                      "size":  566,
+                      "sha256":  "630fa10fbcad76332267eae0398be5df516a858f8999957504577712f943bed4"
                   },
                   {
                       "path":  "src/overlay/Models/WorldTreasure.cs",
@@ -464,8 +464,8 @@
                   },
                   {
                       "path":  "src/overlay/Platform/NativeMethods.cs",
-                      "size":  5876,
-                      "sha256":  "7814b4732c5a5628be30bd2d4212994be76fe1a5191d3ccc9e5d9c7900b45893"
+                      "size":  5890,
+                      "sha256":  "1647674e435df584f4e5e041a2ab89c7582fa1b17efbb4a38823eeba766e7625"
                   },
                   {
                       "path":  "src/overlay/Program.cs",
@@ -489,8 +489,8 @@
                   },
                   {
                       "path":  "src/overlay/Rendering/MoleMarkerRenderer.cs",
-                      "size":  8922,
-                      "sha256":  "b2a111e7a733e5f1205242df31c867258e6d5491afd2139e20e1d7e7f9bea8f2"
+                      "size":  9101,
+                      "sha256":  "217b948c9f6c5e2f79bb42567427b4986aecff31ae25004b3050729068d8ebdc"
                   },
                   {
                       "path":  "src/overlay/Rendering/TreasureMarkerPalette.cs",
@@ -514,8 +514,8 @@
                   },
                   {
                       "path":  "src/overlay/SaveData/EncounterAvailabilityTracker.cs",
-                      "size":  4919,
-                      "sha256":  "40bf65a7de7289d30bd444aed6a1f8b712f964a640568f107a3f8d51570b426e"
+                      "size":  5078,
+                      "sha256":  "1cc52ff21ff21468dc48a96a3fdaa0f86e781d5f0f2f4dacf7ce501fe4f4dd5c"
                   },
                   {
                       "path":  "src/overlay/SaveData/GeneratedOwnerPointerConfig.cs",
@@ -539,23 +539,28 @@
                   },
                   {
                       "path":  "src/overlay/SaveData/SaveSnapshotReader.cs",
-                      "size":  31846,
-                      "sha256":  "643ad6ab533c45f9c7037dc33769cbe57a1e9e40082db3ef471f50ca9b90d270"
+                      "size":  32464,
+                      "sha256":  "d3d02b427b28dc588552572b65f6b1ecbedd3d217989576dee04d4d3dd7b1a94"
                   },
                   {
                       "path":  "src/overlay/SaveData/TreasureOverrides.cs",
-                      "size":  12676,
-                      "sha256":  "12f1b2b2b27994d7a6947bac41407b467a40e1fd0b40f4345f9e7abf07b5a8d3"
+                      "size":  12556,
+                      "sha256":  "096d7022c40cced72112968136ec3e6d1dbad393029de71c1fb2807e0ef0fce8"
                   },
                   {
                       "path":  "src/overlay/SaveData/TreasureSaveState.cs",
-                      "size":  39100,
-                      "sha256":  "6c0a1c41fbf16f4a8e3053d6418cd24f51e26f49719b9af43fda69264d2a2c67"
+                      "size":  37803,
+                      "sha256":  "fb08b49d3d9e5543abf26e740c96fa2d1c751b3df64aef62dc444f683bf50b5e"
                   },
                   {
                       "path":  "src/overlay/UI/RadarForm.cs",
-                      "size":  158013,
-                      "sha256":  "ca63e54d098e725fe4039624955e2c1b5e7bc72c55455b735bbe1a808aefa56c"
+                      "size":  157271,
+                      "sha256":  "63745770a8a40a8db3701b2a011bab7ddd0e8ef334ef10436a9fcf91af779278"
+                  },
+                  {
+                      "path":  "src/runtime/logs/DragonSwordWorldRadar.Install.log",
+                      "size":  512,
+                      "sha256":  "4af6fd8f0104fbb4a9e4629afe2454ed415b0b7c19ec0cc053685e8975f5c65a"
                   },
                   {
                       "path":  "src/tools/Collect-Diagnostics.cmd",
@@ -574,8 +579,8 @@
                   },
                   {
                       "path":  "src/ue4ss/config.lua",
-                      "size":  2033,
-                      "sha256":  "8c07618bed222bd196c33774747a54ec28916e3ff9b088b4033308c760eef1e4"
+                      "size":  2018,
+                      "sha256":  "fbed10ab862bdd08d2ad8636209489cc03f78d554179dabb462863970138142b"
                   },
                   {
                       "path":  "src/ue4ss/diagnostics.lua",
@@ -584,8 +589,8 @@
                   },
                   {
                       "path":  "src/ue4ss/main.lua",
-                      "size":  93837,
-                      "sha256":  "582425000dcef625b3620919ab469c7382afb0caf44b3adac903e14da42dc7a2"
+                      "size":  99949,
+                      "sha256":  "dac3526fb32d70181a7b617a567dff6395b0fd6509648a3d09175b6518bfe050"
                   },
                   {
                       "path":  "src/ue4ss/mole_catalog.lua",
@@ -609,8 +614,8 @@
                   },
                   {
                       "path":  "src/ue4ss/world_map.lua",
-                      "size":  14250,
-                      "sha256":  "413c4b1531725e9fee026a2da3d39c90a099e7eb548a97e64bec3ed564d4578e"
+                      "size":  15288,
+                      "sha256":  "9e5e692d8130d5f1d888f02d1fe2da3638ff9d97a99955730993e8005b7493da"
                   },
                   {
                       "path":  "THIRD_PARTY_NOTICES.txt",

@@ -1,7 +1,7 @@
 # Source package status
 
 This archive contains the **complete repository snapshot** for
-**DragonSwordWorldRadar 0.4.0-dev74-minigamecatalog2**. It follows
+**DragonSwordWorldRadar 0.4.0-dev74-processdispatchguard1-localcapfix1**. It follows
 the same project structure as the owner-provided source archive; it is not the
 installable Mod folder with binaries removed.
 
@@ -13,7 +13,7 @@ installable Mod folder with binaries removed.
 - `build`, `docs`, `resources`, `metadata`, licenses, and vendor dependencies;
 - historical `dist` output from the supplied repository;
 - the exact tested installable archive:
-  `dist/DragonSwordWorldRadar-v0.4.0-dev74-minigamecatalog2.zip`;
+  `dist/DragonSwordWorldRadar-v0.4.0-dev74-processdispatchguard1-localcapfix1.zip`;
 - its extracted release staging folder under `dist/`.
 
 Runtime logs and generated user state are not included.
@@ -45,7 +45,7 @@ is not used to claim identity for the current package.
 - 18 Installer Core C# files;
 - 250 ms fresh current-player sampling and a scalar-only 50 ms compact flush loop;
 - 33 ms compact in-memory Overlay prediction/presentation with dirty-slot bridge ingestion, a 250 ms healthy safety scan, and a 50 ms watcher-unavailable fallback;
-- 8 ms transform production/presentation only while the expanded map is visible;
+- 8 ms expanded-map UMG requests through one reusable, single-pending ProcessEvent callback, with no EngineTick delayed action and 8 ms scalar bridge/Overlay presentation only while visible;
 - 250 ms low-frequency control with one protected minimap-scale sample per second;
 - 20 XY and 10 Z publication thresholds;
 - Overlay-owned treasure and nine-Boss catalogs with save filtering.

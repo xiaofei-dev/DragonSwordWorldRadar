@@ -7,9 +7,6 @@ namespace DragonSwordWorldRadar
 {
     internal sealed class TreasureOverrides
     {
-        private static readonly TimeSpan RefreshInterval =
-            TimeSpan.FromSeconds(1);
-
         private readonly object _sync = new object();
         private readonly string _path = Path.Combine(
             ModPath.BaseDirectory,
@@ -23,7 +20,7 @@ namespace DragonSwordWorldRadar
 
         private volatile OverrideSnapshot _snapshot =
             OverrideSnapshot.Empty;
-        private DateTime _nextRefreshUtc;
+        private bool _loadAttempted;
         private DateTime _lastOverrideWriteUtc;
         private long _lastOverrideLength;
         private DateTime _lastCatalogWriteUtc;
@@ -46,9 +43,9 @@ namespace DragonSwordWorldRadar
 
         public long Resolve(long saveId, out bool ignored)
         {
-            // Refresh is driven by TreasureSaveState's maintenance pass. The
+            // Overrides are loaded once during Overlay startup. The
             // dictionaries are immutable after publication, so marker reads
-            // do not need a lock or a DateTime check on every paint.
+            // do not need a lock or a filesystem check on every paint.
             OverrideSnapshot snapshot = _snapshot;
             long resolved;
             if (!snapshot.Aliases.TryGetValue(saveId, out resolved))
@@ -63,14 +60,16 @@ namespace DragonSwordWorldRadar
             return resolved;
         }
 
-        public void Refresh()
+        public void LoadOnce()
         {
-            if (DateTime.UtcNow < _nextRefreshUtc)
+            lock (_sync)
             {
-                return;
+                if (_loadAttempted)
+                {
+                    return;
+                }
+                _loadAttempted = true;
             }
-            _nextRefreshUtc =
-                DateTime.UtcNow.Add(RefreshInterval);
 
             try
             {

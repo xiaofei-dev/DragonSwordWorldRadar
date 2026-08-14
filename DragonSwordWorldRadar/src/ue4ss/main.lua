@@ -62,7 +62,7 @@ local no_paint_key = config.no_paint_key or "F5"
 local no_motion_key = config.no_motion_key or "F6"
 if diagnostics ~= nil then
     diagnostics.configure({
-        version = "0.4.0-dev74-minigamecatalog2",
+        version = "0.4.0-dev74-processdispatchguard1-localcapfix1",
         generation = generation,
         use_enabled = config.use_logging ~= false
             and config.diagnostic_logging ~= false,
@@ -135,6 +135,16 @@ local activation_probe_pending = false
 local activation_probe_request_token = 0
 local activation_probe_pending_token = nil
 local activation_probe_pending_epoch = nil
+local process_event_dispatch = {
+    timeout_ms = 3000,
+    pending = false,
+    request_token = 0,
+    pending_token = nil,
+    pending_epoch = nil,
+    pending_task = "none",
+    elapsed_ms = 0,
+    poisoned = false,
+}
 local resume_probe_pending = false
 local world_map_resume_pending = world_map_markers_enabled
 local enter_world_transition
@@ -186,11 +196,12 @@ local MINIMAP_SCALE_CHECK_INTERVAL_MS = 1000
 -- sampling occurs only in the 250 ms control callback; the 50 ms loops publish
 -- or transform the latest scalar sample without another player-root traversal.
 -- Both compact and world-map modes reuse that 250 ms numeric player sample.
--- Only the visible world map transforms that scalar at 8 ms; compact bridge
--- presentation remains 50 ms and neither loop performs another player read.
+-- The visible world map samples its UMG transform once per game frame, while
+-- its scalar bridge presentation remains 8 ms. Reading faster than the game
+-- frame cannot observe a newer UMG transform. Compact bridge presentation
+-- remains 50 ms and neither loop performs another player-root traversal.
 local WORLD_MAP_ACTIVE_INTERVAL_MS = 8
 local MAP_LOAD_RESUME_DELAY_MS = 3000
-local MOD_SWITCH_CHECK_INTERVAL_MS = 5000
 local MINIMAP_UPDATE_INTERVAL_MS = 250
 local WORLD_MAP_INACTIVE_CHECK_INTERVAL_MS = 2000
 local world_map_inactive_elapsed_ms =
@@ -295,7 +306,6 @@ local last_world_left = nil
 local last_world_top = nil
 local last_world_zoom = nil
 local map_resume_delay_remaining_ms = 0
-local mod_switch_elapsed_ms = 0
 local control_sequence = 0
 local queued_update_started_ms = nil
 local update_pending_epoch = nil
@@ -303,6 +313,7 @@ local motion_pending_epoch = nil
 local world_motion_pending_epoch = nil
 local clock_capture_task_pending = false
 local clock_capture_task_token = nil
+local clock_capture_task_queued_ms = 0.0
 local clock_context_samples = 0
 local clock_context_samples_consumed = 0
 local f7_trace_active = false
@@ -418,43 +429,6 @@ local function file_exists(path)
     end
     file:close()
     return true
-end
-
-local function is_mod_enabled_in_mods_file()
-    local directory = resolve_mod_directory()
-    if directory == nil then
-        return true
-    end
-
-    local mods_path = directory .. "\\..\\mods.txt"
-    local file = io.open(mods_path, "rb")
-    if file == nil then
-        return true
-    end
-
-    local content = file:read("*a") or ""
-    file:close()
-
-    for line in string.gmatch(content, "[^\r\n]+") do
-        local value = string.match(
-            line,
-            "^%s*DragonSwordWorldRadar%s*:%s*([01])"
-        )
-        if value ~= nil then
-            return value == "1"
-        end
-    end
-
-    return true
-end
-
-local function disable_for_mod_switch()
-    runtime_restart_requested = false
-    runtime_restart_reason = nil
-    activation_requested = false
-    enter_world_transition("mods_txt_disabled")
-    log("DragonSwordWorldRadar disabled because mods.txt is set to 0.")
-    overlay_start_requested = false
 end
 
 local function start_overlay()
@@ -1060,6 +1034,21 @@ local function invalidate_motion_loops(reason)
     record_loop_event("all", "invalidate-" .. tostring(reason), 0)
 end
 
+-- WorldRadar registers exactly one stable callback with UE4SS. Task producers
+-- only publish scalar ownership state to the serialized dispatcher below.
+-- EngineTick remains intentionally unused because its independent-action path
+-- has a confirmed registry-reference failure when callbacks overlap.
+local function queue_process_event_callback(callback)
+    if process_event_dispatch.poisoned
+        or ProcessEventAvailable ~= true
+        or EGameThreadMethod == nil
+        or EGameThreadMethod.ProcessEvent == nil
+    then
+        error("UE4SS ProcessEvent game-thread execution is unavailable")
+    end
+    ExecuteInGameThread(callback, EGameThreadMethod.ProcessEvent)
+end
+
 local function reset_control_watchdog()
     control_watchdog_observed_serial = control_tick_serial
     control_watchdog_elapsed_ms = 0
@@ -1130,17 +1119,19 @@ local function purge_runtime_references()
     activation_probe_pending_token = nil
     activation_probe_pending_epoch = nil
     motion_update_pending = false
-    world_motion_update_pending = false
     update_request_token = update_request_token + 1
     update_pending_token = nil
     world_motion_request_token = world_motion_request_token + 1
-    world_motion_pending_token = nil
     update_pending_epoch = nil
     motion_pending_epoch = nil
+    world_motion_update_pending = false
+    world_motion_pending_token = nil
     world_motion_pending_epoch = nil
+    world_map._main_motion_owner_token = nil
     queued_update_started_ms = nil
     clock_capture_task_pending = false
     clock_capture_task_token = nil
+    clock_capture_task_queued_ms = 0.0
     clock_context_samples = 0
     clock_context_samples_consumed = 0
     if world_environment ~= nil then
@@ -1339,9 +1330,12 @@ local function queue_activation_probe()
         or enabled
         or transition_active
         or map_resume_delay_remaining_ms > 0
-        or activation_probe_pending
     then
         return false
+    end
+
+    if activation_probe_pending then
+        return process_event_dispatch.request()
     end
 
     activation_probe_pending = true
@@ -1350,34 +1344,27 @@ local function queue_activation_probe()
     activation_probe_pending_token = request_token
     local scheduled_epoch = world_epoch
     activation_probe_pending_epoch = scheduled_epoch
-    local queue_ok, queue_error = pcall(function()
-        f7_trace(
-            "ACTIVATION_EXECUTE_QUEUE_BEFORE",
-            "request_token",
-            request_token,
-            "scheduled_epoch",
-            scheduled_epoch
-        )
-        ExecuteInGameThread(activation_game_thread_callback)
-        f7_trace(
-            "ACTIVATION_EXECUTE_QUEUE_AFTER",
-            "request_token",
-            request_token
-        )
-    end)
+    f7_trace(
+        "ACTIVATION_DISPATCH_REQUEST_BEFORE",
+        "request_token",
+        request_token,
+        "scheduled_epoch",
+        scheduled_epoch
+    )
+    local queue_ok, queue_error = process_event_dispatch.request()
+    f7_trace(
+        "ACTIVATION_DISPATCH_REQUEST_AFTER",
+        "request_token",
+        request_token,
+        "queue_ok",
+        queue_ok
+    )
     if not queue_ok then
         if activation_probe_pending_token == request_token then
             activation_probe_pending = false
             activation_probe_pending_epoch = nil
             activation_probe_pending_token = nil
         end
-        report_async_failure(
-            "activation_probe_queue",
-            "ACTIVATION_PROBE_QUEUE_FAILED",
-            "Could not queue activation stability probe: ",
-            queue_error,
-            { epoch = world_epoch }
-        )
         return false
     end
     return true
@@ -1536,6 +1523,7 @@ local function read_minimap_scale()
     local find_called = false
     local cache_hit = false
     local find_result_present = false
+    local root_retained = false
     local outcome = "unknown"
     local function emit_minimap_scale_diagnostic(scale)
         if perf_diagnostics == nil then return end
@@ -1544,6 +1532,7 @@ local function read_minimap_scale()
             cache_hit = cache_hit,
             find_called = find_called,
             find_result_present = find_result_present,
+            root_retained = root_retained,
             cache_validation_ms = cache_validation_ms,
             find_ms = find_ms,
             resolved_validation_ms = resolved_validation_ms,
@@ -1582,17 +1571,20 @@ local function read_minimap_scale()
             find_ms = perf_diagnostics.now_ms() - phase_started_ms
         end
     end
-    phase_started_ms = perf_diagnostics ~= nil
-        and perf_diagnostics.now_ms() or 0.0
-    f7_trace("MINIMAP_RESOLVED_ISVALID_BEFORE")
-    local resolved_valid = is_valid_object(minimap_layer)
-    f7_trace(
-        "MINIMAP_RESOLVED_ISVALID_AFTER",
-        "valid",
-        resolved_valid
-    )
-    if perf_diagnostics ~= nil then
-        resolved_validation_ms = perf_diagnostics.now_ms() - phase_started_ms
+    local resolved_valid = cache_hit
+    if not resolved_valid then
+        phase_started_ms = perf_diagnostics ~= nil
+            and perf_diagnostics.now_ms() or 0.0
+        f7_trace("MINIMAP_RESOLVED_ISVALID_BEFORE")
+        resolved_valid = is_valid_object(minimap_layer)
+        f7_trace(
+            "MINIMAP_RESOLVED_ISVALID_AFTER",
+            "valid",
+            resolved_valid
+        )
+        if perf_diagnostics ~= nil then
+            resolved_validation_ms = perf_diagnostics.now_ms() - phase_started_ms
+        end
     end
     if not resolved_valid then
         minimap_layer = nil
@@ -1657,7 +1649,14 @@ local function read_minimap_scale()
     end)
     if not ok or scale == nil then
         if not ok then outcome = "property_access_failed" end
-        minimap_layer = nil
+        -- The top-level DLayerMiniMap root was validated immediately above.
+        -- LayerMap, MapOverlay, and RenderTransform are transient nested
+        -- wrappers whose values can be temporarily unavailable while the HUD
+        -- is rebuilt. Do not turn that temporary nested read miss into a new
+        -- one-hertz global FindFirstOf. The next scalar sample revalidates the
+        -- root and retries only the protected property chain; world/F8
+        -- transition purge still drops the root unconditionally.
+        root_retained = true
         emit_minimap_scale_diagnostic(nil)
         return nil
     end
@@ -1926,13 +1925,71 @@ report_async_failure = function(
     request_runtime_restart("async_failure:" .. tostring(key))
 end
 
+process_event_dispatch.clock_task = function()
+    local token = clock_capture_task_token
+    local queued_ms = clock_capture_task_queued_ms
+    f7_trace("CLOCK_CALLBACK_ENTER", "token", token)
+    local started_ms = perf_diagnostics ~= nil
+        and perf_diagnostics.now_ms() or 0.0
+    f7_trace("CLOCK_CAPTURE_CALL_BEFORE", "token", token)
+    local capture_ok, captured, capture_error = pcall(
+        world_environment.capture_in_game_thread,
+        token
+    )
+    f7_trace(
+        "CLOCK_CAPTURE_CALL_AFTER",
+        "token",
+        token,
+        "call_ok",
+        capture_ok,
+        "captured",
+        captured == true
+    )
+    local owns_task = clock_capture_task_token == token
+    if owns_task then
+        clock_capture_task_pending = false
+        clock_capture_task_token = nil
+        clock_capture_task_queued_ms = 0.0
+        if capture_ok and captured == true then
+            world_time_available = world_environment.time_available()
+            world_time_seconds = world_environment.time_seconds()
+            latest_motion_sample = latest_motion_sample + 1
+        else
+            world_time_available = false
+            world_time_seconds = 0
+        end
+    end
+    if perf_diagnostics ~= nil then
+        local capture_failure = "none"
+        if not capture_ok then
+            capture_failure = tostring(captured)
+        elseif captured ~= true then
+            capture_failure = tostring(capture_error or "capture failed")
+        end
+        perf_diagnostics.debug("WORLD_TIME_TASK_PERF", nil, {
+            token = token,
+            queue_delay_ms = started_ms - queued_ms,
+            task_ms = perf_diagnostics.now_ms() - started_ms,
+            outcome = capture_ok and captured == true and "captured" or "failed",
+            failure = capture_failure,
+            stale_task = not owns_task,
+        })
+    end
+    f7_trace("CLOCK_CALLBACK_EXIT", "token", token)
+end
+
 local function queue_world_time_capture()
     if world_environment == nil
         or not enabled
         or transition_active
-        or clock_capture_task_pending
-        or not world_environment.capture_ready()
     then
+        return false
+    end
+
+    if clock_capture_task_pending then
+        return process_event_dispatch.request()
+    end
+    if not world_environment.capture_ready() then
         return false
     end
 
@@ -1942,68 +1999,22 @@ local function queue_world_time_capture()
     if token == nil then return false end
     clock_capture_task_pending = true
     clock_capture_task_token = token
-    local queued_ms = perf_diagnostics ~= nil
+    clock_capture_task_queued_ms = perf_diagnostics ~= nil
         and perf_diagnostics.now_ms() or 0.0
-    local queue_ok, queue_error = pcall(function()
-        f7_trace("CLOCK_EXECUTE_QUEUE_BEFORE", "token", token)
-        ExecuteInGameThread(function()
-            f7_trace("CLOCK_CALLBACK_ENTER", "token", token)
-            local started_ms = perf_diagnostics ~= nil
-                and perf_diagnostics.now_ms() or 0.0
-            f7_trace("CLOCK_CAPTURE_CALL_BEFORE", "token", token)
-            local capture_ok, captured, capture_error = pcall(
-                world_environment.capture_in_game_thread,
-                token
-            )
-            f7_trace(
-                "CLOCK_CAPTURE_CALL_AFTER",
-                "token",
-                token,
-                "call_ok",
-                capture_ok,
-                "captured",
-                captured == true
-            )
-            local owns_task = clock_capture_task_token == token
-            if owns_task then
-                clock_capture_task_pending = false
-                clock_capture_task_token = nil
-                if capture_ok and captured == true then
-                    world_time_available = world_environment.time_available()
-                    world_time_seconds = world_environment.time_seconds()
-                    latest_motion_sample = latest_motion_sample + 1
-                else
-                    world_time_available = false
-                    world_time_seconds = 0
-                end
-            end
-            if perf_diagnostics ~= nil then
-                local capture_failure = "none"
-                if not capture_ok then
-                    capture_failure = tostring(captured)
-                elseif captured ~= true then
-                    capture_failure = tostring(
-                        capture_error or "capture failed"
-                    )
-                end
-                perf_diagnostics.debug("WORLD_TIME_TASK_PERF", nil, {
-                    token = token,
-                    queue_delay_ms = started_ms - queued_ms,
-                    task_ms = perf_diagnostics.now_ms() - started_ms,
-                    outcome = capture_ok and captured == true
-                        and "captured" or "failed",
-                    failure = capture_failure,
-                    stale_task = not owns_task,
-                })
-            end
-            f7_trace("CLOCK_CALLBACK_EXIT", "token", token)
-        end)
-        f7_trace("CLOCK_EXECUTE_QUEUE_AFTER", "token", token)
-    end)
+    f7_trace("CLOCK_DISPATCH_REQUEST_BEFORE", "token", token)
+    local queue_ok, queue_error = process_event_dispatch.request()
+    f7_trace(
+        "CLOCK_DISPATCH_REQUEST_AFTER",
+        "token",
+        token,
+        "queue_ok",
+        queue_ok
+    )
     if not queue_ok then
         if clock_capture_task_token == token then
             clock_capture_task_pending = false
             clock_capture_task_token = nil
+            clock_capture_task_queued_ms = 0.0
         end
         world_environment.capture_queue_failed(token, queue_error)
         world_time_available = false
@@ -2013,14 +2024,116 @@ local function queue_world_time_capture()
     return true
 end
 
+-- The visible world-map producer publishes one scalar task to the shared
+-- ProcessEvent dispatcher while retaining the existing 8 ms request cadence.
+-- No Canvas, Pawn, widget, or nested UObject wrapper is kept.
+world_map._main_motion_game_thread_callback = function()
+    local request_token = world_motion_pending_token
+    local scheduled_epoch = world_motion_pending_epoch
+    local owner_loop_token = world_map._main_motion_owner_token
+    local callback_ok, callback_error = pcall(function()
+        if scheduled_epoch ~= nil
+            and request_token ~= nil
+            and owner_loop_token ~= nil
+            and is_world_epoch_current(scheduled_epoch)
+            and request_token == world_motion_pending_token
+            and owner_loop_token == world_map_loop_token
+            and enabled
+            and world_map_was_active
+            and map_resume_delay_remaining_ms <= 0
+        then
+            local world_read_started_ms = perf_diagnostics ~= nil
+                and perf_diagnostics.now_ms() or 0.0
+            local map_state = world_map.read_state()
+            if perf_diagnostics ~= nil then
+                perf_diagnostics.record_world_map_read(
+                    perf_diagnostics.now_ms() - world_read_started_ms,
+                    map_state ~= nil
+                )
+            end
+            if latest_motion_x ~= nil
+                and latest_motion_y ~= nil
+                and map_state ~= nil
+            then
+                last_world_left = map_state.left or 0
+                last_world_top = map_state.top or 0
+                last_world_zoom = map_state.zoom or 0
+                publish_motion_sample(
+                    "world",
+                    latest_motion_x,
+                    latest_motion_y,
+                    latest_motion_z,
+                    map_state
+                )
+            elseif map_state == nil then
+                -- Match the reference behavior: stop fullscreen output and
+                -- immediately resume current-Pawn compact sampling.
+                world_map.recover_session()
+                world_map_was_active = false
+                latest_motion_map_state = nil
+                last_world_left = nil
+                last_world_top = nil
+                last_world_zoom = nil
+                if latest_motion_x ~= nil and latest_motion_y ~= nil then
+                    publish_motion_sample(
+                        "radar",
+                        latest_motion_x,
+                        latest_motion_y,
+                        latest_motion_z,
+                        nil
+                    )
+                end
+                if owner_loop_token == world_map_loop_token then
+                    world_map_loop_token = world_map_loop_token + 1
+                    world_map_loop_started = false
+                    record_loop_event(
+                        "world",
+                        "map-close-stop",
+                        owner_loop_token
+                    )
+                end
+                ensure_motion_loop_started()
+            end
+        end
+    end)
+    -- Release only the ownership observed on entry. A transition deliberately
+    -- leaves this gate pending until the stale callback drains, preventing a
+    -- second lifecycle from overlapping the one queued ProcessEvent callback.
+    if world_motion_pending_epoch == scheduled_epoch
+        and world_motion_pending_token == request_token
+        and world_map._main_motion_owner_token == owner_loop_token
+    then
+        world_motion_update_pending = false
+        world_motion_pending_epoch = nil
+        world_motion_pending_token = nil
+        world_map._main_motion_owner_token = nil
+    end
+    if not callback_ok then
+        report_async_failure(
+            "world_motion_callback",
+            "WORLD_MOTION_UPDATE_FAILED",
+            "World-map motion update failed: ",
+            callback_error,
+            {
+                world_map_active = world_map_was_active,
+                state_sequence = control_sequence,
+            }
+        )
+    end
+end
+
 local function queue_world_motion_update(owner_loop_token)
     if not is_current_generation()
         or not enabled
         or not world_map_was_active
         or owner_loop_token ~= world_map_loop_token
-        or world_motion_update_pending
         or map_resume_delay_remaining_ms > 0
     then
+        return
+    end
+
+    if world_motion_update_pending then
+        process_event_dispatch.request()
         return
     end
 
@@ -2030,110 +2143,15 @@ local function queue_world_motion_update(owner_loop_token)
     world_motion_pending_token = request_token
     local scheduled_epoch = world_epoch
     world_motion_pending_epoch = scheduled_epoch
-    local queue_ok, queue_error = pcall(function()
-        ExecuteInGameThread(function()
-            local callback_ok, callback_error = pcall(function()
-                if is_world_epoch_current(scheduled_epoch)
-                    and request_token == world_motion_pending_token
-                    and owner_loop_token == world_map_loop_token
-                    and enabled
-                    and world_map_was_active
-                    and map_resume_delay_remaining_ms <= 0
-                then
-                    local world_read_started_ms = perf_diagnostics ~= nil
-                        and perf_diagnostics.now_ms() or 0.0
-                    local map_state = world_map.read_state()
-                    if perf_diagnostics ~= nil then
-                        perf_diagnostics.record_world_map_read(
-                            perf_diagnostics.now_ms() - world_read_started_ms,
-                            map_state ~= nil
-                        )
-                    end
-                    if latest_motion_x ~= nil
-                        and latest_motion_y ~= nil
-                        and map_state ~= nil
-                    then
-                        last_world_left = map_state.left or 0
-                        last_world_top = map_state.top or 0
-                        last_world_zoom = map_state.zoom or 0
-                        publish_motion_sample(
-                            "world",
-                            latest_motion_x,
-                            latest_motion_y,
-                            latest_motion_z,
-                            map_state
-                        )
-                    elseif map_state == nil then
-                        -- Match the reference behavior: stop fullscreen output
-                        -- and immediately resume reference-style current-Pawn
-                        -- sampling for the compact radar.
-                        world_map.recover_session()
-                        world_map_was_active = false
-                        latest_motion_map_state = nil
-                        last_world_left = nil
-                        last_world_top = nil
-                        last_world_zoom = nil
-                        if latest_motion_x ~= nil and latest_motion_y ~= nil then
-                            publish_motion_sample(
-                                "radar",
-                                latest_motion_x,
-                                latest_motion_y,
-                                latest_motion_z,
-                                nil
-                            )
-                        end
-                        if owner_loop_token == world_map_loop_token then
-                            world_map_loop_token = world_map_loop_token + 1
-                            world_map_loop_started = false
-                            record_loop_event(
-                                "world",
-                                "map-close-stop",
-                                owner_loop_token
-                            )
-                        end
-                        ensure_motion_loop_started()
-                    end
-                end
-            end)
-            -- Always release the gate. Otherwise one failed UObject read would
-            -- permanently stop all later map samples for this session.
-            if world_motion_pending_epoch == scheduled_epoch
-                and world_motion_pending_token == request_token
-            then
-                world_motion_update_pending = false
-                world_motion_pending_epoch = nil
-                world_motion_pending_token = nil
-            end
-            if not callback_ok then
-                report_async_failure(
-                    "world_motion_callback",
-                    "WORLD_MOTION_UPDATE_FAILED",
-                    "World-map motion update failed: ",
-                    callback_error,
-                    {
-                        world_map_active = world_map_was_active,
-                        state_sequence = control_sequence,
-                    }
-                )
-            end
-        end)
-    end)
+    world_map._main_motion_owner_token = owner_loop_token
+    local queue_ok, queue_error = process_event_dispatch.request()
     if not queue_ok then
         if world_motion_pending_token == request_token then
             world_motion_update_pending = false
             world_motion_pending_epoch = nil
             world_motion_pending_token = nil
+            world_map._main_motion_owner_token = nil
         end
-        report_async_failure(
-            "world_motion_queue",
-            "WORLD_MOTION_QUEUE_FAILED",
-            "Could not queue world-map motion update: ",
-            queue_error,
-            {
-                world_map_active = world_map_was_active,
-                state_sequence = control_sequence,
-            }
-        )
     end
 end
 
@@ -2276,6 +2294,186 @@ local function radar_game_thread_callback()
     )
 end
 
+process_event_dispatch.poison = function(reason, failure)
+    if process_event_dispatch.poisoned then return false end
+
+    local failed_task = process_event_dispatch.pending_task
+    local failed_token = process_event_dispatch.pending_token
+    local failed_epoch = process_event_dispatch.pending_epoch
+    process_event_dispatch.poisoned = true
+    runtime_restart_requested = false
+    runtime_restart_reason = nil
+    activation_requested = false
+    activation_stable_samples = 0
+    enter_world_transition("process_event_dispatcher_poisoned")
+    if diagnostics ~= nil then
+        diagnostics.error("PROCESS_EVENT_DISPATCH_POISONED", tostring(failure or reason), {
+            reason = tostring(reason or "unknown"),
+            task = tostring(failed_task or "none"),
+            dispatch_token = failed_token,
+            scheduled_epoch = failed_epoch,
+            timeout_ms = process_event_dispatch.timeout_ms,
+            retry_count = 0,
+            engine_tick_fallback = false,
+        })
+    end
+    log("DragonSwordWorldRadar disabled because the UE4SS ProcessEvent game-thread dispatcher stopped responding. This route is isolated for the remainder of the current game session; restart the game before pressing F7 again.")
+    return true
+end
+
+process_event_dispatch.callback = function()
+    local dispatch_token = process_event_dispatch.pending_token
+    local scheduled_epoch = process_event_dispatch.pending_epoch
+    local task_kind = process_event_dispatch.pending_task
+    f7_trace(
+        "PROCESS_EVENT_DISPATCH_CALLBACK_ENTER",
+        "dispatch_token",
+        dispatch_token,
+        "scheduled_epoch",
+        scheduled_epoch,
+        "task",
+        tostring(task_kind or "none")
+    )
+
+    local owns_dispatch = process_event_dispatch.pending
+        and dispatch_token ~= nil
+        and process_event_dispatch.pending_token == dispatch_token
+    local callback_ok, callback_error = pcall(function()
+        if not owns_dispatch
+            or process_event_dispatch.poisoned
+            or scheduled_epoch == nil
+            or scheduled_epoch ~= world_epoch
+            or not is_current_generation()
+        then
+            return
+        end
+
+        if task_kind == "activation" then
+            activation_game_thread_callback()
+        elseif task_kind == "radar" then
+            radar_game_thread_callback()
+        elseif task_kind == "clock" then
+            process_event_dispatch.clock_task()
+        elseif task_kind == "world_motion" then
+            world_map._main_motion_game_thread_callback()
+        end
+    end)
+
+    if owns_dispatch
+        and process_event_dispatch.pending_token == dispatch_token
+    then
+        process_event_dispatch.pending = false
+        process_event_dispatch.pending_token = nil
+        process_event_dispatch.pending_epoch = nil
+        process_event_dispatch.pending_task = "none"
+        process_event_dispatch.elapsed_ms = 0
+    end
+    if not callback_ok then
+        report_async_failure(
+            "process_event_dispatch_callback",
+            "PROCESS_EVENT_DISPATCH_TASK_FAILED",
+            "Serialized ProcessEvent task failed: ",
+            callback_error,
+            {
+                task = tostring(task_kind or "none"),
+                dispatch_token = dispatch_token,
+                scheduled_epoch = scheduled_epoch,
+            }
+        )
+    end
+    f7_trace(
+        "PROCESS_EVENT_DISPATCH_CALLBACK_EXIT",
+        "dispatch_token",
+        dispatch_token,
+        "task",
+        tostring(task_kind or "none"),
+        "callback_ok",
+        callback_ok
+    )
+end
+
+process_event_dispatch.request = function()
+    if process_event_dispatch.poisoned then
+        return false, "ProcessEvent dispatcher is isolated for this session"
+    end
+    if process_event_dispatch.pending then
+        return true
+    end
+
+    local task_kind = "none"
+    if activation_probe_pending then
+        task_kind = "activation"
+    elseif update_pending then
+        task_kind = "radar"
+    elseif clock_capture_task_pending then
+        task_kind = "clock"
+    elseif world_motion_update_pending then
+        task_kind = "world_motion"
+    else
+        return true
+    end
+
+    process_event_dispatch.request_token = process_event_dispatch.request_token + 1
+    local dispatch_token = process_event_dispatch.request_token
+    process_event_dispatch.pending = true
+    process_event_dispatch.pending_token = dispatch_token
+    process_event_dispatch.pending_epoch = world_epoch
+    process_event_dispatch.pending_task = task_kind
+    process_event_dispatch.elapsed_ms = 0
+    f7_trace(
+        "PROCESS_EVENT_DISPATCH_QUEUE_BEFORE",
+        "dispatch_token",
+        dispatch_token,
+        "scheduled_epoch",
+        world_epoch,
+        "task",
+        tostring(task_kind or "none")
+    )
+    local queue_ok, queue_error = pcall(
+        queue_process_event_callback,
+        process_event_dispatch.callback
+    )
+    f7_trace(
+        "PROCESS_EVENT_DISPATCH_QUEUE_AFTER",
+        "dispatch_token",
+        dispatch_token,
+        "task",
+        tostring(task_kind or "none"),
+        "queue_ok",
+        queue_ok
+    )
+    if queue_ok then return true end
+
+    process_event_dispatch.poison("queue_failed", queue_error)
+    if process_event_dispatch.pending_token == dispatch_token then
+        process_event_dispatch.pending = false
+        process_event_dispatch.pending_token = nil
+        process_event_dispatch.pending_epoch = nil
+        process_event_dispatch.pending_task = "none"
+        process_event_dispatch.elapsed_ms = 0
+    end
+    return false, queue_error
+end
+
+process_event_dispatch.observe = function(delta_ms)
+    if process_event_dispatch.poisoned then return true end
+    if not process_event_dispatch.pending then return false end
+
+    process_event_dispatch.elapsed_ms = math.min(
+        process_event_dispatch.timeout_ms,
+        process_event_dispatch.elapsed_ms + delta_ms
+    )
+    if process_event_dispatch.elapsed_ms < process_event_dispatch.timeout_ms then
+        return false
+    end
+
+    process_event_dispatch.poison(
+        "callback_timeout",
+        "ProcessEvent accepted the serialized task but did not invoke its callback"
+    )
+    return true
+end
+
 local function queue_radar_update()
     f7_trace("RADAR_QUEUE_ENTER")
     if perf_diagnostics ~= nil then perf_diagnostics.record_queue_request() end
@@ -2287,6 +2485,7 @@ local function queue_radar_update()
     end
     if update_pending then
         if perf_diagnostics ~= nil then perf_diagnostics.record_queue_skip("pending") end
+        process_event_dispatch.request()
         return
     end
 
@@ -2297,21 +2496,21 @@ local function queue_radar_update()
     local scheduled_epoch = world_epoch
     update_pending_epoch = scheduled_epoch
     queued_update_started_ms = perf_diagnostics ~= nil and perf_diagnostics.now_ms() or nil
-    local queue_ok, queue_error = pcall(function()
-        f7_trace(
-            "RADAR_EXECUTE_QUEUE_BEFORE",
-            "request_token",
-            request_token,
-            "scheduled_epoch",
-            scheduled_epoch
-        )
-        ExecuteInGameThread(radar_game_thread_callback)
-        f7_trace(
-            "RADAR_EXECUTE_QUEUE_AFTER",
-            "request_token",
-            request_token
-        )
-    end)
+    f7_trace(
+        "RADAR_DISPATCH_REQUEST_BEFORE",
+        "request_token",
+        request_token,
+        "scheduled_epoch",
+        scheduled_epoch
+    )
+    local queue_ok, queue_error = process_event_dispatch.request()
+    f7_trace(
+        "RADAR_DISPATCH_REQUEST_AFTER",
+        "request_token",
+        request_token,
+        "queue_ok",
+        queue_ok
+    )
     if not queue_ok then
         if update_pending_token == request_token then
             queued_update_started_ms = nil
@@ -2319,16 +2518,6 @@ local function queue_radar_update()
             update_pending_epoch = nil
             update_pending_token = nil
         end
-        report_async_failure(
-            "radar_update_queue",
-            "UPDATE_QUEUE_FAILED",
-            "Could not queue radar state update: ",
-            queue_error,
-            {
-                world_map_active = world_map_was_active,
-                state_sequence = control_sequence,
-            }
-        )
     end
 end
 
@@ -2368,8 +2557,8 @@ ensure_world_map_loop_started = function()
             perf_diagnostics.record_world_map_producer_tick()
         end
 
-        -- Flush only the compact transform from the previous sample, then
-        -- queue UObject reads for the next sample. No JSON is built here.
+        -- Flush the previous scalar transform, then request at most one next
+        -- ProcessEvent game-thread sample. The pending gate bounds the queue.
         motion_heartbeat_elapsed_ms = math.min(
             FAST_MOTION_HEARTBEAT_MS,
             motion_heartbeat_elapsed_ms + WORLD_MAP_ACTIVE_INTERVAL_MS
@@ -2392,22 +2581,16 @@ local function ensure_loop_started()
             return true
         end
 
+        if process_event_dispatch.observe(MINIMAP_UPDATE_INTERVAL_MS) then
+            loop_started = false
+            return true
+        end
+
         if runtime_restart_requested then
             perform_runtime_restart()
             -- Keep the established control LoopAsync callback alive. Replacing
             -- it from inside its own callback can invalidate UE4SS's active Lua
             -- function reference and trigger a native assertion.
-        end
-
-        mod_switch_elapsed_ms =
-            mod_switch_elapsed_ms + MINIMAP_UPDATE_INTERVAL_MS
-        if mod_switch_elapsed_ms >= MOD_SWITCH_CHECK_INTERVAL_MS then
-            mod_switch_elapsed_ms = 0
-            if not is_mod_enabled_in_mods_file() then
-                disable_for_mod_switch()
-                loop_started = false
-                return true
-            end
         end
 
         if not enabled and not activation_requested then
@@ -2472,17 +2655,17 @@ local function request_active_diagnostic_mode(requested_mode, key_name)
     if not is_current_generation() then
         return
     end
-    if not is_mod_enabled_in_mods_file() then
-        disable_for_mod_switch()
-        log(tostring(key_name) .. " ignored because DragonSwordWorldRadar is 0 in mods.txt.")
-        return
-    end
     diagnostic_mode = requested_mode
     f7_trace("ACTIVE_MODE_START_OVERLAY_BEFORE", "key", key_name)
     start_overlay()
     f7_trace("ACTIVE_MODE_START_OVERLAY_AFTER", "key", key_name)
     if not has_configured_visible_features() then
         log(tostring(key_name) .. " ignored because all configured visible features are disabled.")
+        return
+    end
+    if process_event_dispatch.poisoned then
+        log(tostring(key_name)
+            .. " ignored because the UE4SS ProcessEvent dispatcher is isolated for this game session; restart the game before enabling WorldRadar again.")
         return
     end
     if enabled and not transition_active then

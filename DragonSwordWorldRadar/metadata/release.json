@@ -1,14 +1,15 @@
 {
   "schema_version": 3,
   "name": "DragonSwordWorldRadar",
-  "version": "0.4.0-dev74-minigamecatalog2",
-  "stage": "event-driven-compact-ingest-and-33ms-presentation-candidate",
+  "version": "0.4.0-dev74-processdispatchguard1-localcapfix1",
+  "stage": "serialized-processevent-dispatch-candidate",
   "mod_folder": "DragonSwordWorldRadar",
   "ue4ss_runtime_root": "DS/Binaries/Win64/ue4ss",
   "source_baseline": "evidence-driven current architecture; historical packages are diagnostic references only",
   "renderer": "WinForms source compiled in memory by Windows PowerShell 5.1",
   "custom_runtime_executable_count": 0,
   "automatic_start": "per-session hidden WScript watcher launched by the UE4SS mod; host, overlay, and watcher bind to and exit with the exact game process",
+  "startup_only_files": "the watcher host checks mods.txt once before Overlay launch; treasure_overrides.txt and its generated symbolic-name catalog load once during Overlay construction; runtime edits require a game restart",
   "scheduler": {
     "minimap_motion_interval_ms": 50,
     "active_world_map_motion_interval_ms": 8,
@@ -26,18 +27,19 @@
     "overlay_bridge_healthy_fallback_ms": 250,
     "overlay_bridge_unavailable_fallback_ms": 50,
     "overlay_maintenance_interval_ms": 1000,
-    "save_snapshot_minimum_interval_ms": 45000,
+    "save_change_check_interval_ms": 19000,
+    "save_snapshot_completion_cooldown_ms": 19000,
     "overlay_geometry_interval_ms": 1000,
     "overlay_game_lifetime_interval_ms": 1000,
     "window_visibility_sampling_interval_ms": 250,
     "motion_xy_threshold_game_units": "max(20, radius / 170 * 0.5); approximately 36.8 town and 66.2 field",
     "motion_z_threshold_game_units": 10,
     "lua_loopasync_textual_registrations": 3,
-    "policy": "preserve dev43 epoch-bounded widget and loop ownership plus dev42 install-bound save RVA; use one fresh player scalar per 250 ms, change-driven compact bridge ingestion, 33 ms in-memory prediction/presentation, and 8 ms visible-world-map presentation"
+    "policy": "preserve dev43 epoch-bounded widget and loop ownership plus dev42 install-bound save RVA; use one fresh player scalar per 250 ms, change-driven compact bridge ingestion, 33 ms in-memory prediction/presentation, one stable serialized ProcessEvent callback and one shared in-flight scalar slot for every UObject task, no retry after a three-second dispatch timeout, no EngineTick fallback, and 8 ms expanded scalar presentation"
   },
   "platform_timing": {
     "high_resolution_timer_setting": "scripts/config.lua high_resolution_timer",
-    "default": false,
+    "default": true,
     "false_behavior": "use the Windows default outside the world map; request one balanced timeBeginPeriod(1) only while the expanded map is visible",
     "true_behavior": "request timeBeginPeriod(1) for the Overlay process and balance it with timeEndPeriod(1) on close",
     "lifecycle": "the startup-wide option remains restart-scoped; when it is false, world-map-only acquisition is idempotent and released on exit, suppression, disable, or close"
@@ -45,7 +47,7 @@
   "world_transition_lifecycle": {
     "entry": "a missing or failed cached Engine -> current Controller -> current Pawn sample increments the world epoch, disables UObject work, invalidates queued callbacks, purges cached Engine/minimap/provider handles, and publishes a disabled bridge frame; Pawn wrappers are never retained and UE4SS LoadMap hooks are intentionally not registered",
     "recovery": "Pawn/root loss starts a three-second fail-closed cooldown with zero UObject access; cooldown expiry releases one normal cached-Engine/current-Controller/current-Pawn location sample, and every failed sample rearms the complete cooldown without GetWorld or GetFullName identity probing",
-    "stale_work": "every game-thread motion, world-map, and control callback captures and validates the current world epoch before UObject access; the former dedicated recovery callback is removed",
+    "stale_work": "activation, control, clock, and world-map tasks retain task-owned tokens and epochs behind one stable ProcessEvent callback and one dispatcher-owned token/epoch; F8 or travel invalidates task ownership while the sole native callback drains without stale UObject access",
     "controls": "F7 releases one normal location probe only when no cooldown remains; F8 cancels deferred activation and invalidates the epoch immediately",
     "runtime_acceptance": "pending repeated in-game dungeon, teleport, story-mode, minimap, and expanded-map validation"
   },
@@ -130,14 +132,14 @@
     "recurring_prepaint": false,
     "exit": "first missing active-map sample invalidates the world-loop token, stops production, restores radar mode, drops every wrapper, and arms one bounded rescan for the next 250 ms control sample",
     "reopen_detection": "at most two retained hidden current-epoch candidates receive visibility-only checks on the existing 250 ms control sample; no recurring UObject enumeration is added",
-    "candidate_ownership": "hard cap 2; every wrapper carries capture epoch and candidate token; reset drops wrappers and bumps the token; bounded resume scan cannot re-promote retired identities while current Notify-created widgets may be admitted",
+    "candidate_ownership": "hard cap 2; every wrapper carries capture epoch and candidate token; reset drops wrappers and bumps the token; bounded resume scan cannot re-promote retired identities; a current-epoch Notify-created widget may replace one hidden retained candidate but never an active visible candidate",
     "accumulation_status": "structural unbounded retention is removed; attribution of the reported progressive post-travel slowdown remains a runtime hypothesis pending owner acceptance"
   },
   "runtime_error_recovery": {
-    "confirmed_errors": "caught asynchronous Lua failures or five consecutive one-second observations with no 250 ms control-loop heartbeat progress",
-    "action": "token- and epoch-invalidating automatic F8-to-F7 lifecycle restart through the existing four-sample activation gate",
+    "confirmed_errors": "caught asynchronous Lua failures, five consecutive one-second observations with no 250 ms control-loop heartbeat progress, or one serialized ProcessEvent callback accepted but not entered within three seconds",
+    "action": "task failures and control-heartbeat stalls retain the bounded token- and epoch-invalidating automatic F8-to-F7 lifecycle restart; a ProcessEvent dispatch timeout instead poisons that route for the session, disables WorldRadar, rejects later F7 requests, and performs zero retries with no EngineTick fallback",
     "false_positive_boundary": "temporary missing expanded-map state uses candidate-only recovery and never arms the runtime restart",
-    "cost_boundary": "existing compact/world presentation loop performs scalar-only observation; no fourth LoopAsync, UObject read, bridge operation, file access, draw, or game-thread request",
+    "cost_boundary": "the existing 250 ms control loop performs scalar-only dispatcher timeout accounting; the shared slot coalesces cross-task pressure and adds no fourth LoopAsync, UObject read, bridge operation, file access, draw, or game-thread request",
     "restart_limit": 3
   },
   "data_installation": "local game PAK extraction through in-memory C# and the bundled ooz.exe decoder; datasets and Assault catalog carry the locked pre-generation fingerprint and installation rejects pre/post identity drift",
@@ -165,21 +167,22 @@
     "cost_bound": "one clock UObject read attempt per F7 activation and zero weather UObject reads",
     "rate_assumption": "approximately 60 game seconds per real second, confirmed in research and used for local extrapolation"
   },
-  "boss_runtime_tracking": "tb_actor_respawn read from consistent .db/.bak plus WAL/SHM/journal snapshots; no Character enumeration",
+  "boss_runtime_tracking": "tb_actor_respawn read from consistent .db/.bak plus WAL/SHM/journal snapshots; no Character enumeration; eastern Boss IDs 9000022, 9000023, and 9000025 are explicitly assigned to map 100 from their authoritative SectionUID ownership while genuine map-200 treasure data remains unchanged",
   "save_behavior": {
     "initial_visibility": "fail-closed empty index until first complete save-state snapshot; first valid snapshot immediately rebuilds and publishes records not confirmed open",
     "snapshot_flush": "normal buffered Flush(); no Flush(true)",
     "consistency": "source fingerprints checked before and after snapshot copying",
     "owner_pointer_rva": "installer resolves one unambiguous exact-EXE PE-pattern match and persists only schema/fingerprint/executable length/RVA/provenance; runtime recomputes the current EXE+PAK fingerprint before trying generated, then known, then one delayed fallback route",
-    "initial_debounce": "first snapshot may queue without the four-second delay because CopyConsistentSnapshot rejects source fingerprint changes before/after copy; later changes retain four seconds",
+    "change_gate": "each nineteen-second tick compares the active slot, exact source fingerprint, and key with the last successful publication; unchanged input exits before copy or SQLCipher, while CopyConsistentSnapshot rejects source changes during copy",
+    "completion_cooldown": "every completed or failed SQLCipher worker starts a fresh nineteen-second eligibility cooldown; changes observed while busy or cooling are retained and the current fingerprint is revalidated before the next eligible queue",
     "key_discovery": "verified current and legacy RVAs first; one full-image scan allowed only after 30 seconds of unresolved reads",
     "runtime_gate": "F8 performs no new save metadata or SQLCipher work; queued results are invalidated",
-    "metadata_interval_ms": 2000,
-    "stable_change_debounce_ms": 4000,
-    "database_cache": "in-memory per .db/.bak exact fingerprint; continuous autosave fingerprints coalesce into at most one latest stable complete treasure/boss/assault/task snapshot per 45-second window, every required cache miss builds the treasure-rich strict superset, unchanged windows are cache-only, and no cross-restart cache is used",
+    "change_check_interval_ms": 19000,
+    "stable_change_debounce_ms": 0,
+    "database_cache": "in-memory per .db/.bak exact fingerprint; every required cache miss builds the treasure-rich strict superset, unchanged active-slot/key fingerprints exit before SQLCipher, and no cross-restart cache is used",
     "sqlcipher": "isolated temporary snapshot connection with one key/cipher setup per connection; game save files are never opened directly by SQLCipher",
     "worker_priority": "best-effort managed BelowNormal plus balanced Windows thread background mode for CPU and I/O scheduling",
-    "debug_timings": "copy, key, treasure query, Boss/Assault query, database reads/cache hits, total"
+    "debug_timings": "copy, key, treasure query, Boss/Assault query, database reads/cache hits, completion cooldown, total; detailed treasure snapshots are emitted only when save/catalog/filter versions change"
   },
   "bundled_tool_executable_count": 1,
   "bundled_tools": [
@@ -195,7 +198,7 @@
     "alias"
   ],
   "accepted_data_rule_correction": "fixed ID 10220122 is not ignored and upgrades remove only its obsolete ignore/explanation; duplicate/offset 11003 remains ignored in favor of authoritative 14016",
-  "diagnostics_output": "runtime/diagnostics; debug_logging defaults false, so F7 trace budgets, eager trace-field tables, Overlay performance bookkeeping, save performance formatting, and the diagnostic-only encounter-task query are absent from normal execution; successful WORLD_TIME_TASK_PERF captures explicitly report failure=none; diagnostic_verbose remains false and use_logging remains enabled",
+  "diagnostics_output": "runtime/diagnostics; debug_logging defaults true for final runtime acceptance, enabling F5/F6 attribution, Overlay performance bookkeeping, save performance formatting, and the diagnostic-only encounter-task query; diagnostic_verbose remains false and use_logging remains enabled",
   "validation_status": "Windows source, compile, refactor, protocol-v6 debug-only inline A/B, event-driven bridge, scalar scheduling/prediction, nearest-pair rendering, Assault isolation, Mole mapping, metadata, and independent package gates required; F7/F8 smoothness and teleport behavior remain pending owner acceptance",
-  "performance_claim": "No numeric FPS claim. Normal minimap UE4SS full-chain samples remain about 4/s with fresh-current-Pawn travel safety. Compact presentation targets 33 ms using only bounded in-memory prediction between scalar arrivals; unchanged bridge slots are no longer metadata-probed on every visual tick. Healthy compact mode performs dirty-slot reads plus a 250 ms dual-slot safety scan, with a 50 ms polling fallback only when notifications are unavailable. Prediction remains bounded to 250 ms and freezes after 500 ms stale age. The second height marker is selected in the existing allocation-free pass and adds at most one normal vector marker plus one pointer. Save publication cadence, Lua cadence, world-map 8 ms behavior, and all visible layers are otherwise unchanged."
+  "performance_claim": "No numeric FPS claim. Normal minimap UE4SS full-chain samples remain about 4/s with fresh-current-Pawn travel safety. Compact presentation targets 33 ms using only bounded in-memory prediction between scalar arrivals; unchanged bridge slots are no longer metadata-probed on every visual tick. Healthy compact mode performs dirty-slot reads plus a 250 ms dual-slot safety scan, with a 50 ms polling fallback only when notifications are unavailable. Prediction remains bounded to 250 ms and freezes after 500 ms stale age. The second height marker is selected in the existing allocation-free pass and adds at most one normal vector marker plus one pointer. Activation, control, clock, and expanded-map UObject tasks share one stable ProcessEvent callback and one in-flight scalar slot, eliminating cross-task native queue overlap without changing task cadence or read count. One three-second missed callback poisons the route for the session with zero retry and no EngineTick fallback. Expanded-map UMG requests retain the visible 8 ms producer cadence and coalesce behind higher-priority work; no compact-mode callback or recurring work is added. A completed save worker cannot trigger an immediate catch-up SQLCipher snapshot, and detailed treasure diagnostics no longer rebuild on moving coordinates. All visible layers are unchanged."
 }
