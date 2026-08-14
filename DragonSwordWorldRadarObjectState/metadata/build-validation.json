@@ -1,0 +1,41 @@
+{
+  "schema_version": 4,
+  "version": "0.5.0-dev2-native-presence",
+  "required_gates": [
+    "source identity and performance policy",
+    "Windows PowerShell 5.1 Overlay compilation",
+    "Windows PowerShell 5.1 installer compilation",
+    "managed refactor and shared-memory protocol tests",
+    "synthetic treasure actor join test",
+    "C++ engine-independent lifecycle tests with warnings as errors",
+    "pinned UE4SS native adapter ABI build",
+    "release manifest and ZIP byte-identity audit"
+  ],
+  "native_invariants": {
+    "uobject_array_enumeration": false,
+    "find_all_call_sites": 1,
+    "find_all_policy": "exact class, proximity released, once per class and F7 activation",
+    "retained_uobject_across_callbacks": false,
+    "coordinate_interval_ms": 33,
+    "event_ring_capacity": 128,
+    "shared_mapping_bytes": 5248
+  },
+  "save_invariants": {
+    "attempts_per_f7": 1,
+    "runtime_periodic_checks": 0,
+    "automatic_retry_attempts": 0,
+    "f8_late_publication": false,
+    "native_delta_merge": true
+  },
+  "runtime_validation": {
+    "status": "pending",
+    "required": [
+      "treasure disappearance correctness",
+      "SQL count per activation",
+      "Motion Bridge write-rate reduction",
+      "F7/F8 equal-route frametime and FPS",
+      "dungeon and teleport epoch safety",
+      "nearby class catch-up maximum duration"
+    ]
+  }
+}

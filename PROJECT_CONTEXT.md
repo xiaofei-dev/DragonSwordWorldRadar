@@ -10,11 +10,15 @@ Use this file as the first cross-chat orientation document. Then read the select
 
 ### `DragonSwordWorldRadar/`
 
-Primary production Mod and authoritative owner of the integrated treasure, Boss, Assault, and Mole/Fly radar. Current source is `0.4.0-dev74-minigamecatalog2` with one protocol-v6 Motion/control bridge. Development is feature-complete for the current cycle; preserve the acceptance boundary between passed Windows/package gates and owner gameplay validation.
+Primary production Mod and authoritative owner of the integrated treasure, Boss, Assault, and Mole/Fly radar. Current source is `0.4.0-dev74-processdispatchguard1-localcapfix1` with one protocol-v6 Motion/control bridge. Preserve the acceptance boundary between passed Windows/package gates and owner gameplay validation.
 
 ### `DragonSwordNativeAutoPickup/`
 
-Native C++ UE4SS research Mod for bounded ordinary ground-loot pickup. The current `0.6.0-dropitem-closed-loop-diagnostic` is deliberately read-only: it discovers one non-template current-World `DropItemActor`, locks the exact owner/component weak identities, and traces only manual interaction calls correlated to that same object. The rejected 0.5.2-0.5.4 Vitality target/action assumptions are not used. Compilation and packaging do not establish gameplay acceptance.
+Native C++ UE4SS research Mod for owner-authorized ordinary ground-loot pickup. Version `0.9.0-native-visibility-f-input` uses an exact-version native visibility detour and sends one F scan-code press/release through the game's normal interaction path. It is deployed but not runtime accepted.
+
+### `DragonSwordWorldRadarObjectState/`
+
+Experimental native-object-state successor to the production Radar. Version `0.5.0-dev2-native-presence` moves bounded high-frequency state collection into a native provider while retaining the external Overlay and Lua world-map geometry. It is source/build validated but not production or gameplay accepted.
 
 ### `DragonSwordWorldDataProbe/`
 
@@ -54,7 +58,7 @@ The canonical UE4SS root is `DS/Binaries/Win64/ue4ss`; Mod installations belong 
 
 ## Current handoff state
 
-- Main Radar remains an independent deployed production candidate. Native Auto Pickup 0.6.0 is deployed under the canonical UE4SS root with verified hashes: it corrects the evidence boundary by requiring a same-object DropItemActor/manual-call trace before any later automatic action is implemented. Automatic pickup remains unaccepted.
+- Main Radar remains an independent deployed production candidate. Native Auto Pickup 0.9.0 is deployed for Steam build `24693558`; automatic pickup remains unaccepted until owner gameplay testing.
 - Static, compile, package, and scheduling gates passed locally; this is not a substitute for in-game acceptance.
 - DataProbe research source and evidence documentation are publishable, while runtime reports, diagnostics, generated local data, and installed state remain excluded.
 

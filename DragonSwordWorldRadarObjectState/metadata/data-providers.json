@@ -1,0 +1,49 @@
+{
+  "schema_version": 2,
+  "providers": [
+    {
+      "id": "treasures",
+      "class": "DragonSwordWorldRadar.Installer.TreasureDataProvider",
+      "source_pak": "pakchunk109-WindowsClient.pak",
+      "source_entry": "SectionTreasureBoxData.xml + PropTreasureBoxData.xml",
+      "output": "data/generated/treasures.lua",
+      "additional_output": "data/generated/treasure-actors.tsv",
+      "runtime_owner": "src/overlay/Data/WorldTreasureCatalog.cs + src/native/main.cpp",
+      "compatibility_wrapper": "scripts/treasures.lua",
+      "lua_runtime_catalog_load": false
+    },
+    {
+      "id": "bosses",
+      "class": "DragonSwordWorldRadar.Installer.BossDataProvider",
+      "source_pak": "pakchunk109-WindowsClient.pak",
+      "source_entry": "SectionMonsterData.xml (CID-matched fixed world-boss definitions)",
+      "output": "data/generated/bosses.lua",
+      "runtime_owner": "src/overlay/Data/WorldEncounterCatalog.cs",
+      "compatibility_wrapper": "scripts/bosses.lua",
+      "lua_runtime_catalog_load": false,
+      "record_count": 9
+    },
+    {
+      "id": "assaults",
+      "class": "DragonSwordWorldRadar.Installer.AssaultDataProvider",
+      "source_pak": "pakchunk109-WindowsClient.pak",
+      "source_entry": "UnexpectedMissionPlaceData.xml + UnexpectedMissionKindData.xml + SectionMonsterData.xml + RevealCycleData.xml",
+      "output": "data/generated/assaults.lua",
+      "runtime_owner": "src/overlay/Data/WorldEncounterCatalog.cs",
+      "record_count": 40,
+      "runtime_object_scan": false,
+      "condition_model": "optional encounter condition list; current generated type is world_time_window; cycle row confirmed and target binding inferred; unsupported weather semantics fail closed"
+    },
+    {
+      "id": "moles",
+      "class": "DragonSwordWorldRadar.Installer.MoleDataProvider",
+      "source_pak": "pakchunk109-WindowsClient.pak",
+      "classification": "MiniGame_Fly IDs 11001-11034 with NoticeTitle=109208 and NoticeDescription=109202",
+      "position_selection": ["NPC_Start", "Teleport_Start", "Fly_Linked"],
+      "output": "data/generated/moles.lua",
+      "runtime_owner": "src/overlay/Data/WorldMoleCatalog.cs",
+      "record_count": 34,
+      "runtime_coordinate_scan": false
+    }
+  ]
+}

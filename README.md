@@ -6,9 +6,10 @@ This repository is the shared source workspace for multiple **DragonSword Awaken
 
 | Directory | Role | Current status |
 |---|---|---|
-| `DragonSwordWorldRadar/` | Main production radar for treasures, Bosses, Assault targets, and Mole/Fly activities | `0.4.0-dev74-minigamecatalog2`; development is feature-complete for the current cycle, final gameplay acceptance remains owner-controlled |
-| `DragonSwordNativeAutoPickup/` | Native C++ owner-authorized ordinary ground-loot pickup research | `0.6.0-dropitem-closed-loop-diagnostic` deployed with verified hashes; read-only, runtime evidence pending |
+| `DragonSwordWorldRadar/` | Main production radar for treasures, Bosses, Assault targets, and Mole/Fly activities | `0.4.0-dev74-processdispatchguard1-localcapfix1`; source validation passed, final gameplay acceptance remains owner-controlled |
+| `DragonSwordNativeAutoPickup/` | Native C++ owner-authorized ordinary ground-loot pickup research | `0.9.0-native-visibility-f-input`; deployed, runtime acceptance pending |
 | `DragonSwordNativeWorldRadar/` | Isolated native-provider/external-overlay Radar proof of concept | `0.1.0-medium-poc`; static/build validated, not deployed, gameplay acceptance pending |
+| `DragonSwordWorldRadarObjectState/` | Experimental native object-state successor to the production Radar | `0.5.0-dev2-native-presence`; source/build validated, not production accepted |
 | `DragonSwordNativeAllMountsFreeFlight/` | Removable pure-resource PAK enabling the native free-dash entry for all mounts | `1.4.0`; installed artifact statically verified, gameplay acceptance not recorded |
 | `DragonSwordWorldDataProbe/` | Read-only data collection and research framework | Active research; observations must not be promoted directly into production behavior |
 

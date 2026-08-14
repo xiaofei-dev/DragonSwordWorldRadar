@@ -1,0 +1,79 @@
+{
+  "schema_version": 2,
+  "version": "0.4.0-dev21-dev15rollback1",
+  "preserved_evidence_scope": "Existing inventory, mapping, tested-release, and validation claims describe the accepted 0.4.0-dev9-performance1.8-singlebridge1 repository snapshot.",
+  "generated_at_utc": "2026-08-08T04:21:42.847957+00:00",
+  "package_type": "complete Git repository snapshot",
+  "source_layout_checks": {
+    "solution_present": true,
+    "build_directory_present": true,
+    "docs_directory_present": true,
+    "resources_directory_present": true,
+    "src_ue4ss_present": true,
+    "git_metadata_included": true,
+    "historical_dist_included": true,
+    "tested_1_8_release_in_dist": true,
+    "runtime_user_state_included": false
+  },
+  "inventory": {
+    "overlay_csharp_files": 31,
+    "installer_core_csharp_files": 13,
+    "ue4ss_lua_files": 6,
+    "production_source_to_release_mappings": 72,
+    "byte_identical_mappings_to_tested_1_8_release": 71,
+    "intentional_non_identical_mapping": [
+      "README.md -> README.txt (repository build guidance added)"
+    ]
+  },
+  "git": {
+    "included_branch": "dev",
+    "included_head": "41b646c",
+    "working_tree_policy": "1.8 changes intentionally remain visible for owner review; no synthetic commit was created"
+  },
+  "retired_files_absent": {
+    "src/ue4ss/boss_tracker.lua": true,
+    "src/overlay/Bridge/StaticStateBridgeReader.cs": true,
+    "src/overlay/Models/RadarState.cs": true
+  },
+  "validation": {
+    "json_metadata_parse": "passed: 7 repository metadata JSON files",
+    "csproj_xml_parse": "passed: 2 project files",
+    "csharp_lexical_and_delimiter_scan": "passed: 45 C# files across production and build harness",
+    "powershell_lexical_and_delimiter_scan": "passed: 10 PowerShell files",
+    "lua_loadfile": "passed: 6/6 UE4SS Lua modules through LuaTeX loadfile",
+    "production_code_byte_mapping": "passed: 71/72 mappings byte-identical; only repository README intentionally differs; every production code/runtime script mapping is identical",
+    "git_fsck": "passed for included Git object database at HEAD 41b646c",
+    "windows_powershell_5_1_compile": "not executed in Linux; run build/Compile-Source.ps1",
+    "in_game_runtime": "same production source bytes as the owner-tested 1.8 release for all mapped code files",
+    "git_diff_check": "passed: no whitespace errors in the 1.8 working-tree diff",
+    "tested_release_zip": "passed: SHA-256, CRC, duplicate/path-safety checks, and byte-identical copy in dist",
+    "windows_powershell_automatic_variable_collision": "fixed: build/Verify-Source.ps1 uses $hostScriptText instead of read-only $Host; build/Build-Release.ps1 uses $inputStream instead of shadowing automatic $input"
+  },
+  "tested_release": {
+    "path": "dist/DragonSwordWorldRadar-v0.4.0-dev9-performance1.8-singlebridge1.zip",
+    "sha256": "fefc338792c015b8e6a379d42dc393c25311e3f580aa08c75c5638eecb1082cb"
+  },
+  "successor_validation": {
+    "version": "0.4.0-dev72-runtimewatchdog1",
+    "baseline_commit": "38ff6549cffb519b4e21537c40966a0f541db5ce",
+    "inventory": { "overlay_csharp_files": 41, "installer_core_csharp_files": 18, "ue4ss_lua_files": 9 },
+    "architecture": { "host": 1, "watcher": 1, "overlay": 1, "active_bridge": 1, "loopasync_registrations": 3 },
+    "production_source_to_release_mappings": "generated authoritatively by metadata/source-release-map.json",
+    "windows_gates": "passed in Windows PowerShell 5.1, including the independent release-package audit",
+    "real_pak_acceptance": "Mole retained its accepted 34-record catalog; Assault current-PAK generation passed with 40 records, one generic conditioned target, and fingerprint d4fa7c994927537651ba3f4ef69c61e7bc7262e586457cf8ce18c1207960dee0",
+    "publication": "uncommitted, undeployed, unpushed, and unpublished",
+    "world_status": "one isolated TimeOfDay baseline attempt after the F7 stability gate; zero retry, recalibration, or weather reads",
+    "save_refresh": "F8-gated; one nineteen-second active-slot/key fingerprint check, unchanged input exits before SQLCipher, consistent-copy rejection for concurrent writes, per-sibling exact-fingerprint parsed cache, one SQLCipher key setup per isolated temporary connection, below-normal worker, and debug phase timings",
+    "runtime_status": "dev72 is undeployed and not runtime-tested; confirmed-error automatic recovery, initial expanded-map entry, transient active-read recovery, reopen recovery, compact smoothness, F7/F8 latency, frame-time, and travel remain under owner in-game acceptance"
+  },
+  "bundled_binaries": [
+    {
+      "path": "vendor/ooz/ooz.exe",
+      "sha256": "271d3fd02e582175ff033d0a23dca3785b6888fa21b8cd06741ba8c19b71df41"
+    },
+    {
+      "path": "vendor/sqlcipher/e_sqlcipher.dll",
+      "sha256": "32aded22e9cbac44ad95fe3d2a1e113be5da4a1a81b65d76ece25762b1bca196"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+THIRD-PARTY NOTICES
+
+SQLitePCLRaw.lib.e_sqlcipher 2.1.10
+Copyright 2014-2024 SourceGear, LLC
+Licensed under the Apache License, Version 2.0.
+https://github.com/ericsink/SQLitePCL.raw
+
+The included e_sqlcipher.dll is an unofficial and unsupported SQLCipher build
+distributed by the SQLitePCLRaw.lib.e_sqlcipher package. For official
+SQLCipher builds, contact Zetetic.
+
+The full Apache License, Version 2.0 is included in
+licenses/APACHE-2.0.txt.
+
+SQLCipher Community Edition
+Copyright (c) 2008-2026, ZETETIC, LLC
+Licensed under the SQLCipher Community Edition BSD-style license.
+https://www.zetetic.net/sqlcipher/
+
+The full SQLCipher license is included in licenses/SQLCIPHER.txt.
+
+ooz.exe decoder
+Version string reported by the binary: ooz v7.0
+Bundled path: tools/ooz.exe
+SHA-256: 271d3fd02e582175ff033d0a23dca3785b6888fa21b8cd06741ba8c19b71df41
+
+This binary was supplied for this project as the installation-time decoder used
+by the established treasure-data extraction workflow. Its upstream provenance
+and license were not independently established from the binary alone. Confirm
+redistribution rights before publishing a public release. No game data is
+distributed by DragonSwordWorldRadar.

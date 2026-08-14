@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AssaultInferencePolicy schema_version="1" expected_game_fingerprint="f7c6734b99d40a6068f06a2d34c98a0dbf2349db5320da5d5b8a6b6ba91280d7">
+  <Condition place_id="104"
+             cid="143"
+             uid="5945914773662957327"
+             uid_name="DSkeletonLeader_Nam_1041101"
+             reveal_cycle_id="10001"
+             condition_type="world_time_window"
+             provenance="INFERRED_STATIC_ROW_RUNTIME_BOUNDARY_MATCH"
+             missing_confirmation="Direct MonsterSpawnBase.TableKey_RevealCycle binding for the selected target" />
+</AssaultInferencePolicy>
