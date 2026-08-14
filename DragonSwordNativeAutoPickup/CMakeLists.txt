@@ -60,7 +60,7 @@ if(DSNAP_BUILD_UE4SS)
 
     # UE4SS v3.0.1 defaults to the required Game__Shipping__Win64 configuration.
     add_subdirectory("${UE4SS_ROOT}" "${CMAKE_BINARY_DIR}/ue4ss" EXCLUDE_FROM_ALL)
-    add_library(DragonSwordNativeAutoPickup SHARED src/ue4ss/main.cpp)
+    add_library(DragonSwordNativeAutoPickup SHARED src/ue4ss/main_0_9.cpp)
     target_include_directories(DragonSwordNativeAutoPickup PRIVATE include)
     target_link_libraries(DragonSwordNativeAutoPickup PRIVATE dsnap_core dsnap_platform UE4SS)
     target_compile_features(DragonSwordNativeAutoPickup PRIVATE cxx_std_20)

@@ -37,6 +37,10 @@ enum class PlayerChainReason : std::uint8_t {
 
 enum class PlayerMode : std::uint8_t { ExpectedCharacter, ControllerBoundAlternatePawn };
 
+[[nodiscard]] constexpr bool supports_active_pickup(PlayerMode mode) noexcept {
+    return mode == PlayerMode::ExpectedCharacter;
+}
+
 [[nodiscard]] constexpr std::string_view player_mode_name(PlayerMode mode) noexcept {
     return mode == PlayerMode::ExpectedCharacter ? std::string_view{"expected_character"}
                                                  : std::string_view{"controller_bound_alternate_pawn"};
@@ -122,6 +126,35 @@ public:
 private:
     std::int64_t minimum_interval_ns_{};
     std::atomic<std::int64_t> last_accepted_ns_{-1};
+};
+
+class QualifiedReleaseEdge {
+public:
+    explicit QualifiedReleaseEdge(std::chrono::milliseconds release_interval) noexcept
+        : release_interval_(release_interval) {}
+
+    [[nodiscard]] bool sample(bool down, std::chrono::steady_clock::time_point now) noexcept {
+        if (down) {
+            release_started_ = {};
+            if (!armed_) return false;
+            armed_ = false;
+            return true;
+        }
+        if (armed_) return false;
+        if (release_started_ == std::chrono::steady_clock::time_point{}) {
+            release_started_ = now;
+            return false;
+        }
+        if (now - release_started_ >= release_interval_) armed_ = true;
+        return false;
+    }
+
+    [[nodiscard]] bool armed() const noexcept { return armed_; }
+
+private:
+    std::chrono::milliseconds release_interval_{};
+    std::chrono::steady_clock::time_point release_started_{};
+    bool armed_{true};
 };
 
 } // namespace dsnap

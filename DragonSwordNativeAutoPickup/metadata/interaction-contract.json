@@ -1,46 +1,30 @@
 {
-  "schema_version": 15,
-  "status": "DROPITEM_CLOSED_LOOP_DIAGNOSTIC",
-  "active_mode_approved": false,
+  "schema_version": 18,
+  "status": "OWNER_AUTHORIZED_NATIVE_VISIBILITY_F_INPUT",
+  "active_mode_approved": true,
   "runtime_acceptance": false,
-  "automatic_mutation_without_valid_contract": false,
-  "speculative_key_action_fallback": null,
   "pulse_function": "UE4SS.RegisterEngineTickPostCallback",
-  "pulse_interval_ms": 150,
-  "target_source": "bounded_DropItemActor_sweep_plus_windowed_lifecycle_capture",
-  "locked_identity": "exactly_one_current_world_eligible_owner_and_component_weak_identity",
+  "target_source": "PolyHook2_detour_of_native_DDropItemButton_UpdateButtonVisibilityByComponent_RVA_0x61B3AC0",
+  "selection": "new_active_edge_for_exact_component_pointer_supplied_by_game",
   "automatic_action": {
-    "enabled": false,
-    "target_field_writes": false,
-    "process_event_pickup_calls": false,
-    "contract_io": false
+    "enabled": true,
+    "receiver": "foreground_game_window",
+    "function": "Win32.SendInput_F_scan_code_press_release",
+    "parameter_count": 2,
+    "target_fields": [],
+    "direct_interaction_rpc": false,
+    "cooldown_ms": 250,
+    "invocation_limit": "one_input_per_new_visible_component_edge",
+    "confirmation": "owner_visible_pickup_required"
   },
-  "observed_functions": {
-    "component": [
-      "CallActivePlayer",
-      "Server_RunInteractV2",
-      "Server_InputInteractKeyAfterAction",
-      "Server_InputInteractKeyAction",
-      "ServerReturnInteract_EnableState",
-      "SetInteractUIV2",
-      "ClientSetInteractUIV2",
-      "OnBeginOverlap",
-      "OnEndOverlap"
-    ],
-    "controller": [
-      "Interact",
-      "OnPressInteractionButton",
-      "OnReleaseInteractionButton",
-      "Client_InteractActionSetting",
-      "Client_InteractActionSetting_Restore",
-      "ServerReturnInteractState"
-    ],
-    "drop_item": ["AniPickUp", "SetDestroy"]
+  "evidence": {
+    "source": "current_executable_direct_call_xrefs_and_function_disassembly",
+    "native_rva": "0x61B3AC0",
+    "native_prefix_bytes": "48 89 74 24 18 57 48 83 EC 20 48 8B 01 48 8B F2",
+    "reflection_hook_result": "0_events_because_game_calls_native_function_directly",
+    "manual_input": "F_is_owner_reported_interaction_key"
   },
-  "correlation": "receiver_or_parameter_or_receiver_target_field_matches_locked_owner_or_component",
-  "trace_phases": ["pre", "post"],
-  "window_seconds": 60,
-  "world_transition_policy": "cancel_clear_weak_identities_and_cleanup",
-  "thread_affinity": "F9_and_on_update_scalar_only_all_UObject_work_on_EngineTick",
-  "unknown_build_policy": "passive_off"
+  "world_transition_policy": "InitGameState_immediate_off_and_clear_component_edge",
+  "thread_affinity": "native_visibility_and_EngineTick_game_thread_on_update_scalar_only",
+  "unknown_build_policy": "off"
 }

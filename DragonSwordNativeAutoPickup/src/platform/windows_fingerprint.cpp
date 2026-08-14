@@ -80,7 +80,7 @@ FingerprintResult verify_build_fingerprint(const std::filesystem::path& binary_d
     }
     result.game_sha256 = *game;
     result.ue4ss_sha256 = *ue4ss;
-    result.trusted = result.game_sha256 == kExpectedGameSha256 && result.ue4ss_sha256 == kExpectedUe4ssSha256;
+    result.trusted = expected_game_sha256(result.game_sha256) && result.ue4ss_sha256 == kExpectedUe4ssSha256;
     if (!result.trusted) {
         result.error = "unknown game or UE4SS build; passive/off mode required";
     }

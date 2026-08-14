@@ -39,6 +39,12 @@ public:
         return expired;
     }
 
+    [[nodiscard]] bool cancel(WeakObjectId candidate) noexcept {
+        if (!pending_ || pending_->candidate != candidate) return false;
+        pending_.reset();
+        return true;
+    }
+
     void reset() noexcept { pending_.reset(); }
     [[nodiscard]] bool pending() const noexcept { return pending_.has_value(); }
 
@@ -61,5 +67,39 @@ public:
 private:
     std::array<bool, 512> seen_{};
 };
+
+struct TransientTargetOwnership {
+    bool target_object{};
+    bool target_component{};
+};
+
+[[nodiscard]] constexpr TransientTargetOwnership transient_target_ownership(
+    bool target_object_is_null,
+    bool target_component_is_null) noexcept {
+    return {target_object_is_null, target_component_is_null};
+}
+
+[[nodiscard]] constexpr bool should_clear_transient_target(
+    bool owned_by_mod,
+    bool still_matches_mod_value) noexcept {
+    return owned_by_mod && still_matches_mod_value;
+}
+
+enum class ExactOneSelectionDecision : std::uint8_t {
+    NoEligibleCandidate,
+    Ready,
+    Ambiguous,
+    PreviouslyAttempted,
+};
+
+[[nodiscard]] constexpr ExactOneSelectionDecision decide_exact_one_selection(
+    std::size_t eligible_count,
+    bool sole_candidate_was_previously_attempted) noexcept {
+    if (eligible_count == 0) return ExactOneSelectionDecision::NoEligibleCandidate;
+    if (eligible_count > 1) return ExactOneSelectionDecision::Ambiguous;
+    return sole_candidate_was_previously_attempted
+        ? ExactOneSelectionDecision::PreviouslyAttempted
+        : ExactOneSelectionDecision::Ready;
+}
 
 } // namespace dsnap

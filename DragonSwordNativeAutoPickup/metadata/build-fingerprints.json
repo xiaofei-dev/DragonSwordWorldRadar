@@ -1,34 +1,47 @@
 {
   "schema_version": 1,
-  "captured_utc": "2026-08-11T03:17:42Z",
-  "game": {"file": "DSClient-Win64-Shipping.exe", "sha256": "0C9D54A35D7160E671A3DB10C5E645140FDAD15A7293314681E9EDA7E360C1FE"},
-  "ue4ss": {"version": "3.0.1 Beta #0", "git_sha": "1c1a1497f942c707f47ba668db75b25e86f6c08a", "file": "ue4ss/UE4SS.dll", "sha256": "F31188D59B34A812AFC32DB4B6FF0C74E1B44861D1ED7967452EE4B3B6635BE1"},
+  "captured_utc": "2026-08-13T16:11:27Z",
+  "game": {
+    "file": "DSClient-Win64-Shipping.exe",
+    "sha256": "3DDDCEE474825310000A4CD24239AE5C8B76EF81BAC223C9F3D52565816A0CEA",
+    "steam_build_id": "24693558"
+  },
+  "ue4ss": {
+    "version": "3.0.1 Beta #0",
+    "git_sha": "1c1a1497f942c707f47ba668db75b25e86f6c08a",
+    "file": "ue4ss/UE4SS.dll",
+    "sha256": "F31188D59B34A812AFC32DB4B6FF0C74E1B44861D1ED7967452EE4B3B6635BE1"
+  },
   "source_build": {
-    "status": "read_only_diagnostic_deployed_not_runtime_validated",
-    "version": "0.6.0-dropitem-closed-loop-diagnostic",
-    "built_utc": "2026-08-12T05:59:54Z",
+    "status": "native_visibility_f_input_candidate_deployed_not_runtime_validated",
+    "version": "0.9.0-native-visibility-f-input",
+    "built_utc": "2026-08-13T16:11:27Z",
     "configuration": "Game__Shipping__Win64",
-    "main_dll_size_bytes": 537600,
-    "main_dll_sha256": "2BE91E43909789A3F5C9B2181684B46E262DC1F002E83C877404A01E2B5A7CE2",
+    "main_dll_size_bytes": 1048064,
+    "main_dll_sha256": "645E1D68171D88FE533F7457F3394F61EC13D888B803846FA0614DEFF260B843",
     "dependencies": {
       "ue4ss_git_sha": "1c1a1497f942c707f47ba668db75b25e86f6c08a",
       "uepseudo_git_sha": "b2e876da82b17254c04304746341c8fde0ddb37c",
       "patternsleuth_git_sha": "da8bfe4c5a464be0ef225c2c9a6ccaa2d9284018",
       "imgui_color_text_edit_git_sha": "6d943aba9f7cef05da80b86dbb0253b63818f95c"
     },
-    "toolchain": {"cmake": "3.29.6", "generator": "Ninja", "rust": "1.97.1", "msvc": "19.44.35228"},
+    "toolchain": {
+      "cmake": "3.29.6",
+      "generator": "Ninja",
+      "rust": "1.97.1",
+      "msvc": "19.44.35228"
+    },
     "deployed": true,
-    "deployed_utc": "2026-08-12T06:04:00Z",
-    "installed_path": "DS/Binaries/Win64/ue4ss/Mods/DragonSwordNativeAutoPickup",
+    "deployed_utc": "2026-08-13T16:20:39Z",
+    "installed_path": "G:\\SteamLibrary\\steamapps\\common\\DragonSword  Awakening\\DS\\Binaries\\Win64\\ue4ss\\Mods\\DragonSwordNativeAutoPickup",
     "runtime_validated": false
   },
   "diagnostics": {
-    "thread_affinity": "program_loop_scalar_fingerprint_log_only_game_thread_UObject_control",
-    "f9": "rising_edge_with_release_detection",
-    "discovery": "one_budgeted_DropItemActor_sweep_plus_60_second_lifecycle_window",
-    "mode": "read_only_same_object_closed_loop_diagnostic_no_action_no_contract_io",
-    "trace_caps": "one_locked_candidate_and_256_correlated_pre_post_records",
-    "uobject_shutdown": "temporary_observation_hooks_abandoned_after_array_shutdown_listeners_removed"
+    "detection": "native_function_detour_exact_RVA_and_prefix_guard",
+    "input": "foreground_only_F_scan_code_press_release_one_edge_250ms_cooldown",
+    "f9": "250ms_qualified_release_edge",
+    "discovery": "game_native_visibility_event_no_object_or_actor_scan",
+    "uobject_shutdown": "process_lifetime_module_pin_generation_invalidated_unsafe_teardown"
   },
   "unknown_build_policy": "passive_off"
 }

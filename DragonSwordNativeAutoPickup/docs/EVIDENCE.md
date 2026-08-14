@@ -1,5 +1,67 @@
 # Evidence
 
+## 0.8 live rejection and 0.9 native-detour correction
+
+- The installed 0.8 session recorded `visibility_events=0`, `release_attempts=0`, and `release_invocations=0`; automatic pickup code never ran.
+- The executable contains direct native call xrefs to the visibility implementation at image RVA `0x61B3AC0`. Those calls bypass UE4SS's reflected UFunction hook even though hook registration reports success.
+- Version 0.9 uses the already pinned PolyHook2 dependency to detour the native implementation after validating the exact game hash and its first 16 bytes. The detour calls the original first and records only the component pointer and Active edge.
+- A new active edge queues one foreground-only F scan-code press/release from EngineTick. This tests the user's simpler hypothesis through the game's normal input handling without reconstructing the internal interaction RPC.
+- The pinned native build succeeds with SHA-256 `645E1D68171D88FE533F7457F3394F61EC13D888B803846FA0614DEFF260B843`. The same hash was deployed at `2026-08-13T16:20:39Z`. This is build/deployment evidence only; it is not runtime accepted.
+
+## 0.8.0 native pickup-button path
+
+- The current `DSClient.hpp` dump declares `UDDropItemButtonUserWidget::UpdateButtonVisibilityByComponent(const UDInteractableComponent*, bool)` and the zero-parameter `OnReleasedDropItemButton()` handler.
+- Static disassembly of Steam build `24693558` localized the native release handler and showed that it resolves game-owned player/context state before entering the interaction/UI/inventory flow. The press handler primarily changes pressed visual state and is not the selected action.
+- This provides a bounded game-owned candidate signal and a higher-level action boundary. Version 0.8 therefore removes the active global object bootstrap, Actor registry, radius/player-chain gates, Pawn target writes, and direct `Server_RunInteractV2` call.
+- The pinned native build succeeds with artifact SHA-256 `2C4B7A81E6AA87B6CF0002EA98F2D45FF7C920C3B160A0B9540C92ED13A9ECD1`; core tests also pass. The same hash was deployed to the standard `Win64\ue4ss\Mods` location at `2026-08-13T15:53:45Z`. This is build/deployment evidence only; no automatic pickup, mounted support, travel safety, or normal-exit claim is made yet.
+- The superseded `src/ue4ss/main.cpp` is retained as historical evidence but is no longer linked by CMake.
+
+## 0.7.5 F9 cancellation and 0.7.6 qualified-release correction
+
+- Version 0.7.5 passed the current game fingerprint and armed at `2026-08-13T12:50:30Z`.
+- The player chain succeeded 5/5 and discovery examined 81,920 indices, but the state returned Off one second later before the baseline completed. No candidate evaluation or action occurred.
+- Input telemetry recorded 61 held-key repeat rejections and two debounce rejections. A later false release sample followed by a down sample outside the 750 ms interval could therefore manufacture a second accepted toggle.
+- Version 0.7.6 requires 250 ms of continuously sampled release before rearming F9 and rejects an Off transition while discovery is incomplete. Discovery and action logic are unchanged. Runtime acceptance remains pending.
+
+## 0.7.4 passive-only result and 0.7.5 fingerprint correction
+
+- Steam updated DragonSword Awakening to build ID `24693558`. The installed executable is 162,562,968 bytes, modified `2026-08-13T06:09:01Z`, with SHA-256 `3DDDCEE474825310000A4CD24239AE5C8B76EF81BAC223C9F3D52565816A0CEA`.
+- At `2026-08-13T11:40:51Z` and again at `11:46:01Z`, 0.7.4 recorded `trusted=false` and `PASSIVE_ONLY`. The tested UE4SS hash remained the accepted `F31188D...BE1`.
+- The F9 session therefore ended as `Disabled/ContractInvalid`; `discovery_sweeps_started=0`, `player_chain_attempts=0`, `candidates_evaluated=0`, and `actions_invoked=0`. This session did not exercise the 0.7.4 discovery correction or pickup action at all.
+- Version 0.7.5 adds only the exact current executable hash to the fail-closed allowlist and retains the prior tested hash. This permits a new canary test; it does not prove that the updated game retained compatible runtime semantics.
+
+## 0.7.3 live failure and 0.7.4 discovery correction
+
+- The decisive 0.7.3 session armed at `2026-08-12T19:58:04Z`. Its player chain succeeded 20/20 times, and the bounded bootstrap completed after examining 309,586 UObject indices in 2,856 ms, but `discovery_candidates_found=0`, `candidates_evaluated=0`, and `actions_invoked=0`.
+- This localizes that failure before eligibility and action invocation. It does not disprove the accepted `Server_RunInteractV2` call chain because that chain was never reached.
+- The 0.6.0 diagnostic previously captured one real derived `Drop_Item_BoarMeat_BP_C` by classifying the UObject first. Version 0.7.3 instead called `GetWorld()` during the global-array walk. Version 0.7.4 restores the known-success class-first scan and revalidates World ownership later from the weak identity. This is evidence-guided, but runtime has not yet proved that the premature World filter was the sole cause.
+- The 0.7.3 log also recorded multiple Off/Armed/Off transitions after the long bootstrap. Version 0.7.4 adds a 750 ms monotonic debounce while retaining press/release edge detection; the owner should still press F9 exactly once for the next test.
+- Actor lifecycle callbacks produced no candidate in the brief armed interval. Version 0.7.4 retains them and adds a tail-only scan for UObject indices allocated after the completed bound. It does not rescan earlier indices or restore global UObject create/delete listeners.
+- The 0.7.4 artifact is compiled and statically verified only. Gameplay pickup, travel, mounted behavior, and exit safety remain unaccepted.
+
+## 0.7.2 live failure and 0.7.3 bounded Actor registry correction
+
+- In the decisive 0.7.2 F9 session, the player chain succeeded 132/132 times while 66 `GetAllActorsOfClass` wrapper calls returned zero candidates and no action gate ran.
+- The pinned SDK wrapper returns `void` and silently exits when its GameplayStatics CDO or reflected UFunction is unavailable. The 0.7.2 adapter nevertheless marked every non-throwing call successful, so `actor_query_failures=0` did not prove that ProcessEvent executed.
+- The action contract, radius, state, component, and target-field gates therefore remain unchanged. Version 0.7.3 replaces only discovery: the exact 0.6 bounded scanner covers already-existing actors, then native Actor BeginPlay/EndPlay callbacks maintain weak identities.
+- This does not restore the rejected high-volume UObject create/delete listener. The bootstrap has a fixed snapshot bound, advances at most 16,384 indices with a 2 ms soft budget per pulse, and stops after completion.
+- That first 0.7.3 build exposed additional static blockers and was superseded before deployment: incomplete-bootstrap action, cross-pulse uniqueness, overflow truncation, unproven mounted invocation, target-field ownership, and exit-resident worker lifetime.
+- The repaired candidate blocks actions until bootstrap completion, performs complete same-pulse selection, latches overflow/thread/budget/guarded failures closed, limits invocation to the evidence-backed on-foot mode, preserves game-owned target fields, retains once-per-identity attempt history across EndPlay, owns no background logger/fingerprint task, and pins its DLL against an unsafe host unload path. Its final artifact identity is recorded in `metadata/build-fingerprints.json`. It remains not deployed and not gameplay accepted.
+
+## 0.7.1 live failure and superseded 0.7.2 query attempt
+
+- In the latest 0.7.1 session, F9 armed successfully and the player chain succeeded 1,915/1,915 times, but the one-shot sweep found zero candidates and more than 273,000 create callbacks still captured zero `DropItemActor` instances.
+- This proves the active failure occurred before action gating: the global UObject lifecycle callback was not a reliable completed-Actor discovery signal for the tested drops.
+- Version 0.7.2 removed both the one-shot global UObject sweep and all global UObject lifecycle listeners, then queried through the pinned SDK's `UGameplayStatics::GetAllActorsOfClass` wrapper every 250 ms. Runtime evidence later proved that the adapter's success attribution was invalid, so this discovery route is superseded by 0.7.3.
+
+## 0.6.0 ordinary-drop closed-loop result accepted for 0.7.0 source
+
+- F9 armed the read-only diagnostic and locked one real derived `DropItemActor`, `Drop_Item_BoarMeat_BP_C`, at 1.250 m.
+- The owner manually collected that exact item. The correlated trace captured `/Script/DS.DInteractableComponent:Server_RunInteractV2` on the current Pawn's `InteractableComponent` receiver with zero parameters.
+- The receiver property FNV-1a hash was `400295510`, which resolves to `InteractableComponent`.
+- `ExecuteTargetObject` and `ExecuteTargetComponent` on that receiver matched the locked drop owner and its owned `InteractComponent` at the call.
+- This closes the earlier ordinary-drop action gap and authorizes the narrowly scoped active source in 0.7.0. It does not establish runtime acceptance, mounted support, multi-target selection, or any other interaction function.
+
 ## Runtime evidence through 0.3.8
 
 - 0.3.8 was trusted and active. Its exact player chain succeeded 429/429 times, including 396 expected-character and 33 controller-bound alternate-Pawn pulses. Mounted identity support is therefore demonstrated for that build.
@@ -48,7 +110,7 @@ Build success and static evidence do not establish runtime acceptance.
 - The latest owner exit test crashed after 68 seconds while Unreal reported `IsRequestingExit=true`.
 - The resolved stack is `NativeAutoPickup::OnUObjectArrayShutdown` -> `NativeAutoPickup::unregister_calibration_hooks` -> UE4SS `UObjectGlobals::UnregisterHook`.
 - UE4SS `UnregisterHook(UFunction*, ids)` immediately dereferences the supplied UFunction. That saved object is not safe once UObject-array shutdown has begun.
-- The current source fix invalidates callback generation, disables activity, clears only the Mod's local hook records, and removes UObject listeners using the UE4SS shutdown pattern. The destructor skips all UE4SS registry mutation after that shutdown signal.
+- The 0.6 diagnostic fixed that path by reacting to UObject-array shutdown, but it required high-volume UObject listeners. Version 0.7.3 deliberately does not restore those listeners. It resolves `RtlDllShutdownInProgress` once at startup, invalidates the instance/generation first at teardown, and abandons local hook records without touching UE4SS/UObject registries when either process shutdown is in progress or Unreal's exported initialization state is already false. Normal hot-uninstall still unregisters every callback. This removes the known unsafe teardown call without adding a polling path; normal process exit remains a required runtime test rather than a static claim.
 - Schema-12 current-Controller/Pawn property receiver capture and `Server_RunInteractV2` replay still require gameplay acceptance.
 
 ## 0.4.2 live result and 0.4.3 probe

@@ -46,7 +46,7 @@ void test_configuration() {
     const auto valid = dsnap::parse_configuration_text(R"(
 [auto_pickup]
 enabled_on_launch=false
-read_only_diagnostic=true
+automatic_pickup=true
 toggle_hotkey=F9
 radius_meters=5.0
 max_queue=64
@@ -55,16 +55,21 @@ perf_log_interval_seconds=30
     require(valid.valid(), "valid configuration should parse");
     require(valid.value.radius_meters == 5.0, "radius should parse");
 
-    const auto unsafe = dsnap::parse_configuration_text("enabled_on_launch=true\nread_only_diagnostic=true\ntoggle_hotkey=F7\n");
+    const auto unsafe = dsnap::parse_configuration_text("enabled_on_launch=true\nautomatic_pickup=true\ntoggle_hotkey=F7\n");
     require(!unsafe.valid(), "unsafe defaults and Radar hotkey conflict must fail");
-    const auto unsupported_key = dsnap::parse_configuration_text("enabled_on_launch=false\nread_only_diagnostic=true\ntoggle_hotkey=F10\n");
+    const auto unsupported_key = dsnap::parse_configuration_text("enabled_on_launch=false\nautomatic_pickup=true\ntoggle_hotkey=F10\n");
     require(!unsupported_key.valid(), "evidence build must reject any key other than F9");
     const auto legacy = dsnap::parse_configuration_text("enabled_on_launch=false\npassive_observation=true\ntoggle_hotkey=F9\n");
     require(legacy.valid(), "a prior passive=true config must remain a safe backward-compatible alias");
     const auto canary_legacy = dsnap::parse_configuration_text("enabled_on_launch=false\nsingle_target_canary=true\ntoggle_hotkey=F9\n");
     require(canary_legacy.valid(), "a prior canary=true config must remain safely diagnostic-only");
-    const auto diagnostic_off = dsnap::parse_configuration_text("enabled_on_launch=false\nread_only_diagnostic=false\ntoggle_hotkey=F9\n");
-    require(!diagnostic_off.valid(), "diagnostic mode cannot be disabled into an undefined active mode");
+    const auto active_off = dsnap::parse_configuration_text("enabled_on_launch=false\nautomatic_pickup=false\ntoggle_hotkey=F9\n");
+    require(!active_off.valid(), "active pickup cannot be silently disabled into an undefined mode");
+    const auto old_config = dsnap::parse_configuration_text("enabled_on_launch=false\nread_only_diagnostic=true\ntoggle_hotkey=F9\n");
+    require(old_config.valid(), "the previous read-only config must remain a safe migration input");
+    const auto oversized_registry = dsnap::parse_configuration_text(
+        "enabled_on_launch=false\nautomatic_pickup=true\ntoggle_hotkey=F9\nmax_queue=129\n");
+    require(!oversized_registry.valid(), "complete same-pulse selection must reject a registry above 128 entries");
 }
 
 void test_session_calibration() {
@@ -236,9 +241,13 @@ void test_monotonic_f9_debounce() {
 void test_controlled_alternate_pawn_acceptance() {
     const auto expected = dsnap::classify_controlled_pawn(true, true, true);
     require(expected == dsnap::PlayerMode::ExpectedCharacter, "expected character should retain its mode");
+    require(expected && dsnap::supports_active_pickup(*expected),
+            "the evidence-backed on-foot character may enter active pickup");
     const auto mounted = dsnap::classify_controlled_pawn(false, true, true);
     require(mounted == dsnap::PlayerMode::ControllerBoundAlternatePawn,
             "controller-bound alternate Pawn should be accepted for mounted play");
+    require(mounted && !dsnap::supports_active_pickup(*mounted),
+            "mounted context may be observed but must remain action-ineligible until receiver evidence exists");
     require(!dsnap::classify_controlled_pawn(false, false, true).has_value(),
             "alternate Pawn without controller identity must fail closed");
     require(!dsnap::classify_controlled_pawn(false, true, false).has_value(),
@@ -268,6 +277,67 @@ void test_pending_action_timeout_is_terminal() {
     const auto expired = tracker.expire(now + dsnap::kActionConfirmationWindow);
     require(expired.has_value() && expired->candidate == candidate, "timeout must return the exact pending candidate");
     require(!tracker.pending(), "timeout must clear pending state without retry");
+}
+
+void test_game_fingerprint_allowlist() {
+    require(dsnap::expected_game_sha256("0C9D54A35D7160E671A3DB10C5E645140FDAD15A7293314681E9EDA7E360C1FE"),
+            "the previously tested game build should remain supported");
+    require(dsnap::expected_game_sha256("3DDDCEE474825310000A4CD24239AE5C8B76EF81BAC223C9F3D52565816A0CEA"),
+            "the 2026-08-13 Steam build should be supported");
+    require(!dsnap::expected_game_sha256("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+            "an unknown game build must fail closed");
+}
+
+void test_qualified_f9_release() {
+    using namespace std::chrono_literals;
+    dsnap::QualifiedReleaseEdge input{250ms};
+    const auto start = std::chrono::steady_clock::time_point{1s};
+    require(input.sample(true, start), "the first physical F9 press should toggle");
+    require(!input.sample(true, start + 2s), "a long-held F9 must never become another press");
+    require(!input.sample(false, start + 2100ms), "release starts qualification but cannot rearm immediately");
+    require(!input.sample(true, start + 2200ms), "a short false sample must not manufacture another press");
+    require(!input.sample(false, start + 2300ms), "a new release interval must restart after bounce");
+    require(!input.sample(false, start + 2550ms), "qualified release rearms without toggling");
+    require(input.sample(true, start + 2600ms), "a new press after stable release should toggle");
+}
+
+void test_pending_action_exact_cancel() {
+    using namespace std::chrono_literals;
+    dsnap::PendingActionTracker tracker{};
+    const dsnap::WeakObjectId candidate{17, 3};
+    const auto now = std::chrono::steady_clock::time_point{3s};
+    require(tracker.begin(candidate, now, 2.0), "action should enter pending state before rollback");
+    require(!tracker.cancel({17, 4}), "rollback must not cancel a reused index with another serial");
+    require(tracker.pending(), "mismatched rollback must preserve the pending action");
+    require(tracker.cancel(candidate), "rollback must cancel the exact pending identity");
+    require(!tracker.pending(), "exact rollback must leave no pending action");
+}
+
+void test_transient_target_ownership() {
+    const auto empty = dsnap::transient_target_ownership(true, true);
+    require(empty.target_object && empty.target_component,
+            "the Mod may own both assignments only when both game fields were empty");
+    const auto game_owned_object = dsnap::transient_target_ownership(false, true);
+    require(!game_owned_object.target_object && game_owned_object.target_component,
+            "an existing exact game target must remain game-owned per field");
+    require(dsnap::should_clear_transient_target(true, true),
+            "a Mod-owned field that still has the assigned value must be cleared");
+    require(!dsnap::should_clear_transient_target(false, true),
+            "an existing game-owned exact field must never be cleared");
+    require(!dsnap::should_clear_transient_target(true, false),
+            "a field changed by the game during ProcessEvent must never be overwritten");
+}
+
+void test_exact_one_selection_includes_previous_attempts() {
+    using Decision = dsnap::ExactOneSelectionDecision;
+    require(dsnap::decide_exact_one_selection(0, false) == Decision::NoEligibleCandidate,
+            "zero eligible candidates must remain idle");
+    require(dsnap::decide_exact_one_selection(1, false) == Decision::Ready,
+            "one fresh eligible candidate may be selected");
+    require(dsnap::decide_exact_one_selection(2, false) == Decision::Ambiguous,
+            "every eligible candidate must count toward ambiguity");
+    require(dsnap::decide_exact_one_selection(1, true) == Decision::PreviouslyAttempted,
+            "a still-present attempted candidate must count but must never be invoked again");
 }
 
 void test_distinct_interaction_capture_logging() {
@@ -366,7 +436,20 @@ void test_discovery_epoch_and_cancellation() {
     discovery.commit(20);
     require(discovery.next(30) == std::pair<std::int32_t, std::int32_t>{20, 50}, "time-budget stop must resume without gaps");
     require(discovery.epoch() == 7, "discovery must retain its world epoch");
-    discovery.cancel(); require(!discovery.active(), "disarm must cancel discovery");
+    require(!discovery.complete(), "a partial baseline must never be action-ready");
+    discovery.commit(100);
+    require(discovery.complete() && !discovery.active(), "only the full fixed snapshot may become action-ready");
+    require(discovery.extend_upper_bound(140), "a larger UObject upper bound should start a tail-only extension");
+    require(!discovery.complete() && discovery.active(), "new tail indices must block action readiness until scanned");
+    require(discovery.next(30) == std::pair<std::int32_t, std::int32_t>{100, 130},
+            "tail discovery must resume at the previous upper bound without rescanning old indices");
+    discovery.commit(140);
+    require(discovery.complete() && !discovery.active(), "the complete tail extension should restore readiness");
+    require(!discovery.extend_upper_bound(140), "an unchanged upper bound must not restart discovery");
+    discovery.cancel();
+    require(!discovery.active() && !discovery.complete(), "disarm must cancel and invalidate discovery");
+    discovery.begin(8, 0);
+    require(discovery.complete() && !discovery.active(), "an explicitly empty fixed snapshot is complete");
 }
 
 void test_single_target_invocation_latch() {
@@ -395,6 +478,16 @@ void test_single_target_invocation_latch() {
     require(!latch.pending(), "target clearing must leave no pending invocation");
 }
 
+void test_single_target_exact_rollback() {
+    dsnap::SingleTargetInvocationLatch latch{};
+    const dsnap::WeakObjectId candidate{201, 11};
+    require(latch.mark_invoked(candidate), "test target should enter the invocation latch");
+    require(!latch.clear({201, 12}), "rollback must not clear a reused index with another serial");
+    require(latch.pending(), "mismatched rollback must preserve the invocation latch");
+    require(latch.clear(candidate), "rollback must clear the exact invocation identity");
+    require(!latch.pending(), "exact rollback must leave the latch empty");
+}
+
 } // namespace
 
 int main() {
@@ -411,14 +504,20 @@ int main() {
     test_complete_player_chain_reason_attribution();
     test_bounded_player_chain_diagnostics();
     test_monotonic_f9_debounce();
+    test_game_fingerprint_allowlist();
+    test_qualified_f9_release();
     test_controlled_alternate_pawn_acceptance();
     test_pending_action_confirmation();
     test_pending_action_timeout_is_terminal();
+    test_pending_action_exact_cancel();
+    test_transient_target_ownership();
+    test_exact_one_selection_includes_previous_attempts();
     test_distinct_interaction_capture_logging();
     test_runtime_contract_validation_and_persistence();
     test_calibration_state_and_true_edge();
     test_discovery_epoch_and_cancellation();
     test_single_target_invocation_latch();
+    test_single_target_exact_rollback();
     std::cout << "All DragonSwordNativeAutoPickup core tests passed.\n";
     return 0;
 }

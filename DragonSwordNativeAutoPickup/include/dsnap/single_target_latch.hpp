@@ -42,6 +42,12 @@ public:
         return true;
     }
 
+    [[nodiscard]] bool clear(WeakObjectId target) noexcept {
+        if (!target.valid() || pending_ != target) return false;
+        pending_ = {};
+        return true;
+    }
+
     void reset() noexcept { pending_ = {}; }
     [[nodiscard]] bool pending() const noexcept { return pending_.valid(); }
     [[nodiscard]] WeakObjectId target() const noexcept { return pending_; }

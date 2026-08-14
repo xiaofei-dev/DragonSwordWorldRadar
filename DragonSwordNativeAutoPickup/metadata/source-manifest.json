@@ -37,6 +37,8 @@
     "src/platform/async_logger.cpp",
     "src/platform/windows_fingerprint.cpp",
     "src/ue4ss/main.cpp",
+    "src/ue4ss/main_0_8.cpp",
+    "src/ue4ss/main_0_9.cpp",
     "tests/core_tests.cpp",
     "tools/Build-Core.ps1",
     "tools/Build-Native.ps1",

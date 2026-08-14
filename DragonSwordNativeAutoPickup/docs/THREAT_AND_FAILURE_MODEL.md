@@ -2,14 +2,15 @@
 
 | Hazard | Mitigation |
 |---|---|
-| Another guessed action damages state or crashes | 0.6.0 contains no automatic interaction invocation or target-field writes. |
-| Vitality evidence is generalized to ordinary drops | Discovery and correlation require a real non-template `DropItemActor` weak identity. |
-| A template is mistaken for live loot | CDO, archetype, and default-subobject flags are rejected. |
-| Two nearby drops make correlation ambiguous | The target is not locked unless exactly one candidate passes all gates. |
-| Unrelated interaction hooks flood logs | Records are retained only when receiver, parameter, or target fields correlate to the locked identity. |
-| Global discovery stalls a frame | The initial sweep is incremental with a 2 ms batch budget. |
-| Always-on listeners create permanent overhead | Listeners and hooks exist only inside the owner-triggered 60-second window. |
-| Stale objects survive travel | World transition resets the state to Off, clears weak identities, and requests safe cleanup. |
-| Shutdown dereferences invalid UFunctions | UObject-array shutdown abandons local hook records and removes listeners without unregistering stale UFunction pointers. |
-| Deletion is mistaken for universal success | Deletion is logged as one possible transition and never validates a contract. |
-| Build success is called gameplay success | Owner evidence capture remains mandatory. |
+| A game update moves or changes the native function | Exact executable hash, RVA, and 16-byte prefix must all match; otherwise the Mod remains passive. |
+| The detour suppresses normal game behavior | The original trampoline is called first with the untouched native arguments. |
+| F9 produces repeated On/Off transitions | A physical press requires 250 ms of qualified release before rearming. |
+| Synthetic F reaches another application | Input is allowed only when the foreground window belongs to the current game process. |
+| A key remains held | One `SendInput` call contains both scan-code keydown and keyup records. |
+| One component creates a tight input loop | Only a new active edge queues input; cooldown is 250 ms and pending is consumed once. |
+| Cooldown drops a legitimate new edge | Pending remains queued until the cooldown expires. |
+| Stale state survives World travel | InitGameState forces Off and clears component/pending state. |
+| Discovery causes frame loss | There is no object/Actor scan, player query, radius calculation, or periodic candidate search. |
+| Windows input is ignored by the game | Logs separate native detection from `F_INPUT_SENT`; visible pickup remains the acceptance test. |
+| Late host teardown leaves a patched native function | The DLL is process-lifetime pinned; unsafe shutdown invalidates Mod state while the mapped detour continues calling its trampoline. |
+| Build success is called gameplay success | Detection, input delivery, collection, mounted play, travel, and exit remain owner runtime gates. |

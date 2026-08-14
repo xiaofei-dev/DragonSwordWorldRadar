@@ -64,8 +64,13 @@ ConfigurationResult parse_configuration_text(std::string_view text) {
 
         if (key == "enabled_on_launch") {
             parsed = parse_bool(value, result.value.enabled_on_launch);
+        } else if (key == "automatic_pickup") {
+            parsed = parse_bool(value, result.value.automatic_pickup);
         } else if (key == "read_only_diagnostic") {
-            parsed = parse_bool(value, result.value.read_only_diagnostic);
+            // Accept only the old safe value so an installed 0.6 config can be
+            // upgraded deliberately. It does not disable the active contract.
+            bool legacy_value{};
+            parsed = parse_bool(value, legacy_value) && legacy_value;
         } else if (key == "single_target_canary") {
             // Safe migration path for an installed pre-0.6 config. Only true
             // is accepted; false cannot enable a different runtime mode.
@@ -95,8 +100,8 @@ ConfigurationResult parse_configuration_text(std::string_view text) {
     if (result.value.enabled_on_launch) {
         result.errors.emplace_back("enabled_on_launch must remain false until the interaction contract is accepted");
     }
-    if (!result.value.read_only_diagnostic) {
-        result.errors.emplace_back("read_only_diagnostic must remain true in the bounded diagnostic build");
+    if (!result.value.automatic_pickup) {
+        result.errors.emplace_back("automatic_pickup must remain true in the active pickup build");
     }
     if (result.value.toggle_hotkey != "F9") {
         result.errors.emplace_back("toggle_hotkey must be exactly F9 in the evidence build");
@@ -104,8 +109,8 @@ ConfigurationResult parse_configuration_text(std::string_view text) {
     if (result.value.radius_meters < 0.5 || result.value.radius_meters > 15.0) {
         result.errors.emplace_back("radius_meters must be between 0.5 and 15.0");
     }
-    if (result.value.max_queue == 0 || result.value.max_queue > 1024) {
-        result.errors.emplace_back("max_queue must be between 1 and 1024");
+    if (result.value.max_queue == 0 || result.value.max_queue > 128) {
+        result.errors.emplace_back("max_queue must be between 1 and 128 for complete same-pulse selection");
     }
     if (result.value.perf_log_interval_seconds < 5 || result.value.perf_log_interval_seconds > 600) {
         result.errors.emplace_back("perf_log_interval_seconds must be between 5 and 600");

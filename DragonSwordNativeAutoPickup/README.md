@@ -1,35 +1,28 @@
 # DragonSword Native Auto Pickup
 
-`DragonSwordNativeAutoPickup` is an isolated native UE4SS research Mod for owner-authorized ordinary ground-loot pickup. Version `0.6.0-dropitem-closed-loop-diagnostic` does not perform automatic pickup. It captures the missing exact manual interaction contract for one real `DropItemActor`.
+Version `0.9.0-native-visibility-f-input` detects the game's native ground-loot visibility transition and sends one F scan-code press/release so the game can execute its normal interaction path.
 
-## Why this diagnostic exists
+## Runtime behavior
 
-Earlier builds proved target discovery and action selection separately but never for the same ordinary drop:
+- Press F9 once to enable or disable.
+- The native detector has no object scan and no polling search.
+- Each newly active component may queue one F input.
+- F is sent only when DragonSword is the foreground process.
+- World transition turns the Mod Off and clears pending input.
 
-- 0.3.8 found real derived `DropItemActor` candidates, but its KeyAction call did not pick them up.
-- 0.5.1 traced a manual `Vitality_Leave_01_C` interaction, not a proven ordinary `DropItemActor` interaction.
-- 0.5.2-0.5.4 incorrectly treated transient target fields or the Vitality instance name as persistent general discovery and found no usable target.
+## Why this replaces 0.8
 
-The 0.6.0 build closes that evidence gap without guessing another action.
+The 0.8 reflected hook registered but received zero events because the current executable directly calls the native implementation. Version 0.9 installs an exact-version PolyHook2 detour at RVA `0x61B3AC0`, guarded by the executable hash and native byte prefix.
 
-## Current behavior
+The active source performs no UObject/Actor scan, Pawn-chain traversal, distance query, target-field write, direct `Server_RunInteractV2`, or reflected pickup replay.
 
-- F9 starts or stops one bounded 60-second read-only window.
-- A budgeted sweep and lifecycle filter capture real non-template `DropItemActor` instances.
-- The current player chain and candidate locations are resolved on EngineTick.
-- Exactly one eligible candidate inside 4.5 m is locked by UObject index and serial.
-- Correlated pre/post calls are logged for overlap, player interaction, `AniPickUp`, and `SetDestroy` paths.
-- World transition cancels the diagnostic and clears all weak references.
-- There is no automatic interaction call, target-field mutation, runtime contract file, or deletion-based success claim.
+## First runtime test
 
-## Owner capture
+1. Start in stable open-world play and press F9 once.
+2. Approach one ordinary ground drop without pressing F manually.
+3. Confirm visible pickup.
+4. Preserve both AutoPickup logs even if pickup fails.
+5. Repeat while mounted only after the on-foot result is known.
+6. Verify F9 Off, World travel, Radar F7 coexistence, and normal process exit.
 
-1. Start on foot in stable open-world play.
-2. Leave exactly one ordinary ground drop within 4.5 m.
-3. Press and release F9 once.
-4. Wait for `DIAGNOSTIC_TARGET_LOCKED`.
-5. Manually collect that same item once through the normal game interaction.
-6. Wait several seconds or until the 60-second window ends.
-7. Exit normally and preserve both runtime logs.
-
-Do not test travel, dungeons, or mounted pickup in this capture. Compilation and packaging do not establish a pickup implementation.
+Log interpretation is explicit: zero `native_visibility_events` means native detection failed; events without `F_INPUT_SENT` mean an input gate rejected the request; `F_INPUT_SENT` without collection means Windows input did not activate the game's interaction binding.

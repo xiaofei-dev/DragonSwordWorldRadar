@@ -1,42 +1,40 @@
 # Architecture
 
-## Read-only control flow
+## Active control flow
 
 ```text
-on_update / Windows F9 scalar poll
-  -> one physical rising-edge request
-  -> no UObject access
+startup
+  -> verify exact game and UE4SS hashes
+  -> resolve image base + RVA 0x61B3AC0
+  -> verify the first 16 native bytes
+  -> install PolyHook2 x64 detour and require a trampoline
 
-EngineTick post callback (150 ms throttle)
-  -> consume F9 request
-  -> start a 60-second diagnostic window
-  -> bounded UObject-index sweep for non-template DropItemActor instances
-  -> lifecycle capture for new DropItemActor instances while the window is active
-  -> resolve current Engine -> LocalPlayer -> Controller -> Pawn -> Location
-  -> require current World, InteractComponent ownership, state values, and radius
-  -> lock only one unambiguous weak candidate identity
-  -> observe correlated manual interaction calls
-  -> never invoke pickup
+native UpdateButtonVisibilityByComponent(widget, component, active)
+  -> call the original game function first
+  -> active=true with a new component edge: queue one scalar input request
+  -> active=false: clear the component and pending request
+
+UE4SS program-loop update
+  -> flush bounded logs
+  -> poll only F9 and apply a 250 ms qualified-release edge
+  -> queue only a scalar toggle
+
+native EngineTick post callback
+  -> apply the queued F9 toggle
+  -> require On, a pending component edge, cooldown elapsed, and game foreground
+  -> send one F scan-code keydown/keyup pair through Win32 SendInput
+
+InitGameState pre callback
+  -> turn Off
+  -> clear the component edge and pending input
 ```
 
-## Correlation
+## Lifecycle and performance
 
-The locked identity includes UObject index and serial for the drop owner and its `InteractComponent`. A hook record is retained only when at least one of these is true:
+The active path owns no object scan, Actor registry, player chain, spatial search, Lua scheduler, worker thread, or bridge. The dormant cost is one native function detour plus atomic checks. Input work occurs only on a new game-provided visibility edge.
 
-- receiver or receiver Outer equals the locked owner/component;
-- an object parameter equals the locked owner/component;
-- receiver `ExecuteTargetObject` or `ExecuteTargetComponent` equals the locked owner/component.
+Normal hot-uninstall removes the detour before unregistering global callbacks. The module remains pinned for process lifetime because late UE4SS teardown may no longer expose a safe Unreal registry. In that unsafe process-exit branch the instance and callback generation become inert while the still-mapped detour continues to call the original trampoline.
 
-Each retained call records pre/post phase, receiver, parameters, selected object fields, locked component state, World relation, and bounded related object properties.
+## Deliberate exclusions
 
-## Observed functions
-
-- `DInteractableComponent`: `OnBeginOverlap`, `OnEndOverlap`, `CallActivePlayer`, `Server_RunInteractV2`, input-action helpers, UI helpers, and return-state helpers.
-- `DsPlayerController`: local interaction press/release and related client/server state helpers.
-- `DropItemActor`: `AniPickUp` and `SetDestroy`.
-
-Every hook is observation-only. All replay-eligible flags are false.
-
-## Lifecycle safety
-
-F9 Off, timeout, world transition, and shutdown invalidate the active state and remove hooks/listeners from the safe EngineTick control path. UObject-array shutdown abandons saved UFunction pointers rather than dereferencing them.
+The active build does not use UE4SS reflected UFunction hooks, `ProcessEvent`, UObject/Actor scans, `DropItemActor` discovery, Pawn target fields, direct interaction RPCs, KeyAction guesses, or periodic candidate polling.
