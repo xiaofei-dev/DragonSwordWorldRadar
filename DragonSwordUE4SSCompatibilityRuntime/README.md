@@ -56,8 +56,13 @@ is intentionally not mixed into this package.
 
 ## License and attribution
 
+Original compatibility-project scripts and documentation are licensed under
+`GPL-3.0-only`; see [`LICENSE`](LICENSE) and the repository
+[`LICENSE_SCOPE.md`](../LICENSE_SCOPE.md).
+
 UE4SS is Copyright (c) 2022 Narknon and is distributed under the MIT License.
-See `ue4ss/LICENSE` and `ue4ss/licenses`.
+See [`THIRD_PARTY_NOTICES.txt`](THIRD_PARTY_NOTICES.txt), `ue4ss/LICENSE`, and
+`ue4ss/licenses` in a built compatibility archive.
 
 Source:
 https://github.com/UE4SS-RE/RE-UE4SS/tree/1c1a1497f942c707f47ba668db75b25e86f6c08a

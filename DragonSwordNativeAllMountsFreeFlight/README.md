@@ -34,3 +34,10 @@ built PAK files are local-only and intentionally excluded from Git.
 Static verification proves the intended table delta and PAK contents. In-game
 testing is still required to confirm animation and handling on representative
 ground, swimming, gliding, and flying mounts.
+
+## License
+
+First-party work is licensed under `GPL-3.0-only`; see [`LICENSE`](LICENSE),
+[`THIRD_PARTY_NOTICES.txt`](THIRD_PARTY_NOTICES.txt), and the repository
+[`LICENSE_SCOPE.md`](../LICENSE_SCOPE.md). Extracted and cooked game assets
+are outside that grant.

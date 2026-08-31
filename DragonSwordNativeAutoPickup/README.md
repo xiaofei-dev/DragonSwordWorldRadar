@@ -204,3 +204,10 @@ The corrected Setup recognizes the immediately preceding owned 1.3.0 DLL
 for in-place Repair when the exact version and Lua hash also match. The first
 200 ms Setup omitted that contract and is superseded. Modified or foreign
 same-name payloads remain blocked with zero mutation.
+
+## License
+
+First-party work is licensed under `GPL-3.0-only`; see [`LICENSE`](LICENSE),
+the installer's [`THIRD_PARTY_NOTICES.txt`](installer/THIRD_PARTY_NOTICES.txt),
+and the repository [`LICENSE_SCOPE.md`](../LICENSE_SCOPE.md). UE4SS and game
+material retain their separate terms.

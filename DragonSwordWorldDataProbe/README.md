@@ -18,3 +18,11 @@ not in active use. It is not a retired product and must not be moved to
 
 Read `PROJECT_CONTEXT.md` and the applicable documents in `docs/` before
 enabling or modifying a probe.
+
+## License and tool boundary
+
+First-party work is licensed under `GPL-3.0-only`; see [`LICENSE`](LICENSE),
+[`THIRD_PARTY_NOTICES.txt`](THIRD_PARTY_NOTICES.txt), and the repository
+[`LICENSE_SCOPE.md`](../LICENSE_SCOPE.md). Historical `PakReaderCore.exe` and
+`ooz.exe` dependencies are local-only and excluded from that grant pending
+separate provenance and redistribution clearance.

@@ -82,3 +82,10 @@ and one fish, then verify treasure behavior, world travel, and clean exit.
 
 Extracted assets, staged packages, built PAKs, and runtime records are ignored and
 must not be committed.
+
+## License
+
+First-party work is licensed under `GPL-3.0-only`; see [`LICENSE`](LICENSE),
+[`THIRD_PARTY_NOTICES.txt`](THIRD_PARTY_NOTICES.txt), and the repository
+[`LICENSE_SCOPE.md`](../LICENSE_SCOPE.md). The license does not grant rights to
+game assets or generated asset overrides.

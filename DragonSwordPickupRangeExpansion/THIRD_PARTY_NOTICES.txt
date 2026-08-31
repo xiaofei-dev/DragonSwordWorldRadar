@@ -1,0 +1,16 @@
+Third-Party Notices
+===================
+
+The DropItemRangePatcher build utility restores these NuGet dependencies:
+
+- UAssetAPI 1.1.0 - MIT, Copyright (c) 2020-2026 atenfyr
+- Newtonsoft.Json 13.0.3 - MIT
+- ZstdSharp.Port 0.8.1 - MIT
+
+The dependencies are not vendored in this source tree. Their packages and
+upstream projects provide the corresponding license texts. Anyone
+redistributing a built utility must include all notices and license texts
+required by those dependencies.
+
+DragonSword: Awakening, extracted assets, and project-generated overrides of
+game assets are not relicensed by this project's GPL license.

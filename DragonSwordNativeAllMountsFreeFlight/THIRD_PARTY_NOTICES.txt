@@ -1,0 +1,18 @@
+Third-Party Notices
+===================
+
+The optional NativeAssetExtractor build utility restores these NuGet
+dependencies:
+
+- CUE4Parse 1.2.2.202607 - Apache-2.0
+- Microsoft.Bcl.Memory 10.0.4 - MIT
+- Newtonsoft.Json 13.0.4 - MIT
+
+The dependencies are not vendored in this source tree. Their packages and
+upstream projects provide the corresponding license texts. Anyone
+redistributing a built utility must include all notices and license texts
+required by those dependencies.
+
+DragonSword: Awakening and extracted or cooked game assets are not covered by
+this project's GPL license and remain the property of their respective
+owners.

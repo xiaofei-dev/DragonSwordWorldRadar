@@ -1,0 +1,15 @@
+Third-Party and Provenance Notices
+==================================
+
+Historical DataProbe workflows reference PakReaderCore.exe and ooz.exe.
+PakReaderCore.exe has no corresponding source tree or independent
+redistribution license in this repository. ooz.exe is part of a local Oodle
+extraction workflow and is not distributed by this source workspace.
+
+Neither binary is covered by the repository GPL license. Both are local-only
+dependencies until their exact provenance and redistribution rights are
+separately documented and cleared. A public checkout may therefore retain the
+workflow and manifest references without containing those executables.
+
+Captured or extracted DragonSword: Awakening data is evidence for authorized
+local research; it is not relicensed or granted for redistribution here.

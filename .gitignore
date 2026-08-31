@@ -46,6 +46,8 @@
 
 # Local release-build tool copies excluded by individual project policy.
 Archive/DragonSwordWorldRadar/vendor/ooz/ooz.exe
+**/PakReaderCore.exe
+**/ooz.exe
 
 # Local game data, extracted packages, databases, dumps, and credentials.
 **/*.pak

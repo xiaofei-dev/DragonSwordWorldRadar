@@ -450,8 +450,9 @@ runtime. No source archive belongs to the final binary allowlist. If a separate
 source archive is generated for builders, it is a project-source snapshot, not
 a complete dependency or Corresponding Source bundle: it excludes the pinned
 SDK, RE-UE4SS, `UEPseudo`, FetchContent checkouts, and third-party toolchains.
-The project code is offered under GPL-3.0, but that license does not grant rights
-to third-party or generated Unreal material.
+The project code is offered under `GPL-3.0-only`; see [`LICENSE`](LICENSE) and
+the repository [`LICENSE_SCOPE.md`](../LICENSE_SCOPE.md). That license does not
+grant rights to third-party or generated Unreal material.
 
 Public binary publication is currently blocked pending three reviews: the
 applicable Unreal/`UEPseudo` authorization and compatibility terms; exact

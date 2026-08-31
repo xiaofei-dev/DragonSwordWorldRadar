@@ -81,3 +81,10 @@ Set-Location ..\DragonSwordNativeAutoPickup
 
 DataProbe changes require its active profile, method matrix, and explicit
 read-only collection boundary to be reviewed first.
+
+## License
+
+First-party project work is licensed under `GPL-3.0-only`. See
+[`LICENSE`](LICENSE), [`LICENSE_SCOPE.md`](LICENSE_SCOPE.md), and
+[`THIRD_PARTY_NOTICES.txt`](THIRD_PARTY_NOTICES.txt). The GPL grant does not
+cover game content, generated Unreal material, or third-party components.

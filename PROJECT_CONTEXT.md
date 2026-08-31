@@ -74,6 +74,10 @@ matrix row, or clear third-party redistribution rights.
   those local-only dependencies are independently cleared and supplied.
 - User authorization to upload the workspace does not silently assert ownership
   of third-party or game-derived material.
+- First-party work uses `GPL-3.0-only` under the exact boundary recorded in
+  `LICENSE_SCOPE.md`; a copied GPL text never relicenses excluded material.
+- Each independently distributed project must carry its applicable `LICENSE`
+  plus all relevant third-party notices and upstream license files.
 
 ## Safety and evidence rules
 

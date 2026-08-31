@@ -1,0 +1,48 @@
+DragonSword Mod Workspace - Third-Party Notices
+================================================
+
+This file is an index of known third-party boundaries in the public source
+workspace. Complete license texts shipped by individual release builders and
+project-specific THIRD_PARTY_NOTICES files remain authoritative for the
+corresponding bundled components.
+
+DragonSwordNativeWorldRadarPostRender
+--------------------------------------
+See DragonSwordNativeWorldRadarPostRender/THIRD_PARTY_NOTICES.txt and
+DragonSwordNativeWorldRadarPostRender/docs/DEPENDENCY_SOURCES.md. The public
+source tree does not claim redistribution clearance for UEPseudo/generated
+Unreal material, the local SQLCipher binary, or game-derived catalogs.
+
+DragonSwordNativeAutoPickup and UE4SS compatibility runtime
+------------------------------------------------------------
+RE-UE4SS v3.0.1, pinned at commit
+1c1a1497f942c707f47ba668db75b25e86f6c08a, is licensed under MIT.
+See DragonSwordNativeAutoPickup/installer/THIRD_PARTY_NOTICES.txt and the
+license tree assembled by DragonSwordUE4SSCompatibilityRuntime/tools/
+Build-Release.ps1.
+
+DragonSwordNativeAllMountsFreeFlight build utility
+---------------------------------------------------
+CUE4Parse 1.2.2.202607: Apache-2.0
+Microsoft.Bcl.Memory 10.0.4: MIT
+Newtonsoft.Json 13.0.4: MIT
+These packages are restored from NuGet and are not vendored in this source
+tree. See the project-specific notices before distributing a built utility.
+
+DragonSwordPickupRangeExpansion build utility
+------------------------------------------------
+UAssetAPI 1.1.0: MIT
+Newtonsoft.Json 13.0.3: MIT
+ZstdSharp.Port 0.8.1: MIT
+These packages are restored from NuGet and are not vendored in this source
+tree. See the project-specific notices before distributing a built utility.
+
+DragonSwordWorldDataProbe local extraction tools
+-------------------------------------------------
+Historical workflows reference PakReaderCore.exe and ooz.exe. This repository
+does not establish their source provenance or an independent redistribution
+license. They are not covered by the repository GPL license and are treated
+as local-only dependencies pending separate clearance.
+
+DragonSword: Awakening, Unreal Engine, and all associated assets and
+trademarks remain the property of their respective owners.
