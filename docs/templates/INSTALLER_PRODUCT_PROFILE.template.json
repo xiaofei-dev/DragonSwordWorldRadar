@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "product": {
+    "mod_name": "REPLACE_WITH_MOD_NAME",
+    "public_version": "REPLACE_WITH_VERSION",
+    "runtime_label": "REPLACE_WITH_RUNTIME_LABEL"
+  },
+  "game": {
+    "required_executable": "DSClient-Win64-Shipping.exe",
+    "supported_sha256": [
+      "REPLACE_WITH_64_HEX_SHA256"
+    ],
+    "additional_identity_inputs": []
+  },
+  "ue4ss": {
+    "missing_policy": "bootstrap_pinned_official_stable_or_fail_closed",
+    "ambiguous_or_unknown_policy": "fail_closed_without_mutation",
+    "layouts": [
+      {
+        "name": "stable_root",
+        "loader_path": "Win64/UE4SS.dll",
+        "loader_sha256": "REPLACE_WITH_64_HEX_SHA256",
+        "proxy_path": "Win64/dwmapi.dll",
+        "proxy_sha256": "REPLACE_WITH_64_HEX_SHA256",
+        "mods_roots": [
+          "Win64/Mods"
+        ],
+        "payload_variant": "REPLACE_WITH_STABLE_PAYLOAD_NAME"
+      },
+      {
+        "name": "experimental_nested",
+        "loader_path": "Win64/ue4ss/UE4SS.dll",
+        "loader_sha256": "REPLACE_WITH_64_HEX_SHA256",
+        "proxy_path": "Win64/dwmapi.dll",
+        "proxy_sha256": "REPLACE_WITH_64_HEX_SHA256",
+        "mods_roots": [
+          "Win64/ue4ss/Mods",
+          "Win64/Mods only under an explicitly tested legacy fallback rule"
+        ],
+        "payload_variant": "REPLACE_WITH_EXPERIMENTAL_PAYLOAD_NAME"
+      }
+    ]
+  },
+  "payload": {
+    "abi_specific": false,
+    "public_files": [],
+    "generated_at_install": [],
+    "forbidden_public_paths": [
+      "runtime/logs",
+      "runtime/diagnostics",
+      "runtime/backups",
+      "local user configuration",
+      "unowned third-party Mods"
+    ]
+  },
+  "load_control": {
+    "authority": "REPLACE_WITH_MODS_TXT_OR_DOCUMENTED_LEGACY_POLICY",
+    "entry_name": "REPLACE_WITH_MOD_NAME",
+    "legacy_enabled_txt_policy": "REPLACE_WITH_BACKUP_AND_REMOVE_OR_PRESERVE"
+  },
+  "configuration": {
+    "public_defaults": {},
+    "installer_exposed_settings": [],
+    "user_owned_paths": [],
+    "local_debug_override": "installed_copy_only"
+  },
+  "optional_components": [],
+  "dependencies": [],
+  "third_party": {
+    "notices_file": "THIRD_PARTY_NOTICES.txt",
+    "redistributed_components": [],
+    "explicitly_excluded_mods": []
+  },
+  "installation": {
+    "requires_game_closed": true,
+    "requires_elevation": true,
+    "transactional_file_writes": true,
+    "reparse_point_policy": "reject_write_targets",
+    "rollback_required": true,
+    "install_record_required": true
+  },
+  "release": {
+    "installer_first": true,
+    "manual_channels": [],
+    "installer_signed": false,
+    "expected_installer_tests": "REPLACE_WITH_EXACT_COUNT",
+    "expected_public_files": []
+  },
+  "acceptance": {
+    "source": "NOT_VALIDATED",
+    "build": "NOT_VALIDATED",
+    "package": "NOT_VALIDATED",
+    "installer_matrix": "NOT_VALIDATED",
+    "deployment": "NOT_VALIDATED",
+    "gameplay": "NOT_VALIDATED"
+  }
+}

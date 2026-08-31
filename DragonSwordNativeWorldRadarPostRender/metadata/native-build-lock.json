@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "configuration": "Game__Shipping__Win64",
+  "toolchain": {
+    "cmake": "3.29.6",
+    "msvc": "19.44",
+    "rust": "1.97.1"
+  },
+  "source_dependencies": [
+    {
+      "name": "RE-UE4SS",
+      "role": "runtime ABI, import library, and headers",
+      "origin": "https://github.com/UE4SS-RE/RE-UE4SS.git",
+      "commit": "1c1a1497f942c707f47ba668db75b25e86f6c08a"
+    },
+    {
+      "name": "UEPseudo",
+      "role": "headers",
+      "origin": "https://github.com/Re-UE4SS/UEPseudo.git",
+      "commit": "b2e876da82b17254c04304746341c8fde0ddb37c"
+    },
+    {
+      "name": "patternsleuth",
+      "role": "transitive build dependency",
+      "origin": "https://github.com/trumank/patternsleuth.git",
+      "commit": "da8bfe4c5a464be0ef225c2c9a6ccaa2d9284018"
+    },
+    {
+      "name": "ImGuiColorTextEdit",
+      "role": "transitive build dependency",
+      "origin": "https://github.com/UE4SS-RE/ImGuiColorTextEdit.git",
+      "commit": "6d943aba9f7cef05da80b86dbb0253b63818f95c"
+    },
+    {
+      "name": "IconFontCppHeaders",
+      "role": "transitive headers",
+      "origin": "https://github.com/juliettef/IconFontCppHeaders.git",
+      "commit": "210b5a399a64270674560d633638952d1e8d804d"
+    }
+  ],
+  "fetchcontent_dependencies": [
+    { "name": "concurrentqueue-src", "origin": "https://github.com/cameron314/concurrentqueue.git", "commit": "c68072129c8a5b4025122ca5a0c82ab14b30cb03" },
+    { "name": "corrosion-src", "origin": "https://github.com/UE4SS-RE/corrosion.git", "commit": "52844733e14f095c947577627e367ee5f6458af7" },
+    { "name": "fmt-src", "origin": "https://github.com/fmtlib/fmt.git", "commit": "40626af88bd7df9a5fb80be7b25ac85b122d6c21", "allowed_patch_sha256": "7146ED70122CCD548AF1BE97794ED069AC1A218B99ADFF4C83D84DFCF4B5276A" },
+    { "name": "glaze-src", "origin": "https://github.com/stephenberry/glaze.git", "commit": "3a850807501d98d23bab4bdc5af64d8d4e83e6bc" },
+    { "name": "glfw-src", "origin": "https://github.com/glfw/glfw.git", "commit": "e2c92645460f680fd272fd2eed591efb2be7dc31" },
+    { "name": "imgui-src", "origin": "https://github.com/ocornut/imgui.git", "commit": "5d4126876bc10396d4c6511853ff10964414c776" },
+    { "name": "polyhook2-src", "origin": "https://github.com/stevemk14ebr/PolyHook_2_0.git", "commit": "298d56210b9d9e66cde8f96481d6053925c6ae15" },
+    { "name": "raw_pdb-src", "origin": "https://github.com/MolecularMatters/raw_pdb.git", "commit": "8c6a7146393c83d27fa101e8bc8017f2a7f151df" },
+    { "name": "zydis-src", "origin": "https://github.com/zyantific/zydis.git", "commit": "a2278f1d254e492f6a6b39f6cb5d1f5d515659dc" }
+  ],
+  "nested_gitlinks": [
+    { "path": "polyhook2-src/zydis", "origin": "https://github.com/zyantific/zydis.git", "commit": "a2278f1d254e492f6a6b39f6cb5d1f5d515659dc" },
+    { "path": "polyhook2-src/zydis/dependencies/zycore", "origin": "https://github.com/zyantific/zycore-c", "commit": "0b2432ced0884fd152b471d97ecf0258ff4d859f" },
+    { "path": "polyhook2-src/asmjit", "origin": "https://github.com/asmjit/asmjit.git", "commit": "a3199e8857792cd10b7589ff5d58343d2c9008ea" },
+    { "path": "polyhook2-src/asmtk", "origin": "https://github.com/asmjit/asmtk.git", "commit": "3bce8a48aa895e6d639501d1f1105ab5fe007753" },
+    { "path": "zydis-src/dependencies/zycore", "origin": "https://github.com/zyantific/zycore-c", "commit": "0b2432ced0884fd152b471d97ecf0258ff4d859f" }
+  ]
+}

@@ -1,0 +1,71 @@
+THIRD-PARTY NOTICES
+
+PUBLICATION STATUS AND PROVENANCE BOUNDARY
+
+These notices identify known bundled or linked components; they are not a
+public-release clearance statement. Public binary publication remains blocked
+pending review of the pinned UEPseudo/generated Unreal interface authorization
+and compatibility terms, and exact source/build provenance for the bundled
+e_sqlcipher.dll. The project source archive excludes all SDK and dependency
+checkouts and is not a complete dependency-source or Corresponding Source
+bundle. See docs/DEPENDENCY_SOURCES.md in the project source.
+
+{fmt} 11.2.0
+Copyright (c) 2012-present, Victor Zverovich and {fmt} contributors
+Licensed under the MIT License with its optional binary-embedding exception.
+https://github.com/fmtlib/fmt
+
+The full {fmt} license is included in licenses/FMT.txt.
+
+RE-UE4SS 3.0.1 (pinned commit 1c1a1497f942c707f47ba668db75b25e86f6c08a)
+Copyright (c) 2022 Narknon
+Licensed under the MIT License.
+https://github.com/UE4SS-RE/RE-UE4SS
+
+The one-click installer embeds the official UE4SS v3.0.1 StableRoot release
+archive solely for verified bootstrap when no UE4SS installation is detected.
+Existing approved StableRoot and ExperimentalNested layouts are preserved and
+receive their matching native plugin ABI. The manual archive does not include
+UE4SS. The full UE4SS license is included in licenses/UE4SS.txt.
+
+SQLitePCLRaw.lib.e_sqlcipher 2.1.10
+Copyright 2014-2024 SourceGear, LLC
+Licensed under the Apache License, Version 2.0.
+https://github.com/ericsink/SQLitePCL.raw
+
+The included e_sqlcipher.dll is an unofficial and unsupported SQLCipher build
+distributed by the SQLitePCLRaw.lib.e_sqlcipher package. For official
+SQLCipher builds, contact Zetetic.
+
+The included DLL is byte-for-byte identical to
+runtimes/win-x64/native/e_sqlcipher.dll in the audited 2.1.10 NuGet package.
+The package SHA-256 is
+0430C782E5AC6A06176B76B9C4F24AB3EAF52C6355F738DEC5854F0C5CB0BB8E.
+This package identity does not establish the exact native source revisions or
+build recipe used to create that DLL.
+
+The full Apache License, Version 2.0 is included in
+licenses/APACHE-2.0.txt.
+
+SQLCipher Community Edition
+Copyright (c) 2008-2026, ZETETIC, LLC
+Licensed under the SQLCipher Community Edition BSD-style license.
+https://www.zetetic.net/sqlcipher/
+
+The full SQLCipher license is included in licenses/SQLCIPHER.txt.
+
+SQLite 3.39.2
+SQLite is dedicated to the public domain.
+https://www.sqlite.org/copyright.html
+
+SQLite 3.39.2 is embedded in the included e_sqlcipher.dll. It does not require
+a license text; this notice records the exact embedded version and public-domain
+provenance.
+
+LibTomCrypt 1.18.2
+Dual licensed under its public-domain dedication or the WTFPL v2.
+https://github.com/libtom/libtomcrypt/tree/v1.18.2
+
+LibTomCrypt AES, SHA, HMAC, CBC, and Fortuna implementation code is statically
+embedded in the included e_sqlcipher.dll. The complete upstream dual-license
+file is included in licenses/LIBTOMCRYPT.txt.

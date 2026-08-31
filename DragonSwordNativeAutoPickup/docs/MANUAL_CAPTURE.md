@@ -1,5 +1,9 @@
 # Manual DropItemActor Capture
 
+> Historical diagnostic procedure only. Version 1.3.0 does not use this
+> capture procedure; current release QA is defined in
+> `ACCEPTANCE_CHECKLIST.md` and `RELEASE.md`.
+
 ## Evidence correction
 
 The accepted 0.5.1 trace proved the manual chain only for the observed `Vitality_Leave_01_C` interaction. It did not prove a general ordinary `DropItemActor` contract. Versions 0.5.2-0.5.4 incorrectly generalized that evidence and are rejected as implementation bases.

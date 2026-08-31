@@ -1,40 +1,185 @@
 # Architecture
 
-## Active control flow
+## Runtime path
 
-```text
-startup
-  -> verify exact game and UE4SS hashes
-  -> resolve image base + RVA 0x61B3AC0
-  -> verify the first 16 native bytes
-  -> install PolyHook2 x64 detour and require a trampoline
+The UE4SS native adapter starts Off. The released ExperimentalNested adapter
+parses the configured toggle key (`F9` by default) and publishes only a scalar
+toggle request outside the gameplay callback. It uses UE4SS keydown plus
+EngineTick callbacks. The first keydown latches the physical press; operating-
+system repeat events cannot publish another transition until a Windows key-
+state release observation clears the latch. Release polling touches no UObject.
+Hotkey ingress does not touch gameplay UObjects and is accepted only while the
+DragonSword game window is foreground and the game thread has published the
+current session generation as playable.
 
-native UpdateButtonVisibilityByComponent(widget, component, active)
-  -> call the original game function first
-  -> active=true with a new component edge: queue one scalar input request
-  -> active=false: clear the component and pending request
+Before any gameplay reflection is used, the adapter verifies the exact nested
+UE4SS hash and loaded module path. It then parses the loaded game PE32+ image
+and its executable `.text` section.
 
-UE4SS program-loop update
-  -> flush bounded logs
-  -> poll only F9 and apply a 250 ms qualified-release edge
-  -> queue only a scalar toggle
+The Server path treats the reflected `Server_RunInteractV2` exec thunk as a
+virtual-dispatch anchor. It requires one unique virtual slot, reads that slot
+from the interactable CDO, follows a bounded direct-jump chain, and bounds the
+resulting native implementation through the x64 `.pdata` runtime-function table
+and bounded `CHAININFO`. That implementation must expose one local rel32
+selector call whose receiver, output-pair setup, and post-call writes agree with
+the reflected `ExecuteTargetObject` and `ExecuteTargetComponent` offsets.
 
-native EngineTick post callback
-  -> apply the queued F9 toggle
-  -> require On, a pending component edge, cooldown elapsed, and game foreground
-  -> send one F scan-code keydown/keyup pair through Win32 SendInput
+The UI path is deliberately different. Reflected `SetInteractUIV2::GetFuncPtr`
+is a direct rel32 native wrapper, not a virtual-dispatch thunk. Its complete exec
+wrapper is bounded through `.pdata` and `CHAININFO` and must contain exactly one
+terminal `E8 rel32` call to the native SetInteractUI implementation. That
+implementation is independently runtime-function bounded and must expose one
+selector call matching the UI receiver/output structural contract.
 
-InitGameState pre callback
-  -> turn Off
-  -> clear the component edge and pending input
-```
+Both paths must resolve the same unique executable selector address. Instruction
+recognition occurs only at real decoded boundaries. Only after consensus is one
+scalar selector capability retained for the process. The policy identifier is
+`runtime_reflection_dual_caller_rel32_consensus_fail_closed`. There is no fixed
+selector RVA, game-hash address table, or fallback address. Missing, malformed,
+ambiguous, inconsistent, or non-executable evidence keeps automation Off;
+a guarded selector fault invalidates the capability for the process.
+
+When enabled and due, the adapter resolves the current player context, prefers
+the mounted `Pawn.Rider` interaction receiver when valid, calls the resolved
+native selector once, validates the returned actor/component pair, and injects
+one vector action through
+`EnhancedInputSubsystemInterface:InjectInputVectorForAction`.
+The context must retain the exact LocalPlayer/controller relationship,
+`controller.Player == LocalPlayer`, a non-null current Pawn,
+`pawn.Controller == controller`, and a fresh same-World identity. An expected
+character and a controller-bound alternate mounted Pawn are both supported;
+neither is cached across frames.
+Immediately before the selector, the fresh Pawn World weak identity must match
+the World identity captured when automation was enabled. Immediately before
+any confirmation-state mutation or injection, foreground ownership is checked
+again.
+
+This resolver can survive address relocation while the reflected Server virtual
+path, reflected UI direct-wrapper path, runtime-function metadata, and required
+machine-code contracts remain compatible. It does not promise compatibility
+with arbitrary recompiles. Structural drift fails closed instead of calling a
+historical address.
+
+Only one automatic action may be pending globally. Before injection, the exact
+candidate weak identity and scalar World/session identity define the pending
+record, so synchronous re-entry cannot create a second action. No later
+candidate may invoke an action while that record is pending.
+Exact actor/component weak-identity invalidation or the exact pending component
+leaving the live interactable state within the 650 ms confirmation window is
+the success signal. A first timeout records a 100 ms cooldown. The game must
+present the same exact identity again before one retry is admitted; a second
+timeout quarantines it for the current activation. Other candidates may still
+proceed. Separate physical F9 presses take the Mod Off and then On to clear the
+attempt records.
+
+The selector result must prove `InteractableValue=2`, matching component Outer
+and World, and one closed target category: NormalGather 2, Animal 5, or
+class-proven DropItemActor 7. TreasureBox 4 is always rejected.
+
+The default resolver reads the game's saved semantic `INTERACT` record
+(`ActionInputType=91`) once whenever AutoPickup is enabled and caches the
+resolved keyboard `FKey` as scalar data for that enabled session. It then
+selects the current non-ignored live mapping for that exact key. If the saved
+record is missing, ambiguous, chorded, unsupported, or unreadable, the resolver
+uses the configured concrete `interaction_key_fallback` for that session. A
+configured `interaction_key` other than `AUTO` bypasses semantic detection and
+acts as a troubleshooting override. Every path rejects missing, inactive, or
+conflicting live mappings.
+
+Both Enhanced Input UFunctions are accepted only when every reflected parameter
+has its exact allowed property class, array dimension, element size, and bounded
+offset. UObject and UClass parameters are written through the pinned SDK
+`SetObjectPropertyValue` accessor and the subsystem return is read through
+`GetObjectPropertyValue`; weak, soft, interface, or other object-storage
+variants fail closed. The pending action is established before the injection
+ProcessEvent, and no gameplay UObject is read after that call returns.
 
 ## Lifecycle and performance
 
-The active path owns no object scan, Actor registry, player chain, spatial search, Lua scheduler, worker thread, or bridge. The dormant cost is one native function detour plus atomic checks. Input work occurs only on a new game-provided visibility edge.
+Disabled state performs no game selector invocations and no steady-state player-chain
+queries. Enabled state uses bounded 25 ms engine/active scheduling, a 33 ms
+idle cadence, 25 ms post-pickup scheduling, failure backoff, one
+global pending action, exact weak/state confirmation, one bounded
+selector-represented retry, per-candidate second-timeout quarantine,
+World-settle delay, and interval-aggregated optional diagnostics. Routine User
+logging is one invocation plus one terminal result. Debug context, selector,
+and deferred-reason attribution is change-only with independent per-activation
+caps; one scalar `ACTION_TRACE` accompanies each bounded invocation. Periodic
+performance records include emitted/suppressed attribution and logger queue,
+drop, and failure counters. No worker thread is created.
 
-Normal hot-uninstall removes the detour before unregistering global callbacks. The module remains pinned for process lifetime because late UE4SS teardown may no longer expose a safe Unreal registry. In that unsafe process-exit branch the instance and callback generation become inert while the still-mapped detour continues to call the original trampoline.
+The main-menu/save/World initialization callback forces automatic pickup Off,
+clears interaction binding and cross-World session state, and requires a new
+toggle after a playable World loads. Reset advances a session generation and
+clears playable readiness, so a key event during loading cannot be carried into
+the next playable session. Stable viewport World identity is checked before
+confirmation evidence is polled. World transitions retain no cross-World
+gameplay UObject. The adapter resolves fresh context after settling and fails
+closed on guarded faults. Input action resolution reuses the existing
+per-candidate mapping traversal; it adds no UObject scan, timer, worker, or
+disabled-state work. The key name, fingerprint, timing values, and counters are
+scalar or immutable data only.
 
-## Deliberate exclusions
+## Installation architecture
 
-The active build does not use UE4SS reflected UFunction hooks, `ProcessEvent`, UObject/Actor scans, `DropItemActor` discovery, Pawn target fields, direct interaction RPCs, KeyAction guesses, or periodic candidate polling.
+Version 1.3.0 publishes one native ABI only: UE4SS v3.0.1 Beta #0 commit
+`1c1a1497` in the ExperimentalNested layout. When that exact runtime is absent,
+the installer asks before converting an existing or mixed UE4SS layout. It
+creates and verifies a complete Win64-relative backup, removes the old active
+layout, installs the pinned runtime, and migrates unrelated Mods and settings.
+If UE4SS is absent, the same pinned ExperimentalNested runtime is installed.
+
+The package and installer provide the pre-load compatibility boundary by
+shipping or requiring that exact nested runtime layout. After plugin code is
+loaded, the adapter compares both the nested `UE4SS.dll` hash and the actual
+loaded module path before enabling automation. That post-load passive/Off check
+does not claim to prevent an ABI crash that occurs before the plugin can run.
+
+The active Mods root is `Win64/ue4ss/Mods`. StableRoot plugin payloads are not
+part of the 1.3.0 release.
+
+`mods.txt` is the only load authority. The installer preserves unrelated lines,
+normalizes AutoPickup to one entry, and removes the legacy `enabled.txt` bypass.
+
+Installation state is ownership-bound. An absent Mod exposes Install; one
+recognized owned Mod exposes Upgrade and Uninstall. Exact-runtime Upgrade
+preserves `config.ini` and uses temporary rollback data without retaining a
+persistent backup. Uninstall removes only owned Auto Pickup files, its
+authoritative `mods.txt` entry, and approved owned range PAKs. Unknown same-name
+Mod content fails closed. Exact supported range-PAK filenames and the legacy
+canary filename are owned by filename; embedded replacement bytes remain
+hash-verified after writing.
+
+## Offline release evidence boundary
+
+The current 750 ms confirmation-window / 200 ms retry-cooldown 1.3.0 native DLL
+is 919,552 bytes with
+SHA-256
+`10F5F4D575C07FF90A7C692E6A91906B6EA5B01E50D1671F82CBB40E8DB174B2`;
+the corrected unsigned Setup is 13,001,728 bytes with SHA-256
+`2BF6109E93606175610374F08ED2D91E813043BF204736AA3260E23966F53997`.
+Static, source, core, built-artifact, installer 10/10, deterministic ZIP,
+exact-entry, and checksum gates passed for the final four archives recorded in
+`docs/EVIDENCE.md`. This proves the packaged architecture and provenance only.
+In-process selector resolution, deployment, gameplay, performance, and owner
+smoke-test acceptance remain pending.
+
+Repair remains ownership-bound. The immediately preceding `38DA6C...` DLL is
+accepted only with its exact 1.3.0 version and Lua hash; changed or foreign
+same-name payloads still fail closed with zero mutation.
+
+## Explicitly absent
+
+The active adapter performs no UObject/Actor enumeration, overlap hook,
+collision proxy construction, root/physics/hit collision resize, target
+collision polling, direct pickup RPC, `SendInput`, continuous injection, or
+unbounded automatic retry. It does not alter general interaction-range
+producers.
+
+The installer-offered 3x, 5x, 10x, 15x, and 20x range PAK alternatives remain a
+separate resource layer. Each variant contains 50 reviewed gather/animal
+capsule packages and 19 class-proven type-7 drop packages. The drop patch adds
+only `SphereOverlapComp.RelativeScale3D`; physics and hit components are
+protected by the structured asset gate. Native range multiplication is
+compile-time disabled, so the PAK is the sole range owner. Treasure/type-4
+packages remain excluded.

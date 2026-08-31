@@ -70,19 +70,65 @@ std::optional<std::string> sha256_file(const std::filesystem::path& path) {
     return output.str();
 }
 
+namespace {
+
+[[nodiscard]] std::optional<std::filesystem::path> loaded_ue4ss_path() {
+    const auto module = GetModuleHandleW(L"UE4SS.dll");
+    if (!module) return std::nullopt;
+    std::wstring buffer(32768, L'\0');
+    const auto length = GetModuleFileNameW(module, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (length == 0 || length >= buffer.size()) return std::nullopt;
+    buffer.resize(length);
+    return std::filesystem::path{buffer};
+}
+
+[[nodiscard]] bool same_existing_path(const std::filesystem::path& left,
+                                      const std::filesystem::path& right) {
+    std::error_code left_error;
+    std::error_code right_error;
+    const auto canonical_left = std::filesystem::weakly_canonical(left, left_error);
+    const auto canonical_right = std::filesystem::weakly_canonical(right, right_error);
+    if (left_error || right_error) return false;
+    return _wcsicmp(canonical_left.c_str(), canonical_right.c_str()) == 0;
+}
+
+} // namespace
+
 FingerprintResult verify_build_fingerprint(const std::filesystem::path& binary_directory) {
+    const auto nested = binary_directory / "ue4ss";
+    auto result = verify_build_fingerprint(binary_directory, nested);
+    const auto loaded = loaded_ue4ss_path();
+    if (!loaded) {
+        result.trusted = false;
+        result.error = "loaded UE4SS module path could not be resolved; passive/off mode required";
+    } else if (!same_existing_path(*loaded, nested / "UE4SS.dll")) {
+        result.trusted = false;
+        result.error = "loaded UE4SS module is not the pinned ExperimentalNested path; passive/off mode required";
+    }
+    return result;
+}
+
+FingerprintResult verify_build_fingerprint(const std::filesystem::path& binary_directory,
+                                           const std::filesystem::path& ue4ss_directory) {
     FingerprintResult result{};
     const auto game = sha256_file(binary_directory / "DSClient-Win64-Shipping.exe");
-    const auto ue4ss = sha256_file(binary_directory / "ue4ss" / "UE4SS.dll");
-    if (!game || !ue4ss) {
-        result.error = "one or more fingerprint inputs could not be read";
+    const auto ue4ss = sha256_file(ue4ss_directory / "UE4SS.dll");
+    if (!ue4ss) {
+        result.error = "ExperimentalNested UE4SS fingerprint input could not be read";
         return result;
     }
-    result.game_sha256 = *game;
+    if (game) result.game_sha256 = *game;
     result.ue4ss_sha256 = *ue4ss;
-    result.trusted = expected_game_sha256(result.game_sha256) && result.ue4ss_sha256 == kExpectedUe4ssSha256;
+    // The game executable hash is diagnostic evidence, not an ABI boundary.
+    // Minor game revisions have retained the interaction contract in practice,
+    // while UE4SS native plugin ABI mismatches can crash during load. Keep the
+    // UE4SS fingerprint as the fail-closed gate and report the game hash so an
+    // untested game revision remains visible in diagnostics.
+    result.trusted = expected_ue4ss_sha256(result.ue4ss_sha256);
     if (!result.trusted) {
-        result.error = "unknown game or UE4SS build; passive/off mode required";
+        result.error = "unknown UE4SS build; passive/off mode required";
+    } else if (!game) {
+        result.error = "game executable fingerprint unavailable; diagnostic only";
     }
     return result;
 }

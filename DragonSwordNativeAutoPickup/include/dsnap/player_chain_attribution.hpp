@@ -38,7 +38,8 @@ enum class PlayerChainReason : std::uint8_t {
 enum class PlayerMode : std::uint8_t { ExpectedCharacter, ControllerBoundAlternatePawn };
 
 [[nodiscard]] constexpr bool supports_active_pickup(PlayerMode mode) noexcept {
-    return mode == PlayerMode::ExpectedCharacter;
+    return mode == PlayerMode::ExpectedCharacter ||
+           mode == PlayerMode::ControllerBoundAlternatePawn;
 }
 
 [[nodiscard]] constexpr std::string_view player_mode_name(PlayerMode mode) noexcept {

@@ -1,0 +1,256 @@
+{
+  "schema_version": 5,
+  "candidate_version": "2.1.0",
+  "runtime_owner": "DragonSwordNativeWorldRadarPostRender native main.dll",
+  "runtime_boundary": "Native UMG only; no external executable, Lua renderer, motion bridge, diagnostic shared mapping, or connected PostRender/Present canary.",
+  "generation_runtime_shipped": false,
+  "legacy_generation_pipeline_shipped": false,
+  "encounter_discovery_policy": "One fixed weak slot per immutable Boss/Assault catalog entry is populated by the UObject creation listener. The existing 250 ms service walks all 49 slots round-robin, resolves the current exact-class Actor position before applying the 100-metre player-to-actor bound, and performs at most eight Actor-position queries per control tick. The observation refreshes its retained numeric position from that live actor instead of treating the static catalog coordinate as the actor position. Travel clears all 49 slots; F8/F7 preserves only valid same-world candidates. No FindAllOf, static catalog-distance prefilter, dynamic encounter queue, file polling, or 16 ms encounter work remains.",
+  "encounter_completion_policy": "Ordinary disappearance arms after at least four present samples spanning at least one real second, then requires at least forty consecutive missing samples spanning at least ten real seconds while the player remains within 100 metres of the last actual actor position. A visible already-observed RemovedFromWorld edge may start, but never complete, that same missing window when a short Assault ended before ordinary arming. The ended weak UObject is cleared immediately. A cursor-owning map cannot erase this numeric-only ended evidence, although it still invalidates ordinary live weak-pointer disappearance. Unobserved removal, player departure, activity suppression, travel, unavailable state, invalid position, and a returned actor reject or reset missing evidence. Strict exact-class Destroyed EndPlay is the only immediate recovery path and still requires current availability plus bounded actor/catalog/player proximity.",
+  "encounter_availability_policy": "The ordinary disappearance and strict Destroyed fallbacks pass the current time-window and future-cooldown gates at their final write. Exact NetMulticastNotifyDeath and schema-validated NetMulticastSetDeathProcess End events pass current availability before publishing a catalog bit; ordinary consumption does not recheck that accepted event's time window. A live actor return clears the missing sequence and requests only the existing compact rebind; effective availability changes reuse the existing fixed 49-bit visibility edge and deferred next-map-session atlas policy.",
+  "encounter_death_handoff_policy": "An accepted exact NotifyDeath or DeathProcess End event sets one bit in one of two fixed 49-bit atomic masks. Ordinary consumption runs only in the existing 250 ms control service and requires enabled, non-transitioning, non-suppressed context with valid player position. Successful or deduplicated application clears that bit from both masks; an apply exception retains it without erasing unrelated or newly published bits. F7, disable, travel, and activity-suppression boundaries may settle pending cooldown and eligibility numerically without renderer mutation before reset. Only process shutdown and UObjectArray shutdown hard-clear the masks. No new poll, timer, scan, SQL query, dynamic queue, or steady work is introduced.",
+  "world_map_runtime_delta_policy": "Rebuild in the current session only when the exact retained DLayerMap attachment is visibly open. An attached but hidden layer is retired and defers atlas work until the next exact SetWorldMapImage event. The matching serviced candidate serial may rearm the bounded three-attempt readiness budget once per layer, including after three early map_id probes exhausted before the renderer published a retryable failure; repeated same-layer delivery cannot replenish work after that one rearm.",
+  "compact_viewport_reflow_policy": "Reuse the existing one-hertz minimap-scale service for two scalar viewport size/DPI queries. Mutate retained host scale, position, and layout only on a real geometry edge; add no 16 ms work, timer, enumeration, or allocation.",
+  "world_map_projection_anchor": "Attach and each bounded event-local observation take the live PlayerIconWidget Canvas-slot alignment pivot, transform it from the player widget current cached Slate geometry through LocalToAbsolute, then into the live selected native icon Canvas current cached geometry through AbsoluteToLocal. Target X and Y scale independently by that selected parent's live parent-local width and height around the accepted parent-local player anchor. The exact retained native parent and current player-icon witness must agree even when Canvas identity is unchanged. Five finite 100/250/500/1000/1250 ms deadlines are serviced at no more than one observation per game-thread pass. The first four observations are read-only; only the final observation may mutate and only after geometry reaches Stable. A Stable extent change may consume one bounded rebuild for the current attachment baseline, and only a successful fresh attach establishes the next baseline. Only numeric anchor, extent, stability, timing, and rebuild-consumption state cross observations; no sampled UObject wrapper or FGeometry is retained. Missing, implausible, mismatched, or final unstable geometry fails closed; no desktop-resolution input, centered fallback, new poll, or per-frame projection path is published.",
+  "save_callback_limits": {
+    "treasure_rows": 4096,
+    "encounter_rows": 65536,
+    "dynamic_completion_rows": 65536,
+    "failure_policy": "Every SQLite C callback contains C++ exceptions and fails the one-shot reconciliation closed on malformed, excessive, or allocation-failing input."
+  },
+  "catalogs": [
+    {
+      "id": "treasures",
+      "source_lineage": "SectionTreasureBoxData.xml + PropTreasureBoxData.xml from the exact installed game PAK generation",
+      "render_output": "src/data/generated/treasures.lua",
+      "actor_output": "src/data/generated/treasure-actors.tsv",
+      "render_record_count": 1693,
+      "actor_record_count": 1692,
+      "map_100_record_count": 1506,
+      "confirmed_absent_render_only_id": 11230106,
+      "confirmed_absent_render_only_coordinates": [182813, 162051, 3150],
+      "confirmed_absent_policy": "keep the immutable source record and suppress exactly this ID through the reviewed default override; the build fails if the render/Actor difference changes",
+      "runtime_completion": "treasure-only exact DsAnimationProp.NetMultiExecuteInteractProp receiver hook gated by a fresh local Pawn or the exact callback-local Rider of that current mounted Pawn for a same-World nearby mount-only treasure, plus ObjectID/class/3D validation, exact SetDeathProcess, and positively observed BeginPlay/EndPlay disappearance fallbacks; every other rejected nearby non-Pawn event may queue only its exact catalog ID for two bounded positive-only save confirmations; ordinary treasure interaction never arms an area-quest completion witness",
+      "runtime_delta_policy": "only a real eligibility 1-to-0 transition dirties compact selection; a changed map-100 treasure or linked mini-game entry rebuilds immediately only when the exact retained layer is visibly open, while a hidden or detached layer is retired until the next exact SetWorldMapImage edge; duplicate runtime IDs return before generated-catalog matching and cause no additional invalidation or rebuild",
+      "runtime_class_enumeration": false
+    },
+    {
+      "id": "bosses",
+      "source_lineage": "SectionMonsterData CID to generated MonsterCharacterData class join",
+      "render_output": "src/data/generated/bosses.lua",
+      "actor_output": "src/data/generated/boss-actors.tsv",
+      "record_count": 9,
+      "runtime_owner": "native encounter catalog and lifecycle state",
+      "cooldown_policy": "the bounded effective cooldown map survives F8/F7; one-shot save timestamps merge by maximum; one scalar earliest-expiry check is rate-limited to 1 Hz inside the existing 250 ms control service; the fixed 49-bit visibility mask is recomputed only at a cooldown or displayed-hour edge"
+    },
+    {
+      "id": "assaults",
+      "source_lineage": "UnexpectedMission place/kind, SectionMonster, and RevealCycle data with validated CID and class joins",
+      "render_output": "src/data/generated/assaults.lua",
+      "actor_output": "src/data/generated/assault-actors.tsv",
+      "record_count": 40,
+      "map_id": 100,
+      "condition_model": "one optional numeric world-time window; unsupported weather semantics fail closed",
+      "presentation_override": "F6 Assault ALL is a static presentation view of all 40 Assault records and ignores save readiness, time, defeat, and cooldown only during compact and expanded-map marker selection; AVAILABLE and strict observation/completion/cooldown authority are unchanged",
+      "runtime_owner": "native encounter catalog and lifecycle state",
+      "cooldown_policy": "the bounded effective cooldown map survives F8/F7; one-shot save timestamps merge by maximum; one scalar earliest-expiry check is rate-limited to 1 Hz inside the existing 250 ms control service; the fixed 49-bit visibility mask is recomputed on the first valid displayed-hour sample, each later displayed-hour edge, or a cooldown edge"
+    },
+    {
+      "id": "mini_games",
+      "source_lineage": "legacy validated mini-game extraction and coordinate selection",
+      "output": "src/data/generated/moles.lua",
+      "record_count": 83,
+      "render_shape": {
+        "fly": 33,
+        "mole": 40,
+        "wave": 10
+      },
+      "source_fly_rows": 34,
+      "excluded_fly_id": 11024,
+      "runtime_coordinate_scan": false
+    },
+    {
+      "id": "area_quests",
+      "source_lineage": "validated MnMRadar area-quest coordinate table",
+      "output": "src/data/generated/area-quests.tsv",
+      "record_count": 147,
+      "availability_owner": "native one-shot save snapshot, reflected Main/Group definitions, first-valid-hour and displayed-hour-edge refreshes, and bounded runtime quest-state scans",
+      "completion_identity_owner": "runtime TaskActorClassContainer.DynamicQuestTaskList reflection plus exact catalog QuestID events from native ETSendQuestEventTrigger",
+      "ordinary_interaction_witness": false
+    }
+  ],
+  "runtime_bird_eggs": {
+    "classes": [
+      "Bird_Egg01_C",
+      "Bird_Egg02_C"
+    ],
+    "persistence": "runtime_only_no_catalog_or_save_state",
+    "presentation": "compact_only",
+    "f6_control": "independent_compact_category_with_world_map_unavailable",
+    "candidate_storage": "fixed_512_slot_FWeakObjectPtr_pool",
+    "active_capacity": 16,
+    "position_probe_budget_per_250ms_control_tick": 8,
+    "active_presence_interval_ms": 250,
+    "active_presence_schedule": "shared_existing_discovery_edge_no_independent_timer",
+    "discovery": "exact UObject creation listener class keys only",
+    "availability_source": "Actor-owned DInteractableComponent exposed by InteractComponent with exact component ownership",
+    "available_state": "exact one-byte scoped-enum FEnumProperty reads through validated integer underlying properties; InteractableValue=2 and InteractTypeValue=2",
+    "actor_hidden_state_authoritative": false,
+    "unknown_state_policy": "retain the fixed weak candidate and retry through the existing bounded 250 ms service; never guess available and never retire from one unknown read",
+    "end_play_policy": "exact Bird Egg EndPlay immediately retires the matching weak identity",
+    "retention": "weak identity plus copied numeric position only; no raw Actor retained",
+    "forbidden_work": [
+      "global UObject enumeration",
+      "SQL or save query",
+      "dynamic queue",
+      "filesystem polling",
+      "expanded-map atlas work",
+      "16 ms Actor position read"
+    ]
+  },
+  "save_owner_boundary": {
+    "identity": "World /Game/Title/TitleMap/DS_Title.DS_Title",
+    "classification": "cross-save hard boundary, not ordinary activity suppression",
+    "entry_action": "disable radar, detach both renderers, clear weak candidates and all mutable save-owned runtime state, and latch activation off",
+    "retained_process_state": "immutable catalogs, user visibility masks, configured treasure exclusions, and the event-only UObject creation listener",
+    "reactivation_policy": "loading a save remains disabled; reject F7 until a fully loaded open-world identity exists, then require one explicit F7 for a fresh activation and reconciliation",
+    "scheduling_delta": "none; reuse existing transition-end and world-identity signals with no new poll, enumeration, save query, or SQL schedule"
+  },
+  "runtime_task_class_mapping": {
+    "capture_triggers": [
+      "F7 activation",
+      "completed travel"
+    ],
+    "container_path": "GameInstance.TaskActorClassContainer.DynamicQuestTaskList",
+    "row_filter": "TaskUseType=4",
+    "class_field": "CreateTaskClass full name",
+    "quest_id_field": "UseQuestList unique nonzero ID",
+    "required_catalog_coverage": 147,
+    "attempt_policy": "one post-stability attempt and one delayed retry only after initial failure; success or the second failure stops work; completed travel may start a fresh bounded capture; an already-active explicit F7 rearms only failed capture and preserves completion bits, revisions, and reactivation latches",
+    "suppression_policy": "confirmed non-open-world activity defers pending capture until open-world rendering resumes",
+    "retention": "copied class-name strings and catalog indices only",
+    "failure_policy": "classes used only outside the 147-entry catalog are ignored; a class shared by catalog and non-catalog IDs is ambiguous; missing schema, ambiguous class IDs, duplicate catalog coverage, incomplete coverage, and unmapped callbacks fail closed",
+    "completion_race_policy": "exact completion increments a fixed per-task revision and clears its reactivation latch; stale scans and later still-active current scans preserve completion; current NONE or END arms reactivation, and only a later current ACCEPTABLE or PROGRESS sample restores a repeatable task and starts a new task generation; FAIL does not arm. Three non-confirming save attempts lock the current generation against repeated-event replenishment; only that two-scan reactivation or a new F7 unlocks it. InitGameState pre-transition drains any already published exact bits into numeric completion and prerequisite evidence before clearing mapping and atomic state, while pure numeric event witnesses retain only their original deadline across travel for the travel-end scan; no UObject is accessed or retained and F8/F7 remains a fresh resynchronization",
+    "save_merge_policy": "a valid single-owner full F7 snapshot records the exact COMPLETE_CNT baseline for every requested catalog ID; an absent ID is baseline zero only for that valid query, while invalid or ambiguous ownership leaves the baseline unknown. An unresolved exact witness queues no SQL when its baseline is unknown. Otherwise it may request one immediate exact-ID confirmation and at most two retries spaced 15 seconds apart on the existing single below-normal worker; only strict count growth above the baseline confirms completion. Confirmations skip treasure SQL and are never periodic, and asynchronous results cannot erase newer exact or generic runtime completion evidence",
+    "delayed_result_atlas_policy": "a result arriving after expanded-map attachment rebuilds immediately only when the exact retained layer is visibly open; a hidden or detached layer is retired and deferred until the next exact SetWorldMapImage edge"
+  },
+  "runtime_quest_event_witness": {
+    "function": "/Script/DS.DETUtil:ETSendQuestEventTrigger",
+    "hook_kind": "native pre-callback with reflected Locals parameters",
+    "event_filter": "IsDynamic=true and QuestID is one exact entry in the 147-task catalog",
+    "arming_policy": "IsDynamic must be true and QuestID must be one exact entry in the 147-task catalog. That exact event arms the numeric witness without a prior PROGRESS requirement, but the event itself is never completion.",
+    "additional_exact_sources": "OnQuestBlueprintEndPlay and OnRenewQuestBlueprintEndPlay may arm only when the supplied task Actor class maps unambiguously through the complete 147-entry task-class table",
+    "witness_scope": "per catalog task in one deduplicated fixed 147-entry numeric queue",
+    "window_seconds": 10,
+    "probe_interval_ms": 750,
+    "exact_query_budget_per_engine_tick": 1,
+    "coalescing_policy": "each due witness queries only its exact catalog ID; all witnesses share the one-query-per-engine-tick budget, while repeated events for an already-live task do not extend its deadline or append a duplicate queue entry",
+    "completion_policy": "final END proves the exact witnessed task complete even if its previous published state was NONE, FAIL, ACCEPTABLE, or PROGRESS; NONE alone is not completion and unwitnessed END remains fail closed; after completion, current NONE or END is only the inactive boundary for later repeatable reactivation",
+    "ordinary_interaction_participates": false,
+    "retention": "numeric catalog index, boolean witness, steady-clock deadline, next 750 ms probe time, and one-byte probe count only; F8/F7 clears them; no event parameter, world context, task actor, or other UObject is retained",
+    "failure_policy": "unknown IDs, non-dynamic events, invalid reflected schema, unverified final state, or an unknown F7 COMPLETE_CNT baseline cannot latch completion or queue confirmation SQL. With a known baseline, an expired exact witness may queue one fixed-bit exact-ID confirmation due immediately with at most two retries spaced 15 seconds apart; only strict count growth is accepted. Equal, lower, ambiguous, mismatched, unavailable, or failed results change no state. Three non-confirming attempts lock that task generation against repeated event rearming until a new F7 or current NONE or END followed by later ACCEPTABLE or PROGRESS; the bound never becomes periodic SQL"
+  },
+  "runtime_time_edges": {
+    "clock_source": "one guarded DGameSingleton.TimeOfDay baseline two seconds after F7 plus local 60x steady-clock extrapolation; retained glyph presentation changes at numeric 06:00, 12:00, 18:00, and 21:00 bands, which are presentation boundaries rather than proven game-native phases; weather is unavailable and unqueried",
+    "quest_refresh_triggers": [
+      "first valid displayed-hour sample after F7",
+      "each later displayed-hour edge"
+    ],
+    "quest_refresh_policy": "one coalesced transactional area-quest refresh per trigger",
+    "encounter_policy": "the same bounded one-hertz edge service recomputes the fixed 49-bit encounter mask and linked MONSTER_ALIVE task eligibility at first-valid/hour edges and cooldown expiry edges",
+    "motion_path_catalog_scan": false,
+    "weather_available": false
+  },
+  "monster_alive_linking": {
+    "condition_type": 19,
+    "condition_name": "MONSTER_ALIVE",
+    "fallback_value1": 0,
+    "candidate_kind": "Assault",
+    "planar_radius_metres": 150,
+    "required_candidate_count": 1,
+    "linked_identity": "validated numeric Assault CID used by the existing cooldown and world-time availability model",
+    "failure_policy": "nonzero value1, zero candidates, multiple candidates, unavailable encounter state, and unsupported condition semantics remain unknown and hidden",
+    "retention": "numeric linked CID only; reflected table rows, actors, and UObjects are discarded after the F7 definition snapshot"
+  },
+  "visibility_hub": {
+    "hotkey": "F6",
+    "implementation": "transient native UMG panel with weak widget identities and no retained player controller",
+    "compact_categories": [
+      "clock",
+      "treasure",
+      "boss",
+      "assault",
+      "mini_games",
+      "area_quests",
+      "bird_eggs"
+    ],
+    "world_categories": [
+      "treasure",
+      "boss",
+      "assault",
+      "mini_games",
+      "area_quests"
+    ],
+    "mini_game_scope": "Fly, Mole, and Wave share one presentation category",
+    "bird_egg_scope": "Bird_Egg01_C and Bird_Egg02_C share one compact-only category; the world-map control is unavailable",
+    "data_boundary": "two packed numeric presentation masks plus one AVAILABLE or ALL area-quest display mode and one AVAILABLE or ALL Assault display mode; the Hub does not mutate catalogs, save data, cooldowns, quest states, completion latches, or provider schedules",
+    "area_quest_mode": "AVAILABLE preserves prerequisite-proven visibility; ALL displays catalog tasks not excluded by saved or exact runtime completion, while a current active repeatable cycle remains visible",
+    "assault_mode": "AVAILABLE preserves save readiness, the authored Assault time window, defeat state, and future cooldown; ALL displays all 40 static Assault records without those live filters, while actual completion/cooldown authority remains unchanged; Boss and area-quest selection are unchanged",
+    "open_service_interval_ms": 50,
+    "closed_state_policy": "no UObject access, reflection, allocation, polling, or file I/O",
+    "apply_policy": "publish both masks and both display modes in one game-thread transaction and perform one atomic config-file replacement only when a selection or mode changes",
+    "close_policy": "top-right X or a second F6 closes without another mask publication",
+    "cursor_policy": "set Game-and-UI mode before showing the cursor; during open-only 50 ms service reassert only after observing that gameplay hid it",
+    "config_path": "config/visibility.ini",
+    "config_schema": "current: at most 4096 bytes with complete readable [radar], [map], and [modes] sections; named category values are true or false and both mode values are available or all. Strict legacy schema 1-4 packed-mask documents remain accepted, including legacy assault_mode=current as AVAILABLE",
+    "config_read_policy": "once during native startup; no hot polling; duplicate, mixed-format, unknown, incomplete, malformed, or inconsistent-line-ending input falls back to safe defaults",
+    "config_write_policy": "only on a real selection, area-quest mode, or Assault mode change via temporary-file atomic replacement in current readable format",
+    "deployment_policy": "preserve an existing user config file"
+  },
+  "runtime_diagnostics": {
+    "enabled_by_default": false,
+    "installer_only_default_resource": "config/diagnostics.example.ini",
+    "live_config_path": "config/diagnostics.ini",
+    "accepted_document": "current form: at most 2048 bytes containing one diagnostics section and exactly one debug_logging=true or debug_logging=false key, with comments and blank lines allowed; compatibility form: one exact event_log_enabled=true or event_log_enabled=false line with an optional final line ending",
+    "read_policy": "once during native construction; no hot polling",
+    "failure_policy": "missing, unreadable, oversized, duplicate-section, duplicate-key, unknown-section, unknown-key, non-canonical Boolean, lone-carriage-return, or malformed input fails closed to disabled; log open, write, or flush failure atomically disables logging only",
+    "log_schema": 2,
+    "record_fields": [
+      "seq",
+      "utc_ms",
+      "elapsed_ms"
+    ],
+    "ordinary_flush_batch_lines": 16,
+    "maximum_current_bytes": 1048576,
+    "retained_previous_files": 1,
+    "disabled_policy": "no log directory creation, rollover, formatting, mutex acquisition, or file work after the startup decision; existing historical logs are preserved",
+    "deployment_policy": "the installer-only default is false and is never left in the installed Mod; preserve an existing live user file, copy the false internal default to diagnostics.ini on a clean install, and keep the installed gameplay-test copy explicitly enabled without changing the release default",
+    "runtime_acceptance": "current source gates, clean native /WX build, Setup 20/20, manual-copy 2/2, payload equivalence, and archive re-extraction pass for main.dll SHA-256 B35F0A6D7564085C48F21ADF954E1ACD1279BD00047E3A4032CEB13EBD5A8AEA; deployment was not performed, and exact 2.1.0 gameplay, underwater-treasure, owned-component bird-egg availability, TitleMap cross-save isolation, live window/aspect behavior, zoom reparenting, and performance acceptance remain NOT_VALIDATED"
+  },
+  "release_installer": {
+    "entrypoint": "DragonSwordNativeWorldRadarPostRender-Setup-2.1.0.exe",
+    "implementation": "installer/InstallerEngine.cs embedded by tools/Build-Installer.ps1",
+    "steam_app_id": 4570720,
+    "discovery_policy": "bounded Steam library and appmanifest discovery with one separately validated explicit game path fallback",
+    "game_compatibility_policy": "require the exact DragonSword executable path plus a bounded executable AMD64 PE32+ image; do not reject a game update by executable SHA-256; retain the observed SHA-256 only in the confirmed transaction identity and install record",
+    "package_topology": "one unsigned C# Setup archive containing exactly Setup, its SHA-256 sidecar, INSTALL.md, and THIRD_PARTY_NOTICES.txt plus two script-free ExperimentalNested manual archives whose roots map directly to DS/Binaries/Win64. Both manual archives carry the same source-bound Mod payload and one clean single-product ue4ss/Mods/mods.txt; No-UE4SS omits loader, proxy, and settings and requires copying mods.txt only when missing or manually merging the Radar line, while clean-target-only With-UE4SS adds the pinned runtime. Setup remains the supported automatic update and user-state-preservation route. StableRoot is unsupported",
+    "integrity_policy": "verify fixed embedded payload topology, manifest identity, exact file set, SHA-256, size, and release version before installation; existing game, UE4SS loader, and proxy hashes are transaction provenance only and are not compatibility allowlists; before replacing an existing same-name target, require schema-5 release and schema-1 package metadata, exact immutable installed path/size/hash identity including metadata/release.json and a runtime-label-bearing dlls/main.dll, strict mutable treasure-override syntax, and an exact bounded recursive tree",
+    "mutation_policy": "perform exactly three stopped-game checks before mutation; never elevate, launch, or terminate the game; replace only the exact native target, normalize one native mods.txt authority, remove every valid obsolete DragonSwordWorldRadarObjectState entry, and atomically preserve unrelated mods.txt encoding, line endings, bytes, and entries; reject active or malformed DragonSwordWorldRadar load control and exact DragonSwordWorldRadar/enabled.txt in any approved Mods root before backup or mutation, preserve exact disabled DragonSwordWorldRadar : 0, and never delete or disable that external renderer",
+    "user_state_policy": "preserve config/visibility.ini, config/diagnostics.ini, and data/defaults/treasure_overrides.txt byte-for-byte after strict validation; clean installs copy embedded defaults into the three live paths; example files are not installed",
+    "rollback_policy": "normal install and Update / Repair use a non-reparse temporary rollback journal that is removed after verified commit; only UE4SS bootstrap or conversion retains a complete verified original-layout backup; any failure restores every recorded mutation",
+    "manual_matrix_gate": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    "final_output": "dist/final-2.1.0 contains exactly DragonSwordNativeWorldRadarPostRender-v2.1.0-Installer.zip, DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-No-UE4SS.zip, DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip, release-manifest.json, and SHA256SUMS.txt",
+    "evidence_boundary": "the current source, clean native /WX build, Setup 20/20, manual-copy 2/2, payload-equivalence, clean-target, and three-archive verification pass for main.dll SHA-256 B35F0A6D7564085C48F21ADF954E1ACD1279BD00047E3A4032CEB13EBD5A8AEA; deployment was not performed, and exact 2.1.0 gameplay, underwater-treasure, owned-component bird-egg state, TitleMap cross-save isolation, live window/aspect behavior, zoom reparenting, and performance acceptance remain NOT_VALIDATED"
+  },
+  "save_owner_binding": {
+    "output": "src/data/generated/save_owner_pointer.cfg",
+    "contains_key_or_absolute_address": false,
+    "runtime_policy": "use the packaged length-bound RVA as the fast path; if it is stale or cannot yield a valid live key, scan executable PE sections exactly once on the existing below-normal save worker, require one unique in-image target, cache only its numeric process-lifetime candidate, and validate the live key before SQLCipher use",
+    "steady_state_cost": "no watcher, periodic scan, game-thread scan, UObject retention, or additional worker; a compatible update pays at most one below-normal mapped-image scan per game process"
+  },
+  "update_policy": "A game executable update does not block Setup and does not request reinstall or catalog rebuilding. F7 performs save/runtime resynchronization and may use the bounded owner-pointer fallback, but it does not extract PAK data or regenerate immutable catalogs. New or corrected catalog rows still require a separately validated data release. The runtime has no watcher, hot configuration polling, network updater, or automatic reinstall prompt."
+}

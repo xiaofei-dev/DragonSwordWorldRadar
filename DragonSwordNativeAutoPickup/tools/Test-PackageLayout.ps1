@@ -12,11 +12,14 @@ try {
     & (Join-Path $PSScriptRoot 'Stage-Package.ps1') -DllPath $dummyDll -OutputDirectory $outputRoot
     $requiredScript = Join-Path $outputRoot 'ue4ss\Mods\DragonSwordNativeAutoPickup\Scripts\main.lua'
     if (-not (Test-Path -LiteralPath $requiredScript)) { throw 'Marker-only Lua entry point is missing.' }
+    if (Test-Path -LiteralPath (Join-Path $outputRoot 'ue4ss\Mods\DragonSwordNativeAutoPickup\enabled.txt')) {
+        throw 'enabled.txt would bypass authoritative mods.txt control.'
+    }
     $forbidden = Get-ChildItem -LiteralPath $outputRoot -Recurse -File | Where-Object {
         $_.Name -match 'MnMRadar|reference|UE4SS\.dll|DSClient'
     }
     if ($forbidden) { throw 'Package contains forbidden reference or runtime files.' }
-    Write-Host 'Native-pulse package layout test passed.'
+    Write-Host 'Native AutoPickup package layout test passed.'
 }
 finally {
     if (Test-Path -LiteralPath $tempRoot) { Remove-Item -LiteralPath $tempRoot -Recurse -Force }

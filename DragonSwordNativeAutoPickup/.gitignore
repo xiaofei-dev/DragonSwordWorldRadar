@@ -1,11 +1,19 @@
 # Generated build and package output
 /build/
 /build-native/
+/build-native-experimental/
+/build-native-stable/
+/build-audit-experimental/
+/build-audit-stable/
+/build-audit-stable-v1438/
+/build-core-*/
+/build-installer/
 /dist/
 /out/
 /package/
 /staging/
 /.sdk/
+/.tmp/
 
 # Runtime state and diagnostics
 /runtime/

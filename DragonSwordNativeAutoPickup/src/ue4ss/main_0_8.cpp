@@ -1,11 +1,14 @@
-// OWNER_AUTHORIZED_NATIVE_PICKUP_BUTTON_PATH targeting pinned RE-UE4SS v3.0.1.
+// OWNER_AUTHORIZED_PROMPT_TARGET_AUTO_PICKUP targeting pinned RE-UE4SS v3.0.1.
 //
-// Version 0.8.0 deliberately follows the game's own ground-loot UI path. The
+// Version 1.5 follows the game's own ground-loot UI target path. The
 // game tells UDDropItemButtonUserWidget which UDInteractableComponent is active;
-// this Mod records only that bounded event and asks the same widget to execute
-// OnReleasedDropItemButton. The widget's native implementation owns player,
-// riding, interaction, inventory and UI-state validation.
+// this Mod retains only the target's weak identity. EngineTick revalidates the
+// target component, Actor Outer, current World, interaction state, and current
+// player receiver before invoking the manually observed zero-parameter
+// Server_RunInteractV2 contract. F9 toggles the event-driven path. There is no
+// UObject scan, synthetic input, native detour, or background worker.
 
+#include <dsnap/action_evidence.hpp>
 #include <dsnap/async_logger.hpp>
 #include <dsnap/callback_generation.hpp>
 #include <dsnap/configuration.hpp>
@@ -16,10 +19,12 @@
 #include <Common.hpp>
 #include <Mod/CppUserModBase.hpp>
 #pragma warning(disable : 4251 4324 5038)
+#include <Unreal/Core/Containers/ScriptArray.hpp>
 #include <Unreal/CoreUObject/UObject/Class.hpp>
 #include <Unreal/FWeakObjectPtr.hpp>
 #include <Unreal/Hooks.hpp>
 #include <Unreal/CoreUObject/UObject/UnrealType.hpp>
+#include <Unreal/UEngine.hpp>
 #include <Unreal/UnrealInitializer.hpp>
 #include <Unreal/UObject.hpp>
 #include <Unreal/UObjectGlobals.hpp>
@@ -46,16 +51,18 @@ using ProcessShutdownProbe = BOOLEAN(NTAPI*)();
 
 extern "C" IMAGE_DOS_HEADER __ImageBase;
 
-constexpr auto kVersion = STR("0.8.0-native-pickup-button-path");
-constexpr auto kLabel = "OWNER_AUTHORIZED_NATIVE_PICKUP_BUTTON_PATH";
+constexpr auto kVersion = STR("1.5.0-prompt-target-auto-pickup");
+constexpr auto kLabel = "OWNER_AUTHORIZED_PROMPT_TARGET_AUTO_PICKUP";
+constexpr auto kCurrentGameSha256 = "85E0F6BAFF78940C53451A282559A9378F6541E24B1CC81CD8CAF1556204A52E";
+constexpr auto kActorClassPath = STR("/Script/Engine.Actor");
 constexpr auto kWidgetClassPath = STR("/Script/DSClient.DDropItemButtonUserWidget");
 constexpr auto kInteractableClassPath = STR("/Script/DS.DInteractableComponent");
 constexpr auto kVisibilityFunctionPath =
     STR("/Script/DSClient.DDropItemButtonUserWidget:UpdateButtonVisibilityByComponent");
-constexpr auto kReleaseFunctionPath =
-    STR("/Script/DSClient.DDropItemButtonUserWidget:OnReleasedDropItemButton");
-constexpr auto kPulseInterval = std::chrono::milliseconds{100};
+constexpr auto kPickupFunctionPath = STR("/Script/DS.DInteractableComponent:Server_RunInteractV2");
+constexpr auto kPulseInterval = std::chrono::milliseconds{50};
 constexpr auto kF9Debounce = std::chrono::milliseconds{500};
+constexpr std::uint8_t kRequiredInteractableValue = 2;
 
 [[nodiscard]] bool pin_own_module_for_process_lifetime() noexcept {
     HMODULE module{};
@@ -97,7 +104,7 @@ public:
           shutdown_probe_(resolve_process_shutdown_probe()) {
         ModName = STR("DragonSwordNativeAutoPickup");
         ModVersion = kVersion;
-        ModDescription = STR("Event-driven native ordinary ground-loot pickup");
+        ModDescription = STR("Prompt-target native ordinary ground-loot auto pickup");
         ModAuthors = STR("DragonSword mod workspace");
         ModIntendedSDKVersion = STR("3.0.1");
         instance_.store(this, std::memory_order_release);
@@ -148,12 +155,13 @@ public:
             return;
         }
 
+        actor_class_ = UObjectGlobals::StaticFindObject<UClass*>(nullptr, nullptr, kActorClassPath);
         widget_class_ = UObjectGlobals::StaticFindObject<UClass*>(nullptr, nullptr, kWidgetClassPath);
         interactable_class_ = UObjectGlobals::StaticFindObject<UClass*>(nullptr, nullptr, kInteractableClassPath);
         visibility_function_ = UObjectGlobals::StaticFindObject<UFunction*>(nullptr, nullptr, kVisibilityFunctionPath);
-        release_function_ = UObjectGlobals::StaticFindObject<UFunction*>(nullptr, nullptr, kReleaseFunctionPath);
+        pickup_function_ = UObjectGlobals::StaticFindObject<UFunction*>(nullptr, nullptr, kPickupFunctionPath);
         if (!validate_reflection_contract()) {
-            logger_.write(dsnap::LogAudience::User, "DISABLED", "pickup-button reflection contract is missing or changed");
+            logger_.write(dsnap::LogAudience::User, "DISABLED", "prompt-target/RPC reflection contract is missing or changed");
             return;
         }
 
@@ -176,10 +184,10 @@ public:
         }
 
         engine_tick_callback_id_ = Hook::RegisterEngineTickPostCallback(
-            [generation](Hook::TCallbackIterationData<void>&, UEngine*, float, bool) {
-                if (auto* self = current_instance(generation)) self->engine_tick_post();
+            [generation](Hook::TCallbackIterationData<void>&, UEngine* engine, float, bool) {
+                if (auto* self = current_instance(generation)) self->engine_tick_post(engine);
             },
-            {false, false, STR("DragonSwordNativeAutoPickup"), STR("PickupButtonPulse")});
+            {false, false, STR("DragonSwordNativeAutoPickup"), STR("PromptTargetPickup")});
         world_reset_callback_id_ = Hook::RegisterInitGameStatePreCallback(
             [generation](Hook::TCallbackIterationData<void>&, AGameModeBase*) {
                 if (auto* self = current_instance(generation)) self->reset_world("InitGameStatePre");
@@ -193,9 +201,10 @@ public:
         }
 
         logger_.write(dsnap::LogAudience::User, "READY",
-                      std::format("label={} hotkey=F9 source=game_pickup_button_visibility "
-                                  "action=game_OnReleasedDropItemButton pulse_ms={} object_scans=0 target_writes=0",
+                      std::format("label={} hotkey=F9 mode=toggle source=game_pickup_prompt_component "
+                                  "action=validated_Server_RunInteractV2 pulse_ms={} object_scans=0 SendInput=0",
                                   kLabel, kPulseInterval.count()));
+        logger_.write(dsnap::LogAudience::User, "AUTO_PICKUP_AVAILABLE", "press F9 once to enable");
     }
 
     void on_update() override {
@@ -205,16 +214,17 @@ public:
         if (!fingerprint_applied_) {
             fingerprint_result_ = dsnap::verify_build_fingerprint(binary_directory());
             fingerprint_applied_ = true;
-            build_trusted_.store(fingerprint_result_.trusted, std::memory_order_release);
+            const bool exact_game = fingerprint_result_.game_sha256 == kCurrentGameSha256;
+            build_trusted_.store(fingerprint_result_.trusted && exact_game, std::memory_order_release);
             logger_.write(dsnap::LogAudience::Debug, "FINGERPRINT",
-                          std::format("trusted={} game={} ue4ss={} error={}", fingerprint_result_.trusted,
-                                      fingerprint_result_.game_sha256, fingerprint_result_.ue4ss_sha256,
-                                      fingerprint_result_.error));
+                          std::format("trusted={} exact_current_build={} game={} ue4ss={} error={}",
+                                      fingerprint_result_.trusted, exact_game, fingerprint_result_.game_sha256,
+                                      fingerprint_result_.ue4ss_sha256, fingerprint_result_.error));
             logger_.write(dsnap::LogAudience::User,
-                          fingerprint_result_.trusted ? "AUTO_PICKUP_AVAILABLE" : "PASSIVE_ONLY",
-                          fingerprint_result_.trusted ? "press F9 to start the native pickup-button path"
-                                                      : "unknown game or UE4SS fingerprint");
-            if (fingerprint_result_.trusted && configuration_result_.value.automatic_pickup &&
+                          build_trusted_.load(std::memory_order_acquire) ? "AUTO_PICKUP_AVAILABLE" : "PASSIVE_ONLY",
+                          build_trusted_.load(std::memory_order_acquire) ? "press F9 to start prompt-target pickup"
+                                                                        : "unknown current game or UE4SS fingerprint");
+            if (build_trusted_.load(std::memory_order_acquire) && configuration_result_.value.automatic_pickup &&
                 configuration_result_.value.enabled_on_launch) {
                 toggle_requested_.store(true, std::memory_order_release);
             }
@@ -237,10 +247,10 @@ public:
         } else if (now >= next_perf_log_) {
             logger_.write(dsnap::LogAudience::Debug, "PERF_AGGREGATE",
                           std::format("visibility_events={} visible_events={} hidden_events={} "
-                                      "release_attempts={} release_invocations={} release_faults={} "
+                                      "action_attempts={} rpc_invocations={} action_failures={} "
                                       "world_resets={} active={} target_visible={} pending={} object_scans=0",
                                       visibility_events_.load(), visible_events_.load(), hidden_events_.load(),
-                                      release_attempts_.load(), release_invocations_.load(), release_faults_.load(),
+                                      action_attempts_.load(), rpc_invocations_.load(), action_failures_.load(),
                                       world_resets_.load(), active_.load(), target_visible_.load(),
                                       pickup_pending_.load()));
             next_perf_log_ = now + std::chrono::seconds{configuration_result_.value.perf_log_interval_seconds};
@@ -252,6 +262,13 @@ private:
         UObject* component{};
         bool active{};
         bool valid{};
+    };
+
+    struct PlayerContext {
+        UObject* controller{};
+        UObject* pawn{};
+        UObject* interaction_receiver{};
+        const char* receiver_source{"none"};
     };
 
     static NativeAutoPickup* current_instance(std::uint64_t generation) noexcept {
@@ -268,9 +285,10 @@ private:
     }
 
     [[nodiscard]] bool validate_reflection_contract() const noexcept {
-        if (!widget_class_ || !interactable_class_ || !visibility_function_ || !release_function_) return false;
+        if (!actor_class_ || !widget_class_ || !interactable_class_ || !visibility_function_ ||
+            !pickup_function_) return false;
         if (!function_owner_is(visibility_function_, widget_class_) ||
-            !function_owner_is(release_function_, widget_class_) || release_function_->GetParmsSize() != 0) return false;
+            !function_owner_is(pickup_function_, interactable_class_) || pickup_function_->GetParmsSize() != 0) return false;
 
         bool found_component{};
         bool found_active{};
@@ -357,10 +375,82 @@ private:
             target_visible_.store(true, std::memory_order_release);
         }
         ++visible_events_;
+        logger_.write(dsnap::LogAudience::Debug, "PROMPT_TARGET_CAPTURED",
+                      std::format("component=0x{:X} active=1 pending={} source=game_pickup_prompt",
+                                  identity, pickup_pending_.load()));
         return true;
     }
 
-    void engine_tick_post() noexcept {
+    [[nodiscard]] static UObject* named_object(UObject* owner, const wchar_t* name) {
+        if (!owner) return nullptr;
+        auto** value = owner->GetValuePtrByPropertyNameInChain<UObject*>(name);
+        return value ? *value : nullptr;
+    }
+
+    [[nodiscard]] bool resolve_player_context(UEngine* engine, PlayerContext* output) {
+        if (!engine || !output) return false;
+        auto** viewport_value = engine->GetValuePtrByPropertyNameInChain<UObject*>(STR("GameViewport"));
+        auto* viewport = viewport_value ? *viewport_value : nullptr;
+        auto* game_instance = named_object(viewport, STR("GameInstance"));
+        auto* players = game_instance
+            ? game_instance->GetValuePtrByPropertyNameInChain<FScriptArray>(STR("LocalPlayers")) : nullptr;
+        if (!players || !players->IsValidIndex(0) || !players->GetData()) return false;
+        auto* local_player = static_cast<UObject* const*>(players->GetData())[0];
+        auto* controller = named_object(local_player, STR("PlayerController"));
+        auto* pawn = named_object(controller, STR("Pawn"));
+        if (!controller || !pawn || !pawn->GetWorld()) return false;
+
+        UObject* receiver = named_object(pawn, STR("InteractableComponent"));
+        const char* receiver_source = "pawn.InteractableComponent";
+        if (!receiver) {
+            receiver = named_object(pawn, STR("InteractionComponent"));
+            receiver_source = "pawn.InteractionComponent";
+        }
+        if (!receiver) {
+            receiver = named_object(controller, STR("InteractableComponent"));
+            receiver_source = "controller.InteractableComponent";
+        }
+        if (!receiver) {
+            receiver = named_object(controller, STR("InteractionComponent"));
+            receiver_source = "controller.InteractionComponent";
+        }
+        *output = {controller, pawn, receiver, receiver ? receiver_source : "none"};
+        return true;
+    }
+
+    [[nodiscard]] bool validate_receiver(const PlayerContext& context, const char** reason) const {
+        const auto reject = [reason](const char* value) {
+            if (reason) *reason = value;
+            return false;
+        };
+        if (!context.pawn || !context.pawn->GetWorld()) return reject("pawn_world_unavailable");
+        if (!context.interaction_receiver || !context.interaction_receiver->IsA(interactable_class_)) {
+            return reject("receiver_not_interactable_component");
+        }
+        if (context.interaction_receiver->GetWorld() != context.pawn->GetWorld()) {
+            return reject("receiver_world_mismatch");
+        }
+        if (reason) *reason = "validated";
+        return true;
+    }
+
+    [[nodiscard]] static std::string object_full_name(UObject* object) {
+        return object ? to_string(object->GetFullName()) : "null";
+    }
+
+    [[nodiscard]] static std::string object_class_name(UObject* object) {
+        auto* object_class = object ? object->GetClassPrivate() : nullptr;
+        return object_class ? to_string(object_class->GetPathName()) : "null";
+    }
+
+    [[nodiscard]] bool game_window_is_foreground() const noexcept {
+        const auto foreground = GetForegroundWindow();
+        if (!foreground) return false;
+        DWORD process_id{};
+        static_cast<void>(GetWindowThreadProcessId(foreground, &process_id));
+        return process_id == GetCurrentProcessId();
+    }
+    void engine_tick_post(UEngine* engine) noexcept {
         const auto now = Clock::now();
         if (next_pulse_due_ != Clock::time_point{} && now < next_pulse_due_) return;
         next_pulse_due_ = now + kPulseInterval;
@@ -381,49 +471,199 @@ private:
         if (!active_.load(std::memory_order_acquire) ||
             !pickup_pending_.exchange(false, std::memory_order_acq_rel)) return;
 
-        ++release_attempts_;
+        ++action_attempts_;
+        const char* reason{"unknown"};
         bool faulted{};
-        const bool invoked = invoke_release_guarded(this, &faulted);
+        const bool invoked = invoke_pickup_guarded(this, engine, &reason, &faulted);
         if (invoked) {
-            ++release_invocations_;
-            logger_.write(dsnap::LogAudience::Debug, "PICKUP_RELEASE_INVOKED_PENDING",
-                          std::format("component_identity={} visible=1", current_component_identity()));
+            ++rpc_invocations_;
         } else {
-            ++release_faults_;
-            logger_.write(dsnap::LogAudience::Debug, "PICKUP_RELEASE_REJECTED",
-                          faulted ? "structured exception while invoking the game pickup-button path"
-                                  : "widget/component weak identity invalid or visibility changed");
+            ++action_failures_;
+            logger_.write(dsnap::LogAudience::User, "ACTION_REJECTED",
+                          std::format("reason={} faulted={} component_identity={}", reason, faulted,
+                                      current_component_identity()));
         }
     }
 
-    bool invoke_release_unsafe() {
+    bool invoke_pickup_unsafe(UEngine* engine, const char** reason) {
+        const auto reject = [reason](const char* value) {
+            if (reason) *reason = value;
+            return false;
+        };
+        if (!game_window_is_foreground()) return reject("game_not_foreground");
+
         FWeakObjectPtr widget_weak{};
         FWeakObjectPtr component_weak{};
+        std::uint64_t identity{};
         {
             const std::scoped_lock lock{target_mutex_};
-            if (!target_visible_.load(std::memory_order_acquire)) return false;
+            if (!target_visible_.load(std::memory_order_acquire)) return reject("prompt_not_visible");
             widget_weak = widget_;
             component_weak = component_;
+            identity = component_identity_;
         }
+
         auto* widget = widget_weak.Get();
         auto* component = component_weak.Get();
-        if (!widget || !component || !widget->IsA(widget_class_) || !component->IsA(interactable_class_)) return false;
-        widget->ProcessEvent(release_function_, nullptr);
+        if (!widget || !component || !widget->IsA(widget_class_) ||
+            !component->IsA(interactable_class_) || pack_weak_identity(component_weak) != identity) {
+            return reject("prompt_weak_identity_invalid");
+        }
+        auto* owner = component->GetOuterPrivate();
+        if (!owner || !owner->IsA(actor_class_) || component->GetOuterPrivate() != owner) {
+            return reject("prompt_owner_invalid");
+        }
+
+        auto* interactable = component->GetValuePtrByPropertyName<std::uint8_t>(STR("InteractableValue"));
+        auto* interact_type = component->GetValuePtrByPropertyName<std::uint8_t>(STR("InteractTypeValue"));
+        if (!interactable || !interact_type) return reject("prompt_state_fields_missing");
+        if (*interactable != kRequiredInteractableValue || *interact_type != dsnap::kDropItemInteractType) {
+            logger_.write(dsnap::LogAudience::Debug, "PROMPT_TARGET_REJECTED",
+                          std::format("reason=state_mismatch owner={} interactable={} interact_type={}",
+                                      object_full_name(owner), *interactable, *interact_type));
+            return reject("prompt_state_mismatch");
+        }
+
+        PlayerContext context{};
+        const char* receiver_reason{"unknown"};
+        if (!resolve_player_context(engine, &context)) return reject("player_context_unavailable");
+        if (!validate_receiver(context, &receiver_reason)) return reject(receiver_reason);
+        auto* world = context.pawn->GetWorld();
+        if (!world || owner->GetWorld() != world || component->GetWorld() != world) {
+            return reject("prompt_world_mismatch");
+        }
+
+        auto** target_object = context.interaction_receiver
+            ->GetValuePtrByPropertyNameInChain<UObject*>(STR("ExecuteTargetObject"));
+        auto** target_component = context.interaction_receiver
+            ->GetValuePtrByPropertyNameInChain<UObject*>(STR("ExecuteTargetComponent"));
+        if (!target_object || !target_component) return reject("receiver_target_properties_missing");
+        if ((*target_object && *target_object != owner) ||
+            (*target_component && *target_component != component)) {
+            return reject("receiver_target_busy");
+        }
+
+        const auto ownership = dsnap::transient_target_ownership(*target_object == nullptr,
+                                                                 *target_component == nullptr);
+        if (!assign_transient_targets_guarded(target_object, target_component, owner, component,
+                                              ownership.target_object, ownership.target_component)) {
+            bool ignored_object_cleared{};
+            bool ignored_component_cleared{};
+            static_cast<void>(clear_transient_targets_guarded(
+                target_object, target_component, owner, component,
+                ownership.target_object, ownership.target_component,
+                &ignored_object_cleared, &ignored_component_cleared));
+            return reject("transient_target_assignment_fault");
+        }
+
+        logger_.write(dsnap::LogAudience::User, "TARGET_VALIDATED",
+                      std::format("source=game_pickup_prompt owner=0x{:X} owner_name={} owner_class={} "
+                                  "component=0x{:X} receiver=0x{:X} receiver_source={} "
+                                  "transient_object={} transient_component={}",
+                                  pack_weak_identity(FWeakObjectPtr{owner}), object_full_name(owner),
+                                  object_class_name(owner), identity,
+                                  pack_weak_identity(FWeakObjectPtr{context.interaction_receiver}),
+                                  context.receiver_source, ownership.target_object, ownership.target_component));
+
+        const bool rpc_invoked = process_pickup_event_guarded(context.interaction_receiver,
+                                                              pickup_function_);
+
+        bool object_cleared{};
+        bool component_cleared{};
+        if (!clear_transient_targets_guarded(target_object, target_component, owner, component,
+                                             ownership.target_object, ownership.target_component,
+                                             &object_cleared, &component_cleared)) {
+            return reject("transient_target_cleanup_fault");
+        }
+        if (!rpc_invoked) return reject("pickup_rpc_fault");
+
+        logger_.write(dsnap::LogAudience::User, "ACTION_RPC_INVOKED",
+                      std::format("receiver=0x{:X} function=Server_RunInteractV2 owner=0x{:X} component=0x{:X} "
+                                  "target_object_cleared={} target_component_cleared={} "
+                                  "visible_collection=pending_owner_confirmation",
+                                  pack_weak_identity(FWeakObjectPtr{context.interaction_receiver}),
+                                  pack_weak_identity(FWeakObjectPtr{owner}), identity,
+                                  object_cleared, component_cleared));
+        if (reason) *reason = "invoked";
         return true;
     }
 
-    static bool invoke_release_guarded(NativeAutoPickup* self, bool* faulted) noexcept {
+    static bool invoke_pickup_guarded(NativeAutoPickup* self,
+                                      UEngine* engine,
+                                      const char** reason,
+                                      bool* faulted) noexcept {
         bool invoked{};
 #if defined(_MSC_VER)
-        __try { invoked = self->invoke_release_unsafe(); }
+        __try { invoked = self->invoke_pickup_unsafe(engine, reason); }
         __except (EXCEPTION_EXECUTE_HANDLER) {
             invoked = false;
+            if (reason) *reason = "guarded_runtime_fault";
             if (faulted) *faulted = true;
         }
 #else
-        invoked = self->invoke_release_unsafe();
+        invoked = self->invoke_pickup_unsafe(engine, reason);
 #endif
         return invoked;
+    }
+
+    [[nodiscard]] static bool process_pickup_event_guarded(UObject* receiver,
+                                                            UFunction* function) noexcept {
+#if defined(_MSC_VER)
+        __try {
+#endif
+            if (!receiver || !function) return false;
+            receiver->ProcessEvent(function, nullptr);
+            return true;
+#if defined(_MSC_VER)
+        } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+#endif
+    }
+
+    [[nodiscard]] static bool assign_transient_targets_guarded(UObject** target_object,
+                                                                UObject** target_component,
+                                                                UObject* object,
+                                                                UObject* component,
+                                                                bool assign_object,
+                                                                bool assign_component) noexcept {
+#if defined(_MSC_VER)
+        __try {
+#endif
+            if (!target_object || !target_component || !object || !component) return false;
+            if (assign_object) *target_object = object;
+            if (assign_component) *target_component = component;
+            return (!assign_object || *target_object == object) &&
+                   (!assign_component || *target_component == component);
+#if defined(_MSC_VER)
+        } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+#endif
+    }
+
+    [[nodiscard]] static bool clear_transient_targets_guarded(UObject** target_object,
+                                                               UObject** target_component,
+                                                               UObject* object,
+                                                               UObject* component,
+                                                               bool owns_object,
+                                                               bool owns_component,
+                                                               bool* object_cleared,
+                                                               bool* component_cleared) noexcept {
+#if defined(_MSC_VER)
+        __try {
+#endif
+            if (object_cleared) *object_cleared = false;
+            if (component_cleared) *component_cleared = false;
+            if (!target_object || !target_component) return false;
+            if (dsnap::should_clear_transient_target(owns_object, *target_object == object)) {
+                *target_object = nullptr;
+                if (object_cleared) *object_cleared = true;
+            }
+            if (dsnap::should_clear_transient_target(owns_component, *target_component == component)) {
+                *target_component = nullptr;
+                if (component_cleared) *component_cleared = true;
+            }
+            return true;
+#if defined(_MSC_VER)
+        } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+#endif
     }
 
     [[nodiscard]] std::uint64_t current_component_identity() const noexcept {
@@ -432,7 +672,6 @@ private:
     }
 
     void reset_world(const char* source) noexcept {
-        active_.store(false, std::memory_order_release);
         pickup_pending_.store(false, std::memory_order_release);
         target_visible_.store(false, std::memory_order_release);
         {
@@ -442,8 +681,8 @@ private:
             component_identity_ = 0;
         }
         ++world_resets_;
-        logger_.write(dsnap::LogAudience::User, "STATE_CHANGED",
-                      std::format("state=Off reason={} target_cache=cleared", source));
+        logger_.write(dsnap::LogAudience::User, "WORLD_RESET",
+                      std::format("reason={} target_cache=cleared active_preserved={}", source, active_.load()));
     }
 
     void unregister_callbacks() noexcept {
@@ -485,10 +724,11 @@ private:
     FWeakObjectPtr component_{};
     std::uint64_t component_identity_{};
 
+    UClass* actor_class_{};
     UClass* widget_class_{};
     UClass* interactable_class_{};
     UFunction* visibility_function_{};
-    UFunction* release_function_{};
+    UFunction* pickup_function_{};
     std::pair<int, int> visibility_hook_{};
     Hook::GlobalCallbackId engine_tick_callback_id_{Hook::ERROR_ID};
     Hook::GlobalCallbackId world_reset_callback_id_{Hook::ERROR_ID};
@@ -501,9 +741,9 @@ private:
     std::atomic<std::uint64_t> visible_events_{};
     std::atomic<std::uint64_t> hidden_events_{};
     std::atomic<std::uint64_t> visibility_faults_{};
-    std::atomic<std::uint64_t> release_attempts_{};
-    std::atomic<std::uint64_t> release_invocations_{};
-    std::atomic<std::uint64_t> release_faults_{};
+    std::atomic<std::uint64_t> action_attempts_{};
+    std::atomic<std::uint64_t> rpc_invocations_{};
+    std::atomic<std::uint64_t> action_failures_{};
     std::atomic<std::uint64_t> world_resets_{};
 };
 

@@ -7,9 +7,23 @@
 namespace dsnap {
 
 inline constexpr const char* kAllowedClassPath = "/Script/DS.DropItemActor";
+inline constexpr std::uint8_t kNormalGatherInteractType = 2;
+inline constexpr std::uint8_t kTreasureBoxInteractType = 4;
+inline constexpr std::uint8_t kAnimalInteractType = 5;
 inline constexpr std::uint8_t kDropItemInteractType = 7;
 // Structural object-dump evidence only. Runtime capture has not accepted this value.
 inline constexpr std::uint8_t kDropItemKeyActionEnumCandidate = 13;
+
+[[nodiscard]] constexpr bool is_supported_selector_target(std::uint8_t interact_type,
+                                                          bool actor_is_drop_item) noexcept {
+    // Fish observed at runtime use the game's Animal interaction type. Keep
+    // TreasureBox explicitly excluded even if a future class hierarchy makes
+    // a chest look like another supported Actor type.
+    if (interact_type == kTreasureBoxInteractType) return false;
+    return interact_type == kNormalGatherInteractType ||
+           interact_type == kAnimalInteractType ||
+           (interact_type == kDropItemInteractType && actor_is_drop_item);
+}
 
 struct WeakObjectId {
     std::int32_t object_index{-1};

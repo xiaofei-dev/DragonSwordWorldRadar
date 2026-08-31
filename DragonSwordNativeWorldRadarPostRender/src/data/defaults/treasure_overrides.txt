@@ -1,0 +1,9 @@
+# Native treasure eligibility overrides
+#
+# Ignore one treasure by its complete save-state ID:
+#   ignore 10220122
+
+# Confirmed absent from the pinned game build. The render catalog contains the
+# exact map-100 row at (182813, 162051, 3150), but the native Actor catalog has
+# no matching save ID. Keep the generated evidence and suppress only this ID.
+ignore 11230106

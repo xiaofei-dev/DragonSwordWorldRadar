@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "configuration": "Game__Shipping__Win64",
+  "ue4ss_variant": "StableRoot",
+  "toolchain": {
+    "cmake": "3.29.6",
+    "msvc": "19.38",
+    "rust": "1.73.0"
+  },
+  "source_dependencies": [
+    {
+      "name": "RE-UE4SS",
+      "role": "official v3.0.1 StableRoot runtime ABI, import library, and headers",
+      "origin": "https://github.com/UE4SS-RE/RE-UE4SS.git",
+      "commit": "d935b5b23bac03b65c14ae38382b02007204cc2e"
+    },
+    {
+      "name": "UEPseudo",
+      "role": "headers",
+      "origin": "https://github.com/Re-UE4SS/UEPseudo.git",
+      "commit": "d09b7218bfe7392adeffb500fdeee0b42ca1cd27"
+    },
+    {
+      "name": "patternsleuth",
+      "role": "transitive build dependency",
+      "origin": "https://github.com/trumank/patternsleuth.git",
+      "commit": "33e731e99f2a6bb7f65a8e95e89fd1c06ce9d1d2"
+    },
+    {
+      "name": "ImGuiColorTextEdit",
+      "role": "transitive build dependency",
+      "origin": "https://github.com/UE4SS-RE/ImGuiColorTextEdit.git",
+      "commit": "af7821926251feca84e35f8fa83eee84dae90424"
+    },
+    {
+      "name": "IconFontCppHeaders",
+      "role": "transitive headers",
+      "origin": "https://github.com/juliettef/IconFontCppHeaders.git",
+      "commit": "210b5a399a64270674560d633638952d1e8d804d"
+    }
+  ]
+}

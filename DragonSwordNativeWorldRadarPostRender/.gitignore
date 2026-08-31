@@ -1,0 +1,36 @@
+# All reproducible build, test, staging, deployment, and release outputs.
+/dist/
+/.sdk/
+*.user
+*.suo
+.vs/
+*.orig
+*.patch
+*.candidate.*
+.dev*-*
+
+# These four validated runtime catalogs are release source, not generated
+# workspace state. Override the parent repository's broad generated-Lua rule.
+!/src/data/generated/treasures.lua
+!/src/data/generated/bosses.lua
+!/src/data/generated/assaults.lua
+!/src/data/generated/moles.lua
+
+# Public-source boundary. These local release inputs remain available to
+# authorized local builds but are not new public repository content until
+# provenance and redistribution review is complete.
+/assets/vendor/sqlcipher/e_sqlcipher.dll
+/src/data/generated/
+
+# Installed/runtime state
+/metadata/install-state.json
+/metadata/datasets.json
+/data/generated/*.lua
+/data/generated/*.tsv
+/data/treasure_overrides.txt
+/scripts/config.lua
+
+# Diagnostics
+DragonSwordWorldRadar-Diagnostics-*.zip
+EventRadar-Diagnostics-*.zip
+*.log

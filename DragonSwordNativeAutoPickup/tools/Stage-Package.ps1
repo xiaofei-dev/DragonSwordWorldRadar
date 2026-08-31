@@ -22,14 +22,12 @@ New-Item -ItemType Directory -Path $scriptsDirectory -Force | Out-Null
 Copy-Item -LiteralPath $resolvedDll -Destination (Join-Path $dllDirectory 'main.dll') -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot 'Scripts\main.lua') -Destination (Join-Path $scriptsDirectory 'main.lua') -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot 'config\default.ini') -Destination (Join-Path $modRoot 'config.ini') -Force
-Copy-Item -LiteralPath (Join-Path $projectRoot 'config\enabled.txt') -Destination (Join-Path $modRoot 'enabled.txt') -Force
 
 $files = Get-ChildItem -LiteralPath $resolvedOutput -Recurse -File | ForEach-Object {
     $_.FullName.Substring($resolvedOutput.Length).TrimStart('\').Replace('\', '/')
 }
 $expected = @(
     'ue4ss/Mods/DragonSwordNativeAutoPickup/config.ini',
-    'ue4ss/Mods/DragonSwordNativeAutoPickup/enabled.txt',
     'ue4ss/Mods/DragonSwordNativeAutoPickup/dlls/main.dll',
     'ue4ss/Mods/DragonSwordNativeAutoPickup/Scripts/main.lua'
 )

@@ -1,63 +1,83 @@
 # DragonSword Mod Workspace
 
-This repository is the shared source workspace for multiple **DragonSword Awakening** mods and research tools. Each top-level directory owns an independent runtime or preservation role. Do not copy lifecycle, deployment, or experimental code between projects without first checking that project's context and acceptance boundary.
+This repository is the control workspace for the DragonSword: Awakening Mod
+suite. It uses a monorepo layout: maintained products and research projects
+live at the repository root, retired implementations live under `Archive/`,
+and repository-wide standards live under `docs/`.
 
-## Projects
+The GitHub repository retains its historical `DragonSwordWorldRadar` name
+because this workspace grew from that project. The repository name no longer
+describes only one Mod.
 
-| Directory | Role | Current status |
+## Workspace layout
+
+| Directory | Role | Status |
 |---|---|---|
-| `DragonSwordWorldRadar/` | Main production radar for treasures, Bosses, Assault targets, and Mole/Fly activities | `0.4.0-dev74-processdispatchguard1-localcapfix1`; source validation passed, final gameplay acceptance remains owner-controlled |
-| `DragonSwordNativeAutoPickup/` | Native C++ owner-authorized ordinary ground-loot pickup research | `0.9.0-native-visibility-f-input`; deployed, runtime acceptance pending |
-| `DragonSwordNativeWorldRadar/` | Isolated native-provider/external-overlay Radar proof of concept | `0.1.0-medium-poc`; static/build validated, not deployed, gameplay acceptance pending |
-| `DragonSwordWorldRadarObjectState/` | Experimental native object-state successor to the production Radar | `0.5.0-dev2-native-presence`; source/build validated, not production accepted |
-| `DragonSwordNativeAllMountsFreeFlight/` | Removable pure-resource PAK enabling the native free-dash entry for all mounts | `1.4.0`; installed artifact statically verified, gameplay acceptance not recorded |
-| `DragonSwordWorldDataProbe/` | Read-only data collection and research framework | Active research; observations must not be promoted directly into production behavior |
+| `DragonSwordNativeWorldRadarPostRender/` | Native in-game World Radar | Maintained `2.1.0`; owner gameplay-tested and accepted on 2026-08-31 |
+| `DragonSwordNativeAutoPickup/` | Native automatic pickup | Maintained `1.3.0`; owner gameplay-tested and accepted on 2026-08-31 |
+| `DragonSwordPickupRangeExpansion/` | Optional interaction-range PAK variants | Maintained independent product |
+| `DragonSwordNativeAllMountsFreeFlight/` | Pure-resource all-mount free-flight PAK | Maintained independent product |
+| `DragonSwordWorldDataProbe/` | Independent read-only data-capture test Mod | Retained at the root even when inactive; it is not archived |
+| `DragonSwordUE4SSCompatibilityRuntime/` | Shared pinned UE4SS compatibility payload | Maintained support component, not a gameplay feature |
+| `docs/` | Shared installation, release, integration, and acceptance standards | Repository-wide documentation |
+| `Archive/DragonSwordWorldRadar/` | Retired external-renderer Radar | Frozen reference; not an active build or deployment target |
 
-## Runtime standard
+The superseded `DragonSwordNativeWorldRadar` and
+`DragonSwordWorldRadarObjectState` prototypes are no longer present in the
+working tree. Their history remains available through Git.
 
-UE4SS is rooted at `DS/Binaries/Win64/ue4ss`. Publishable UE4SS Mods install under `DS/Binaries/Win64/ue4ss/Mods/<ModName>`.
+## Current integration status
+
+The owner completed gameplay testing and accepted the current Radar and
+AutoPickup versions on 2026-08-31. During diagnosis, one mounted-flight session
+showed a temporary loss of the native `F` interaction prompt and automatic
+pickup confirmations; normal behavior later recovered during continued flight.
+The evidence did not establish a direct Radar hook conflict. This observation
+is retained as a known diagnostic record and is not an acceptance or
+publication blocker.
+
+See [`docs/INTEGRATION_STATUS.md`](docs/INTEGRATION_STATUS.md) for the exact
+evidence boundary.
 
 ## Repository rules
 
-- Read the target project's `PROJECT_CONTEXT.md` before making changes.
-- Keep repository artifacts, code, identifiers, tests, metadata, and technical documentation in English.
-- Treat `DragonSwordWorldRadar/` as the production owner unless a feature is explicitly being validated in an isolated project.
-- Keep experimental probes in `DragonSwordWorldDataProbe/`; do not add them to the production Radar by default.
-- Preserve historical snapshots and research evidence. Prefer append-only successors or new modules over destructive rewrites.
-- Do not treat compilation or packaging as in-game acceptance.
-- Do not commit generated runtime state, diagnostics, local configuration, release ZIPs, or `dist/` output.
-- Do not deploy, publish, or push without explicit authorization.
+- Read this file, the root `PROJECT_CONTEXT.md`, and the selected product's own
+  context before changing a Mod.
+- Keep source, identifiers, metadata, project documentation, tests, and commit
+  messages in English.
+- Keep product ownership independent. Repository-level organization does not
+  make one Mod responsible for another Mod's runtime behavior.
+- Do not deploy, launch, or terminate the game as part of repository cleanup.
+- Keep build output, runtime logs, extracted game data, credentials, and local
+  release packages out of Git.
+- Treat owner gameplay acceptance, exact installed hashes, technical build
+  evidence, and third-party redistribution rights as separate facts.
 
-## Common entry points
+## Public repository boundary
 
-### Main Radar
+The existing public GitHub repository is the workspace remote. Source,
+first-party assets, tests, and documentation may be published there. Local
+build output, runtime evidence, extracted game files, credentials, and release
+packages remain excluded.
+
+PostRender's bundled SQLCipher binary and generated/derived game catalogs are
+also excluded from new public commits until their recorded provenance and
+redistribution review is complete. They may remain available locally for
+authorized development and packaging; a public checkout is therefore a source
+review checkout, not a complete binary-release build environment.
+
+## Starting work
+
+Use each product's checked-in verification entry points. Common examples:
 
 ```powershell
-Set-Location .\DragonSwordWorldRadar
-& .\build\Verify-Source.ps1
-& .\build\Compile-Source.ps1
-& .\build\Test-Refactor.ps1
-& .\build\Build-Release.ps1
-```
+Set-Location .\DragonSwordNativeWorldRadarPostRender
+& .\tools\Verify-Source.ps1
 
-### Native Auto Pickup
-
-```powershell
-Set-Location .\DragonSwordNativeAutoPickup
+Set-Location ..\DragonSwordNativeAutoPickup
 & .\tools\Verify-Source.ps1
 & .\tools\Build-Core.ps1
 ```
 
-### DataProbe
-
-Read `DragonSwordWorldDataProbe/PROJECT_CONTEXT.md` before enabling or changing a probe. Runtime collection must remain bounded, read-only, explicitly whitelisted, and evidence-labeled.
-
-## Git history
-
-The repository history originated in the standalone `DragonSwordWorldRadar` repository and was promoted to this workspace root when the project became a multi-mod repository. Earlier commits therefore describe the main Radar at the old repository root; current work places that source under `DragonSwordWorldRadar/` alongside the other projects.
-
-The existing `origin` remote may retain the historical repository name until it is intentionally renamed on GitHub. Changing the local layout does not rename the remote repository automatically.
-
-## Local-only development trees
-
-`DragonSwordWorldRadar-Dev/` and `DragonSwordWorldRadar-Mole/` are intentionally excluded by the root `.gitignore`. They are local development or feature-validation workspaces, are not part of the shared repository, and must not be staged, committed, or published. Any accepted feature must be deliberately integrated into `DragonSwordWorldRadar/` and pass that project's validation gates before publication.
+DataProbe changes require its active profile, method matrix, and explicit
+read-only collection boundary to be reviewed first.

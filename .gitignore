@@ -14,6 +14,15 @@
 **/obj/
 **/dist/
 
+# Disposable local verification and native build workspaces
+/.installer-tests/
+/.release-validation/
+/.tmp/
+**/.tmp/
+**/build-*/
+/DragonSwordNativeAutoPickup/build/
+**/installer/build/
+
 # Installed/runtime state and diagnostics
 **/runtime/
 **/*.log
@@ -36,7 +45,7 @@
 /*/*.zip
 
 # Local release-build tool copies excluded by individual project policy.
-DragonSwordWorldRadar/vendor/ooz/ooz.exe
+Archive/DragonSwordWorldRadar/vendor/ooz/ooz.exe
 
 # Local game data, extracted packages, databases, dumps, and credentials.
 **/*.pak

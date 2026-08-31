@@ -1,47 +1,173 @@
 {
-  "schema_version": 1,
-  "captured_utc": "2026-08-13T16:11:27Z",
+  "schema_version": 26,
+  "candidate": {
+    "version": "1.3.0",
+    "runtime_label": "DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_0",
+    "status": "CONFIRMATION_750MS_STRUCTURED_DROP_PAK_OWNERSHIP_SCHEMA_2_CANONICAL_RELEASE_BUILT_NOT_DEPLOYED_RUNTIME_NOT_VALIDATED"
+  },
+  "previous_release_runtime_evidence": {
+    "version": "1.2.0",
+    "runtime_label": "DRAGONSWORD_NATIVE_AUTO_PICKUP_1_2_0",
+    "deployed_native_bytes": 413696,
+    "deployed_native_sha256": "9AFFCD7CD29F7CEFED93B51F7A8BC1533E49FB0E5959517DF424A15F3A19FAD6",
+    "bounded_session_start_utc": "2026-08-29T09:55:18Z",
+    "bounded_session_cutoff_utc": "2026-08-29T10:14:39Z",
+    "enhanced_input_injections": 250,
+    "exact_weak_identity_confirmations": 17,
+    "confirmation_timeouts": 30,
+    "confirmation_supersedes": 38,
+    "maximum_injections_for_one_identity": 61,
+    "result": "RUNTIME_REJECTED_ACTION_STORM_AND_RATE_ONLY_F9_EDGE"
+  },
+  "exact_1_3_0_runtime_regression": {
+    "native_bytes": 836096,
+    "native_sha256": "6F64645B47A5ADC59FAAB4F663E79C1B0681BF72125E1123D686977C0A7FA5F1",
+    "observed_utc": "2026-08-29T19:41:08Z",
+    "ue4ss_gate": "PASSED",
+    "game_hash_policy": "diagnostic_only",
+    "key_events_received": 0,
+    "automatic_scans": 0,
+    "selector_attempts": 0,
+    "result": "REFLECTION_CONTRACT_REJECTED_BEFORE_DYNAMIC_SELECTOR_RESOLUTION"
+  },
+  "reflection_fix_candidate": {
+    "status": "BUILT_NOT_DEPLOYED_RUNTIME_NOT_VALIDATED",
+    "required_contract_change": "unused_set_interact_ui_v2_parameter_schema_is_diagnostic_only",
+    "diagnostic_event": "REFLECTION_CONTRACT_DETAIL",
+    "selector_safety": "unchanged_dual_path_runtime_consensus_fail_closed",
+    "native_file": "build-native-reflection-fix/main.dll",
+    "native_bytes": 912896,
+    "native_sha256": "4404872210939EE88D3A186CF37741D2282D0E9CB227E73226C820DC039F276F",
+    "installer_file": "build-installer-1.3.0-reflection-fix/DragonSwordNativeAutoPickup-Setup-1.3.0.exe",
+    "installer_bytes": 12196352,
+    "installer_sha256": "4BEC3DCA4211E577A47E5DAC8CEBF106D4CB3FDED292CE06A164BA68438826C7",
+    "source_core_artifact_gates": "PASSED",
+    "installer_state_matrix": "PASSED_10_OF_10",
+    "installer_current_owned_action": "repair",
+    "installer_older_owned_action": "upgrade",
+    "installer_absent_action": "install",
+    "installer_unknown_same_name_action": "blocked_zero_mutation",
+    "deployment": false,
+    "gameplay_validation": "PENDING"
+  },
   "game": {
-    "file": "DSClient-Win64-Shipping.exe",
-    "sha256": "3DDDCEE474825310000A4CD24239AE5C8B76EF81BAC223C9F3D52565816A0CEA",
-    "steam_build_id": "24693558"
+    "required_file": "DSClient-Win64-Shipping.exe",
+    "sha256": "85E0F6BAFF78940C53451A282559A9378F6541E24B1CC81CD8CAF1556204A52E",
+    "installer_selection": "exact_filename_required_game_hash_diagnostic_only"
   },
-  "ue4ss": {
-    "version": "3.0.1 Beta #0",
+  "selector_resolution": {
+    "policy": "runtime_reflection_dual_caller_rel32_consensus_fail_closed",
+    "fixed_rva_fallback": false,
+    "game_hash_used_for_resolution": false,
+    "reflection_anchors": [
+      "/Script/DS.DInteractableComponent:Server_RunInteractV2",
+      "/Script/DS.DInteractableComponent:SetInteractUIV2"
+    ],
+    "server_path": "reflected_exec_leaf_to_unique_virtual_slot_to_cdo_vtable_to_runtime_bounded_native_implementation",
+    "ui_path": "reflected_exec_pdata_chaininfo_to_unique_terminal_rel32_call_to_runtime_bounded_native_implementation",
+    "consensus": "server_and_ui_selector_addresses_must_match_exactly",
+    "instruction_boundaries": "zydis_decoded_with_pe32_plus_pdata_chaininfo_runtime_function_bounds",
+    "failure_policy": "automation_off_for_process",
+    "compatibility_scope": "compatible_reflection_and_machine_code_contracts_not_arbitrary_recompile",
+    "runtime_validation": "PENDING"
+  },
+  "supported_ue4ss": {
+    "layout": "experimental_nested",
+    "version": "v3.0.1 Beta #0",
     "git_sha": "1c1a1497f942c707f47ba668db75b25e86f6c08a",
-    "file": "ue4ss/UE4SS.dll",
-    "sha256": "F31188D59B34A812AFC32DB4B6FF0C74E1B44861D1ED7967452EE4B3B6635BE1"
+    "ue4ss_file": "Win64/ue4ss/UE4SS.dll",
+    "ue4ss_sha256": "F31188D59B34A812AFC32DB4B6FF0C74E1B44861D1ED7967452EE4B3B6635BE1",
+    "proxy_file": "Win64/dwmapi.dll",
+    "proxy_sha256": "30122355CB2784E3BA89F6FB55EA4443467FF8EAE2747CBDEDBEEF49B03E669B",
+    "stable_root_payload_included": false
   },
-  "source_build": {
-    "status": "native_visibility_f_input_candidate_deployed_not_runtime_validated",
-    "version": "0.9.0-native-visibility-f-input",
-    "built_utc": "2026-08-13T16:11:27Z",
-    "configuration": "Game__Shipping__Win64",
-    "main_dll_size_bytes": 1048064,
-    "main_dll_sha256": "645E1D68171D88FE533F7457F3394F61EC13D888B803846FA0614DEFF260B843",
-    "dependencies": {
-      "ue4ss_git_sha": "1c1a1497f942c707f47ba668db75b25e86f6c08a",
-      "uepseudo_git_sha": "b2e876da82b17254c04304746341c8fde0ddb37c",
-      "patternsleuth_git_sha": "da8bfe4c5a464be0ef225c2c9a6ccaa2d9284018",
-      "imgui_color_text_edit_git_sha": "6d943aba9f7cef05da80b86dbb0253b63818f95c"
+  "lifecycle": {
+    "launch_state": "off",
+    "main_menu_save_world_initialization": "force_off_and_require_new_toggle",
+    "toggle_acceptance": "foreground_and_playable_session_generation_required",
+    "active_scan_world_policy": "fresh_pawn_world_must_match_enabled_world_before_selector",
+    "injection_foreground_policy": "revalidated_immediately_before_confirmation_and_injection",
+    "toggle_edge_policy": "one_transition_per_physical_press_release_required_before_next",
+    "action_pending_policy": "one_global_pending_action_blocks_later_invocations_and_tracks_the_exact_returned_component",
+    "confirmation_policy": "exact_actor_or_component_weak_identity_invalidation_or_exact_component_inactive",
+    "confirmation_window_ms": 650,
+    "retry_delay_ms": 100,
+    "engine_pulse_ms": 25,
+    "active_scan_ms": 25,
+    "idle_scan_ms": 33,
+    "post_pickup_ms": 25,
+    "maximum_attempts": 2,
+    "timeout_policy": "first_timeout_cools_down_then_one_selector_represented_retry_second_timeout_quarantines_exact_component",
+    "retry_preflight_policy": "exact_component_cooldown_and_quarantine_before_live_action_mapping_or_subsystem_resolution",
+    "interaction_owner_change_policy": "clear_pending_and_attempt_records_then_enforce_1500ms_settle_before_next_scan",
+    "drop_item_range_policy": "structured_owned_range_pak_authors_19_type7_DropItemActor_overlap_spheres_native_runtime_multiplier_disabled"
+  },
+  "installer_actions": [
+    "install",
+    "upgrade_owned_installation",
+    "uninstall_owned_installation"
+  ],
+  "range_choices": [
+    "original",
+    "3x",
+    "5x",
+    "10x",
+    "15x",
+    "20x"
+  ],
+  "native_artifact": {
+    "file": "dist/releases/1.3.0/DragonSwordAutoPickup-v1.3.0-Manual-No-UE4SS.zip!ue4ss/Mods/DragonSwordNativeAutoPickup/dlls/main.dll",
+    "bytes": 919552,
+    "sha256": "10F5F4D575C07FF90A7C692E6A91906B6EA5B01E50D1671F82CBB40E8DB174B2",
+    "status": "CONFIRMATION_750MS_STRUCTURED_DROP_PAK_NATIVE_BUILD_AND_ARTIFACT_GATE_PASSED"
+  },
+  "installer": {
+    "file": "dist/releases/1.3.0/DragonSwordAutoPickup-v1.3.0-Installer.zip!DragonSwordNativeAutoPickup-Setup-1.3.0.exe",
+    "bytes": 13001728,
+    "sha256": "2BF6109E93606175610374F08ED2D91E813043BF204736AA3260E23966F53997",
+    "signed": false,
+    "status": "OWNERSHIP_SCHEMA_2_1_3_0_BUILT_UNSIGNED",
+    "state_matrix_test": "PASSED_10_OF_10",
+    "conversion_test": "PASSED_ISOLATED_FIXTURE",
+    "backup_collision_test": "PASSED_ISOLATED_FIXTURE"
+  },
+  "release_archives": [
+    {
+      "kind": "installer",
+      "file": "dist/releases/1.3.0/DragonSwordAutoPickup-v1.3.0-Installer.zip",
+      "bytes": 8556743,
+      "sha256": "70A498FCBE8C3F37E2ADFFBCA1509DCAB23065B7E521C426F80C76D14310C124",
+      "status": "CONFIRMATION_750MS_STRUCTURED_DROP_PAK_1_3_0_BUILT_AND_AUDITED"
     },
-    "toolchain": {
-      "cmake": "3.29.6",
-      "generator": "Ninja",
-      "rust": "1.97.1",
-      "msvc": "19.44.35228"
+    {
+      "kind": "manual_without_ue4ss",
+      "file": "dist/releases/1.3.0/DragonSwordAutoPickup-v1.3.0-Manual-No-UE4SS.zip",
+      "bytes": 362076,
+      "sha256": "9E4A7177C2D28AB2C823B1FCBB92473445CDD21FE5FEB3CF9C8A88E91080274B",
+      "status": "CONFIRMATION_750MS_STRUCTURED_DROP_PAK_1_3_0_BUILT_AND_AUDITED"
     },
-    "deployed": true,
-    "deployed_utc": "2026-08-13T16:20:39Z",
-    "installed_path": "G:\\SteamLibrary\\steamapps\\common\\DragonSword  Awakening\\DS\\Binaries\\Win64\\ue4ss\\Mods\\DragonSwordNativeAutoPickup",
-    "runtime_validated": false
-  },
-  "diagnostics": {
-    "detection": "native_function_detour_exact_RVA_and_prefix_guard",
-    "input": "foreground_only_F_scan_code_press_release_one_edge_250ms_cooldown",
-    "f9": "250ms_qualified_release_edge",
-    "discovery": "game_native_visibility_event_no_object_or_actor_scan",
-    "uobject_shutdown": "process_lifetime_module_pin_generation_invalidated_unsafe_teardown"
-  },
-  "unknown_build_policy": "passive_off"
+    {
+      "kind": "manual_with_ue4ss",
+      "file": "dist/releases/1.3.0/DragonSwordAutoPickup-v1.3.0-Manual-With-UE4SS.zip",
+      "bytes": 8446667,
+      "sha256": "55BE6AA64FE035B0F9F76BBD6479E3F715AA1A5A35BA2B2B4C2B1F277E628C6D",
+      "status": "CONFIRMATION_750MS_STRUCTURED_DROP_PAK_1_3_0_BUILT_AND_AUDITED"
+    },
+    {
+      "kind": "standalone_range_paks",
+      "file": "dist/releases/1.3.0/DragonSwordPickupRangeExpansion-v1.3.0.zip",
+      "bytes": 3919600,
+      "sha256": "504C1E9524CDE63B096C88E24DBA0D5E008F9076BA24B6BC6065D60780848801",
+      "status": "FINAL_1_3_0_69_TARGET_STRUCTURED_DROP_PAK_BUILT_AND_AUDITED"
+    }
+  ],
+  "acceptance": {
+    "corrective_source": "IMPLEMENTED_CONFIRMATION_750MS_EXACT_COMPONENT_PENDING_BOUNDED_RETRY_OWNER_SETTLE_STRUCTURED_DROP_PAK_NATIVE_MULTIPLIER_DISABLED_TRUE_F9_EDGE",
+    "source_compile_package": "CONFIRMATION_750MS_STRUCTURED_DROP_PAK_SOURCE_NATIVE_ARTIFACT_INSTALLER_AND_PACKAGE_GATES_PASSED",
+    "isolated_installer_state_matrix": "PASSED_10_OF_10",
+    "archive_content_audit": "PASSED_EXACT_ENTRIES_CHECKSUMS_DETERMINISM_PROVENANCE_EXCLUSIONS",
+    "legacy_installed_deployment_cleanup": "TRANSACTIONAL_UNINSTALL_PASSED_MOD_RANGE_AND_MODS_TXT_ENTRY_ABSENT",
+    "deployed": false,
+    "fresh_gameplay_validation": "EXACT_1_3_0_NOT_RUNTIME_TESTED"
+  }
 }

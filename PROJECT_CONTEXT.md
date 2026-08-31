@@ -1,65 +1,97 @@
 # DragonSword Multi-Mod Repository Context
 
-## Repository purpose
+## Purpose
 
-This is a multi-project repository for the production DragonSword Awakening Radar, owner-authorized native Mod canaries, and read-only research tooling. The Git history was inherited from the original standalone DragonSwordWorldRadar repository and promoted to this directory so related publishable projects can be managed together.
-
-Use this file as the first cross-chat orientation document. Then read the selected project's own `PROJECT_CONTEXT.md` and current metadata before acting.
+`G:\my_projects\game_mods\DragonSword` is the control root for all maintained
+DragonSword: Awakening Mod development. This file is the first cross-chat
+orientation document. Read the selected product's own context and current Git
+diff before making product-level changes.
 
 ## Ownership map
 
-### `DragonSwordWorldRadar/`
+### Maintained gameplay products
 
-Primary production Mod and authoritative owner of the integrated treasure, Boss, Assault, and Mole/Fly radar. Current source is `0.4.0-dev74-processdispatchguard1-localcapfix1` with one protocol-v6 Motion/control bridge. Preserve the acceptance boundary between passed Windows/package gates and owner gameplay validation.
+- `DragonSwordNativeWorldRadarPostRender/` owns native World Radar rendering,
+  data selection, and its own F6/F7/F8 controls.
+- `DragonSwordNativeAutoPickup/` owns automatic interaction selection and
+  Enhanced Input pickup invocation.
+- `DragonSwordPickupRangeExpansion/` owns authored optional interaction-range
+  PAK variants only.
+- `DragonSwordNativeAllMountsFreeFlight/` owns the removable pure-resource
+  all-mount free-flight change only.
 
-### `DragonSwordNativeAutoPickup/`
+### Research and shared support
 
-Native C++ UE4SS research Mod for owner-authorized ordinary ground-loot pickup. Version `0.9.0-native-visibility-f-input` uses an exact-version native visibility detour and sends one F scan-code press/release through the game's normal interaction path. It is deployed but not runtime accepted.
+- `DragonSwordWorldDataProbe/` is an independent read-only data-capture test
+  Mod. It remains at the repository root even while inactive and must not be
+  moved into `Archive/` merely because it is not currently running.
+- `DragonSwordUE4SSCompatibilityRuntime/` is a pinned compatibility payload,
+  not an independently enabled gameplay Mod.
+- `docs/` owns repository-wide installation, release, integration, and
+  acceptance guidance.
 
-### `DragonSwordWorldRadarObjectState/`
+### Archive and removed prototypes
 
-Experimental native-object-state successor to the production Radar. Version `0.5.0-dev2-native-presence` moves bounded high-frequency state collection into a native provider while retaining the external Overlay and Lua world-map geometry. It is source/build validated but not production or gameplay accepted.
+- `Archive/DragonSwordWorldRadar/` is the frozen external-renderer Radar
+  implementation retained for history and comparison. It is not active.
+- `DragonSwordNativeWorldRadar` and `DragonSwordWorldRadarObjectState` were
+  superseded prototypes and are intentionally absent from the working tree.
+  Git history remains their archive of record.
+- There is no repository-root `tools/` directory. Each product owns its own
+  build and verification tooling.
 
-### `DragonSwordWorldDataProbe/`
+## Accepted product state
 
-Research and diagnostics framework. It may contain active, disabled, manual-only, experimental, prohibited, and archived methods in the same tree. File presence never proves that a module is active or accepted. Keep game access bounded and read-only, preserve raw evidence, and distinguish confirmed observations from inference.
+The owner reported completed gameplay testing and acceptance on 2026-08-31 for
+the current installed `DragonSwordNativeWorldRadarPostRender` 2.1.0 and
+`DragonSwordNativeAutoPickup` 1.3.0 builds.
 
-### `DragonSwordNativeWorldRadar/`
+One diagnostic session observed a temporary native `F` prompt loss and missing
+AutoPickup confirmations during mounted flight. The prompt and automatic
+behavior later recovered during continued flight. Logs showed successful input
+injection without confirmation, a mounted Pawn transition, and later
+`ClientRestart` lifecycle activity. They did not prove a direct Radar hook
+conflict. Preserve the observation in `docs/INTEGRATION_STATUS.md`; do not
+rewrite it as either a proven Radar conflict or a resolved root cause.
 
-Isolated medium-architecture proof of concept. Native C++ owns bounded player-coordinate publication while its external Overlay reuses the Radar rendering model. It is not the production Radar, must not run alongside it, and remains not deployed/runtime-unaccepted.
+Owner acceptance is an authoritative product decision. It does not by itself
+prove the SHA-256 identity of an installed artifact, fill every detailed test
+matrix row, or clear third-party redistribution rights.
 
-### `DragonSwordNativeAllMountsFreeFlight/`
+## Publication boundary
 
-Pure-resource all-mount native free-dash Mod. Git contains its reproducible implementation, metadata, and build tooling; extracted game assets, staging trees, backups, PAK artifacts, and local verification copies remain excluded.
+- The repository root is the Git root. The existing remote is the inherited
+  public `xiaofei-dev/DragonSwordWorldRadar` repository and remains the target
+  unless the owner explicitly requests a rename or replacement.
+- Public commits may contain first-party source, tests, metadata,
+  documentation, and first-party media.
+- Do not commit runtime logs, build output, release archives, extracted game
+  files, save data, databases, keys, credentials, or local deployment state.
+- PostRender's local `assets/vendor/sqlcipher/e_sqlcipher.dll` and
+  `src/data/generated/` catalogs remain excluded from new public commits until
+  provenance and redistribution review is complete.
+- A public checkout is not guaranteed to reproduce a full binary release until
+  those local-only dependencies are independently cleared and supplied.
+- User authorization to upload the workspace does not silently assert ownership
+  of third-party or game-derived material.
 
-## Runtime standard
+## Safety and evidence rules
 
-The canonical UE4SS root is `DS/Binaries/Win64/ue4ss`; Mod installations belong under `DS/Binaries/Win64/ue4ss/Mods/<ModName>`.
+- Preserve unrelated dirty work and inspect root-level Git state before edits.
+- Never copy secrets, PAK keys, database keys, absolute process addresses, or
+  extracted proprietary payloads into source or documentation.
+- Keep source/static, build/package, installed-hash, runtime, owner-acceptance,
+  and publication-rights evidence separate.
+- Archived and research code never becomes active product behavior implicitly.
+- Repository cleanup does not authorize deployment, game launch, game process
+  termination, or modification of the game installation.
 
-## Cross-project boundaries
+## Continuation checklist
 
-- Production runtime ownership belongs to `DragonSwordWorldRadar/`.
-- DataProbe evidence does not become production truth automatically.
-- Generated catalogs must remain build-pinned or install-generated and fail closed when the expected shape changes.
-- Runtime behavior matters more than a clean compile for gameplay fixes.
-
-## Local-only trees
-
-`DragonSwordWorldRadar-Dev/` and `DragonSwordWorldRadar-Mole/` may exist beside the published projects on the owner's machine. They are intentionally ignored local workspaces and are not repository content. Never force-add or publish them. Integrate accepted work into `DragonSwordWorldRadar/` explicitly and validate it again there.
-
-## Git and publication policy
-
-- The repository root is this directory, not an individual Mod directory.
-- Preserve the inherited Git history and existing `origin` until the user explicitly requests a remote rename or replacement.
-- Review root-level `git status` because changes from every Mod are now visible together.
-- Scope commits by project and purpose; avoid combining unrelated production, experimental, and preservation changes.
-- Do not commit, push, publish a release, or deploy to the game directory without explicit authorization.
-- Exclude release ZIPs, `dist/`, runtime state, logs, diagnostics, generated user configuration, and installed data.
-
-## Current handoff state
-
-- Main Radar remains an independent deployed production candidate. Native Auto Pickup 0.9.0 is deployed for Steam build `24693558`; automatic pickup remains unaccepted until owner gameplay testing.
-- Static, compile, package, and scheduling gates passed locally; this is not a substitute for in-game acceptance.
-- DataProbe research source and evidence documentation are publishable, while runtime reports, diagnostics, generated local data, and installed state remain excluded.
-
-Before starting work, verify this state against the current filesystem and Git status; it may have changed since this context was written.
+1. Confirm the target product directory.
+2. Read its `README.md`, `PROJECT_CONTEXT.md`, metadata, and relevant evidence.
+3. Inspect the root Git diff and preserve work outside the requested scope.
+4. Use product-owned verification scripts without deploying or launching the
+   game unless that separate action is explicitly authorized.
+5. Record new evidence at the correct level and retain uncertainty where the
+   evidence does not establish a root cause.

@@ -1,30 +1,174 @@
 {
-  "schema_version": 18,
-  "status": "OWNER_AUTHORIZED_NATIVE_VISIBILITY_F_INPUT",
-  "active_mode_approved": true,
+  "schema_version": 60,
+  "status": "V1_3_0_CONFIRMATION_750MS_STRUCTURED_DROP_PAK_OWNERSHIP_SCHEMA_2_CANONICAL_RELEASE_BUILT_NOT_DEPLOYED_RUNTIME_NOT_VALIDATED",
+  "runtime_label": "DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_0",
   "runtime_acceptance": false,
-  "pulse_function": "UE4SS.RegisterEngineTickPostCallback",
-  "target_source": "PolyHook2_detour_of_native_DDropItemButton_UpdateButtonVisibilityByComponent_RVA_0x61B3AC0",
-  "selection": "new_active_edge_for_exact_component_pointer_supplied_by_game",
+  "gameplay_validation": "EXACT_1_3_0_BUILT_PACKAGED_NOT_DEPLOYED_OR_RUNTIME_TESTED",
+  "current_candidate": {
+    "version": "1.3.0",
+    "built_experimental_nested": true,
+    "built_stable_root": false,
+    "installer_built": true,
+    "offline_installer_state_matrix_passed": true,
+    "packaged": true,
+    "deployed": false,
+    "exact_artifact_smoke_tested": false,
+    "release_archives": [
+      "DragonSwordAutoPickup-v1.3.0-Installer.zip",
+      "DragonSwordAutoPickup-v1.3.0-Manual-No-UE4SS.zip",
+      "DragonSwordAutoPickup-v1.3.0-Manual-With-UE4SS.zip",
+      "DragonSwordPickupRangeExpansion-v1.3.0.zip"
+    ]
+  },
+  "deployed_1_2_0_runtime_evidence": {
+    "session_start_utc": "2026-08-29T09:55:18Z",
+    "session_cutoff_utc": "2026-08-29T10:14:39Z",
+    "enhanced_input_injections": 250,
+    "exact_weak_identity_confirmations": 17,
+    "confirmation_timeouts": 30,
+    "confirmation_supersedes": 38,
+    "maximum_injections_for_one_identity": 61,
+    "selector_faults": 0,
+    "automatic_fault_disables": 0,
+    "world_resets": 0,
+    "logger_dropped": 0,
+    "result": "RUNTIME_REJECTED_ACTION_STORM_AND_RATE_ONLY_F9_EDGE"
+  },
+  "feature_status": {
+    "corrective_development_implemented": true,
+    "accepted_runtime_baseline": "1.6.10-ue4ss-f9-fish-perf-diagnostics",
+    "required_remaining_features": [],
+    "remaining_release_validation": [
+      "authorized_deployment_and_installed_hash_verification",
+      "reference_build_selector_resolved_and_failure_path_runtime_smoke",
+      "updated_game_build_compatibility_smoke_when_available",
+      "true_f9_edge_single_pending_timeout_quarantine_manual_f_on_foot_mounted_travel_exit_performance_smoke"
+    ],
+    "optional_future_enhancements": [
+      "automatic_saved_gamepad_binding_selection",
+      "authenticode_installer_signing"
+    ]
+  },
+  "compatibility": {
+    "game_file": "DSClient-Win64-Shipping.exe",
+    "game_sha256": "85E0F6BAFF78940C53451A282559A9378F6541E24B1CC81CD8CAF1556204A52E",
+    "game_hash_policy": "diagnostic_only_never_selects_or_authorizes_selector_address",
+    "unlisted_game_build_policy": "may_activate_only_when_runtime_reflection_and_executable_code_contracts_resolve_uniquely",
+    "selector_resolution_policy": "runtime_reflection_dual_caller_rel32_consensus_fail_closed",
+    "selector_reflection_anchors": [
+      "/Script/DS.DInteractableComponent:Server_RunInteractV2",
+      "/Script/DS.DInteractableComponent:SetInteractUIV2"
+    ],
+    "selector_server_path": "reflected_exec_leaf_to_unique_virtual_slot_to_cdo_vtable_to_runtime_bounded_native_implementation",
+    "selector_ui_path": "reflected_exec_pdata_chaininfo_to_unique_terminal_rel32_call_to_runtime_bounded_native_implementation",
+    "selector_consensus": "server_and_ui_selector_addresses_must_match_exactly",
+    "selector_instruction_bounds": "zydis_decoded_pe32_plus_pdata_chaininfo_runtime_function_fragments",
+    "fixed_rva_fallback": false,
+    "game_hash_used_for_selector_resolution": false,
+    "selector_resolution_failure": "automation_off_for_process",
+    "selector_compatibility_scope": "compatible_reflection_and_machine_code_contracts_not_arbitrary_recompile",
+    "supported_layout": "ExperimentalNested",
+    "ue4ss_version": "v3.0.1 Beta #0",
+    "ue4ss_commit": "1c1a1497f942c707f47ba668db75b25e86f6c08a",
+    "ue4ss_file": "Win64/ue4ss/UE4SS.dll",
+    "ue4ss_sha256": "F31188D59B34A812AFC32DB4B6FF0C74E1B44861D1ED7967452EE4B3B6635BE1",
+    "proxy_file": "Win64/dwmapi.dll",
+    "proxy_sha256": "30122355CB2784E3BA89F6FB55EA4443467FF8EAE2747CBDEDBEEF49B03E669B",
+    "stable_root_plugin_included": false,
+    "different_layout_policy": "confirm_then_verified_backup_convert_and_migrate",
+    "backup_collision_policy": "append_2_3_and_later_suffixes"
+  },
+  "lifecycle": {
+    "launch_state": "off",
+    "main_menu": "force_off",
+    "new_save_or_world_initialization": "force_off",
+    "reenable_policy": "configured_toggle_required_after_playable_world_load",
+    "toggle_acceptance": "foreground_and_current_playable_session_generation_required",
+    "toggle_edge": "one_transition_per_physical_press_release_required_before_next",
+    "active_scan_world_policy": "fresh_pawn_world_identity_must_match_enabled_world_before_selector",
+    "injection_foreground_policy": "revalidate_before_any_confirmation_mutation_and_injection",
+    "cross_world_gameplay_uobject_retention": false,
+    "single_global_pending_action": true,
+    "confirmation": "exact_actor_or_component_weak_identity_invalidation_or_exact_component_interactable_state_change",
+    "timeout": "first_650ms_timeout_cools_down_100ms_then_one_selector_represented_retry_second_timeout_quarantines_exact_component_for_current_activation",
+    "interaction_owner_change": "clear_pending_and_attempt_records_and_enforce_1500ms_settle_before_next_scan"
+  },
+  "installer": {
+    "install": "allowed_when_mod_absent",
+    "upgrade": "allowed_for_one_recognized_owned_installation_preserve_config",
+    "upgrade_rollback": "temporary_transaction_no_persistent_backup_on_exact_runtime",
+    "uninstall": "remove_owned_mod_mods_txt_entry_and_owned_approved_range_paks_only",
+    "preserve_on_uninstall": [
+      "ue4ss",
+      "unrelated_mods",
+      "unrelated_configuration"
+    ],
+    "unknown_same_name_mod_policy": "fail_closed",
+    "supported_range_filename_policy": "product_owned_by_exact_filename_and_always_reconciled",
+    "mod_ownership_record": "schema_2_stable_product_id_and_recorded_plugin_lua_notices_hashes_legacy_allowlist_migration_only"
+  },
+  "release_defaults": {
+    "enabled_on_launch": false,
+    "automatic_pickup": true,
+    "toggle_hotkey": "F9",
+    "interaction_key": "AUTO",
+    "interaction_key_fallback": "F",
+    "debug_logging": false,
+    "range_selection_default": "original",
+    "range_selection_options": [
+      "original",
+      "3x",
+      "5x",
+      "10x",
+      "15x",
+      "20x"
+    ]
+  },
+  "release_package_classes": [
+    "one_click_installer",
+    "manual_without_ue4ss",
+    "manual_with_ue4ss",
+    "standalone_range_paks"
+  ],
   "automatic_action": {
-    "enabled": true,
-    "receiver": "foreground_game_window",
-    "function": "Win32.SendInput_F_scan_code_press_release",
-    "parameter_count": 2,
-    "target_fields": [],
-    "direct_interaction_rpc": false,
-    "cooldown_ms": 250,
-    "invocation_limit": "one_input_per_new_visible_component_edge",
-    "confirmation": "owner_visible_pickup_required"
+    "selector_resolution": "process_initialization_dual_reflection_caller_consensus",
+    "selector_fault_policy": "clear_all_callable_addresses_disable_for_process_no_retry",
+    "selector_calls_per_due_scan": 1,
+    "selector_receiver": "fresh_current_Pawn_or_vehicle_Rider_DInteractableComponent_per_scan",
+    "target_policy": [
+      "NormalGather_2",
+      "Animal_5",
+      "class_proven_DropItem_7",
+      "TreasureBox_4_explicitly_excluded"
+    ],
+    "uobject_scan": false,
+    "general_collision_mutation": false,
+    "drop_item_overlap_mutation": "structured_PAK_authored_DropItemActor_SphereOverlapComp_RelativeScale3D_native_runtime_mutation_disabled",
+    "windows_synthetic_input": false,
+    "worker_thread": false,
+    "pending_policy": "one_global_pending_blocks_all_later_automatic_invocations_and_tracks_the_exact_returned_component",
+    "confirmation_window_ms": 650,
+    "engine_pulse_ms": 25,
+    "active_scan_ms": 25,
+    "idle_scan_ms": 33,
+    "post_pickup_ms": 25,
+    "timeout_retry": true,
+    "retry_delay_ms": 100,
+    "maximum_attempts": 2,
+    "retry_preflight_policy": "exact_component_cooldown_and_quarantine_are_checked_before_live_action_mapping_or_subsystem_resolution",
+    "terminal_timeout_policy": "quarantine_exact_component_for_current_activation_after_second_unconfirmed_attempt",
+    "context_reset_policy": "interaction_owner_change_clears_pending_and_attempt_records_then_enforces_a_1500ms_settle_before_next_scan",
+    "drop_item_range_policy": "one_owned_range_pak_authors_19_class_proven_type7_drop_overlap_spheres_and_native_runtime_multiplier_is_compile_time_disabled",
+    "normal_and_mounted_identity": "exact_local_player_trusted_controller_bidirectional_current_pawn_and_fresh_world",
+    "logging": "compact_bounded_action_diagnostics_and_interval_performance"
   },
-  "evidence": {
-    "source": "current_executable_direct_call_xrefs_and_function_disassembly",
-    "native_rva": "0x61B3AC0",
-    "native_prefix_bytes": "48 89 74 24 18 57 48 83 EC 20 48 8B 01 48 8B F2",
-    "reflection_hook_result": "0_events_because_game_calls_native_function_directly",
-    "manual_input": "F_is_owner_reported_interaction_key"
-  },
-  "world_transition_policy": "InitGameState_immediate_off_and_clear_component_edge",
-  "thread_affinity": "native_visibility_and_EngineTick_game_thread_on_update_scalar_only",
-  "unknown_build_policy": "off"
+  "artifact_hashes": {
+    "status": "CONFIRMATION_750MS_STRUCTURED_DROP_PAK_OWNERSHIP_SCHEMA_2_CANONICAL_RELEASE_BUILT_AND_AUDITED_RUNTIME_NOT_VALIDATED",
+    "native_dll": "10F5F4D575C07FF90A7C692E6A91906B6EA5B01E50D1671F82CBB40E8DB174B2",
+    "installer_exe": "2BF6109E93606175610374F08ED2D91E813043BF204736AA3260E23966F53997",
+    "installer_zip": "70A498FCBE8C3F37E2ADFFBCA1509DCAB23065B7E521C426F80C76D14310C124",
+    "manual_no_ue4ss_zip": "9E4A7177C2D28AB2C823B1FCBB92473445CDD21FE5FEB3CF9C8A88E91080274B",
+    "manual_with_ue4ss_zip": "55BE6AA64FE035B0F9F76BBD6479E3F715AA1A5A35BA2B2B4C2B1F277E628C6D",
+    "standalone_range_paks_zip": "504C1E9524CDE63B096C88E24DBA0D5E008F9076BA24B6BC6065D60780848801"
+  }
 }

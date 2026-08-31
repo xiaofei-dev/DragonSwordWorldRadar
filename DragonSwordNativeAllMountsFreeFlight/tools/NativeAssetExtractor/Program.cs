@@ -1,14 +1,15 @@
 using System.Text.RegularExpressions;
 using CUE4Parse.Encryption.Aes;
 using CUE4Parse.FileProvider;
+using CUE4Parse.MappingsProvider.Usmap;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Versions;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
 
-if (args.Length != 4)
+if (args.Length is < 4 or > 5)
 {
-    Console.Error.WriteLine("Usage: NativeAssetExtractor <game-root> <crypto-json> <asset-name> <output-root>");
+    Console.Error.WriteLine("Usage: NativeAssetExtractor <game-root> <crypto-json> <asset-name|--list-index> <output-root|index-file> [mappings.usmap]");
     return 2;
 }
 
@@ -16,6 +17,12 @@ var gameRoot = Path.GetFullPath(args[0]);
 var cryptoPath = Path.GetFullPath(args[1]);
 var assetName = args[2];
 var outputRoot = Path.GetFullPath(args[3]);
+var mappingsPath = args.Length == 5 ? Path.GetFullPath(args[4]) : null;
+
+if (mappingsPath is not null && !File.Exists(mappingsPath))
+{
+    throw new FileNotFoundException("The supplied mappings file does not exist.", mappingsPath);
+}
 
 var keySource = File.ReadAllText(cryptoPath);
 var keyMatch = Regex.Match(keySource, "(?<![0-9a-fA-F])(?:0x)?[0-9a-fA-F]{64}(?![0-9a-fA-F])");
@@ -49,12 +56,30 @@ using var provider = new DefaultFileProvider(
     SearchOption.AllDirectories,
     new VersionContainer(configuredVersion.HasValue ? (EGame)configuredVersion.Value : EGame.GAME_UE5_4));
 provider.Initialize();
+if (mappingsPath is not null)
+{
+    provider.MappingsContainer = new FileUsmapTypeMappingsProvider(mappingsPath);
+    Console.WriteLine($"MAPPINGS {Path.GetFileName(mappingsPath)}");
+}
 var keyBytes = Regex.IsMatch(keyText, "^(?:0x)?[0-9a-fA-F]{64}$")
     ? Convert.FromHexString(keyText.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? keyText[2..] : keyText)
     : Convert.FromBase64String(keyText);
 provider.SubmitKey(new FGuid(), new FAesKey(keyBytes));
 
+if (assetName.Equals("--list-index", StringComparison.OrdinalIgnoreCase))
+{
+    var indexPath = outputRoot;
+    Directory.CreateDirectory(Path.GetDirectoryName(indexPath)!);
+    var indexedPaths = provider.Files.Keys
+        .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+    File.WriteAllLines(indexPath, indexedPaths);
+    Console.WriteLine($"INDEX_WRITTEN {indexPath} {indexedPaths.Length}");
+    return 0;
+}
+
 var matches = provider.Files.Keys
+    .Where(path => path.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
     .Where(path => path.Contains(assetName, StringComparison.OrdinalIgnoreCase))
     .OrderBy(path => path)
     .ToArray();
@@ -96,7 +121,15 @@ foreach (var assetPath in matches)
     try
     {
         var exports = provider.LoadPackage(assetPath).GetExports();
-        var propertiesPath = Path.Combine(outputRoot, assetName + ".properties.json");
+        var propertiesRelativePath = Path.ChangeExtension(
+            assetPath.Replace('/', Path.DirectorySeparatorChar),
+            ".properties.json");
+        var propertiesPath = Path.GetFullPath(Path.Combine(outputRoot, propertiesRelativePath));
+        if (!propertiesPath.StartsWith(outputRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException($"Unsafe properties path: {assetPath}");
+        }
+        Directory.CreateDirectory(Path.GetDirectoryName(propertiesPath)!);
         File.WriteAllText(propertiesPath, JsonConvert.SerializeObject(exports, Formatting.Indented));
         Console.WriteLine($"PROPERTIES {propertiesPath}");
     }

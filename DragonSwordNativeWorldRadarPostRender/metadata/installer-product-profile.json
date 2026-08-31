@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "product": {
+    "mod_name": "DragonSwordNativeWorldRadarPostRender",
+    "display_name": "DragonSword Native World Radar",
+    "public_version": "2.1.0",
+    "runtime_label": "DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_1_0"
+  },
+  "game": {
+    "steam_app_id": 4570720,
+    "required_executable": "DSClient-Win64-Shipping.exe",
+    "compatibility_policy": "pe32plus-x64-runtime-unique-owner-pointer-pattern",
+    "installer_validation": {
+      "path": "DS/Binaries/Win64/DSClient-Win64-Shipping.exe",
+      "format": "PE32+",
+      "machine": "AMD64",
+      "executable_image_required": true,
+      "dll_image_rejected": true,
+      "maximum_bytes": 536870912,
+      "exact_game_hash_allowlist": false
+    },
+    "transaction_identity_inputs": [
+      "current_executable_sha256"
+    ]
+  },
+  "ue4ss": {
+    "missing_policy": "bootstrap_pinned_experimental_nested_transactionally",
+    "ambiguous_or_unknown_policy": "confirm_complete_backup_and_convert_to_embedded_experimental_nested",
+    "bootstrap_policy": "embedded_experimental_nested_integrity_verified",
+    "existing_compatibility_policy": "bounded_amd64_pe32plus_dll_and_experimental_nested_directory_structure_without_hash_allowlist",
+    "layouts": [
+      {
+        "name": "experimental_nested",
+        "loader_path": "DS/Binaries/Win64/ue4ss/UE4SS.dll",
+        "embedded_loader_sha256_for_integrity_only": "F31188D59B34A812AFC32DB4B6FF0C74E1B44861D1ED7967452EE4B3B6635BE1",
+        "proxy_path": "DS/Binaries/Win64/dwmapi.dll",
+        "embedded_proxy_sha256_for_integrity_only": "30122355CB2784E3BA89F6FB55EA4443467FF8EAE2747CBDEDBEEF49B03E669B",
+        "loader_working_directory": "DS/Binaries/Win64/ue4ss",
+        "mods_roots": [
+          "DS/Binaries/Win64/ue4ss/Mods"
+        ],
+        "payload_variant": "experimental_nested_x64"
+      }
+    ],
+    "conversion_sources": [
+      "stable_root",
+      "incomplete_layout",
+      "structurally_invalid_nested_layout",
+      "dual_layout"
+    ]
+  },
+  "payload": {
+    "abi_specific": true,
+    "runtime_root": "layout_selected_mods_root/DragonSwordNativeWorldRadarPostRender",
+    "embedded_manifest": "metadata/package-manifest.json",
+    "external_runtime_executable": false,
+    "lua_runtime": false,
+    "generated_at_install": [],
+    "forbidden_runtime_files": [
+      "enabled.txt",
+      "runtime/logs",
+      "runtime/diagnostics",
+      "runtime/backups",
+      "local user configuration",
+      "unowned third-party Mods"
+    ]
+  },
+  "load_control": {
+    "authority": "mods_txt",
+    "entry_name": "DragonSwordNativeWorldRadarPostRender",
+    "enabled_state": 1,
+    "legacy_enabled_txt_policy": "backup_and_remove_only_for_recognized_same_product_upgrade",
+    "same_name_unknown_ownership_policy": "fail_closed_without_mutation",
+    "duplicate_valid_entry_policy": "normalize_to_one_entry",
+    "malformed_same_name_entry_policy": "fail_closed_without_mutation",
+    "unrelated_content_policy": "preserve_encoding_bom_line_endings_comments_and_bytes",
+    "known_conflicting_predecessor": "DragonSwordWorldRadarObjectState",
+    "predecessor_mods_txt_policy": "remove_all_valid_entries_without_adding_a_disabled_entry",
+    "external_renderer_policy": {
+      "name": "DragonSwordWorldRadar",
+      "active_mods_txt_entry": "reject_without_mutation",
+      "malformed_mods_txt_entry": "reject_without_mutation",
+      "exact_enabled_txt_path_in_any_approved_mods_root": "reject_without_mutation",
+      "disabled_mods_txt_entry": "preserve_byte_for_byte",
+      "mutation_policy": "never_delete_or_disable_external_renderer"
+    }
+  },
+  "configuration": {
+    "public_defaults": {
+      "debug_logging": false,
+      "radar": {
+        "clock": true,
+        "treasure": true,
+        "boss": true,
+        "assault": true,
+        "mini_games": true,
+        "area_quests": true,
+        "bird_eggs": true
+      },
+      "map": {
+        "treasure": true,
+        "boss": true,
+        "assault": true,
+        "mini_games": true,
+        "area_quests": true
+      },
+      "modes": {
+        "area_quests": "available",
+        "assault": "available"
+      }
+    },
+    "visibility_config": "startup-only config/visibility.ini with complete readable [radar], [map], and [modes] sections; named category Booleans and available or all modes; no hot polling",
+    "diagnostics_config": "startup-only config/diagnostics.ini; public default debug_logging=false; enabled log schema 2 records seq, utc_ms, and elapsed_ms; disabled path returns before formatting, mutex acquisition, directory creation, rotation, or file I/O",
+    "user_owned_paths": [
+      "config/visibility.ini",
+      "config/diagnostics.ini",
+      "data/defaults/treasure_overrides.txt"
+    ],
+    "installed_paths": [
+      "config/visibility.ini",
+      "config/diagnostics.ini",
+      "data/defaults/treasure_overrides.txt"
+    ],
+    "installer_only_defaults_are_not_installed": true,
+    "local_debug_override": "installed_copy_only",
+    "public_staging_source": "immutable_embedded_defaults_only"
+  },
+  "optional_components": [],
+  "dependencies": [
+    {
+      "name": "e_sqlcipher.dll",
+      "installed_path": "vendor/sqlcipher/e_sqlcipher.dll",
+      "sha256": "32ADED22E9CBAC44AD95FE3D2A1E113BE5DA4A1A81B65D76ECE25762B1BCA196",
+      "publication_clearance": "blocked_pending_exact_source_build_provenance"
+    }
+  ],
+  "third_party": {
+    "notices_file": "THIRD_PARTY_NOTICES.txt",
+    "redistributed_components": [
+      "pinned ExperimentalNested UE4SS bootstrap and conversion files",
+      "e_sqlcipher.dll",
+      "generated catalog data"
+    ],
+    "explicitly_excluded_mods": [
+      "DragonSwordWorldRadarObjectState",
+      "DragonSwordWorldRadar",
+      "MnMRadar"
+    ],
+    "publication_status": "blocked",
+    "publication_blockers": [
+      "Unreal Engine and UEPseudo authorization, redistribution, and GPL-compatibility review",
+      "Exact e_sqlcipher.dll source revisions, patches, build recipe, toolchain, and reproducible source-to-binary chain",
+      "Redistribution rights, attribution, and provenance for PAK-derived catalogs and the MnMRadar-derived coordinate table"
+    ]
+  },
+  "installation": {
+    "requires_game_closed": true,
+    "requires_elevation": true,
+    "never_launch_or_terminate_game": true,
+    "transactional_file_writes": true,
+    "same_directory_atomic_commit": true,
+    "reparse_point_policy": "reject_every_write_target_and_ancestor",
+    "rollback_required": true,
+    "successful_update_persistent_backup": false,
+    "conversion_persistent_backup": true,
+    "install_record_required": true,
+    "rollback_record_required": true,
+    "existing_target_ownership": {
+      "release_schema": 5,
+      "package_manifest_schema": 1,
+      "manifest_file_count_min": 2,
+      "manifest_file_count_max": 256,
+      "ownership_json_max_bytes": 4194304,
+      "json_recursion_limit": 16,
+      "manifest_file_max_bytes": 268435456,
+      "manifest_total_max_bytes": 268435456,
+      "legacy_marker_or_example_max_bytes": 65536,
+      "log_file_max_bytes": 2097152,
+      "atlas_cache_max_bytes": 16777216,
+      "install_record_min_bytes": 1,
+      "install_record_max_bytes": 65536,
+      "tree_policy": "exact_manifest_files_plus_bounded_live_state_allowlist_only",
+      "identity_policy": "exact_path_size_sha256_for_immutable_manifest_files_with_release_json_runtime_label_bearing_main_dll_and_strict_mutable_treasure_override",
+      "failure_policy": "reject_before_backup_or_mutation"
+    }
+  },
+  "release": {
+    "installer_first": true,
+    "installer_unsigned": true,
+    "archive_name": "DragonSwordNativeWorldRadarPostRender-v2.1.0-Installer.zip",
+    "manual_package": true,
+    "manual_archives": [
+      {
+        "name": "DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-No-UE4SS.zip",
+        "layout": "experimental_nested",
+        "includes_ue4ss": false
+      },
+      {
+        "name": "DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip",
+        "layout": "experimental_nested",
+        "includes_ue4ss": true,
+        "runtime_policy": "pinned_integrity_verified_experimental_nested_only"
+      }
+    ],
+    "manual_mods_txt_update": "merge_exact_packaged_snippet_into_controlling_experimental_nested_mods_txt_without_replacing_unrelated_content",
+    "uninstall_policy": "confirmed_token_bound_transaction_after_strict_same_product_ownership_removes_only_exact_product_tree_and_at_most_one_valid_load_entry_preserves_ue4ss_unrelated_mods_saves_encoding_and_line_endings_and_rolls_back_on_failure",
+    "expected_installer_tests": {
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    "expected_manual_install_tests": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    "final_output_directory": "dist/final-2.1.0",
+    "expected_final_files": [
+      "DragonSwordNativeWorldRadarPostRender-v2.1.0-Installer.zip",
+      "DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-No-UE4SS.zip",
+      "DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip",
+      "release-manifest.json",
+      "SHA256SUMS.txt"
+    ],
+    "expected_public_files": [
+      "DragonSwordNativeWorldRadarPostRender-Setup-2.1.0.exe",
+      "DragonSwordNativeWorldRadarPostRender-Setup-2.1.0.exe.sha256",
+      "INSTALL.md",
+      "THIRD_PARTY_NOTICES.txt"
+    ]
+  },
+  "acceptance": {
+    "source": "PASSED_CURRENT_CORE_AND_4_STATIC_GATES",
+    "build": "PASSED_CURRENT_NATIVE_WX",
+    "native_main_dll_sha256": "B35F0A6D7564085C48F21ADF954E1ACD1279BD00047E3A4032CEB13EBD5A8AEA",
+    "package": "PASSED_CURRENT_THREE_ARCHIVES_PAYLOAD_EQUIVALENCE_COPY_LAYOUT_CLEAN_TARGET",
+    "installer_matrix": "PASSED_CURRENT_20_SETUP_AND_2_MANUAL",
+    "deployment": "NOT_PERFORMED",
+    "gameplay": "NOT_VALIDATED",
+    "publication": "BLOCKED"
+  }
+}

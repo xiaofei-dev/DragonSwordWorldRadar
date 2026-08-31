@@ -8,6 +8,10 @@ param(
     [string]$VsDevCmdPath,
     [string]$RustupHome,
     [string]$CargoHome,
+    [ValidateSet('ExperimentalNested')]
+    [string]$UE4SSVariant = 'ExperimentalNested',
+    [string]$BuildDirectory,
+    [switch]$OfflineDependencies,
     [ValidateSet('Game__Shipping__Win64')]
     [string]$Configuration = 'Game__Shipping__Win64'
 )
@@ -16,12 +20,17 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $sdkRoot = Join-Path $projectRoot '.sdk'
 
-$expectedCommits = @{
+$expectedCommits = if ($UE4SSVariant -eq 'StableRoot') { @{
+    UE4SS = 'd935b5b23bac03b65c14ae38382b02007204cc2e'
+    UEPseudo = 'd09b7218bfe7392adeffb500fdeee0b42ca1cd27'
+    PatternSleuth = '33e731e99f2a6bb7f65a8e95e89fd1c06ce9d1d2'
+    ImGuiColorTextEdit = 'af7821926251feca84e35f8fa83eee84dae90424'
+} } else { @{
     UE4SS = '1c1a1497f942c707f47ba668db75b25e86f6c08a'
     UEPseudo = 'b2e876da82b17254c04304746341c8fde0ddb37c'
     PatternSleuth = 'da8bfe4c5a464be0ef225c2c9a6ccaa2d9284018'
     ImGuiColorTextEdit = '6d943aba9f7cef05da80b86dbb0253b63818f95c'
-}
+} }
 
 function Resolve-RequiredPath {
     param([string]$Path, [string]$Description)
@@ -33,13 +42,13 @@ function Resolve-RequiredPath {
 
 function Assert-GitCommit {
     param([string]$Repository, [string]$Expected, [string]$Description)
-    $actual = (& git -C $Repository rev-parse HEAD).Trim()
+    $actual = (& git -c "safe.directory=$Repository" -C $Repository rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0 -or $actual -ne $Expected) {
         throw "$Description must be pinned to $Expected; found $actual"
     }
-    & git -C $Repository diff --quiet --ignore-submodules=all --
+    & git -c "safe.directory=$Repository" -C $Repository diff --quiet --ignore-submodules=all --
     $worktreeDiff = $LASTEXITCODE
-    & git -C $Repository diff --cached --quiet --ignore-submodules=all --
+    & git -c "safe.directory=$Repository" -C $Repository diff --cached --quiet --ignore-submodules=all --
     $indexDiff = $LASTEXITCODE
     if ($worktreeDiff -ne 0 -or $indexDiff -ne 0) {
         throw "$Description checkout is not clean. Third-party source edits are not accepted."
@@ -48,7 +57,12 @@ function Assert-GitCommit {
 
 $resolvedUE4SS = Resolve-RequiredPath $UE4SSRoot 'RE-UE4SS source tree'
 if (-not $ImGuiColorTextEditRoot) {
-    $ImGuiColorTextEditRoot = Join-Path $sdkRoot 'ImGuiColorTextEdit'
+    $imguiLeaf = if ($UE4SSVariant -eq 'StableRoot') {
+        'ImGuiColorTextEdit-v3.0.1'
+    } else {
+        'ImGuiColorTextEdit'
+    }
+    $ImGuiColorTextEditRoot = Join-Path $sdkRoot $imguiLeaf
 }
 $resolvedImGui = Resolve-RequiredPath $ImGuiColorTextEditRoot 'ImGuiColorTextEdit source tree'
 
@@ -82,31 +96,55 @@ if (-not $RustupHome) { $RustupHome = Join-Path $sdkRoot 'rustup' }
 if (-not $CargoHome) { $CargoHome = Join-Path $sdkRoot 'cargo' }
 $resolvedRustupHome = Resolve-RequiredPath $RustupHome 'Project-local rustup home'
 $resolvedCargoHome = Resolve-RequiredPath $CargoHome 'Project-local Cargo home'
-$rustToolchainBin = Resolve-RequiredPath (Join-Path $resolvedRustupHome 'toolchains\stable-x86_64-pc-windows-msvc\bin') 'Rust 1.97.1 toolchain'
-$rustCompiler = Resolve-RequiredPath (Join-Path $rustToolchainBin 'rustc.exe') 'Rust 1.97.1 compiler'
-$rustCargo = Resolve-RequiredPath (Join-Path $rustToolchainBin 'cargo.exe') 'Cargo 1.97.1'
+$rustToolchainName = if ($UE4SSVariant -eq 'StableRoot') {
+    '1.73.0-x86_64-pc-windows-msvc'
+} else {
+    'stable-x86_64-pc-windows-msvc'
+}
+$rustDescription = if ($UE4SSVariant -eq 'StableRoot') { 'Rust 1.73.0' } else { 'Rust 1.97.1' }
+$rustToolchainBin = Resolve-RequiredPath `
+    (Join-Path $resolvedRustupHome "toolchains\$rustToolchainName\bin") `
+    "$rustDescription toolchain"
+$rustCompiler = Resolve-RequiredPath (Join-Path $rustToolchainBin 'rustc.exe') "$rustDescription compiler"
+$rustCargo = Resolve-RequiredPath (Join-Path $rustToolchainBin 'cargo.exe') "$rustDescription Cargo"
 
-$devEnvironment = & $env:ComSpec /d /s /c "`"$vsDevCmd`" -no_logo -arch=x64 -host_arch=x64 -vcvars_ver=14.44 >nul && set"
+$vcVarsVersion = if ($UE4SSVariant -eq 'StableRoot') { '14.38' } else { '14.44' }
+$devEnvironment = & $env:ComSpec /d /s /c "`"$vsDevCmd`" -no_logo -arch=x64 -host_arch=x64 -vcvars_ver=$vcVarsVersion >nul && set"
 if ($LASTEXITCODE -ne 0) {
     throw "Visual Studio 2022 environment setup failed: $LASTEXITCODE"
 }
+$seenEnvironmentNames = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
 foreach ($line in $devEnvironment) {
     if ($line -match '^([^=][^=]*)=(.*)$') {
-        Set-Item -Path "Env:$($matches[1])" -Value $matches[2]
+        $name = $matches[1]
+        if ($seenEnvironmentNames.Add($name)) {
+            Set-Item -Path "Env:$name" -Value $matches[2]
+        }
     }
 }
 
 $env:RUSTUP_HOME = $resolvedRustupHome
 $env:CARGO_HOME = $resolvedCargoHome
-$env:PATH = "$rustToolchainBin;$(Join-Path $resolvedCargoHome 'bin');$(Split-Path -Parent $ninja);$env:PATH"
+$gitUnixTools = 'C:\Program Files\Git\usr\bin'
+if (-not (Test-Path -LiteralPath (Join-Path $gitUnixTools 'sed.exe') -PathType Leaf) -or
+    -not (Test-Path -LiteralPath (Join-Path $gitUnixTools 'basename.exe') -PathType Leaf)) {
+    throw "Git for Windows Unix tools were not found: $gitUnixTools"
+}
+# FetchContent invokes Git shell helpers while configuring UE4SS dependencies.
+# Keep the matching Unix tool directory ahead of system Git entries so
+# git-submodule can always resolve basename, sed, and git-sh-setup.
+$env:PATH = "$gitUnixTools;$rustToolchainBin;$(Join-Path $resolvedCargoHome 'bin');$(Split-Path -Parent $ninja);$env:PATH"
 $rustVersion = (& $rustCompiler --version).Trim()
-if ($LASTEXITCODE -ne 0 -or $rustVersion -notmatch '^rustc 1\.97\.1 ') {
-    throw "Rust 1.97.1 is required for the pinned UE4SS lockfile v4 build; found $rustVersion"
+$expectedRustPattern = if ($UE4SSVariant -eq 'StableRoot') { '^rustc 1\.73\.0 ' } else { '^rustc 1\.97\.1 ' }
+if ($LASTEXITCODE -ne 0 -or $rustVersion -notmatch $expectedRustPattern) {
+    throw "$rustDescription is required for $UE4SSVariant; found $rustVersion"
 }
 $compilerCommand = Get-Command cl.exe -ErrorAction Stop
 $compilerVersion = (Get-Item -LiteralPath $compilerCommand.Source).VersionInfo.FileVersion
-if ($compilerVersion -notmatch '^19\.44\.') {
-    throw 'MSVC 19.44 selected through -vcvars_ver=14.44 is required.'
+$expectedCompilerPattern = if ($UE4SSVariant -eq 'StableRoot') { '^19\.38\.' } else { '^19\.44\.' }
+if ($compilerVersion -notmatch $expectedCompilerPattern) {
+    throw "MSVC selected through -vcvars_ver=$vcVarsVersion is not the required compiler for $UE4SSVariant; found $compilerVersion"
 }
 
 # Upstream fetch declarations use both SSH spellings. Keep translation local to
@@ -117,20 +155,31 @@ $env:GIT_CONFIG_VALUE_0 = 'git@github.com:'
 $env:GIT_CONFIG_KEY_1 = 'url.https://github.com/.insteadOf'
 $env:GIT_CONFIG_VALUE_1 = 'ssh://git@github.com/'
 
-$buildDirectory = Join-Path $projectRoot 'build-native'
+if (-not $BuildDirectory) {
+    $buildLeaf = if ($UE4SSVariant -eq 'StableRoot') { 'StableRoot' } else { 'ExperimentalNested' }
+    $BuildDirectory = Join-Path $projectRoot (Join-Path 'out\native' $buildLeaf)
+}
+$buildDirectory = [IO.Path]::GetFullPath($BuildDirectory)
 $patternSleuthBindLock = Join-Path $resolvedUE4SS 'deps\first\patternsleuth_bind\Cargo.lock'
 $patternSleuthBindLockBytes = [System.IO.File]::ReadAllBytes($patternSleuthBindLock)
 try {
-    & $cmake --fresh -S $projectRoot -B $buildDirectory -G Ninja `
-        "-DCMAKE_BUILD_TYPE=$Configuration" `
-        "-DCMAKE_MAKE_PROGRAM=$ninja" `
-        '-DDSNAP_BUILD_TESTS=ON' `
-        '-DDSNAP_BUILD_UE4SS=ON' `
-        "-DUE4SS_ROOT=$resolvedUE4SS" `
-        "-DRust_COMPILER=$rustCompiler" `
-        "-DRust_CARGO=$rustCargo" `
-        '-DRust_RESOLVE_RUSTUP_TOOLCHAINS=OFF' `
+    $configureArguments = @(
+        '--fresh', '-S', $projectRoot, '-B', $buildDirectory, '-G', 'Ninja',
+        "-DCMAKE_BUILD_TYPE=$Configuration",
+        "-DCMAKE_MAKE_PROGRAM=$ninja",
+        '-DDSNAP_BUILD_TESTS=ON',
+        '-DDSNAP_BUILD_UE4SS=ON',
+        "-DDSNAP_UE4SS_VARIANT=$UE4SSVariant",
+        "-DUE4SS_ROOT=$resolvedUE4SS",
+        "-DRust_COMPILER=$rustCompiler",
+        "-DRust_CARGO=$rustCargo",
+        '-DRust_RESOLVE_RUSTUP_TOOLCHAINS=OFF',
         "-DFETCHCONTENT_SOURCE_DIR_IMGUITEXTEDIT=$resolvedImGui"
+    )
+    if ($OfflineDependencies) {
+        $configureArguments += '-DFETCHCONTENT_FULLY_DISCONNECTED=ON'
+    }
+    & $cmake @configureArguments
     if ($LASTEXITCODE -ne 0) { throw "Native configure failed: $LASTEXITCODE" }
 
     & $cmake --build $buildDirectory --target DragonSwordNativeAutoPickup
@@ -154,5 +203,6 @@ $dll = Get-ChildItem -LiteralPath $buildDirectory -Recurse -Filter main.dll -Fil
 if (-not $dll) { throw 'Native build completed without producing main.dll.' }
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $dll.FullName).Hash
 Write-Host "Native adapter build passed: $($dll.FullName)"
+Write-Host "UE4SS variant: $UE4SSVariant"
 Write-Host "SHA-256: $hash"
 Write-Host 'This build is not deployment or in-game acceptance.'

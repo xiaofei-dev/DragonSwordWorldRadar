@@ -6,11 +6,30 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $manifestPath = Join-Path $projectRoot 'metadata\source-manifest.json'
 $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
 $expected = @($manifest.files | Sort-Object)
-$excludedRoots = @('.sdk', 'build', 'build-native', 'dist', 'out', 'package', 'runtime', 'staging')
+$excludedRoots = @(
+    '.sdk',
+    '.tmp',
+    'build',
+    'build-native',
+    'build-native-experimental',
+    'build-native-stable',
+    'build-audit-experimental',
+    'build-audit-stable',
+    'build-installer',
+    'dist',
+    'out',
+    'package',
+    'runtime',
+    'staging'
+)
 $actual = @(Get-ChildItem -LiteralPath $projectRoot -Recurse -File -Force | Where-Object {
     $relative = $_.FullName.Substring($projectRoot.Length).TrimStart('\')
     $first = $relative.Split('\')[0]
-    $excludedRoots -notcontains $first
+    $isGeneratedBuildRoot = $first -like 'build-*'
+    $isNestedInstallerBuild = $relative -like 'installer\build\*'
+    $excludedRoots -notcontains $first -and
+        -not $isGeneratedBuildRoot -and
+        -not $isNestedInstallerBuild
 } | ForEach-Object {
     $_.FullName.Substring($projectRoot.Length).TrimStart('\').Replace('\', '/')
 } | Sort-Object)

@@ -1,0 +1,996 @@
+{
+  "name": "DragonSword Pickup Range Expansion",
+  "version": "0.2.0-x5-targets",
+  "engine_mapping": "DS-5.3.2-0+UE5-1c1a1497.usmap",
+  "engine_mapping_sha256": "0F558E61A259245F65D8801F4D9F4B67CABC58423D5741CDE77B77F2D572AD47",
+  "range_multiplier": 5,
+  "source_root": "runtime/source/official-50/DS/Content",
+  "target_count": 50,
+  "status": "STATIC_PATCH_MANIFEST_READY_GAMEPLAY_NOT_VALIDATED",
+  "targets": [
+    {
+      "path": "Design/DsCharacter/Animal/Fish/Salmon/DsMon_Salmon_Interaction",
+      "class": "animal",
+      "component": "Capsule1_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "6B111F413AD928E3B17601393CA2C0EC4620CCC3E8D292692E0EBD3CE8EC8551",
+      "source_uexp_sha256": "288AC5E55777D1FC94D75A979FD1F57F4645A6E5CBC4F45DFC1AE1F63F95C5FE",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_5"
+    },
+    {
+      "path": "Design/DsCharacter/Animal/Fish/SilverWing/DsMon_SilverWing_Interaction",
+      "class": "animal",
+      "component": "Capsule1_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "064CC55FF2B7E229793AA287ED8614153092FFF890983A10CF8A49BB388D7016",
+      "source_uexp_sha256": "B5E26CBB0EF8ADA3CBED3D941E91561CA7036FB3642326A63C0FBCE7915C1D7F",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "animal_class_contract_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Design/DsCharacter/Animal/Fish/Trout/DsMon_Trout_Interaction",
+      "class": "animal",
+      "component": "Capsule1_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "BD9D7AE3DB22E3F00C37379AAAB989F5C5EBF225028EFE768F1DF888C25A075B",
+      "source_uexp_sha256": "288AC5E55777D1FC94D75A979FD1F57F4645A6E5CBC4F45DFC1AE1F63F95C5FE",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_5"
+    },
+    {
+      "path": "Design/DsCharacter/Animal/SandCrab/DsMon_SandCrab_Interaction",
+      "class": "animal",
+      "component": "Capsule1_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "96016F6C9237ACF0CA0A50A43633627BD9259515BA1D7E267773057018DABB5E",
+      "source_uexp_sha256": "C447459735CE5DA0E604FEDAAEE031E0AED7500DCE68651C572821B8E197F8E0",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "animal_class_contract_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Design/DsCharacter/Animal/Shrimp/DsMon_Shrimp_Interaction",
+      "class": "animal",
+      "component": "Capsule1_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "0C12A241EDFEA3B13901C4F011E74E58DF244DF752A48453A838E6C8EC2D0E77",
+      "source_uexp_sha256": "EA3B4273ADDDA7BAE4D1785552C7547737C49BA9C61D20869188E30BF3F0C457",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "animal_class_contract_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Design/Prop/Collect/gather_Herb_05_prop",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "7C82B1D4E6ACD5D1F99807E70E7A41CF4F12202364A8190B3565F6A857B7BE1A",
+      "source_uexp_sha256": "F2CAC6C794716DDC844C5905D677AE2B812253068E6B7900943020186AD9F7D9",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Design/Prop/Collect/gather_Herb_06_prop",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "9A0F53532DE2BCBE6E4BC3EE6E7178135064904C5381E31F44FC2C83A3062FEC",
+      "source_uexp_sha256": "F2CAC6C794716DDC844C5905D677AE2B812253068E6B7900943020186AD9F7D9",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Ancient_Seed_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "88B4FCA192016E2BA67D0B3BD437B8612F31AAF7D0CA988F9F145056E13C68E0",
+      "source_uexp_sha256": "5CBFEDEEEB97F6F8BBF9FF4B54FE61F421745A36D8EFEEA1A60D8FEFE7A98DD5",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Bird_Egg01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "39CC44BC3B77E70B2830A6029F35BDEAAC99D1D09071F05E8A9A02036E4E501E",
+      "source_uexp_sha256": "F2DDAE664DE8F4F9B0679C4B4B2B22AFA60659102A04E9DC8C4343D194433268",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_2"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Bird_Egg02",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "E19EBB1FE691DA3CDB942DF01C93C6469CA698682FF1916BEDE4F2497D5C85E8",
+      "source_uexp_sha256": "AEE38184CA87405E47E59A0032A23ED6922718D55D880086FDBC08027B4D533A",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Carrot_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "D08AD08B67ABA03ED0CA128A7D7DD59D8BEA8B3970EA9DA31E96529D49F9A790",
+      "source_uexp_sha256": "C4641A8911FC81A38C1F7E606ADC2625F50898D049CCDA66060FB516D34C364B",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_2"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Conch_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        18,
+        18,
+        18
+      ],
+      "new_scale": [
+        90,
+        90,
+        90
+      ],
+      "source_uasset_sha256": "A44AFC6C4B8D1781068C24901032463CEBC693E5084D4070D7507A8F75FE6C67",
+      "source_uexp_sha256": "D2D81968D57A52AD068EBC5A28180B3EC0363E6271E90125A30193C173FD7D46",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_2"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Conch_02",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        18,
+        18,
+        18
+      ],
+      "new_scale": [
+        90,
+        90,
+        90
+      ],
+      "source_uasset_sha256": "886F8D4B8A16967330CC91A823893668790231DF5B564F29EA66C2699FDC9827",
+      "source_uexp_sha256": "D2D81968D57A52AD068EBC5A28180B3EC0363E6271E90125A30193C173FD7D46",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Conch_03",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        18,
+        18,
+        18
+      ],
+      "new_scale": [
+        90,
+        90,
+        90
+      ],
+      "source_uasset_sha256": "F05FCB60DA6B682539AFA0B2B95EC7E60EE275D1C33C67FC79FEC7BEAB4D4763",
+      "source_uexp_sha256": "9231755BEB63C47E775076E82A50201FD45CFBA02F160334E7A581BF2993F489",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Cotton_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "3F8476583F5F711E8F90B31948546EDD03C63759F99F15BEBB783164692E1527",
+      "source_uexp_sha256": "37AB31DF0BAD2CF0090DFCE036892EE11FB340BDD43D173F32549CBDF0E7897E",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Cotton_02",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "383875424473A72035084684CC5C7E943E7AE9DC0334CB749C70F5BFD6E1A702",
+      "source_uexp_sha256": "37AB31DF0BAD2CF0090DFCE036892EE11FB340BDD43D173F32549CBDF0E7897E",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Cotton_03",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "8CF26E6653B69EB6D7DBFBBF56C3065A1A80549188499920BF355E6A7E37C2CD",
+      "source_uexp_sha256": "37AB31DF0BAD2CF0090DFCE036892EE11FB340BDD43D173F32549CBDF0E7897E",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Eggplant_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "CD165178720B4607CEE1017DD5E5580E16C4BEF894AC85082FBF07E0EC75F896",
+      "source_uexp_sha256": "4F853FC35BE576AFE2535E47C8D68295750D94B376A30B3E26ED2F6221704C47",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_2"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/gather_seaweed01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "CF8612A60D8D8F350F1D386867E5124624B27F1C6BF7EC84F0294691F96B4B2B",
+      "source_uexp_sha256": "C6748361C412E3AA6A90C0D8D539A9F4B0596CA5518D17BB532FD4B88E571817",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/gather_seaweed02",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "B0EBD7BECF0F6371BAA4DBDFE89362D74C7E96F155A1173BF4146E924C32EAF5",
+      "source_uexp_sha256": "C6748361C412E3AA6A90C0D8D539A9F4B0596CA5518D17BB532FD4B88E571817",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Gather_Temporary_Props",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "65BC705F0007CC9AFBABB0AC52F6660EDFF5036CC9B2E35A296155561C7F007F",
+      "source_uexp_sha256": "EF8369E4DA46A6493E2B67AC7325CA5B741B7CD9E23E195860050AC0FEB4C4EE",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Goose_Egg01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "B1DC841AC8E94DC880D1352A63E55621DC22B1ED6D9775C6C88AEAE267C28FBC",
+      "source_uexp_sha256": "02454D2F7241FE1DEC49AA8F7839CB3135ACEA63C6A9F45A89859D04E007F98A",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_2"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Herb_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "D8CEB3D90D6DA072DEFDDBA8B2A4C1EC332DFB8BE69DE3D61F57AB84FD4CA4EB",
+      "source_uexp_sha256": "DAF79308D76AF0E2D0ABEC55B54DCF24A8920392187607BA79DBDE48FA7F38C8",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Herb_02",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "6014435AC49BD30028A47BA51BEE546CD23159F0A6E10EF00E5FEE525B8EEE34",
+      "source_uexp_sha256": "DAF79308D76AF0E2D0ABEC55B54DCF24A8920392187607BA79DBDE48FA7F38C8",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Herb_03",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "69EDF1B736CD8C6795407858DC14269D6A469EC171AF6A94ADA01AB09AF24D74",
+      "source_uexp_sha256": "CAF46339373923647FA4A11ECA8C8A9E98818D547E340A1D3AD56E498D093AB2",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_2"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Herb_04",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "4A888D27582C6363512041BB040A1C588E762814269AD627D0559E9A18597D35",
+      "source_uexp_sha256": "CAF46339373923647FA4A11ECA8C8A9E98818D547E340A1D3AD56E498D093AB2",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_2"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Honeycomb_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "09390361564AB6C881271B70EB84979045F8BA90F9E8AF3B4825CDE7AA167980",
+      "source_uexp_sha256": "F7D68411B20E2A5649F80C07AD0C9F0BCE1940414B53427B7C236DA382AA9DD0",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Life_Fruit_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "4CDB0DDF5C687123E5F24AA426EA975BF791DDBA039D36E16E3EE711811318F0",
+      "source_uexp_sha256": "1F3B35DF4ECF87A83408A95B727258B406AEDBA1FBC430FA78A1998E4E72683A",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Mushroom_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "56EB53D421D8F98E55633E2229CD77302255C32443675C730D16C11D27EEF0F6",
+      "source_uexp_sha256": "22F472956B22E211B263AB1AF44B2DAF556469252B3DFCA05D9C8FF68A5A6254",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_2"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Mushroom_02",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "AE499FA668C00543B638D2208058424D24E8C2F5995387F9A1305A7D0E510379",
+      "source_uexp_sha256": "052D7A447680787C03488EB99EE1EB209F7480DDAABC088F208F2C2124508D9F",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_2"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Mushroom_03",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "D4AF33BA5DADCECE929C8DA6ABDA3E73392E3A1143196C1481BE01F4B63CF912",
+      "source_uexp_sha256": "7AF0B8724F2844B8E124FED9EDBA091A5F8FAD977F046013D3C5A422F95C626E",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_2"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Mushroom_04",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "B70D3CCE736EBF0D3D9259CEFF9AA4ABB7ED52AACD737E250B53DDF251B1028B",
+      "source_uexp_sha256": "E39A23CC93F3420B8A452B23F6DC9156775680E67DCF3319912C9A31906D1AAB",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_2"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Onion_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "A287F53AD255BB3497D2CBAD9782C4CF3D4138BF86CB4032BACBBCDB79836871",
+      "source_uexp_sha256": "60A909964595B072898E39A6455DE0E3825BD4C4BDB41B9C9D437C65148F34DF",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Pepper_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "80D68B9820ED0333100E42B6A713CEB79C1EA4C590004AEFC920F42FF414CDFD",
+      "source_uexp_sha256": "60A909964595B072898E39A6455DE0E3825BD4C4BDB41B9C9D437C65148F34DF",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Potato_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "BDC69A50D653A846F4D1EA3357F690B23211CBA1576A51196787DA4BB82D39AE",
+      "source_uexp_sha256": "60A909964595B072898E39A6455DE0E3825BD4C4BDB41B9C9D437C65148F34DF",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_2"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Pumpkin_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "F7DF0F80AFC47B4CEF75A1A29F56A2BE97BF43D4272312782619C691E12BCD56",
+      "source_uexp_sha256": "60A909964595B072898E39A6455DE0E3825BD4C4BDB41B9C9D437C65148F34DF",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_2"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Pure_Water_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "A318E57FF95EF6D0FF6CFC19F69A24AD5CA29CE84D71841257365FAAC161E367",
+      "source_uexp_sha256": "D72729FD59A5E2877D0E1C97FAA7D46271DCBE0FB843B086057C674068F2D358",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/quest_bottle",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "68EE8EB36375533A846EA229F7C6909AA9855EB782CA95EA0DAD9320264E8550",
+      "source_uexp_sha256": "C6748361C412E3AA6A90C0D8D539A9F4B0596CA5518D17BB532FD4B88E571817",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/QuestGet",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "438F1A2026A2406DCB3215E754C477D8AA09C69859ABF916AA55FD73546337FC",
+      "source_uexp_sha256": "831BAAA5A565BAE65A1891B112F821735C1705608C6AAC2C0DBC55393FB76A8A",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Radish_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "F88B424D71D0DD50AD4AB743F822B0208728C28BCAE0EB175C53386BFC8EAC2F",
+      "source_uexp_sha256": "60A909964595B072898E39A6455DE0E3825BD4C4BDB41B9C9D437C65148F34DF",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_2"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Shellfish_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        18,
+        18,
+        18
+      ],
+      "new_scale": [
+        90,
+        90,
+        90
+      ],
+      "source_uasset_sha256": "680E8240327E9EB021C9F666D6C1D5D30EC29E040463C760AD71F2F3E317347C",
+      "source_uexp_sha256": "23B993BFC372CDB3535C6E114A8764CF6F4FCD1096B6DFCBB7EF0730EC9B2E2B",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Shellfish_02",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        18,
+        18,
+        18
+      ],
+      "new_scale": [
+        90,
+        90,
+        90
+      ],
+      "source_uasset_sha256": "D17487833C6C566DB25E34978A5792733EACB367A6761BF1E2FF1874F93AB518",
+      "source_uexp_sha256": "FD795EF26A4377422E999078F42276ADD5BE5F6FECDEFA79158CA434A02FEE36",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Shellfish_03",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        18,
+        18,
+        18
+      ],
+      "new_scale": [
+        90,
+        90,
+        90
+      ],
+      "source_uasset_sha256": "B0281A47073A85594786C2627E4FCD21C03AB690A45A5BE7F6E538919E2597DA",
+      "source_uexp_sha256": "FD795EF26A4377422E999078F42276ADD5BE5F6FECDEFA79158CA434A02FEE36",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Tomato_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "5A3A01AB9DACBD34B61285A70F26EFAB08E3751816DD9612D91217422797CCAF",
+      "source_uexp_sha256": "21099411115A7069C9BD19DE3069621B6CE9C264142A040CCD092DCA2A178EC5",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Vitality_Leave_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "274C541E79B7C91FAA4E44105377ADC8696E5124056CA3A1DECB010CEFF2A95D",
+      "source_uexp_sha256": "8BCB24827CD4B92E621552ECA2E721560E15893D2D56B195099C929592E227BE",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_2"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Water_Cabbage_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "99CD23342BBE9DA8EC271BC1795962327B2164EFAA06E127D1C273C0149C135E",
+      "source_uexp_sha256": "9CA124D05B05A4AB99549A821BB3AD93093EC6581A0EE85E507A76F82091D564",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "runtime_confirmed_interact_type_2"
+    },
+    {
+      "path": "Maps/world/world_01/World_01_Collection/Collection/Water_Parsley_01",
+      "class": "normal_gather",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "1D7124B38045A3C9F214781417F00C4CD550B6880E12B8471568C85D1A47996B",
+      "source_uexp_sha256": "AFCE84488C0EB8B502DBF38B1CC7139F0EFA87B583B6104DFDB43B524B2E4CD0",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "normal_gather_serialization_confirmed_not_individually_runtime_observed"
+    },
+    {
+      "path": "Design/Prop/Collect/gather_Tomatos_prop",
+      "class": "normal_gather_inherited",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "649078EDF573DE2ED40E4C10A3AB55F58707DE4E3D5A60F82F5AF5D566FA49A9",
+      "source_uexp_sha256": "6CC626291374ED51234B9C0AC579CDF515E995AEC66893C23793CAC69F3CC56B",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "production_collect_asset_with_inherited_normal_gather_contract"
+    },
+    {
+      "path": "Design/Prop/Collect/gathering_flower-blue_01",
+      "class": "normal_gather_inherited",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "FBAEA118F211FAB3CD5DB915F400FD2D436A2BB2CF19F838D21DDA2C122BB451",
+      "source_uexp_sha256": "6CC626291374ED51234B9C0AC579CDF515E995AEC66893C23793CAC69F3CC56B",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "production_collect_asset_with_inherited_normal_gather_contract"
+    },
+    {
+      "path": "Design/Prop/Collect/gathering_ore-silver-small_02",
+      "class": "normal_gather_inherited",
+      "component": "Capsule_GEN_VARIABLE",
+      "old_scale": [
+        10,
+        10,
+        5
+      ],
+      "new_scale": [
+        50,
+        50,
+        25
+      ],
+      "source_uasset_sha256": "0E88465C8D3C87E3FFAA338239DF440DFF66E53FB19333FC96875F827FE3734E",
+      "source_uexp_sha256": "3BE60FA11141C3C1B112A160CA7C91CA1CB76FE460C86C6743D9AB7F01FA5904",
+      "status": "approved_x5_patch_candidate",
+      "runtime_evidence": "production_collect_asset_with_inherited_normal_gather_contract"
+    }
+  ],
+  "exclusions": {
+    "treasure_type_4": {
+      "status": "excluded",
+      "rule": "exclude_if_any_match",
+      "match_any": [
+        {
+          "path_contains": "/TreasureBox/"
+        },
+        {
+          "interact_data_class": "BP_TreasureBoxData_C"
+        },
+        {
+          "runtime_interact_type": 4
+        }
+      ],
+      "reason": "Treasure interactions are out of scope even when a package serializes a NormalGather component."
+    },
+    "drop_item_type_7": {
+      "status": "blocked",
+      "rule": "exclude_all",
+      "native_parent_class": "/Script/DS.DropItemActor",
+      "runtime_interact_type": 7,
+      "asset_registry_package_count": 19,
+      "reason": "The child packages serialize CapsulePhysicsComp and SphereHitComp, but the pickup-range producer is inherited or shared and is not unambiguously authored in each child package."
+    },
+    "pending_assets": [
+      {
+        "path": "Design/Prop/Collect/Collect_Test",
+        "status": "pending_test_asset_review",
+        "reason": "NormalGather is explicit, but the test-only asset has scale [2, 1, 1] and zero serialized collision responses."
+      }
+    ]
+  },
+  "gameplay_acceptance": "NOT_VALIDATED"
+}
