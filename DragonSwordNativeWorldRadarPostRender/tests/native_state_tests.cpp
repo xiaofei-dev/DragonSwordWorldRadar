@@ -1945,6 +1945,22 @@ int main() {
                 "world-map candidate-session policy must not allocate");
     }
     {
+        const std::size_t allocations_before = allocation_count;
+        require(dswros::world_map_listener_open_probe_allowed(
+                    true, false, false, true)
+                    && !dswros::world_map_listener_open_probe_allowed(
+                        false, false, false, true)
+                    && !dswros::world_map_listener_open_probe_allowed(
+                        true, true, false, true)
+                    && !dswros::world_map_listener_open_probe_allowed(
+                        true, false, true, true)
+                    && !dswros::world_map_listener_open_probe_allowed(
+                        true, false, false, false),
+                "only a post-activation exact-current-world listener candidate may arm a world-map opening probe");
+        require(allocation_count == allocations_before,
+                "world-map listener opening policy must not allocate");
+    }
+    {
         using VisibilityAction = dswros::WorldMapVisibilityAction;
         using VisibilitySample = dswros::WorldMapVisibilitySample;
         struct VisibilityCase final {

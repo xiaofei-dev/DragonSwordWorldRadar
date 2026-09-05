@@ -67,6 +67,15 @@ world_map_candidate_transition(WorldMapCandidateEvent event) noexcept {
         && open_serial == candidate_serial;
 }
 
+[[nodiscard]] constexpr bool world_map_listener_open_probe_allowed(
+    bool enabled,
+    bool transition_active,
+    bool activity_suppressed,
+    bool exact_current_world) noexcept {
+    return enabled && !transition_active && !activity_suppressed
+        && exact_current_world;
+}
+
 enum class WorldMapVisibilitySample : std::uint8_t {
     Unknown,
     Hidden,

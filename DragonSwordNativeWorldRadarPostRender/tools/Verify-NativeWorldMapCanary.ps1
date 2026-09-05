@@ -810,18 +810,24 @@ Assert-True ($captureWorldMapCandidate -match `
         'world_map_open_evidence_at_\s*=').Count -eq 2 `
     -and $listenerCandidateCapture -match `
         'capture_world_map_candidate_unsafe\s*\(\s*current_layer\s*,\s*false\s*\)' `
+    -and $listenerCandidateCapture -match `
+        'const\s+bool\s+exact_current_world\s*=' `
+    -and $listenerCandidateCapture -match `
+        'world_map_listener_open_probe_allowed\s*\([\s\S]*?enabled_[\s\S]*?transition_active_[\s\S]*?activity_suppressed_[\s\S]*?exact_current_world' `
+    -and $listenerCandidateCapture -match `
+        'world_map_open_serial_\s*=\s*world_map_candidate_serial_\s*;[\s\S]*?world_map_visible_serial_\s*=\s*0\s*;[\s\S]*?world_map_open_evidence_at_\s*=\s*Clock::now\s*\(\s*\)\s*;[\s\S]*?world_map_session_pending_\s*=\s*false\s*;' `
     -and $listenerCandidateCapture -notmatch `
-        'world_map_(?:open_serial_|session_pending_|readiness_attempts_|service_attempts_)|latch_world_map_compact_suppression|service_world_map_atlas' `
+        'latch_world_map_compact_suppression|service_world_map_atlas|world_map_(?:readiness|service)_attempts_\s*=' `
     -and $worldMapImagePost -match `
         'capture_world_map_candidate_unsafe\s*\(\s*context\.Context\s*,\s*true\s*\)' `
     -and $worldMapImagePost -notmatch '\benabled_\b' `
     -and $sessionPolicyCode -match `
         'next_world_map_candidate_serial[\s\S]*?numeric_limits<std::uint64_t>::max\s*\(\s*\)[\s\S]*?current_serial\s*\+\s*1U') `
-    'Passive discovery may publish identity only; candidate replacement must invalidate inherited evidence, while SetWorldMapImage remains recordable during F8-disabled state.'
+    'Only an activated exact-current-world creation may publish a visibility-gated opening probe; it must not latch compact suppression, consume budgets, or run atlas work, while SetWorldMapImage remains recordable during F8-disabled state.'
 Assert-True ([regex]::Matches(
         $mainCode,
-        '\bworld_map_open_serial_\s*=(?!=)').Count -eq 4) `
-    'Only same-candidate SetWorldMapImage, new-candidate publication, authoritative close, and full candidate reset may write map-open evidence.'
+        '\bworld_map_open_serial_\s*=(?!=)').Count -eq 5) `
+    'Only same-candidate SetWorldMapImage, new-candidate publication, exact post-activation listener probe, authoritative close, and full candidate reset may write map-open evidence.'
 
 $zoomPost = Get-MainMethod $mainCode 'world_map_zoom_post_unsafe'
 Assert-True ($zoomPost -match `

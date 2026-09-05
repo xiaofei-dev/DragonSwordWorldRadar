@@ -7417,9 +7417,12 @@ private:
         if (consume_world_map_listener_candidate_guarded(
                 weak, expected_world)) {
             append_log("WORLD_MAP_LAYER_CAPTURE", std::format(
-                "source=create_listener activation={} epoch={} enabled={} serial={} object_index={}",
+                "source=create_listener activation={} epoch={} enabled={} serial={} object_index={} open_probe={} open_evidence={} session_pending={}",
                 activation_, epoch_, enabled_, world_map_candidate_serial_,
-                object_index));
+                object_index,
+                world_map_candidate_has_open_evidence(),
+                world_map_candidate_has_open_evidence(),
+                world_map_session_pending_));
         }
     }
 
@@ -7443,13 +7446,37 @@ private:
     [[nodiscard]] bool consume_world_map_listener_candidate_unsafe(
         FWeakObjectPtr weak, UWorld* expected_world) {
         UObject* current_layer = weak.Get();
+        UWorld* candidate_world = current_layer
+            ? current_layer->GetWorld() : nullptr;
+        const bool exact_current_world = candidate_world
+            && (expected_world
+                ? candidate_world == expected_world
+                : (!current_world_key_.empty()
+                    && world_identity_key(
+                           reinterpret_cast<UObject*>(candidate_world))
+                        == current_world_key_));
         if (!current_layer || !world_map_layer_class_
             || !current_layer->IsA(world_map_layer_class_)
-            || (expected_world
-                && current_layer->GetWorld() != expected_world)) {
+            || !exact_current_world) {
             return false;
         }
         capture_world_map_candidate_unsafe(current_layer, false);
+        if (dswros::world_map_listener_open_probe_allowed(
+                enabled_, transition_active_, activity_suppressed_,
+                exact_current_world)) {
+            // The game does not dispatch the registered SetWorldMapImage hook
+            // on its live world-map opening path. A newly constructed exact
+            // current-World DLayerMap after activation is therefore a bounded
+            // opening probe. It supplies serial-bound evidence only; the
+            // existing 250 ms IsVisible sample must still confirm the layer
+            // before compact suppression or atlas work can begin. Retained
+            // pre-F7/catch-up candidates never take this path.
+            world_map_open_serial_ = world_map_candidate_serial_;
+            world_map_visible_serial_ = 0;
+            world_map_open_evidence_at_ = Clock::now();
+            world_map_session_pending_ = false;
+            world_map_service_retry_after_ = {};
+        }
         return true;
     }
 
