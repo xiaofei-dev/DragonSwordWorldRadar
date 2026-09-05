@@ -15,12 +15,12 @@ Set-StrictMode -Version 2.0
 $projectRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'ReleaseLayout.ps1')
 
-$version = '2.1.0'
-$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_1_0'
+$version = '2.2.1'
+$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1'
 $product = 'DragonSwordNativeWorldRadarPostRender'
 $expectedTestCount = 2
-$expectedNoFileCount = 33
-$expectedWithFileCount = 37
+$expectedNoFileCount = 41
+$expectedWithFileCount = 45
 $expectedLoaderHashes = [ordered]@{
     'ue4ss/UE4SS.dll' =
         'F31188D59B34A812AFC32DB4B6FF0C74E1B44861D1ED7967452EE4B3B6635BE1'

@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 
 namespace RC::Unreal {
 class UClass;
@@ -17,8 +18,14 @@ class UObject;
 
 namespace dsnwr {
 
-inline constexpr std::size_t kWorldMapUmgMarkerCapacity = 1785;
-inline constexpr std::uint16_t kWorldMapAtlasTextureSize = 2048;
+// The current catalog needs 1,785 slots, while the validated treasure loader
+// deliberately permits up to 2,500 rows. Reserve enough fixed storage for
+// that full loader boundary plus every current non-treasure catalog and future
+// bounded growth without allocating during a map session.
+inline constexpr std::size_t kWorldMapUmgMarkerCapacity = 4096;
+// Give every glyph 50% more linear raster detail without changing the exact
+// parent-local geometry, marker centers, projection, or two-layer ownership.
+inline constexpr std::uint16_t kWorldMapAtlasTextureSize = 3072;
 inline constexpr std::size_t kWorldMapAtlasLayerCount = 2;
 
 enum class WorldMapUmgMarkerTone : std::uint8_t {
@@ -68,11 +75,11 @@ enum class WorldMapUmgPaintOwnerStatus : std::uint32_t {
 };
 
 enum class WorldMapLayeringRefreshResult : std::uint32_t {
-    Restacked,
-    Reparented,
+    Updated,
     RetryLater,
-    ParentChanged,
+    Retained,
     Faulted,
+    Unchanged,
 };
 
 class WorldMapUmgRenderer final {
@@ -103,14 +110,29 @@ public:
     [[nodiscard]] bool attached_layer_matches(
         RC::Unreal::UObject* current_layer) const noexcept;
 
-    // Reinsert the two retained host slots after every game-native child on a
-    // real map-image update. The game can rebuild dungeon icons at the same
-    // maximum Canvas Z while changing zoom tiers, so Z alone is insufficient.
-    // A missing native witness is retryable. A changed Canvas reuses the
-    // retained atlas only after fresh parent-local geometry is available.
+    // Reads the game-owned map Canvas geometry and projects the immutable
+    // atlas bounds into the independent viewport hosts. The native map tree is
+    // a read-only witness and is never made an owner of Mod widgets or slots.
+    [[nodiscard]] WorldMapLayeringRefreshResult sync_viewport_transform(
+        RC::Unreal::UObject* current_layer) noexcept;
+
+    // Compatibility wrapper for callers that have not yet dropped the legacy
+    // map-world arguments. They are intentionally ignored: transform refresh
+    // never rebuilds the atlas or reprojects marker world coordinates.
     [[nodiscard]] WorldMapLayeringRefreshResult refresh_layering(
         RC::Unreal::UObject* current_layer,
-        bool allow_tree_mutation) noexcept;
+        bool allow_tree_mutation,
+        double player_world_x,
+        double player_world_y) noexcept;
+
+    // Durable content policy. This survives renderer host lifecycles; callers
+    // update it only when expanded-map content is enabled or disabled.
+    void set_content_visibility_intent(bool enabled) noexcept;
+
+    // Transient live-layer gate. New attachments, suspension, detachment, and
+    // faults reset it to false; callers publish true only after validating the
+    // exact current-world layer and its native visibility.
+    void publish_runtime_visibility(bool visible) noexcept;
 
     [[nodiscard]] bool attach_once(
         RC::Unreal::UObject* current_layer,
@@ -125,16 +147,23 @@ public:
     // tree. Collapsed UMG content performs no layout or paint work.
     void suspend() noexcept;
 
-    // F7 restores a suspended host only after exact layer, slot, parent,
-    // content, image, and texture identity checks. Failure detaches fail-closed.
+    // F7 restores a suspended host only after exact owned payload validation
+    // and a fresh read-only viewport transform sync.
     [[nodiscard]] bool resume_suspended(
         RC::Unreal::UObject* current_layer) noexcept;
 
     // Travel, map replacement, and shutdown always use complete removal.
     void detach() noexcept;
 
+    // UObject-array shutdown path. Clears retained weak identities without
+    // dereferencing the destroyed registry or mutating the widget tree.
+    void abandon_runtime_handles() noexcept;
+
     [[nodiscard]] WorldMapUmgRendererState state() const noexcept {
         return state_;
+    }
+    [[nodiscard]] bool transform_ready() const noexcept {
+        return transform_ready_;
     }
     [[nodiscard]] std::uint64_t attach_attempt_count() const noexcept {
         return attach_attempt_count_;
@@ -172,11 +201,18 @@ public:
     [[nodiscard]] std::uint64_t reparent_count() const noexcept {
         return reparent_count_;
     }
+    [[nodiscard]] std::uint64_t reproject_count() const noexcept {
+        return reproject_count_;
+    }
     [[nodiscard]] std::uint32_t last_map_data_source() const noexcept {
         return last_map_data_source_;
     }
     [[nodiscard]] std::uint32_t last_attach_failure() const noexcept {
         return last_attach_failure_;
+    }
+    [[nodiscard]] dswros::WorldMapTransformSyncStage
+    last_transform_sync_stage() const noexcept {
+        return last_transform_sync_stage_;
     }
     [[nodiscard]] std::uint32_t abi_failure_mask() const noexcept {
         return abi_failure_mask_;
@@ -297,9 +333,22 @@ private:
     [[nodiscard]] bool validate_host_payload_unsafe(
         RC::Unreal::UObject* current_layer,
         RC::Unreal::UObject*& owning_player) const;
-    [[nodiscard]] WorldMapLayeringRefreshResult restack_hosts_unsafe(
+    [[nodiscard]] bool validate_host_payload_guarded(
+        RC::Unreal::UObject* current_layer) const noexcept;
+    [[nodiscard]] bool sync_viewport_transform_unsafe(
         RC::Unreal::UObject* current_layer,
-        bool allow_tree_mutation);
+        WorldMapLayeringRefreshResult& result,
+        volatile dswros::WorldMapTransformSyncStage& stage);
+    [[nodiscard]] bool reconcile_host_visibility_guarded(
+        bool force_collapsed,
+        volatile dswros::WorldMapTransformSyncStage& stage) noexcept;
+    [[nodiscard]] bool reconcile_host_visibility_unsafe(
+        bool force_collapsed,
+        volatile dswros::WorldMapTransformSyncStage& stage);
+    [[nodiscard]] bool apply_host_visibility_unsafe(
+        bool visible,
+        volatile dswros::WorldMapTransformSyncStage& stage);
+    void fault_and_detach(std::uint32_t failure) noexcept;
     [[nodiscard]] bool suspend_guarded() noexcept;
     [[nodiscard]] bool resume_suspended_guarded(
         RC::Unreal::UObject* current_layer) noexcept;
@@ -333,13 +382,17 @@ private:
     RC::Unreal::UFunction* set_visibility_{};
     RC::Unreal::UFunction* set_brush_from_texture_{};
     RC::Unreal::UFunction* import_file_as_texture_{};
-    RC::Unreal::UFunction* force_layout_prepass_{};
     RC::Unreal::UFunction* clear_children_{};
     RC::Unreal::UFunction* remove_from_parent_{};
-    RC::Unreal::UFunction* request_retainer_render_{};
+    RC::Unreal::UFunction* add_to_viewport_{};
+    RC::Unreal::UFunction* get_viewport_widget_geometry_{};
+    RC::Unreal::UFunction* set_alignment_in_viewport_{};
+    RC::Unreal::UFunction* set_desired_size_in_viewport_{};
+    RC::Unreal::UFunction* set_position_in_viewport_{};
     RC::Unreal::FWeakObjectPtr widget_blueprint_library_{};
     RC::Unreal::FWeakObjectPtr kismet_rendering_library_{};
     RC::Unreal::FWeakObjectPtr slate_blueprint_library_{};
+    RC::Unreal::FWeakObjectPtr widget_layout_library_{};
     RC::Unreal::FWeakObjectPtr layer_{};
     RC::Unreal::FWeakObjectPtr retainer_box_{};
     RC::Unreal::FWeakObjectPtr native_parent_{};
@@ -349,8 +402,6 @@ private:
     std::array<RC::Unreal::FWeakObjectPtr, kWorldMapAtlasLayerCount>
         root_panels_{};
     std::array<RC::Unreal::FWeakObjectPtr, kWorldMapAtlasLayerCount>
-        native_parent_slots_{};
-    std::array<RC::Unreal::FWeakObjectPtr, kWorldMapAtlasLayerCount>
         atlas_images_{};
     std::array<RC::Unreal::FWeakObjectPtr, kWorldMapAtlasLayerCount>
         atlas_image_slots_{};
@@ -358,6 +409,7 @@ private:
         atlas_textures_{};
     std::array<std::filesystem::path, kWorldMapAtlasLayerCount>
         atlas_cache_paths_{};
+    WorldMapUmgMarkerArray active_markers_{};
 
     WorldMapUmgRendererState state_{WorldMapUmgRendererState::Uninitialized};
     WorldMapUmgPaintOwnerStatus paint_owner_status_{
@@ -365,6 +417,15 @@ private:
     bool activation_active_{};
     bool attach_attempted_{};
     bool map_data_lookup_attempted_{};
+    bool content_visibility_intent_{};
+    bool runtime_visibility_allowed_{};
+    bool transform_ready_{};
+    std::optional<bool> applied_host_visibility_{};
+    bool viewport_transform_valid_{};
+    dswros::WorldMapAtlasPlacement viewport_placement_{};
+    bool viewport_geometry_sample_valid_{};
+    dswros::WorldMapGeometrySample viewport_geometry_sample_{};
+    std::size_t active_marker_input_count_{};
     std::size_t active_marker_count_{};
     std::int32_t map_id_{};
     double map_dimensions_{};
@@ -411,8 +472,11 @@ private:
     std::uint64_t atlas_file_bytes_{};
     std::uint64_t attach_elapsed_us_{};
     std::uint64_t reparent_count_{};
+    std::uint64_t reproject_count_{};
     std::uint32_t last_map_data_source_{};
     std::uint32_t last_attach_failure_{};
+    dswros::WorldMapTransformSyncStage last_transform_sync_stage_{
+        dswros::WorldMapTransformSyncStage::None};
     std::uint32_t abi_failure_mask_{};
     bool last_layering_parent_changed_{};
     bool last_layering_geometry_changed_{};

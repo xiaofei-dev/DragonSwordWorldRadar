@@ -47,6 +47,19 @@ build recipe used to create that DLL.
 The full Apache License, Version 2.0 is included in
 licenses/APACHE-2.0.txt.
 
+Droid Sans Fallback
+Copyright (c) 2005-2008, The Android Open Source Project
+Licensed under the Apache License, Version 2.0.
+https://android.googlesource.com/platform/frameworks/base/
+
+The Korean and Traditional Chinese F6 text overlays are rasterized build
+outputs generated from DroidSansFallback.ttf. The font binary is a build input
+only and is not included in the runtime payload. The pinned build-input
+SHA-256 is
+05D71B179EF97B82CF1BB91CEF290C600A510F77F39B4964359E3EF88378C79D.
+The full Apache License, Version 2.0 is included in
+licenses/APACHE-2.0.txt.
+
 SQLCipher Community Edition
 Copyright (c) 2008-2026, ZETETIC, LLC
 Licensed under the SQLCipher Community Edition BSD-style license.

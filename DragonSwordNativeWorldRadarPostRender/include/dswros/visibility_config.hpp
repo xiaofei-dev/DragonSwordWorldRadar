@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dswros/radar_preferences.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -62,6 +64,11 @@ struct VisibilityConfigSettings {
     VisibilityAreaQuestMode area_quest_mode{
         VisibilityAreaQuestMode::Available};
     VisibilityAssaultMode assault_mode{VisibilityAssaultMode::Available};
+
+    bool height_treasure{true};
+    bool height_area_quests{true};
+    bool height_mole{true};
+    RadarLanguagePreference language{RadarLanguagePreference::Auto};
 };
 
 struct VisibilityConfigParseResult {
@@ -153,12 +160,16 @@ namespace detail {
         Radar,
         Map,
         Modes,
+        HeightArrows,
+        Interface,
     };
     Section section{Section::None};
     std::uint8_t seen_sections{};
     std::uint8_t radar_keys{};
     std::uint8_t map_keys{};
     std::uint8_t mode_keys{};
+    std::uint8_t height_arrow_keys{};
+    std::uint8_t interface_keys{};
     bool saw_sectioned{};
     bool saw_legacy{};
     bool saw_crlf{};
@@ -226,6 +237,12 @@ namespace detail {
             } else if (line == "[modes]") {
                 section = Section::Modes;
                 section_bit = 0x04U;
+            } else if (line == "[height_arrows]") {
+                section = Section::HeightArrows;
+                section_bit = 0x08U;
+            } else if (line == "[interface]") {
+                section = Section::Interface;
+                section_bit = 0x10U;
             } else {
                 result.status = VisibilityConfigParseStatus::InvalidSection;
                 return result;
@@ -304,7 +321,7 @@ namespace detail {
                     key_bit = 0x10U;
                     target = &result.settings.map_area_quests;
                 }
-            } else {
+            } else if (section == Section::Modes) {
                 key_set = &mode_keys;
                 if (key == "area_quests") {
                     key_bit = 0x01U;
@@ -328,6 +345,29 @@ namespace detail {
                             VisibilityAssaultMode::All;
                     } else {
                         result.status = VisibilityConfigParseStatus::InvalidValue;
+                        return result;
+                    }
+                }
+            } else if (section == Section::HeightArrows) {
+                key_set = &height_arrow_keys;
+                if (key == "treasure") {
+                    key_bit = 0x01U;
+                    target = &result.settings.height_treasure;
+                } else if (key == "area_quests") {
+                    key_bit = 0x02U;
+                    target = &result.settings.height_area_quests;
+                } else if (key == "mole") {
+                    key_bit = 0x04U;
+                    target = &result.settings.height_mole;
+                }
+            } else if (section == Section::Interface) {
+                key_set = &interface_keys;
+                if (key == "language") {
+                    key_bit = 0x01U;
+                    if (!parse_radar_language_preference(
+                            value, result.settings.language)) {
+                        result.status =
+                            VisibilityConfigParseStatus::InvalidValue;
                         return result;
                     }
                 }
@@ -401,8 +441,13 @@ namespace detail {
     }
 
     if (saw_sectioned) {
-        if (seen_sections != 0x07U || radar_keys != 0x7FU
-            || map_keys != 0x1FU || mode_keys != 0x03U) {
+        const bool old_sectioned = seen_sections == 0x07U;
+        const bool current_sectioned = seen_sections == 0x1FU
+            && height_arrow_keys == 0x07U
+            && interface_keys == 0x01U;
+        if ((!old_sectioned && !current_sectioned)
+            || radar_keys != 0x7FU || map_keys != 0x1FU
+            || mode_keys != 0x03U) {
             result.status = VisibilityConfigParseStatus::MissingKey;
             return result;
         }
@@ -532,6 +577,19 @@ namespace detail {
     output += settings.assault_mode == VisibilityAssaultMode::All
         ? "all"
         : "available";
+    output += "\n\n[height_arrows]\n";
+    output += "# Compact-radar height indicators. These do not hide markers.\n";
+    output += "treasure=";
+    output += boolean(settings.height_treasure);
+    output += "\narea_quests=";
+    output += boolean(settings.height_area_quests);
+    output += "\nmole=";
+    output += boolean(settings.height_mole);
+    output += "\n\n[interface]\n";
+    output += "# auto follows the game's text language on each F7 activation\n";
+    output += "# and each actual F6 opening.\n";
+    output += "language=";
+    output += radar_language_preference_id(settings.language);
     output += '\n';
     return output;
 }

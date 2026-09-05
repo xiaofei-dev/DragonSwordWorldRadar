@@ -167,6 +167,15 @@ function Get-DsnwrRuntimePayloadSpecification {
     Add-PayloadFile `
         (Join-Path $ProjectRoot 'src\data\defaults\treasure_overrides.txt') `
         'data/defaults/treasure_overrides.txt'
+    foreach ($name in @(
+            'ko-fault.tga', 'ko-off.tga', 'ko-on.tga',
+            'language-popup.tga',
+            'zh-hant-fault.tga', 'zh-hant-off.tga',
+            'zh-hant-on.tga', 'manifest.json')) {
+        Add-PayloadFile `
+            (Join-Path $ProjectRoot "assets\ui\f6\$name") `
+            "assets/ui/f6/$name"
+    }
     Add-PayloadFile `
         (Join-Path $ProjectRoot 'assets\vendor\sqlcipher\e_sqlcipher.dll') `
         'vendor/sqlcipher/e_sqlcipher.dll'

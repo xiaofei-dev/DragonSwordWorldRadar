@@ -305,10 +305,10 @@ bool write_queued_record(
 }
 
 template <typename Fill>
-void try_enqueue(RecordKind kind, Fill&& fill) noexcept {
+bool try_enqueue(RecordKind kind, Fill&& fill) noexcept {
     auto& state = event_log_state();
     if (!state.enabled.load(std::memory_order_relaxed)) {
-        return;
+        return false;
     }
     const auto captured_utc_ms = utc_unix_time_ms();
     const auto captured_tick_ms = static_cast<std::uint64_t>(GetTickCount64());
@@ -317,7 +317,7 @@ void try_enqueue(RecordKind kind, Fill&& fill) noexcept {
         || !state.enabled.load(std::memory_order_relaxed)
         || state.stopping || state.queue_size >= state.queue.size()) {
         state.dropped_records.fetch_add(1U, std::memory_order_relaxed);
-        return;
+        return false;
     }
     auto& record = state.queue[state.queue_tail];
     record.kind = kind;
@@ -331,6 +331,7 @@ void try_enqueue(RecordKind kind, Fill&& fill) noexcept {
     ++state.queue_size;
     lock.unlock();
     state.queue_ready.notify_one();
+    return true;
 }
 
 void writer_loop(NativeEventLogState* state) noexcept {
@@ -460,12 +461,12 @@ bool native_event_log_enabled() noexcept {
     return event_log_state().enabled.load(std::memory_order_relaxed);
 }
 
-void append_native_event_log(
+bool append_native_event_log(
     std::string_view event, std::string_view detail) noexcept {
     if (!event_log_state().enabled.load(std::memory_order_relaxed)) {
-        return;
+        return false;
     }
-    try_enqueue(RecordKind::Text,
+    return try_enqueue(RecordKind::Text,
         [event, detail](QueuedRecord& record, NativeEventLogState& state) {
             bool event_truncated{};
             bool detail_truncated{};
@@ -480,11 +481,11 @@ void append_native_event_log(
         });
 }
 
-void append_native_engine_tick_slow(
+bool append_native_engine_tick_slow(
     const NativeEngineTickProfileSample& sample,
     std::uint64_t slow_threshold_us,
     std::uint64_t slow_total) noexcept {
-    try_enqueue(RecordKind::EngineTickSlow,
+    return try_enqueue(RecordKind::EngineTickSlow,
         [&sample, slow_threshold_us, slow_total](
             QueuedRecord& record, NativeEventLogState&) {
             record.slow = sample;
@@ -493,9 +494,9 @@ void append_native_engine_tick_slow(
         });
 }
 
-void append_native_engine_tick_profile(
+bool append_native_engine_tick_profile(
     const NativeEngineTickProfileReport& report) noexcept {
-    try_enqueue(RecordKind::EngineTickProfile,
+    return try_enqueue(RecordKind::EngineTickProfile,
         [&report](QueuedRecord& record, NativeEventLogState&) {
             record.profile = report;
         });

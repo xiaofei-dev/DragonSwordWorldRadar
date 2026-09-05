@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <span>
 #include <vector>
 
@@ -18,6 +19,153 @@ enum class CompactTimePhase : std::uint8_t {
     Evening,
     Night,
 };
+
+enum class AreaQuestHeightIndicatorShape : std::uint8_t {
+    Aligned,
+    Above,
+    Below,
+    Unavailable,
+};
+
+enum class MiniGameHeightIndicatorShape : std::uint8_t {
+    Hidden,
+    Above,
+    Below,
+};
+
+// Mini-game guidance consumes the already dead-zone-adjusted angle produced by
+// CompactRenderModel::mini_game_height_angle_from_delta. Keeping this state mapping pure
+// lets the renderer switch only on a discrete edge: no shaft rotation, UObject
+// lookup, allocation, or geometry churn is needed while the player remains on
+// the same side of the target height.
+[[nodiscard]] inline MiniGameHeightIndicatorShape
+mini_game_height_indicator_shape(double height_angle_degrees) noexcept {
+    if (!std::isfinite(height_angle_degrees)
+        || std::abs(height_angle_degrees) <= 1.0e-9) {
+        return MiniGameHeightIndicatorShape::Hidden;
+    }
+    return height_angle_degrees < 0.0
+        ? MiniGameHeightIndicatorShape::Above
+        : MiniGameHeightIndicatorShape::Below;
+}
+
+inline constexpr std::size_t kAreaQuestHeightBandCapacity = 2;
+
+struct AreaQuestHeightBand {
+    double minimum_z{};
+    double maximum_z{};
+};
+
+struct AreaQuestHeightProfile {
+    std::array<AreaQuestHeightBand, kAreaQuestHeightBandCapacity> bands{};
+    std::uint8_t band_count{};
+};
+
+// Area Quest height guidance is intentionally discrete: the existing task
+// square means the player is within the accepted vertical band, while a
+// triangle communicates only the remaining up/down direction. Area Quests
+// deliberately use a wider band than the continuous Treasure/Mole arrows.
+// Untrusted/non-finite sources fail closed and must never show the aligned dots.
+inline constexpr double kAreaQuestHeightDeadZone = 500.0;
+
+[[nodiscard]] inline bool area_quest_height_profile_valid(
+    const AreaQuestHeightProfile& profile) noexcept {
+    if (profile.band_count == 0
+        || profile.band_count > profile.bands.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < profile.band_count; ++index) {
+        const AreaQuestHeightBand& band = profile.bands[index];
+        if (!std::isfinite(band.minimum_z)
+            || !std::isfinite(band.maximum_z)
+            || band.minimum_z > band.maximum_z
+            || (index > 0
+                && profile.bands[index - 1].maximum_z
+                    >= band.minimum_z)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// A catalog marker can reference more than one task actor when a quest moves
+// between stages.  The marker's authored Z is independent evidence of which
+// actor band owns that map location.  Collapse a multi-band profile to the
+// uniquely nearest band before comparing it with the player; an exact tie is
+// ambiguous and fails closed instead of inventing a direction.
+[[nodiscard]] inline AreaQuestHeightProfile
+area_quest_height_profile_for_marker(
+    const AreaQuestHeightProfile& profile,
+    double marker_z) noexcept {
+    if (!area_quest_height_profile_valid(profile)
+        || !std::isfinite(marker_z)) {
+        return {};
+    }
+    if (profile.band_count == 1) {
+        return profile;
+    }
+
+    std::size_t nearest_index{};
+    double nearest_distance = std::numeric_limits<double>::infinity();
+    bool tie{};
+    for (std::size_t index = 0; index < profile.band_count; ++index) {
+        const AreaQuestHeightBand& band = profile.bands[index];
+        const double distance = marker_z < band.minimum_z
+            ? band.minimum_z - marker_z
+            : (marker_z > band.maximum_z
+                ? marker_z - band.maximum_z
+                : 0.0);
+        if (distance < nearest_distance) {
+            nearest_index = index;
+            nearest_distance = distance;
+            tie = false;
+        } else if (distance == nearest_distance) {
+            tie = true;
+        }
+    }
+    if (tie || !std::isfinite(nearest_distance)) {
+        return {};
+    }
+    AreaQuestHeightProfile selected{};
+    selected.bands[0] = profile.bands[nearest_index];
+    selected.band_count = 1;
+    return selected;
+}
+
+[[nodiscard]] inline AreaQuestHeightIndicatorShape
+area_quest_height_indicator_shape(
+    const AreaQuestHeightProfile& profile,
+    double comparable_player_z) noexcept {
+    if (!std::isfinite(comparable_player_z)
+        || !area_quest_height_profile_valid(profile)) {
+        return AreaQuestHeightIndicatorShape::Unavailable;
+    }
+
+    bool candidate_above{};
+    bool candidate_below{};
+    for (std::size_t index = 0; index < profile.band_count; ++index) {
+        const AreaQuestHeightBand& band = profile.bands[index];
+        if (comparable_player_z
+                >= band.minimum_z - kAreaQuestHeightDeadZone
+            && comparable_player_z
+                <= band.maximum_z + kAreaQuestHeightDeadZone) {
+            return AreaQuestHeightIndicatorShape::Aligned;
+        }
+        candidate_above = candidate_above
+            || band.minimum_z
+                > comparable_player_z + kAreaQuestHeightDeadZone;
+        candidate_below = candidate_below
+            || band.maximum_z
+                < comparable_player_z - kAreaQuestHeightDeadZone;
+    }
+    if (candidate_above && !candidate_below) {
+        return AreaQuestHeightIndicatorShape::Above;
+    }
+    if (candidate_below && !candidate_above) {
+        return AreaQuestHeightIndicatorShape::Below;
+    }
+    return AreaQuestHeightIndicatorShape::Unavailable;
+}
 
 // Presentation bands derived from the proven numeric game clock. The game has
 // not exposed an authoritative reflected enum or schedule naming these bands,
@@ -149,16 +297,25 @@ public:
     static constexpr std::size_t kMaximumSelectedTreasures = 80;
     static constexpr double kComparablePlayerZOffset = -150.0;
     static constexpr double kHeightDeadZone = 100.0;
+    static constexpr double kMiniGameHeightDeadZone = 500.0;
     static constexpr double kHeightSensitivity = 2500.0;
     static constexpr double kMaximumHeightAngleDegrees = 85.0;
 
-    [[nodiscard]] static double height_angle_from_delta(
-        double height_delta) noexcept {
-        if (!std::isfinite(height_delta)) {
+    [[nodiscard]] static double comparable_player_z(double player_z) noexcept {
+        return std::isfinite(player_z)
+            ? player_z + kComparablePlayerZOffset
+            : std::numeric_limits<double>::quiet_NaN();
+    }
+
+    [[nodiscard]] static double height_angle_from_delta_with_dead_zone(
+        double height_delta,
+        double dead_zone) noexcept {
+        if (!std::isfinite(height_delta) || !std::isfinite(dead_zone)
+            || dead_zone < 0.0) {
             return 0.0;
         }
         const double effective_magnitude = std::max(
-            std::abs(height_delta) - kHeightDeadZone, 0.0);
+            std::abs(height_delta) - dead_zone, 0.0);
         if (effective_magnitude == 0.0) {
             return 0.0;
         }
@@ -169,6 +326,18 @@ public:
                 * kRadiansToDegrees,
             -kMaximumHeightAngleDegrees,
             kMaximumHeightAngleDegrees);
+    }
+
+    [[nodiscard]] static double height_angle_from_delta(
+        double height_delta) noexcept {
+        return height_angle_from_delta_with_dead_zone(
+            height_delta, kHeightDeadZone);
+    }
+
+    [[nodiscard]] static double mini_game_height_angle_from_delta(
+        double height_delta) noexcept {
+        return height_angle_from_delta_with_dead_zone(
+            height_delta, kMiniGameHeightDeadZone);
     }
 
     // Catalog initialization is the only operation in this model that may
@@ -224,8 +393,7 @@ public:
         std::array<RankedCandidate, kMaximumSelectedTreasures> heap{};
         std::size_t heap_size = 0;
         const std::size_t capacity = output.size();
-        const double comparable_player_z =
-            player.z + kComparablePlayerZOffset;
+        const double adjusted_player_z = comparable_player_z(player.z);
 
         for (std::size_t index = 0; index < catalog_.size(); ++index) {
             const CompactTreasureCatalogEntry& entry = catalog_[index];
@@ -246,7 +414,7 @@ public:
             double ranking_distance_squared = planar_distance_squared;
             if (has_player_z && entry.has_z) {
                 const double delta_z =
-                    entry.position.z - comparable_player_z;
+                    entry.position.z - adjusted_player_z;
                 ranking_distance_squared += delta_z * delta_z;
             }
             if (!std::isfinite(ranking_distance_squared)) {
@@ -306,7 +474,7 @@ public:
                 marker.height_available = true;
                 marker.height_target_z = entry.position.z;
                 marker.height_delta = entry.position.z
-                    - comparable_player_z;
+                    - adjusted_player_z;
                 if (std::abs(marker.height_delta) <= kHeightDeadZone) {
                     marker.height_delta = 0.0;
                 }

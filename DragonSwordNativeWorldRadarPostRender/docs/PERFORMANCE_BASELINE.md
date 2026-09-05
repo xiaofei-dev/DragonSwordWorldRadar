@@ -95,10 +95,11 @@ While compact rendering is visible:
 - the current Controller/Pawn is sampled into scalars every 16 ms;
 - one preallocated Canvas root receives at most one translation per valid
   sample;
-- each of the two independent fixed six-piece height channels may receive at
+- each of the three independent fixed six-piece height channels may receive at
   most one translation and one rotation, with a 0.15-degree rotation epsilon;
-  treasure and area quest retain separate targets and neither allocates or
-  reads a UObject on this path;
+  Treasure, Area Quest, and shared Fly/Mole/Wave guidance retain separate
+  targets, all compare against the same numeric `playerZ - 150`, and none
+  allocates or reads a UObject on this path;
 - marker children receive no per-sample allocation, lookup, layout mutation, or
   translation;
 - activity/discovery and minimap context work run on the existing 250 ms
@@ -237,8 +238,10 @@ control service requires a valid runtime context but does not recheck the
 event's already-proved time window. Applied bits clear individually; an apply
 exception retains its bit without erasing unrelated or newly published bits.
 F7, disable, travel, and activity-suppression boundaries may settle pending
-numeric state without renderer mutation before reset. Only process and
-UObject-array shutdown hard-clear the mask.
+numeric state without renderer mutation before reset. Only safe live-
+GameThread finalization and the TitleMap owner boundary may hard-clear the
+mask; true process teardown closes ingress and returns, while UObject-array
+shutdown does not clear it.
 The callback performs no UObject enumeration, SQL query, atlas build, dynamic
 allocation queue, recurring timer, or 16 ms motion work. Missing or failed
 optional-hook registration adds no retry path and does not disable the radar.
@@ -457,21 +460,22 @@ cadence.
   per-frame world-map projection, aspect-ratio poll, or steady timer.
 - Verify all expanded-map radar categories remain above game-native icons at
   several zoom levels. A changed native Canvas or same-parent anchor/extent
-  reflow must emit retained-host reparent evidence only after two consecutive
-  exact-parent geometry samples remain within 0.5 logical units. The five
+  reflow must remain within the existing witnessed stable-geometry and bounded
+  reconstruction strategy. The five
   deadlines are 100/250/500/1,000/1,250 ms; each due game-thread pass takes one
   observation; overdue deadlines remain due and advance only one observation
-  per later pass. The first four passes are read-only. Only the final pass may
-  mutate. Equal extents may rebase the same
-  hosts without changing `attach_count`, atlas-build counters, texture import,
-  or widget construction. One stable extent change may consume one bounded full
-  attach for the current baseline; only a successful fresh attach establishes
-  the next baseline. There is no steady-state work.
+  per later pass. For later event tails the first four passes are read-only; only
+  the final pass may use the existing witnessed stable-geometry and bounded
+  map/zoom reconstruction strategy. The atlas-local correction adds no parent-
+  size post-check, growth rejection, or new extent-change allowance. Missing,
+  mismatched, or final-unstable geometry follows the established fail-closed or
+  defer path. There is no steady-state work.
 
 These statements are static bounded-work properties. Deterministic numeric
 viewport tests, including 3840x1600, are unit inputs only and do not accept real
 21:9, a 3840x2160 viewport with internal black bars, windowed client geometry,
-runtime Slate layout, or external frame-time behavior.
+runtime Slate layout, or external frame-time behavior. Static verification
+cannot replace live visual acceptance.
 - Measure scene-handoff hide latency. The first failed current-Pawn sample must
   collapse compact rendering through the existing 16 ms sample; no new timer,
   query, enumeration, or retained UObject is allowed.
@@ -584,8 +588,9 @@ runtime Slate layout, or external frame-time behavior.
   per-bit success clearing, retention of the failing bit, and no loss of an
   unrelated or concurrently published bit. Exercise F7, disable, travel, and
   activity suppression with pending bits; each may settle numeric state without
-  renderer work, while only process/UObject-array shutdown may clear the whole
-  mask. These cases must add no new recurring metric, service, timer, SQL, scan,
+  renderer work, while only safe live-GameThread finalization or the TitleMap
+  owner boundary may clear the whole mask. True process teardown and UObject-
+  array shutdown must not touch it. These cases must add no new recurring metric, service, timer, SQL, scan,
   or 16 ms work.
 - Require the fixed encounter slots to detect and retire both a Boss and an
   Assault, including strict `Destroyed` EndPlay recovery when the positive
@@ -602,3 +607,238 @@ runtime Slate layout, or external frame-time behavior.
   critical fault/lifecycle events survive an immediate process exit.
 - Confirm no accumulating task scans, SQL work, renderer faults, or stale atlas
   behavior during a multi-minute session.
+
+## 2.1.1 addendum: controller menus and task-height presentation
+
+This addendum is additive. All preceding 2.1.0 and R7 measurements, receipts,
+status labels, and ownership remain historical 2.1.0 evidence; none is
+relabelled as 2.1.1 evidence.
+
+### Controller-menu suppression cost
+
+- The exact `/Script/DSClient.DLayerMap:SetWorldMapImage` post event latches
+  world-map suppression immediately and collapses the existing compact host.
+  The implementation does not read controller bindings or input mappings.
+- `UWidget::IsVisible` is not polled on the 16 ms coordinate path. It is read
+  only while the world-map latch is set or during a bounded activation/travel
+  catch-up. An unknown sample preserves the previous state, while a destroyed
+  weak layer clears its stale latch.
+- `/Script/Engine.GameplayStatics:IsGamePaused` is an optional,
+  ABI-validated provider on the existing 250 ms activity probe. It adds no new
+  timer, thread, UObject scan, SQL query, filesystem read, growing container,
+  or recurring allocation.
+- The 16 ms render decision calls the pure boolean
+  `compact_render_suppressed` predicate. It reads existing visibility,
+  position, cursor, world-map, pause, and activity booleans; it performs no
+  reflection, widget lookup, map query, allocation, or log write.
+- Menu-state diagnostics are emitted only on known state edges when debug
+  logging is enabled, not once per sample or frame.
+
+For this addendum, source review is `PASS` and the complete static source gate
+is `PASS`. Real-controller map/pause behavior is `NOT_VALIDATED`, and external
+frame-time or hitch capture is `NOT_VALIDATED`. Those two runtime results must
+not be inferred from the source/static results.
+
+### Historical Area Quest height and arrow cost
+
+- The 2.1.1 task-height implementation reused fixed marker pieces and added no
+  runtime widget or pool allocation. Its single-height data contract and narrow
+  alignment threshold are superseded by the 2.2.0 height-band model below and
+  must not be used as current acceptance criteria.
+- The historical black/white task presentation and marker-Z no-fallback rule
+  remain useful architectural evidence only. They do not validate 2.2.0
+  direction, placement, appearance, or performance.
+
+## 2.2.1 addendum: world-map ownership isolation
+
+Version 2.2.1 is a fixes-only release. The native world-map icon Canvas is now
+a read-only geometry witness: Radar does not add children to it, alter its
+desired size, participate in its prepass, or affect its hit-test layout. The
+two Mod-owned atlas hosts are independent, hit-test-invisible viewport widgets.
+The player anchor and native Canvas geometry are converted through
+`LocalToAbsolute` and then into game-viewport local space with
+`AbsoluteToLocal`; accepted geometry changes update only the two viewport-host
+transforms.
+
+This isolation adds no new timer, poll, per-frame projection route, atlas
+rasterization, marker rebuild, or dynamic steady-state container. Same-parent
+pan, zoom, DPI, window, aspect-ratio, and controller-layout changes must not
+rerasterize, rebuild, reproject, re-add, or reparent an atlas. Invalid or
+unstable geometry collapses only the Mod-owned viewport hosts and follows the
+existing bounded settle/defer path.
+
+Exact-artifact 2.2.1 source/static gates, Core `2/2`, native build `444/444`,
+package validation, Setup `20/20`, Manual `2/2`, payload/layout/clean-target
+checks, three-archive byte-identical re-extraction, and rollback-backed developer
+deployment passed for DLL
+`C21823088E38D2BD1635651981187AB4C01C2FFD0DCD4804CB9FFDB1899FABB9` and
+compiled source
+`DE0100B2D4DE894FA94C6911AD328F7699C55D50EC21193C688B44F7F2588BA2`.
+Gameplay, native-icon stability, click alignment, exit behavior, and external
+performance remain `NOT_VALIDATED`. The exact 2.2.0 measurements, hashes, tests,
+package checks, and deployment record below are historical evidence only and
+must not be relabelled as 2.2.1 evidence.
+
+## Historical 2.2.0 addendum: mini-game height, localization, and responsive F6
+
+This addendum is additive. Every 2.1.1 gate, hash, measurement, and deployment
+statement above remains historical 2.1.1 evidence. No `B89F...` result is
+relabelled as 2.2.0 evidence.
+
+### Fixed shared-mini-game-height cost boundary
+
+- The mini-game height input is one immutable 83-row map-100 table keyed to
+  exact `MiniGame_<kind>_<id>_NPC_Start` identities: 33 Fly, 40 Mole, and 10
+  Wave.
+- Runtime selection consumes numeric catalog state only. It performs no XML
+  parsing, PAK extraction, global object enumeration, SQL request, filesystem
+  read, or runtime catalog generation.
+- The selected mini-game reuses a fixed preallocated arrow group and publishes only numeric
+  transform state. It adds no widget construction or allocation to the 16 ms
+  compact motion path.
+- The target compares with numeric `playerZ - 150`. The inclusive +/-500
+  interval adds only fixed scalar comparisons and hides the triangle. A missing
+  or invalid trusted height hides only the shared mini-game arrow. It cannot
+  trigger a retry loop or suppress the mini-game marker.
+
+### All-visible Area Quest height cost boundary
+
+- The Area Quest height switch defaults ON with the other two controls. A valid
+  existing visibility document remains authoritative and is not overwritten.
+- The immutable 147-row catalog carries 144 height profiles, including one
+  genuine two-band profile, and three no-source rows. Profile parsing adds no
+  runtime Actor scan, filesystem read, or allocation.
+- Every visible Area Quest is classified during the already bounded 80-slot
+  marker pass. For a multi-band row, authored marker Z performs one bounded
+  nearest-band selection over existing source bands; it never becomes height
+  data. The normal black frame shows three white dots inside the selected
+  band's inclusive +/-500 margin. The same pieces point up when the player is
+  below that band and down when above it. An exact-distance tie or missing
+  source profile remains neutral with no dots or direction. Comparison uses the
+  same numeric `playerZ - 150` as the other height channels.
+- Renderer geometry/visibility changes occur only when that marker's discrete
+  state changes. No separate task-arrow widget, UObject query, allocation, or
+  new schedule is added to the 16 ms motion path.
+
+### Localization cost boundary
+
+- F6 exposes only the 11 explicit languages. A legacy AUTO preference is read
+  only for migration on the next actual F6 opening or F7 activation, resolves
+  `DGameUserSettings.LanguageText`, then Kismet and English, and persists one
+  explicit language. Explicit preferences add no game-language read.
+- Localized strings are fixed tables. The closed F6 path performs no
+  localization work, allocation, UObject access, or file I/O.
+- Font setup runs only while constructing the open F6 page. It selects already-
+  loaded Common/TC/JP/TH game Font objects by script; missing evidence falls
+  back without an asset-path guess, FontMaterial change, recurring scan, or
+  language change. If the constructed
+  widget reports exactly `Font.Size == 0`, one bounded reference size is
+  seeded. A game-widget construction, target-size, or font-commit failure
+  retries that text once as base UMG `TextBlock` during the same open.
+  The real reflected `Font.Size` participates in layout
+  and is bounded by the slot-safe line height. After `AddToViewport` and prepass,
+  font size is reapplied and read back; a missing core Font/SetFont ABI or failed
+  size application/readback closes F6 fail closed. Missing optional font
+  evidence never changes the selected language.
+- Korean and Traditional Chinese fixed labels use event-only generated 2x
+  overlays from pinned DroidSansFallback at base size 32, with a one-pixel
+  translucent stroke and role-specific optical baselines. The six status-
+  specific main assets cover all 30 fixed ko/zh-Hant text slots, the shared
+  popup covers only those two language names, and the other nine languages stay
+  on native game fonts. Static generation confirms no clipping. Loading those
+  fixed assets adds no tick-time font work; live visual acceptance remains
+  separate.
+
+### Responsive F6 cost boundary
+
+- F6 uses one transient responsive reference page scaled and clamped to the
+  current viewport and DPI at open time.
+- The existing 50 ms service is active only while the page is open. Closing F6
+  returns to the same no-UObject-access path.
+- An explicit F6 request may perform bounded 250 ms Controller/readiness probes
+  for at most 15 seconds before the page opens or the request expires. This work
+  exists only after the key press and is not a steady-state poll.
+- Bug Report and Close are independent top-bar controls. Off/On/Fault status is
+  read-only text with a thin state-colored strip and updates only when status
+  changes. Enable, Disable, or Retry is a separate one-shot action that keeps the
+  page open; the fixed Nexus Posts launch is also one-shot. These commands add no
+  recurring service when F6 is closed. Translucent cards, equal-width filter
+  choices, and alignment changes are presentation-only.
+- The zero-size seed and optional-to-base retry are bounded to the explicit F6
+  construction path. They add no engine-tick branch, steady allocation, font
+  scan, language poll, or closed-panel work.
+- A real setting change writes one bounded atomic configuration replacement;
+  unchanged samples write nothing. Expanded-map changes remain coalesced into
+  at most one rebuild when the page closes.
+
+### Historical expanded-map atlas-layout stability boundary
+
+- The historical 2.2.0 implementation placed two outer slots on the native
+  Canvas, each occupying the atlas parent-local rectangle
+  `{atlas_left,atlas_top,atlas_width,atlas_height}`. Each `Panel_Point` Image is
+  local `{0,0,atlas_width,atlas_height}`. The live-rejected full-parent
+  outer-host experiment was not part of that historical baseline. Version 2.2.1
+  supersedes this ownership model with independent viewport-owned hosts and a
+  read-only native Canvas as described above.
+- This correction adds no immediate parent-size post-check, parent-growth
+  rejection, extent-change token, or projection fallback. Later layout changes
+  continue through the existing witnessed stable-geometry and bounded map/zoom
+  reconstruction strategy.
+- Live parent resolution, cached-Slate transforms, DPI, window, zoom,
+  independent X/Y projection, and aspect-ratio handling remain in the existing
+  finite observation chain. No `3000`/`8000` extent is accepted as a geometry
+  substitute.
+- Alignment remained pending live acceptance of the 2.2.0 replacement DLL.
+  The observed runtime snapshot contained 1,632 total markers, including 1,501
+  Treasures, below the old 1,785 limit. Capacity was therefore not the flicker
+  root. The historical exact 84A360B0 log shows one attach and no repeated detach/rebuild
+  sequence, but diagnostics-disabled and diagnostics-enabled runtime comparison
+  is still required before any dense-map performance or stability claim.
+- Fixed snapshot capacity is now 4,096. The accepted maximum is 2,500 Treasure
+  rows plus 279 fixed non-Treasure rows, or 2,779 total, leaving 1,317 spare
+  slots without adding a dynamically growing steady-state container.
+- Style revision 50 builds two 3072-by-3072 atlases. This is 50 percent more
+  linear raster density and approximately 72 MiB raw for two decoded BGRA
+  atlases versus about 32 MiB at 2048. The additional roughly 40 MiB belongs to
+  event-built atlas textures, not per-frame allocation. Marker coordinates,
+  projection, zoom, parent ownership, and outer/inner container geometry remain
+  unchanged. Runtime memory, attach time, visual quality, and clean exit still
+  require exact-artifact acceptance.
+
+For 2.2.0, refreshed Core `2/2`, all static gates, release hygiene, and the
+clean native `/W4 /WX` build passed for DLL
+`6AEFDACC1A44EF6F387456CB31FE1A6828259EF7ACDEE1D1FE13BAE10BDFA4D5`,
+bound to compiled-source SHA-256
+`A98660932CC5DA1BC3E2B9D262DBFC13E0FED3935A6174B5C92E8622BBA2A1EC`.
+`Build-Release.ps1` package validation passed for that exact DLL: Setup reports
+  `20/20`, the manual-copy matrix reports `2/2`, payload equivalence, manual
+  layout, and clean-target policy validation pass, and all three public ZIPs
+  re-extract byte-identically. Local diagnostics-enabled deployment of
+  exact DLL `6AEFDACC...` passed with matching source, build, and installed
+  hashes. Its rollback backup is
+  `dist/work/deployment/deploy-backups/20260903-003509-033-native-only-deploy`.
+  The prior backup
+  `dist/work/deployment/deploy-backups/20260902-234105-640-native-only-deploy`.
+  belongs to the superseded intermediate 59529B2A deployment and was not final
+  2.2.0 candidate evidence. This is not Setup ownership; the earlier 634D283A
+  deployment is historical only. None of these records validate 2.2.1.
+
+The packaged game-1.0.11 owner RVA and `0x128` key-member offset remain fast
+paths. One FullActivation shares a total budget of at most 24 active-`.db` key
+validations across packaged and structural owner routes. Packaged-owner failure
+permits one unique structural scan that counts only targets inside the mapped
+image and scans executable sections through `min(SizeOfRawData, VirtualSize)`.
+Structurally incompatible updates fail closed, and this is not an all-future-
+version guarantee. F6 measured desired-size text reflow applies only to exact
+font-layout TextBlocks during first open and explicit language, status, or popup
+presentation changes. The return structure must match the known `Vector2D`
+identity. Invalid evidence and the render-scale fallback preserve authored
+geometry; buttons, maps, and the per-frame
+path are untouched. Those are static scheduling properties, not measured
+runtime performance or visual acceptance.
+Real gameplay, simultaneous
+height guidance, physical-controller behavior, all 11 language glyphs,
+responsive layouts, F6 vertical alignment, exit behavior, and diagnostics-
+disabled frame-time comparison remain
+`NOT_VALIDATED` until captured against that exact final artifact. Static
+verification cannot replace live visual acceptance.

@@ -2,7 +2,7 @@
 
 This document records the dependency evidence for
 `DragonSwordNativeWorldRadarPostRender` version
-`2.1.0`. It is an engineering provenance record, not a
+`2.2.1`. It is an engineering provenance record, not a
 legal opinion.
 
 ## Public-release status
@@ -21,17 +21,19 @@ must be resolved before publishing the release archive:
    reproducible source-to-binary chain for this DLL are not recorded. Confirm
    redistribution obligations and obtain the exact corresponding build source
    provenance before publication.
-3. The runtime package includes catalogs derived from the installed game PAK and
-   a 147-record coordinate table previously validated from MnMRadar. Confirm the
-   right to redistribute those derived records, preserve required attribution,
-   and document their exact provenance before publishing either archive.
+3. The runtime package includes catalogs derived from the installed game PAK, a
+   147-record coordinate table previously validated from MnMRadar, Area Quest
+   height-band profiles, and 40 Mole height values derived from the pinned XML
+   sources described below. Confirm the right to redistribute those derived records, preserve
+   required attribution, and document their exact provenance before publishing
+   any archive.
 
 Internal, local gameplay testing is a separate decision and does not clear
-either publication blocker.
+any publication blocker.
 
 ## Source-archive scope
 
-The final `dist/final-2.1.0` binary allowlist contains no source archive. If a
+The target `dist/final-2.2.1` binary allowlist contains no source archive. If a
 separate `-source.zip` is generated later, it is **project source only**. Such an
 archive may contain this project's source, catalogs, metadata, documentation,
 licenses, tests, and verification tools selected by a dedicated source
@@ -44,6 +46,73 @@ Builders must acquire the pinned dependencies separately. Every publication
 candidate must preserve a build receipt and repeat the binary/import/object
 audit because a dependency being present in the build graph does not prove that
 its code survived the final link.
+
+## F6 localized text raster input
+
+Korean and Traditional Chinese fixed F6 labels are generated at build time
+from the following pinned font input in the RE-UE4SS dependency tree:
+
+- Build input: `.sdk/RE-UE4SS/deps/fonts/droid/DroidSansFallback.ttf`
+- SHA-256:
+  `05D71B179EF97B82CF1BB91CEF290C600A510F77F39B4964359E3EF88378C79D`
+- Copyright: 2005-2008, The Android Open Source Project
+- License: Apache License, Version 2.0
+- Generator: `tools/Build-F6LocalizedTextOverlays.py`
+- Verification gate: `tools/Verify-F6LocalizedTextOverlays.ps1`
+- Runtime outputs: seven 2x, transparent, RLE-compressed TGA files plus their
+  source-bound manifest under `assets/ui/f6`
+
+The runtime payload includes only the rasterized text overlays and manifest;
+it does not include the font binary. `THIRD_PARTY_NOTICES.txt` records this
+attribution, and `licenses/APACHE-2.0.txt` supplies the license text. The gate
+checks the font hash, exact output allowlist, dimensions, RLE stream, manifest
+hashes, and agreement with the runtime Korean and Traditional Chinese strings.
+
+## Derived Area Quest height input
+
+The 2.2.0 Area Quest height-band profile uses this source relative to the project
+root:
+
+- Source: `../DragonSwordWorldDataProbe/reference/assault-support/xml/017_ActorPositionData.xml`
+- `ActorPositionData` records: `7,536`
+- Source SHA-256:
+  `11CA916050AFA25F856DF0AFF46CAE0D23F928E8490617FBD3B524DC183E3ACF`
+- Derived output: `src/data/generated/area-quests.tsv`
+- Deterministic generator and verification entry point:
+  `tools/Build-AreaQuestHeightCatalog.ps1`
+
+The generated TSV retains the previously validated MnMRadar marker coordinates
+and adds independently sourced one- or two-band minimum/maximum Z fields plus a
+band count. This hash and deterministic derivation establish the reviewed
+engineering lineage; they
+do not establish redistribution permission. The XML-derived values and the
+generated output remain **not cleared for public release** pending the same
+rights, attribution, and provenance review as the other game-data-derived
+catalogs.
+
+## Derived Mole height inputs
+
+The 2.2.0 Mole height arrow uses a deterministic offline join of two reviewed
+inputs relative to the project root:
+
+- Actor positions:
+  `../DragonSwordWorldDataProbe/reference/assault-support/xml/017_ActorPositionData.xml`
+- Actor-position SHA-256:
+  `11CA916050AFA25F856DF0AFF46CAE0D23F928E8490617FBD3B524DC183E3ACF`
+- Mini-game definitions:
+  `../DragonSwordWorldDataProbe/reference/assault-support/xml/001_MiniGameData.xml`
+- Mini-game-definition SHA-256:
+  `EDA335750F30C31D1A3E003C96B54024F671F600E18FCC02759970F7236CE9E3`
+- Derived output: the 40 map-100 Mole records in
+  `src/data/generated/moles.lua`
+- Deterministic generator and verification entry point:
+  `tools/Build-MoleHeightCatalog.ps1`
+
+The join accepts only exact `MiniGame_Mole_<id>_NPC_Start` identities and emits
+one trusted numeric height per Mole record. These hashes prove only the reviewed
+engineering lineage. They do not establish redistribution permission, and the
+derived rows remain **not cleared for public release** until the game-data
+rights, attribution, and provenance review is complete.
 
 ## Direct SDK inputs
 
@@ -141,7 +210,8 @@ recorded and reviewed:
 - the exact `e_sqlcipher.dll` source revisions, patches, build configuration,
   compiler/toolchain, and reproducible output hash;
 - redistribution rights, attribution, and provenance for the PAK-derived
-  catalogs and MnMRadar-derived coordinate table;
+  catalogs, MnMRadar-derived coordinate table, pinned `ActorPositionData` XML,
+  and its derived Area Quest height-band profile output;
 - complete notices/license material for every object that survives the final
   link and every bundled runtime library;
 - an independently repeated import-table and object/PDB audit for the final DLL;

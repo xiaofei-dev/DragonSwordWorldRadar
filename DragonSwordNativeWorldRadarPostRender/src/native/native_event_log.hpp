@@ -55,18 +55,19 @@ void begin_native_event_log_session(
 // events receive capture-time sequence, UTC Unix-millisecond, and
 // process-session elapsed-millisecond fields. A dedicated worker serializes
 // and flushes records; queue contention or saturation drops the record instead
-// of blocking gameplay.
-void append_native_event_log(
+// of blocking gameplay. Returns true only when the record entered the queue.
+bool append_native_event_log(
     std::string_view event, std::string_view detail) noexcept;
 
 // Structured performance records avoid string formatting and allocation on
-// the game thread. They are converted to the stable text schema by the writer.
-void append_native_engine_tick_slow(
+// the game thread. They are converted to the stable text schema by the writer
+// and likewise return true only when enqueued.
+bool append_native_engine_tick_slow(
     const NativeEngineTickProfileSample& sample,
     std::uint64_t slow_threshold_us,
     std::uint64_t slow_total) noexcept;
 
-void append_native_engine_tick_profile(
+bool append_native_engine_tick_profile(
     const NativeEngineTickProfileReport& report) noexcept;
 
 // Stops the writer after draining the bounded queue and flushes the file. This

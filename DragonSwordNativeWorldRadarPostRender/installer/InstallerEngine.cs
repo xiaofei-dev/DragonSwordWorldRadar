@@ -67,8 +67,8 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
 
     internal static class InstallerEngine
     {
-        private const string ProductVersion = "2.1.0";
-        private const string RuntimeLabel = "DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_1_0";
+        private const string ProductVersion = "2.2.1";
+        private const string RuntimeLabel = "DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1";
         private const string GameFileName = "DSClient-Win64-Shipping.exe";
         private const string ModName = "DragonSwordNativeWorldRadarPostRender";
         private const string LegacyRadarName = "DragonSwordWorldRadarObjectState";
@@ -1861,7 +1861,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             if ((!ascii.Contains(ProductVersion) && !unicode.Contains(ProductVersion)) ||
                 (!ascii.Contains(RuntimeLabel) && !unicode.Contains(RuntimeLabel)))
             {
-                throw new InvalidDataException("The embedded native radar plugin lacks the 2.1.0 release identity marker.");
+                throw new InvalidDataException("The embedded native radar plugin lacks the 2.2.1 release identity marker.");
             }
         }
 
@@ -2876,7 +2876,11 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                     "treasure", "boss", "assault", "mini_games", "area_quests"
                 }, StringComparer.Ordinal) },
                 { "modes", new HashSet<string>(new[] {
-                    "area_quests", "assault" }, StringComparer.Ordinal) }
+                    "area_quests", "assault" }, StringComparer.Ordinal) },
+                { "height_arrows", new HashSet<string>(new[] {
+                    "treasure", "area_quests", "mole" }, StringComparer.Ordinal) },
+                { "interface", new HashSet<string>(new[] {
+                    "language" }, StringComparer.Ordinal) }
             };
             var seenSections = new HashSet<string>(StringComparer.Ordinal);
             var values = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -2934,6 +2938,18 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                             qualified + " must be exactly 'available' or 'all'.");
                     }
                 }
+                else if (string.Equals(section, "interface", StringComparison.Ordinal))
+                {
+                    var supportedLanguages = new HashSet<string>(new[] {
+                        "auto", "en", "ja", "ko", "zh-hans", "zh-hant",
+                        "fr", "de", "es-es", "ru", "th", "pt-br"
+                    }, StringComparer.Ordinal);
+                    if (!supportedLanguages.Contains(value))
+                    {
+                        throw new InvalidDataException(
+                            qualified + " contains an unsupported language ID.");
+                    }
+                }
                 else if (!string.Equals(value, "true", StringComparison.Ordinal) &&
                          !string.Equals(value, "false", StringComparison.Ordinal))
                 {
@@ -2942,22 +2958,35 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                 }
                 values.Add(qualified, value);
             }
-            if (seenSections.Count != required.Count ||
-                required.Any(pair => pair.Value.Any(
+            var legacySections = new HashSet<string>(new[] {
+                "radar", "map", "modes"
+            }, StringComparer.Ordinal);
+            var legacyLayout = seenSections.SetEquals(legacySections);
+            var currentLayout = seenSections.SetEquals(required.Keys);
+            IEnumerable<KeyValuePair<string, HashSet<string>>> requiredForLayout = currentLayout
+                ? required
+                : required.Where(pair => legacySections.Contains(pair.Key));
+            if ((!legacyLayout && !currentLayout) ||
+                requiredForLayout.Any(pair => pair.Value.Any(
                     key => !values.ContainsKey(pair.Key + "." + key))))
             {
                 throw new InvalidDataException(
                     "visibility.ini is missing a required section or setting.");
             }
             if (requirePublicDefault &&
-                values.Any(pair =>
+                (!currentLayout ||
+                 values.Any(pair =>
                     (pair.Key.StartsWith("radar.", StringComparison.Ordinal) ||
                      pair.Key.StartsWith("map.", StringComparison.Ordinal))
                         ? !string.Equals(pair.Value, "true", StringComparison.Ordinal)
-                        : !string.Equals(pair.Value, "available", StringComparison.Ordinal)))
+                        : pair.Key.StartsWith("modes.", StringComparison.Ordinal)
+                            ? !string.Equals(pair.Value, "available", StringComparison.Ordinal)
+                            : pair.Key.StartsWith("height_arrows.", StringComparison.Ordinal)
+                                ? !string.Equals(pair.Value, "true", StringComparison.Ordinal)
+                                    : !string.Equals(pair.Value, "auto", StringComparison.Ordinal))))
             {
                 throw new InvalidDataException(
-                    "The embedded public visibility default must enable every display category and use available modes.");
+                    "The embedded public visibility default must enable every display category and height indicator, use available modes, and follow the game language.");
             }
         }
 

@@ -1,5 +1,339 @@
 # Changelog
 
+## 2.2.1 (Unreleased)
+
+Version 2.2.1 is a fixes-only world-map stability release. It adds no marker,
+catalog, capacity, style, F6, localization, height, save, or installer feature.
+
+- Stop attaching the two Mod atlas hosts as children of the game-native
+  world-map icon Canvas. That Canvas is now a read-only geometry and
+  player-icon witness, so Mod capacity cannot enter the native desired-size,
+  prepass, layout, Z-slot, or hit-test state.
+- Own both hit-test-invisible atlas hosts directly in the game viewport and
+  transform accepted native-Canvas geometry into viewport-local coordinates.
+  This isolates native icon positions and click targets from Mod-owned widget
+  geometry while preserving the existing independent-X/Y, DPI, zoom,
+  player-anchor, aspect-ratio, marker-center, and atlas projection chain.
+- Limit same-parent pan, zoom, DPI, and layout observations to host-transform
+  updates. They no longer rerasterize atlases, rebuild marker data, reparent,
+  or remove/add hosts.
+- Collapse the Mod-owned hosts and fail closed when geometry is missing,
+  implausible, mismatched, or still unstable at the final bounded settle
+  deadline.
+- Preserve all 2.2.0 hashes, test results, package results, and deployment
+  records as historical evidence only. Exact-artifact 2.2.1 source validation,
+  build, packaging, installer matrices, and developer-local deployment passed.
+  Native-icon stability, click-target alignment, gameplay, exit, and
+  performance acceptance remain pending live testing.
+
+## 2.2.0 (Historical release)
+
+Version 2.2.0 is a feature release for compact-radar height guidance,
+localization, and the F6 settings experience. It preserves the complete 2.1.1
+history below; the 2.1.1 `B89F...` DLL and package hashes are historical only
+and are not 2.2.0 evidence.
+
+- Restore save-backed Radar functionality for the September 2026 game update
+  identified locally by Steam build `25076183`, executable length
+  `162606488`, and SHA-256
+  `B3E0B8CAB6752ACB981E104CA95A0105F76FCDD42EE622A8063AB8DE44FCA94C`.
+  The executable owner pointer
+  remains uniquely resolvable at RVA `0x94F4FA8`, while the live SQLCipher-key
+  `FString` moved from owner offset `0x120` to `0x128`. The packaged owner RVA
+  and verified current `0x128` member are zero-scan fast paths, not fixed
+  compatibility requirements. Reconciliation tries the cached field, legacy
+  `0x120`, verified current `0x128`, and only then a bounded aligned fallback.
+  Every candidate must authenticate the active `.db` by reading its schema
+  before it may be cached; an older `.bak` cannot select a stale key. If all
+  candidates from the packaged owner fail that active-database check, one full
+  activation may scan the current executable once for exactly one retained
+  structural signature. The scan counts only targets inside the mapped image
+  and scans executable sections through `min(SizeOfRawData, VirtualSize)`.
+  Packaged and structural owner routes share one total budget of at most 24
+  active-`.db` key validations. Zero or multiple signature matches, or a second
+  failure to authenticate, fail closed. This supports only structurally
+  compatible game updates and is not a promise of compatibility with every
+  future version. The work remains F7-triggered on the existing below-normal
+  worker, logs only route/offset/count/timing metadata, and adds no steady-state
+  or per-frame work. A failed full reconciliation is exposed as Fault so F6
+  Retry or an explicit F7 performs one fresh bounded activation.
+- Add a shared compact-radar mini-game height indicator. Exact trusted
+  `NPC_Start` heights cover all 83 map-100 rows: 33 Fly, 40 Mole, and 10 Wave.
+  A missing or ambiguous height hides only the mini-game triangle and never hides
+  the marker. The persisted configuration key remains `mole` for compatibility.
+- Keep the three height controls visually and operationally independent and
+  enable all three on a clean install. Treasure uses the existing
+  category-colored full arrow. Every visible Area Quest evaluates a generated
+  height profile. A single-band profile is used directly. For a multi-band
+  profile, the authored marker Z selects the uniquely nearest existing source
+  band; marker Z is selection evidence only and never becomes a synthetic
+  height. An exact-distance tie or missing profile remains neutral. The normal
+  black frame keeps three white dots inside the selected source band's inclusive
+  +/-500 margin; below it points up and above it points down. There is no
+  separate Area Quest arrow. The nearest
+  Fly, Mole, or Wave uses a shaftless triangle centered below its own icon and
+  colored from its actual kind, with a near-black outline for contrast. This
+  outline changes neither size nor position nor projection. Target Z above the comparable player Z points
+  up, target Z below points down, and the inclusive +/-500 band hides it. Every
+  compact height channel compares against the same calibrated
+  `playerZ - 150`; Treasure retains its existing category-specific geometry and
+  dead-zone behavior. All three controls are compact-radar only, and valid
+  existing choices are preserved.
+- Replace the superseded single-height Area Quest catalog contract with bounded
+  height profiles: 147 marker rows contain 144 profiles, one genuine two-band
+  profile, and three no-source rows. Move_Check-only trigger bands are excluded
+  when a real task-actor band exists. The runtime uses authored marker Z only to
+  choose the uniquely nearest source band; it never falls back to marker Z as a
+  height source, and a missing profile or exact-distance tie remains neutral.
+- Extend the persisted F6 preferences with independent Treasure, Area Quest,
+  and shared mini-game height-indicator switches. The compatibility storage key
+  remains `mole`; existing visibility and mode settings remain independent.
+- Add UI text for all 11 currently supported game languages: English,
+  Japanese, Korean, Simplified Chinese, Traditional Chinese, French, German,
+  Spanish (Spain), Russian, Thai, and Portuguese (Brazil).
+- Add a centered language dropdown containing only the 11 explicit languages;
+  AUTO/Use Game Language is no longer displayed. A legacy AUTO preference is
+  migrated on the next actual F6 opening or F7 activation by resolving
+  `DGameUserSettings.LanguageText`, then Kismet and English, and persisting the
+  matching explicit language. An explicit persisted selection remains
+  authoritative.
+- Select already-loaded game Font objects by script: Common for Korean and
+  Latin/Cyrillic UI languages, TC for both Chinese choices, JP for Japanese,
+  and TH for Thai. Missing loaded-font evidence falls back safely without
+  changing the language, guessing an asset path, or replacing FontMaterial;
+  exact-artifact glyph acceptance remains pending. Missing or expired weak
+  identities are retried only on a real F6 open. The external `DS_HYFont_P.pak`
+  overrides Common/TC without complete glyph coverage and must be disabled or
+  replaced for localization QA; raw Pretendard FontFace assets are not routed
+  as `UFont` objects.
+- Regenerate the fixed Korean and Traditional Chinese 2x text overlays from the
+  pinned DroidSansFallback source at base size 32, with a one-pixel translucent
+  foreground stroke and role-specific optical baselines. The canonical
+  `assets/ui/f6` payload contains six status-specific main overlays, one shared
+  language-popup overlay, and its manifest. Each ko/zh-Hant main overlay replaces
+  all 30 fixed main-panel text slots; the popup replaces only those two language
+  names. The other nine languages remain on native game fonts. Regenerate the
+  assets against the finalized top-bar, status, and filter-row coordinates:
+  Bug Report `(411,17,126,26)` at role scale `0.40`, Close `(559,17,94,26)`,
+  status label/value/action `(32,142,98,24)` / `(158,142,154,24)` /
+  `(435,142,208,24)`, and filter text X `334` / `496`, width `146`, Y `583` /
+  `615`. Tight-alpha placement centers Bug Report on both axes. Static
+  verification audits all 11 runtime blocks, covers `123/123` overlay
+  codepoints, reports minimum fit `1.000`, maximum optical-center error `0.5`
+  raster pixel, no edge alpha or slot overflow, and deterministic `8/8`
+  regeneration including the manifest. In-game
+  size, weight, and alignment remain pending live visual acceptance.
+- Redesign F6 as one responsive settings page with Mod Status, Language,
+  Marker Visibility, Height Indicators (Radar Only), Filter Modes, and Bug
+  Report controls. The panel scales and clamps to the available viewport rather
+  than relying on one fixed desktop resolution. It opens in Off, On, or Fault
+  state; the action becomes Enable, Disable, or Retry. Enable still requires a
+  playable world, and Bug Report opens the fixed Nexus Posts page.
+- Finalize the F6 interaction hierarchy: Bug Report and Close are separate top-
+  bar controls; Mod Status is read-only text beside a thin state-colored strip;
+  and Enable, Disable, or Retry remains a separate action that does not close
+  the page. Use translucent section cards, equal-width filter choices, corrected
+  text alignment, and bounded non-overlapping click regions without adding any
+  closed-panel or steady-state work.
+- Fix the F6 initialization regression caused by resolving text justification
+  from `TextBlock` instead of its declaring `TextLayoutWidget` class. Text
+  centering is now optional visual behavior and can no longer disable the
+  complete settings panel.
+- Fix the exact-artifact F6 construction rejection recorded as `failure=8`
+  with `font_abi_details=128`. The runtime log proves the F6 request, selected
+  language, grouped header rejection, and unavailable optional CDO font path;
+  the source audit separately identified exact-zero `Font.Size` handling as a
+  source-level path capable of producing the grouped rejection. The corrected path seeds one bounded
+  reference size only for `Font.Size == 0`. If game-widget construction,
+  target-size calculation, or font commit still fails, the same F6 transaction
+  retries that text once as base UMG `TextBlock`. If both exact-size paths fail,
+  one fresh game `DTextBlock` and then one base `TextBlock` fallback leave
+  `Font` untouched and use only bounded `SetRenderScale`/pivot presentation.
+  Their `target_size=0` sentinel skips both post-prepass exact-size loops. Core
+  UMG widget creation, `SetText`, tree insertion, and viewport attachment remain
+  fail-closed, and this work runs only during an explicit F6 construction.
+- Vertically center native F6 text during event-driven construction and explicit
+  presentation changes. After the second layout prepass and exact font-size
+  readback, a measured `GetDesiredSize` pass repositions exact font-layout
+  TextBlocks around their authored vertical center. Its return structure must
+  match the known `Vector2D` identity. An unavailable, faulting, invalid, or
+  oversized desired size leaves that text's original slot geometry unchanged
+  and does not reject F6. Render-scale fallback text preserves its authored
+  slot geometry. This
+  presentation-only pass does not change button hit boxes, compact-radar or
+  expanded-map geometry, and adds no closed-panel or per-frame work.
+- Record the second diagnostics-enabled F6 rejection from the deployed
+  `D6CF...` DLL. Every F6 press reached `VISIBILITY_HUB_OPEN_PENDING`, resolved
+  the selected and active language to `zh-hans`, and then rejected the page as
+  `failure=8`, `font_abi_details=128`, `font_source=2`,
+  `font_fallback_reason=2`, and `text_runtime_failure=6`. This places both the
+  game `DTextBlock` attempt and its base UMG `TextBlock` retry at failed target-
+  size preparation; the log alone does not prove one unique internal cause.
+  Source review found that both paths performed an instance-level `Font`
+  property lookup that differed from the successful initialization-time class-
+  chain lookup. The replacement reuses the initialization-validated
+  `TextBlock.Font` class property and verifies owner, inheritance, offset, and
+  container access before reading it. This remains explicit-F6-only work. The
+  D6CF package set and deployment are superseded, and live F6 opening remains
+  `NOT_VALIDATED` until the owner tests the replacement DLL.
+- Record the owner retest of exact deployed DLL `5210E27D...`. F6 again reached
+  `VISIBILITY_HUB_OPEN_PENDING`, selected `zh-hans`, and rejected with
+  `failure=8`, `abi_failures=0`, `font_abi_details=128`, `font_source=2`,
+  `font_fallback_reason=2`, and `text_runtime_failure=6`. This proves cached
+  class-property reuse alone was insufficient: optional `Font.Size`
+  preparation was still incorrectly coupled to required page labels. The
+  replacement therefore treats the reflected Font/SetFont layout as optional
+  diagnostic detail and retains the bounded no-Font-mutation render-scale path.
+- Record the owner visual rejection of exact deployed DLL `64BFEB26...`. F6
+  opened in Simplified Chinese, but the log reported `font_source=3` and
+  `font_fallback_reason=6`; labels were clipped and compressed because
+  `SetRenderScale` changed paint output without changing Slate line boxes.
+  The root cause was the integer-only compatibility check for
+  `FSlateFontInfo.Size`, which is reflected as floating point. The replacement
+  accepts floating-point and integer numeric metrics through their matching
+  UE4SS APIs, writes the target only into a copied `SetFont` parameter, and
+  verifies the committed widget size after the call and again after prepass.
+  The render-scale path remains an emergency availability fallback only and is
+  not visual acceptance. This work occurs only during explicit F6 construction
+  and adds no frame work.
+- Make `SetWorldMapImage` the only positive world-map-open signal. F7 and
+  travel catch-up may service or clear an existing latch but cannot suppress
+  the compact radar merely because a constructed `DLayerMap` reports visible;
+  the compact radar now attaches without first opening the expanded map.
+- Apply Area Quest height state to every visible Area Quest marker itself.
+  A multi-band profile first selects the uniquely nearest existing source band
+  from the authored marker Z. Inside that selected band's inclusive +/-500
+  margin it keeps the normal black frame and shows three white dots. Below the
+  selected band it becomes an upward black triangle; above it becomes a downward
+  black triangle. An exact-distance tie or missing profile keeps the frame with
+  no dots and no direction. Directional triangles remain centered on the original task
+  marker; no Treasure-style horizontal clearance or separate left-side Area
+  Quest pointer is used.
+- Document the confirmed third-party font boundary: a font PAK that replaces
+  Common/TC assets with a face missing Hangul or extended Latin also removes
+  those glyphs from F6. Renaming the overridden asset cannot restore absent
+  glyph data.
+- Prefer the game's compatible `DTextBlock` for transient F6 text.
+  `ForceApplyLanguageFont` and a compatible class-default-object composite font
+  are best-effort. An exact zero `Font.Size` is seeded once; a game-widget
+  construction, target-size, or font-commit failure retries that text once as
+  base UMG `TextBlock` during the same F6 open. The real reflected `Font.Size`
+  still participates in layout, is constrained by each slot's safe line height, and
+  is reapplied and read back after `AddToViewport` and layout prepass. If both
+  exact-size attempts fail, a fresh DTextBlock/base TextBlock fallback leaves
+  Font untouched and applies the already bounded viewport/DPI scale through
+  render scale and a justification-aware pivot. Missing optional font evidence
+  never changes the selected UI language or disables the complete page.
+- Restore expanded-map atlas-local placement after live screenshots rejected
+  the full-parent outer-host experiment. Each outer native Canvas slot now
+  occupies `{atlas_left,atlas_top,atlas_width,atlas_height}`, and its
+  `Panel_Point` Image occupies local `{0,0,atlas_width,atlas_height}`. This
+  correction explicitly withdraws the added post-attach parent-size check,
+  parent-growth rejection, and extent-change token: it introduces no new
+  parent-size assumption and continues the existing witnessed stable-geometry
+  and bounded map/zoom reconstruction strategy. A same weak parent observation
+  returns `Unchanged` with no Remove/Add, reparent, or extra atlas render; only
+  a real weak parent identity change reparents. Marker projection, cached Slate transforms,
+  DPI, zoom, player-anchor, independent X/Y scaling, and aspect-ratio handling
+  are unchanged, and no `3000`/`8000` geometry constant is used. Expanded-map
+  capacity is 4,096. The accepted maximum is 2,500 Treasure rows plus 279 fixed
+  non-Treasure rows, or 2,779 total, leaving 1,317 spare slots. Expanded-map
+  alignment remains pending exact-build live acceptance.
+- Refine expanded-map glyph raster styling at revision 50: Treasure uses a
+  cleaner symmetric lid/body/lock silhouette, Fly/Mole/Wave render complete
+  shadow-outline-fill layers, Mole gains separate handle/head highlights, and
+  Boss, Assault, and Area Quest internals remain readable at small sizes. Both
+  atlases are 3072-by-3072, a 50-percent increase in linear raster density. Two
+  decoded BGRA atlases occupy about 72 MiB raw versus about 32 MiB at 2048. This
+  changes event-built raster density only: marker coordinates, projection, zoom,
+  parent ownership, and all outer/inner container geometry are unchanged.
+  Runtime visual acceptance remains pending.
+- Keep all expanded-map source and contracts completely unchanged during the
+  final F6/localization/compact-indicator closeout. Atlas geometry, 4,096-entry
+  capacity, coordinates, projection, zoom, parent ownership, and style revision
+  50 are outside this source change.
+- Record the bounded dense-map evidence separately from capacity headroom. The
+  observed snapshot contained 1,632 total markers, including 1,501 Treasures,
+  below the old 1,785 limit; capacity was therefore not the flicker root. The
+  current log shows one attach and no repeated detach/rebuild sequence. The
+  larger 4,096 limit protects the accepted catalog envelope and future growth,
+  but dense-Treasure flicker still requires exact-artifact live acceptance.
+- Pin the mini-game height generator to the reviewed mini-game and actor-position
+  inputs. The 83 trusted rows are a generated release input, not a runtime PAK
+  extraction or scan.
+- Close out the current F6 presentation, localized-overlay, and compact-
+  indicator replacement with Core `2/2`, compact, world-map, PostRender,
+  release-hygiene, and clean native `/W4 /WX` gates. Its source-bound
+  `main.dll` SHA-256 is
+  `6AEFDACC1A44EF6F387456CB31FE1A6828259EF7ACDEE1D1FE13BAE10BDFA4D5`, from
+  compiled-source SHA-256
+  `A98660932CC5DA1BC3E2B9D262DBFC13E0FED3935A6174B5C92E8622BBA2A1EC`.
+  Current build status is `PASSED`. Local diagnostics-enabled deployment of
+  exact DLL `6AEFDACC...` passed with matching source, build, and installed
+  hashes. Its rollback backup is
+  `dist/work/deployment/deploy-backups/20260903-003509-033-native-only-deploy`.
+  Backup
+  `dist/work/deployment/deploy-backups/20260902-234105-640-native-only-deploy`
+  belongs to the superseded intermediate 59529B2A deployment and is not current
+  candidate evidence. Setup ownership and gameplay evidence remain pending. The earlier
+  634D283A local debug deployment and backup remain superseded historical
+  evidence only.
+  `Build-Release.ps1` package validation passed for exact DLL `6AEFDACC...`:
+  Setup reports `20/20`, the manual-copy matrix reports `2/2`, payload
+  equivalence, manual layout, and clean-target policy validation pass, and all
+  three public ZIPs re-extract byte-identically. The earlier package set bound
+  to `5210E27D...` is superseded historical evidence only.
+  Live gameplay, F6 visual alignment, controller, exit behavior, performance,
+  responsive-layout, every-language font/glyph, and expanded-map visual
+  acceptance remain separate live runtime checks; static verification cannot
+  substitute for them.
+- Treat the healthy 84A360B0 runtime log as evidence only for those exact prior
+  bytes. It records no renderer, ABI, F6, or UE4SS fatal error and reaches normal
+  shutdown, but it cannot validate the newly built 6AEFDACC compatibility
+  replacement, F6 presentation, localized-overlay, or compact-outline bytes.
+  Those bytes still
+  require a fresh live test.
+- Bound shutdown against the reported 09:33 exit crash. That crash came from the
+  old E64 artifact and does not prove causality. Current shutdown closes ingress
+  atomically; only a known live GameThread performs UE cleanup, true process
+  teardown performs no I/O/log/join/close, and one finalizer owns the final
+  flush. A repeated-exit runtime matrix remains pending.
+
+## 2.1.1
+
+Version 2.1.1 is a corrective patch for controller-opened menu suppression and
+Area Quest height-arrow accuracy and presentation. It does not relabel or
+replace the accepted 2.1.0 history.
+
+- Suppress the independent compact-radar host when the world map is visibly
+  open or the game is paused, including controller paths that do not expose a
+  hardware cursor. The exact `SetWorldMapImage` edge latches map suppression;
+  bounded `IsVisible` catch-up and optional `IsGamePaused` sampling share the
+  existing 250 ms activity service. The 16 ms path consumes Booleans only. No
+  controller mapping is read, and no input poll, focus hook, timer, scan,
+  allocation, or recurring log is added.
+- Introduce the first separately sourced Area Quest height correction while
+  retaining all 147 original MnMRadar marker coordinates. This historical
+  single-height contract is superseded by the 2.2.0 one- or two-band profile
+  model and is not a current release gate.
+- Give Area Quest height indicators a distinct shaftless chevron with black
+  outline and white fill. It collapses the two shaft pieces in the existing
+  fixed six-piece group; treasure keeps its complete colored shafted pointer.
+  No widget, allocation, or UObject read is added to the motion path.
+- Preserve an existing installed `treasure_overrides.txt` across developer
+  deployment, detect a staging-time change, restore the preserved bytes, and
+  verify their SHA-256 identity. The shipped default remains the single
+  `ignore 11230106` rule.
+- The core tests, all four current static source gates, a clean native `/WX`
+  build, Setup `20/20`, manual-copy `2/2`, payload equivalence, clean-target
+  validation, and three-archive re-extraction pass. The packaged `main.dll`
+  SHA-256 is
+  `B89F8584274850ADC35D0703725A14F00A14F0F9093574DB09F022E0B68F2F3B`.
+  A local diagnostics-enabled deployment installed that exact DLL, retained
+  the existing treasure override byte-for-byte, enabled exactly one Radar load
+  line, and left no predecessor load line. Live controller behavior, Area Quest
+  visuals, gameplay, and external performance remain `NOT_VALIDATED`.
+
 ## 2.1.0
 
 Version 2.1.0 is the post-2.0.0 corrective release. It keeps the published
@@ -27,25 +361,20 @@ Version 2.1.0 is the post-2.0.0 corrective release. It keeps the published
   release hygiene, Setup, final packages, and manual-copy verification. This
   fixes stale default-receipt packaging while preserving project-root and
   byte-identity gates.
-- Stop wheel zoom from repeatedly rebuilding the complete expanded-map atlas
-  when the game alternates between equivalent native icon Canvas instances.
-  Projection now scales world-space X/Y deltas by the exact witnessed native
-  parent's live local width/height; `WorldMapUISize` remains authored metadata,
-  not a substitute parent extent. Each observation detects a changed player
-  anchor or parent extent, binds numeric stability state to that exact retained
-  parent identity, and requires two consecutive parent-local samples within
-  0.5 logical units. Equal extents permit retained-host translation/reparenting.
-  A stable extent change may consume one candidate-bound full attach so atlas
-  glyph size is rebuilt in the new coordinate basis.
+- Keep expanded-map zoom handling on the established witnessed parent-local
+  geometry and bounded reconstruction path. Projection scales world-space X/Y
+  deltas by the witnessed native parent's live local width/height;
+  `WorldMapUISize` remains authored metadata, not a substitute parent extent.
+  The atlas-local placement correction adds no parent-size post-check,
+  parent-growth rejection, or new extent-change allowance.
 - Replace the older four-stage tail with five deadlines at
   100/250/500/1,000/1,250 ms. Service takes at most one fresh observation per
   due game-thread pass; overdue deadlines remain due and still advance only one
   observation per later pass. The first four passes
-  are read-only; only the final pass may mutate the tree after retained-parent
-  witness and stable geometry. Wheel events cannot replenish the one extent-
-  change rebuild token, preventing an autonomous rebuild loop. The normal
-  equal-extent path performs no marker recollection, atlas rasterization/file
-  write, texture import, or widget construction.
+  are read-only; only the final pass may mutate the tree under the existing
+  retained-parent witness and stable-geometry rules. The established bounded
+  map/zoom reconstruction path performs no steady marker recollection, file
+  polling, or unbounded widget work.
 - Include the post-2.0.0 parent-local geometry correction for windowed, 21:9,
   16:10, and other finite positive expanded-map parent extents. There is no
   centered fallback and no per-frame aspect-ratio work.
@@ -55,12 +384,11 @@ Version 2.1.0 is the post-2.0.0 corrective release. It keeps the published
   most two delayed positive-only exact-ID save confirmations on the existing
   below-normal worker; treasure SQL is skipped and the schedule is not
   periodic.
-- Add explicit static gates for retained-host Canvas reparenting, exact live
-  parent-width/height projection, retained-parent witness, one observation per
-  due pass, no overdue multi-observation collapse, read-only first four passes,
-  fresh two-sample geometry stability, final-pass-only mutation, one bounded
-  extent-change rebuild per successfully established attachment baseline, and
-  absence of immediate same-layer atlas rebuilding.
+- Add explicit static gates for exact live parent-width/height projection,
+  retained-parent witness, one observation per due pass, no overdue
+  multi-observation collapse, read-only first four passes, existing stable-
+  geometry handling, final-pass-only mutation, and absence of immediate
+  same-layer atlas rebuilding.
 - Reduce Bird Egg steady UObject work without changing discovery or storage:
   the nearest-16 availability service now shares the existing 250 ms discovery
   edge instead of owning a separate 100 ms timer. Exact EndPlay still retires

@@ -3,12 +3,14 @@ param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
     [string]$CMakePath,
+    [string]$BuildDirectory,
     [string]$NinjaPath = 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe',
     [string]$VsDevCmdPath = 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat'
 )
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
+& (Join-Path $PSScriptRoot 'Verify-F6LocalizedTextOverlays.ps1')
 $cmakeCandidates = @(@(
     $CMakePath,
     (Get-Command cmake.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1),
@@ -54,7 +56,18 @@ if (-not $developerPath) {
 }
 $env:PATH = $developerPath.Substring($developerPath.IndexOf('=') + 1)
 
-$buildDirectory = Join-Path $projectRoot 'dist\work\build\native-core'
+$buildDirectory = if ($BuildDirectory) {
+    [System.IO.Path]::GetFullPath($BuildDirectory)
+} else {
+    Join-Path $projectRoot 'dist\work\build\native-core'
+}
+$allowedBuildRoot = [System.IO.Path]::GetFullPath(
+    (Join-Path $projectRoot 'dist\work\build'))
+if (-not $buildDirectory.StartsWith(
+        $allowedBuildRoot + [System.IO.Path]::DirectorySeparatorChar,
+        [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "BuildDirectory must remain beneath $allowedBuildRoot"
+}
 & $cmake --fresh -S $projectRoot -B $buildDirectory -G Ninja `
     "-DCMAKE_BUILD_TYPE=$Configuration" `
     "-DCMAKE_MAKE_PROGRAM=$ninja" `

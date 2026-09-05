@@ -25,7 +25,6 @@ using Clock = std::chrono::steady_clock;
 
 constexpr std::array<std::wstring_view, 4> kDatabaseSuffixes{
     L"", L"-wal", L"-shm", L"-journal"};
-constexpr std::size_t kMaximumKeyCharacters = 256;
 constexpr std::size_t kCopyBufferBytes = 64U * 1024U;
 // A corrupted local snapshot must not turn one-shot reconciliation into an
 // unbounded allocation. One treasure row carries 64 bits; the other caps are
@@ -304,7 +303,7 @@ template <typename T>
         sizeof(T), &read) != FALSE && read == sizeof(T);
 }
 
-[[nodiscard]] std::string read_save_key(
+[[nodiscard]] std::uintptr_t read_save_owner(
     const OwnerPointerConfig& config) {
     const auto module = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
     std::uintptr_t owner{};
@@ -313,38 +312,63 @@ template <typename T>
         || owner == 0) {
         throw ReconcileFailure{SaveReconcileError::SaveKeyUnavailable};
     }
-    std::uintptr_t key_pointer{};
-    std::int32_t key_length{};
-    if (!read_self_memory(owner + 0x120U, &key_pointer)
-        || !read_self_memory(owner + 0x128U, &key_length)
-        || key_pointer == 0 || key_length <= 1
-        || key_length > static_cast<std::int32_t>(kMaximumKeyCharacters)) {
-        throw ReconcileFailure{SaveReconcileError::SaveKeyUnavailable};
-    }
-    std::vector<wchar_t> characters(static_cast<std::size_t>(key_length));
-    SIZE_T read{};
-    const SIZE_T byte_count = characters.size() * sizeof(wchar_t);
-    if (ReadProcessMemory(
-            GetCurrentProcess(), reinterpret_cast<const void*>(key_pointer),
-            characters.data(), byte_count, &read) == FALSE
-        || read != byte_count) {
-        throw ReconcileFailure{SaveReconcileError::SaveKeyUnavailable};
-    }
-    while (!characters.empty() && characters.back() == L'\0') {
-        characters.pop_back();
-    }
-    std::string key;
-    key.reserve(characters.size());
-    for (const wchar_t character : characters) {
-        if (character < 0x20 || character > 0x7E) {
-            throw ReconcileFailure{SaveReconcileError::SaveKeyUnavailable};
+    return owner;
+}
+
+[[nodiscard]] std::optional<std::string> try_read_save_key_at(
+    std::uintptr_t owner, std::size_t field_offset,
+    bool require_capacity) noexcept {
+    try {
+        if (owner == 0U
+            || !dswros::is_scannable_save_key_field_offset(field_offset)) {
+            return std::nullopt;
         }
-        key.push_back(static_cast<char>(character));
+
+        std::uintptr_t key_pointer{};
+        std::int32_t key_length{};
+        std::int32_t key_capacity{};
+        if (!read_self_memory(owner + field_offset, &key_pointer)
+            || !read_self_memory(
+                owner + field_offset + sizeof(key_pointer), &key_length)
+            || !read_self_memory(
+                owner + field_offset + sizeof(key_pointer)
+                    + sizeof(key_length),
+                &key_capacity)
+            || key_pointer == 0U
+            || key_length < dswros::kMinimumSaveKeyCharacters
+            || key_length > dswros::kMaximumSaveKeyCharacters
+            || (require_capacity
+                && !dswros::is_plausible_save_key_descriptor(
+                    key_pointer, key_length, key_capacity))) {
+            return std::nullopt;
+        }
+        std::vector<wchar_t> characters(static_cast<std::size_t>(key_length));
+        SIZE_T read{};
+        const SIZE_T byte_count = characters.size() * sizeof(wchar_t);
+        if (ReadProcessMemory(
+                GetCurrentProcess(), reinterpret_cast<const void*>(key_pointer),
+                characters.data(), byte_count, &read) == FALSE
+            || read != byte_count) {
+            return std::nullopt;
+        }
+        while (!characters.empty() && characters.back() == L'\0') {
+            characters.pop_back();
+        }
+        std::string key;
+        key.reserve(characters.size());
+        for (const wchar_t character : characters) {
+            if (character < 0x20 || character > 0x7E) {
+                return std::nullopt;
+            }
+            key.push_back(static_cast<char>(character));
+        }
+        if (key.empty()) {
+            return std::nullopt;
+        }
+        return key;
+    } catch (...) {
+        return std::nullopt;
     }
-    if (key.empty()) {
-        throw ReconcileFailure{SaveReconcileError::SaveKeyUnavailable};
-    }
-    return key;
 }
 
 [[nodiscard]] FileStamp capture_stamp(const std::filesystem::path& path) noexcept {
@@ -536,6 +560,50 @@ void execute_sql(
     }
     if (result != 0) {
         throw ReconcileFailure{SaveReconcileError::SqlCipherQueryFailed};
+    }
+}
+
+[[nodiscard]] std::string escape_save_key(std::string_view key) {
+    std::string escaped;
+    escaped.reserve(key.size());
+    for (const char character : key) {
+        escaped.push_back(character);
+        if (character == '\'') {
+            escaped.push_back('\'');
+        }
+    }
+    return escaped;
+}
+
+void apply_save_key(
+    SqlCipherApi& api, void* database, std::string_view key) {
+    execute_sql(
+        api, database,
+        "PRAGMA key = '" + escape_save_key(key)
+            + "';PRAGMA cipher_compatibility = 4;");
+}
+
+[[nodiscard]] bool database_accepts_save_key(
+    SqlCipherApi& api, const std::filesystem::path& path,
+    std::string_view key) noexcept {
+    try {
+        const std::string path_utf8 = utf8(path);
+        DatabaseHandle database{&api};
+        if (api.open(
+                path_utf8.c_str(), &database.value, 0x00000002,
+                nullptr) != 0
+            || !database.value) {
+            return false;
+        }
+        apply_save_key(api, database.value, key);
+        // PRAGMA key itself does not authenticate the key. Reading the schema
+        // does, without exposing or persisting any key material.
+        execute_sql(
+            api, database.value,
+            "SELECT count(*) FROM sqlite_master;");
+        return true;
+    } catch (...) {
+        return false;
     }
 }
 
@@ -748,18 +816,7 @@ void query_save_fields(
         || !database.value) {
         throw ReconcileFailure{SaveReconcileError::SqlCipherQueryFailed};
     }
-    std::string escaped_key;
-    escaped_key.reserve(key.size());
-    for (const char character : key) {
-        escaped_key.push_back(character);
-        if (character == '\'') {
-            escaped_key.push_back('\'');
-        }
-    }
-    execute_sql(
-        api, database.value,
-        "PRAGMA key = '" + escaped_key
-            + "';PRAGMA cipher_compatibility = 4;");
+    apply_save_key(api, database.value, key);
     if (opened_fields) {
         OpenedQueryContext context{opened_fields};
         std::string treasure_query{
@@ -985,11 +1042,55 @@ SaveReconcileResult NativeSaveReconciler::run_request(
         result.owner_pointer_pattern_status =
             owner_pointer_pattern_status_;
 
-        std::string key;
+        auto read_runtime_pattern_owner = [&]() -> std::uintptr_t {
+            if (request.scope != SaveReconcileScope::FullActivation) {
+                throw ReconcileFailure{
+                    SaveReconcileError::GameImageMismatch};
+            }
+            if (!owner_pointer_pattern_attempted_) {
+                owner_pointer_pattern_attempted_ = true;
+                result.owner_pointer_pattern_attempted = true;
+                const auto mapped = map_game_executable(executable);
+                const auto resolved = dswros::resolve_owner_pointer_rva(
+                    std::span<const std::uint8_t>{
+                        mapped.bytes, mapped.size});
+                owner_pointer_pattern_status_ = resolved.status;
+                if (!resolved.success()) {
+                    result.owner_pointer_pattern_status = resolved.status;
+                    throw ReconcileFailure{
+                        SaveReconcileError::GameImageMismatch};
+                }
+                // Cache the unique numeric candidate before reading the live
+                // owner. If it is temporarily unavailable, a later F7 can
+                // retry without rescanning the executable.
+                cached_owner_pointer_executable_length_ = executable_length;
+                cached_owner_pointer_rva_ = resolved.rva;
+                cached_owner_pointer_route_ =
+                    SaveOwnerPointerRoute::RuntimePattern;
+            }
+            if (cached_owner_pointer_rva_ == 0U
+                || cached_owner_pointer_executable_length_
+                    != executable_length
+                || cached_owner_pointer_route_
+                    != SaveOwnerPointerRoute::RuntimePattern) {
+                throw ReconcileFailure{
+                    SaveReconcileError::GameImageMismatch};
+            }
+            result.owner_pointer_route = cached_owner_pointer_route_;
+            result.owner_pointer_pattern_attempted =
+                owner_pointer_pattern_attempted_;
+            result.owner_pointer_pattern_status =
+                owner_pointer_pattern_status_;
+            return read_save_owner({
+                cached_owner_pointer_executable_length_,
+                cached_owner_pointer_rva_});
+        };
+
+        std::uintptr_t owner{};
         if (cached_owner_pointer_rva_ != 0U
             && cached_owner_pointer_executable_length_ == executable_length) {
             result.owner_pointer_route = cached_owner_pointer_route_;
-            key = read_save_key({
+            owner = read_save_owner({
                 cached_owner_pointer_executable_length_,
                 cached_owner_pointer_rva_});
         } else {
@@ -1000,7 +1101,7 @@ SaveReconcileResult NativeSaveReconciler::run_request(
             try {
                 const auto config = load_owner_pointer_config(
                     mod_directory_, executable);
-                key = read_save_key(config);
+                owner = read_save_owner(config);
                 cached_owner_pointer_executable_length_ =
                     config.executable_length;
                 cached_owner_pointer_rva_ = config.owner_pointer_rva;
@@ -1008,55 +1109,15 @@ SaveReconcileResult NativeSaveReconciler::run_request(
                     SaveOwnerPointerRoute::PackagedConfig;
                 result.owner_pointer_route = cached_owner_pointer_route_;
             } catch (const ReconcileFailure&) {
-                if (!owner_pointer_pattern_attempted_) {
-                    owner_pointer_pattern_attempted_ = true;
-                    result.owner_pointer_pattern_attempted = true;
-                    const auto mapped = map_game_executable(executable);
-                    const auto resolved = dswros::resolve_owner_pointer_rva(
-                        std::span<const std::uint8_t>{
-                            mapped.bytes, mapped.size});
-                    owner_pointer_pattern_status_ = resolved.status;
-                    if (!resolved.success()) {
-                        result.owner_pointer_pattern_attempted = true;
-                        result.owner_pointer_pattern_status = resolved.status;
-                        throw ReconcileFailure{
-                            SaveReconcileError::GameImageMismatch};
-                    }
-                    // Cache the unique numeric candidate before reading the
-                    // live key. If the owner is temporarily unavailable, a
-                    // later F7 can retry without rescanning the executable.
-                    cached_owner_pointer_executable_length_ =
-                        executable_length;
-                    cached_owner_pointer_rva_ = resolved.rva;
-                    cached_owner_pointer_route_ =
-                        SaveOwnerPointerRoute::RuntimePattern;
-                }
-                if (cached_owner_pointer_rva_ == 0U
-                    || cached_owner_pointer_executable_length_
-                        != executable_length
-                    || cached_owner_pointer_route_
-                        != SaveOwnerPointerRoute::RuntimePattern) {
-                    throw ReconcileFailure{
-                        SaveReconcileError::GameImageMismatch};
-                }
-                result.owner_pointer_route = cached_owner_pointer_route_;
-                result.owner_pointer_pattern_attempted =
-                    owner_pointer_pattern_attempted_;
-                result.owner_pointer_pattern_status =
-                    owner_pointer_pattern_status_;
-                key = read_save_key({
-                    cached_owner_pointer_executable_length_,
-                    cached_owner_pointer_rva_});
+                owner = read_runtime_pattern_owner();
             }
         }
         result.owner_pointer_pattern_attempted =
             owner_pointer_pattern_attempted_;
         result.owner_pointer_pattern_status =
             owner_pointer_pattern_status_;
-        if (result.owner_pointer_route == SaveOwnerPointerRoute::None) {
-            result.owner_pointer_resolution_us =
-                elapsed_microseconds(owner_pointer_start);
-        }
+        result.owner_pointer_resolution_us =
+            elapsed_microseconds(owner_pointer_start);
         const auto sources = find_active_slot_databases(executable);
 
         SqlCipherApi api;
@@ -1088,21 +1149,195 @@ SaveReconcileResult NativeSaveReconciler::run_request(
             }
         } cleanup{temporary_directory};
 
+        const auto active_database_source = std::find_if(
+            sources.begin(), sources.end(), [](const auto& source) {
+                return lower_ascii(source.extension().wstring()) == L".db";
+            });
+        if (active_database_source == sources.end()) {
+            throw ReconcileFailure{SaveReconcileError::NoReadableDatabase};
+        }
+
+        std::vector<std::filesystem::path> snapshots;
+        snapshots.reserve(sources.size());
+        std::size_t active_database_snapshot_index = sources.size();
+        for (const auto& source : sources) {
+            try {
+                const auto copy_start = Clock::now();
+                auto snapshot = copy_consistent_database(
+                    source, temporary_directory);
+                result.copy_elapsed_us += elapsed_microseconds(copy_start);
+                if (lower_ascii(source.extension().wstring()) == L".db") {
+                    active_database_snapshot_index = snapshots.size();
+                }
+                snapshots.push_back(std::move(snapshot));
+            } catch (const ReconcileFailure&) {
+            }
+        }
+        if (snapshots.empty()
+            || active_database_snapshot_index >= snapshots.size()) {
+            throw ReconcileFailure{SaveReconcileError::NoReadableDatabase};
+        }
+
+        // Authenticate candidate keys against the active .db only. A .bak can
+        // legitimately belong to an older key generation, so it is never
+        // sufficient for key discovery or cache validation by itself.
+        const auto& key_validation_snapshot =
+            snapshots[active_database_snapshot_index];
+
+        const bool allow_key_field_discovery =
+            request.scope == SaveReconcileScope::FullActivation;
+        std::string key;
+        result.save_key_candidate_count = 0U;
+        result.save_key_validation_count = 0U;
+        auto discover_save_key = [&](bool scan_neighborhood) {
+            key.clear();
+            result.save_key_field_route = SaveKeyFieldRoute::None;
+            result.save_key_field_offset = 0U;
+            const std::size_t cached_key_field_offset =
+                cached_save_key_field_offset_;
+            auto validate_key_field = [
+                &api, &key, &owner, &result, &key_validation_snapshot](
+                    std::size_t field_offset, SaveKeyFieldRoute route,
+                    bool require_capacity) {
+                if (!dswros::has_save_key_candidate_budget(
+                        result.save_key_candidate_count)) {
+                    return false;
+                }
+                auto candidate = try_read_save_key_at(
+                    owner, field_offset, require_capacity);
+                if (!candidate) {
+                    return false;
+                }
+                ++result.save_key_candidate_count;
+                ++result.save_key_validation_count;
+                const auto validation_start = Clock::now();
+                const bool accepted = database_accepts_save_key(
+                    api, key_validation_snapshot, *candidate);
+                result.query_elapsed_us +=
+                    elapsed_microseconds(validation_start);
+                if (!accepted) {
+                    return false;
+                }
+                key = std::move(*candidate);
+                result.save_key_field_route = route;
+                result.save_key_field_offset =
+                    static_cast<std::uint32_t>(field_offset);
+                return true;
+            };
+
+            bool key_found = false;
+            if (dswros::is_scannable_save_key_field_offset(
+                    cached_key_field_offset)) {
+                key_found = validate_key_field(
+                    cached_key_field_offset,
+                    SaveKeyFieldRoute::ProcessCache,
+                    cached_key_field_offset
+                        != dswros::kLegacySaveKeyFieldOffset);
+                if (!key_found) {
+                    cached_save_key_field_offset_ = 0U;
+                }
+            }
+            if (allow_key_field_discovery && !key_found
+                && cached_key_field_offset
+                    != dswros::kLegacySaveKeyFieldOffset) {
+                key_found = validate_key_field(
+                    dswros::kLegacySaveKeyFieldOffset,
+                    SaveKeyFieldRoute::LegacyFixedOffset, false);
+            }
+            if (allow_key_field_discovery && !key_found
+                && cached_key_field_offset
+                    != dswros::kCompatibilitySaveKeyFieldOffset) {
+                key_found = validate_key_field(
+                    dswros::kCompatibilitySaveKeyFieldOffset,
+                    SaveKeyFieldRoute::KnownCompatibilityOffset, true);
+            }
+
+            const std::size_t maximum_positive_distance =
+                dswros::kMaximumSaveKeyFieldOffset
+                - dswros::kLegacySaveKeyFieldOffset;
+            const std::size_t maximum_negative_distance =
+                dswros::kLegacySaveKeyFieldOffset
+                - dswros::kMinimumSaveKeyFieldOffset;
+            const std::size_t maximum_distance = std::max(
+                maximum_positive_distance, maximum_negative_distance);
+            for (std::size_t distance = dswros::kSaveKeyFieldStride;
+                 allow_key_field_discovery && scan_neighborhood && !key_found
+                     && distance <= maximum_distance
+                     && dswros::has_save_key_candidate_budget(
+                         result.save_key_candidate_count);
+                 distance += dswros::kSaveKeyFieldStride) {
+                if (distance <= maximum_positive_distance) {
+                    const std::size_t offset =
+                        dswros::kLegacySaveKeyFieldOffset + distance;
+                    if (offset != cached_key_field_offset
+                        && offset
+                            != dswros::kCompatibilitySaveKeyFieldOffset) {
+                        key_found = validate_key_field(
+                            offset,
+                            SaveKeyFieldRoute::DatabaseValidatedScan,
+                            true);
+                    }
+                }
+                if (!key_found && distance <= maximum_negative_distance) {
+                    const std::size_t offset =
+                        dswros::kLegacySaveKeyFieldOffset - distance;
+                    if (offset != cached_key_field_offset) {
+                        key_found = validate_key_field(
+                            offset,
+                            SaveKeyFieldRoute::DatabaseValidatedScan,
+                            true);
+                    }
+                }
+            }
+            return key_found;
+        };
+
+        // A packaged owner is only a zero-scan fast path. Try its cached and
+        // known version offsets first; if those do not authenticate the active
+        // database, resolve the owner structurally and spend the remaining
+        // process-wide candidate budget on the bounded neighborhood scan.
+        // This prevents a stale packaged owner from consuming all 24 database
+        // validations before the current executable's owner is considered.
+        bool key_found = discover_save_key(
+            result.owner_pointer_route
+                != SaveOwnerPointerRoute::PackagedConfig);
+        if (dswros::should_retry_packaged_owner_with_runtime_pattern(
+                allow_key_field_discovery,
+                result.owner_pointer_route
+                    == SaveOwnerPointerRoute::PackagedConfig,
+                key_found, owner_pointer_pattern_attempted_)) {
+            cached_owner_pointer_executable_length_ = 0U;
+            cached_owner_pointer_rva_ = 0U;
+            cached_owner_pointer_route_ = SaveOwnerPointerRoute::None;
+            cached_save_key_field_offset_ = 0U;
+            const auto pattern_retry_start = Clock::now();
+            try {
+                owner = read_runtime_pattern_owner();
+            } catch (...) {
+                result.owner_pointer_resolution_us +=
+                    elapsed_microseconds(pattern_retry_start);
+                throw;
+            }
+            result.owner_pointer_resolution_us +=
+                elapsed_microseconds(pattern_retry_start);
+            key_found = discover_save_key(true);
+        }
+        if (!key_found) {
+            throw ReconcileFailure{SaveReconcileError::SaveKeyUnavailable};
+        }
+        cached_save_key_field_offset_ = result.save_key_field_offset;
+
         std::unordered_map<std::int64_t, std::uint64_t> fields;
         std::unordered_map<std::int64_t, EncounterRespawnField>
             encounter_fields;
         OptionalQuestQueryFields quest_fields;
         std::uint32_t loaded{};
-        for (const auto& source : sources) {
+        for (const auto& snapshot : snapshots) {
             try {
                 std::unordered_map<std::int64_t, std::uint64_t>
                     source_fields;
                 std::unordered_map<std::int64_t, EncounterRespawnField>
                     source_encounter_fields;
-                const auto copy_start = Clock::now();
-                const auto snapshot = copy_consistent_database(
-                    source, temporary_directory);
-                result.copy_elapsed_us += elapsed_microseconds(copy_start);
                 const auto query_start = Clock::now();
                 query_save_fields(
                     api, snapshot, key,

@@ -4,48 +4,157 @@ Native UE4SS C++ successor to DragonSword World Radar. It renders inside the
 game's UMG composition tree and ships no external runtime executable or Lua
 runtime. The Windows Setup executable is installation tooling only.
 
-Current release candidate: `2.1.0`.
+Current release candidate: `2.2.1`.
 
-Runtime label: `DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_1_0`.
+Runtime label: `DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1`.
+
+Current START identity:
+
+```text
+START version=2.2.1 runtime_label=DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1
+```
 
 Version `1.2.0` was never published. Its candidate changes are included in
 `2.1.0`; there is no separate public `1.2.0` package.
 
-The current 2.1.0 source has passed the core test gate, all four static source
-gates, a clean native `/WX` build, the isolated Setup `20/20` matrix, the
-manual-copy `2/2` matrix, and three-archive re-extraction. The packaged
-`main.dll` SHA-256 is
-`D4EE700178244096D3095BB55F5F88F94396E46D1A5C926FD2963FFEFEDA3775`.
-The authoritative package set is `dist/final-2.1.0`; earlier `4AFE...` and
-`BDE21...` 2.1.0 package sets remain historical and non-authoritative. A local
-2.1.0 diagnostic installation produced in-process evidence, and the owner
-reported completed gameplay testing and accepted the current version on
-2026-08-31. The repository does not independently prove that the tested
-installed DLL is byte-identical to the sealed `D4EE...` package. Detailed
-matrix evidence, exact installed hashes, and publication rights remain
-separate states.
+Version 2.2.1 is a fixes-only world-map stability candidate. The game-native
+map-icon Canvas is now read only and supplies geometry plus the live player-
+icon witness only. Both Mod atlas hosts are independent hit-test-invisible
+viewport widgets, so Mod-owned geometry cannot affect native desired size,
+prepass, layout, icon positions, or click targets. Same-parent pan, zoom, DPI,
+and layout observations update only host transforms; they do not rerasterize
+atlases, rebuild marker data, remove/add, or reparent.
+
+The exact 2.2.0 `main.dll` SHA-256
+`6AEFDACC1A44EF6F387456CB31FE1A6828259EF7ACDEE1D1FE13BAE10BDFA4D5`, compiled-
+source SHA-256
+`A98660932CC5DA1BC3E2B9D262DBFC13E0FED3935A6174B5C92E8622BBA2A1EC`, Core
+`2/2`, static gates, clean `/W4 /WX` build, Setup `20/20`, Manual `2/2`,
+payload-equivalence, archive, package, and rollback-backed developer-deployment
+results remain historical 2.2.0 evidence. They are not 2.2.1 evidence.
+
+Exact-artifact 2.2.1 source review, Core `2/2`, static gates, native build
+`444/444`, package validation, Setup `20/20`, Manual `2/2`, payload equivalence,
+layout, clean-target policy, three-archive re-extraction, and rollback-backed
+developer deployment passed for DLL SHA-256
+`C21823088E38D2BD1635651981187AB4C01C2FFD0DCD4804CB9FFDB1899FABB9` and
+compiled-source SHA-256
+`DE0100B2D4DE894FA94C6911AD328F7699C55D50EC21193C688B44F7F2588BA2`.
+Gameplay, native-icon stability, click-target alignment, controller behavior,
+DPI/aspect-ratio presentation, exit behavior, and external performance remain
+`NOT_VALIDATED`. Binary publication remains blocked by the recorded provenance
+and rights reviews. See
+[Runtime Feedback Audit for 2.2.1](docs/RUNTIME_FEEDBACK_AUDIT_2_2_1.md).
 
 ## Current feature set
+
+Version 2.2.0 adds three independently controlled compact-radar height
+indicators, all enabled on a clean install. Treasure retains its unchanged
+category-colored six-piece full arrow to the left of the selected chest. Every visible Area Quest uses a generated one- or
+  two-band height profile. A multi-band profile uses authored marker Z to select
+  the uniquely nearest existing source band; marker Z is selection evidence,
+  never a synthetic height. Its original black frame shows three white dots
+  while the comparable player Z is within the selected band's inclusive +/-500
+  vertical-unit margin. A player below that band gets an upward triangle and a
+  player above it gets a downward triangle. An exact-distance tie or missing
+  source profile shows neither dots nor direction.
+There is no separate Area Quest arrow. Fly, Mole, and Wave share one nearest-
+mini-game height channel. Its shaftless triangle is always centered directly
+below the selected mini-game icon, uses that marker's actual Fly, Mole, or Wave
+  palette, and has a near-black contrast outline. The outline changes neither
+  triangle size nor position nor projection. A target more than 500 vertical units above the comparable player
+  Z shows an up triangle; a target more than 500 units below shows a down
+  triangle; the inclusive +/-500 band hides the triangle. All three height
+  channels use the same comparable `playerZ - 150`; Treasure keeps its existing
+  arrow geometry and dead-zone behavior. Exact `NPC_Start`
+heights cover all 83 map-100 mini-games: 33 Fly, 40 Mole, and 10 Wave. If a
+trusted height is missing or ambiguous, only the mini-game triangle fails
+closed hidden; the marker remains. The persisted configuration key remains
+`mole` for compatibility.
+
+F6 is one responsive settings page with Mod Status, Language, Marker
+Visibility, Height Indicators (Radar Only), and Filter Modes. Bug Report and
+Close are separate controls in the top bar. It can open while Radar is Off, On,
+or Faulted and fits/clamps to the available viewport instead of assuming one
+fixed resolution. Status itself is read-only text with a thin state-colored
+strip. Enable, Disable, or Retry is a separate action; using it
+keeps the page open, and enabling still requires a loaded playable world.
+Translucent section cards, equal-width filter choices, aligned text, and bounded
+non-overlapping hit regions are presentation-only.
+The centered language dropdown contains only English, Japanese, Korean,
+Simplified Chinese, Traditional Chinese, French, German, Spanish (Spain),
+Russian, Thai, and Portuguese (Brazil). It does not display an AUTO or Use Game
+Language choice. A legacy persisted AUTO value is migration input only: the
+next actual F6 opening or F7 activation resolves `DGameUserSettings.LanguageText`,
+falls back to Kismet and then English, and converts it to one explicit persisted
+language. An explicit selection persists and takes precedence. F6 uses the
+already-loaded game fonts `DsCompositFont_CommonSystem` for Korean and
+Latin/Cyrillic languages, `DsCompositFont_TCSystem` for both Chinese choices,
+`DsCompositFont_JPSystem` for Japanese, and `DsCompositFont_THSystem` for Thai.
+If the required loaded object is unavailable, text falls back safely without
+changing the selected language, guessing an asset path, or replacing
+FontMaterial. This exact-artifact glyph behavior still requires live acceptance.
+The four weak font identities are retried only on an actual F6 open when one is
+missing or expired; there is no closed-panel or tick scan. The external
+  `DS_HYFont_P.pak` overrides Common/TC and does not provide complete glyph
+  coverage. Disable or replace that PAK for localization QA. Raw Pretendard
+  FontFace assets are not valid `UFont` substitutes and are not bundled or routed.
+  Korean and Traditional Chinese fixed labels also use generated 2x overlays
+  from the pinned DroidSansFallback source. The canonical payload under
+  `assets/ui/f6` contains `ko-{off,on,fault}.tga`,
+  `zh-hant-{off,on,fault}.tga`, `language-popup.tga`, and `manifest.json`. Each
+  status-specific main overlay replaces all 30 fixed main-panel text slots for
+  its language; the shared popup replaces only the Korean and Traditional-
+  Chinese language names. The other nine languages continue through native game
+  fonts. The overlays are regenerated for the current top-bar, status, and
+  filter-row coordinates and use base size 32, a one-pixel translucent stroke,
+  and role-specific optical baselines. Static generation checks prove the slots
+  do not clip; live in-game size, weight, and alignment review is still required.
+If the newly constructed text
+widget reports exactly `Font.Size == 0`, one bounded reference size is seeded.
+The reflected `FSlateFontInfo.Size` path accepts floating-point metrics, while
+integer metrics such as `LetterSpacing` retain bounded integer handling.
+If game-widget construction, target-size calculation, or font commit fails,
+the same F6 open retries that text once as base UMG `TextBlock`. The real
+reflected `Font.Size` participates in layout and
+is limited by each slot's safe line height. After `AddToViewport` and layout
+prepass, exact-size records are reapplied through a copied `SetFont` parameter
+and read back from the widget. If both exact-size
+paths fail, a fresh DTextBlock then base TextBlock leaves Font untouched and
+uses the same bounded viewport/DPI render scale with a justification-aware
+pivot; reaching that emergency path is not visual acceptance. Core UMG
+creation, `SetText`, tree insertion, and viewport attachment remain fail
+closed. There is no per-frame language or font work.
 
 - Compact map: 80 preallocated marker slots on one moving Canvas root,
   including vertical-oval runtime-only bird-egg markers for exact `Bird_Egg01_C`
   and `Bird_Egg02_C` actors.
-- Expanded map: two co-located 2048-by-2048 event-built atlases attached to the
-  game-owned map-icon Canvas so pan, zoom, clipping, and visibility remain
-  game-owned. It observes the exact
-  `/Script/DSClient.DPanelWorldMap:OnSliderValueChanged` event and schedules a
-  finite five-deadline layering tail at 100, 250, 500, 1,000, and 1,250 ms.
-  Each due game-thread pass takes one fresh numeric observation; overdue
-  deadlines remain due and advance only one observation on each later pass.
-  The first four passes are read-only. Only the final pass may mutate the widget
-  tree after exact retained-parent witness and stable parent-local geometry.
-  Equal extents allow the same two retained hosts to be translated/reparented;
-  one proved extent change may consume one candidate-bound full attach.
-  Exact weak layer ownership is required before a settle or same-layer
-  map-image refresh may touch the renderer. Only an actual parent replacement
-  with unavailable or incompatible geometry through the final settle may
-  consume that one full-attach fallback per candidate. No steady layering poll
-  is added.
+- Expanded map: two co-located 3072-by-3072 event-built atlases remain fixed at
+  4,096 entries, but their outer hosts are independent hit-test-invisible
+  viewport widgets. The game-owned map-icon Canvas is a read-only geometry and
+  live-player witness; the Mod never inserts, removes, sizes, orders, prepasses,
+  or hit-tests a child there. Native Canvas and player cached Slate geometry are
+  transformed through `LocalToAbsolute`, then into viewport-local space through
+  the game viewport's `AbsoluteToLocal`. The existing DPI, zoom, player-anchor,
+  independent-X/Y, and aspect-ratio projection chain is retained. Same-parent
+  pan, zoom, DPI, or layout observations update only the two viewport-host
+  transforms; they do not rerasterize atlases, rebuild or reproject marker data,
+  remove/add hosts, or mutate the native Canvas. No `3000`/`8000` geometry
+  constant substitutes for live geometry. The accepted maximum remains 2,500
+  Treasures plus 279 fixed non-Treasure rows, or 2,779 total, leaving 1,317
+  spare slots. The observed 1,632-marker/1,501-Treasure snapshot was below the
+  old 1,785 limit, so capacity was not the dense-map flicker root. World-map
+  glyph style revision 50 retains 50 percent more linear raster density and
+  about 72 MiB raw for two decoded BGRA atlases versus about 32 MiB at 2048.
+  The renderer observes the exact
+  `/Script/DSClient.DPanelWorldMap:OnSliderValueChanged` event and schedules the
+  existing finite five-deadline tail at 100, 250, 500, 1,000, and 1,250 ms.
+  Each due game-thread pass takes one fresh numeric observation; only numeric
+  geometry, transform, stability, and timing state cross observations. Missing,
+  implausible, mismatched, or final-unstable geometry collapses the Mod-owned
+  hosts and fails closed or defers. No steady layering poll is added. Exact-
+  artifact 2.2.1 alignment, native-icon stability, click-target, dense-Treasure,
+  aspect-ratio, DPI, controller, exit, and performance acceptance remain pending.
 - Catalogs: 1,693 immutable treasure render records, 1,692 actor-backed
   treasure records, 9 Bosses, 40 Assaults, 33 Fly, 40 Mole, 10 Wave, and 147
   area quests. The sole render-only treasure, save ID `11230106`, is excluded
@@ -66,6 +175,14 @@ separate states.
   radar disables, detaches both renderers, and clears all mutable save-owned
   runtime state. Loading another save does not reactivate it automatically;
   press F7 only after the new save has reached a loaded open world.
+
+Controller menu suppression does not read controller mappings or bindings. An
+exact `SetWorldMapImage` edge latches world-map suppression immediately; the
+current layer's `IsVisible` state and optional `IsGamePaused` state are sampled
+only through the existing shared 250 ms activity service for bounded catch-up
+and release. The 16 ms compact path consumes the resulting Booleans only. This
+adds no controller poll, focus hook, new timer, UObject scan, allocation, or
+recurring diagnostic record.
 
 F6 also stores one `AREA QUEST MODE` choice. `AVAILABLE` keeps the strict
 prerequisite-proven filter. `ALL` displays every catalog task that is not
@@ -91,13 +208,40 @@ coalesced into at most one atlas rebuild when the Hub closes; if the final
 choices match the opening state, no rebuild runs. This avoids one large rebuild
 per click without changing the final map state.
 
-The compact pool owns two fixed six-piece height groups. The nearest treasure
-and nearest visible area quest keep independent Z targets, so both pointers can
-appear at once without per-motion allocation or UObject reads. The treasure
-pointer uses the selected treasure category color; the area-quest pointer uses
-the official cyan accent, and both retain the same dark outline. The lower
-transparent clock remains a numeric world-time display, not weather. Its four
-configured presentation bands start at 06:00, 12:00, 18:00, and 21:00 and use
+The compact pool keeps fixed Treasure and shared mini-game height groups and evaluates
+Area Quest height inside the already bounded 80-slot marker pass. The nearest
+Treasure and nearest visible Fly/Mole/Wave marker keep independent Z targets, while every
+visible Area Quest may show its own height-band state without per-motion
+allocation or UObject reads. Treasure keeps its unchanged six-piece shafted
+pointer to the left of the selected chest, dark outline, and selected category
+fill. Within any source band expanded by the
+  inclusive +/-500 vertical-unit margin, an Area Quest keeps its normal black
+  frame and displays three white dots. For the sole multi-band profile, authored
+  marker Z first chooses the uniquely nearest existing source band. Below or
+  above the selected band, those same pieces form a closed black triangle at the
+  original task-marker center, pointing up or down respectively with no dots. It
+  does not move beside the task or use Treasure guidance clearance. An exact-
+  distance tie or missing profile keeps the normal frame with no dots and no
+  false direction. Shape geometry changes only when its discrete state changes. The
+nearest-mini-game channel instead uses one shaftless triangle centered directly
+below the selected Fly, Mole, or Wave icon, colored from that marker's actual
+  kind palette, and edged by a near-black contrast outline. The outline leaves
+  its size, position, and projection unchanged. Target Z above the comparable player Z by more than 500 units shows
+  an up triangle, target Z below by more than 500 shows a down triangle, and the
+  inclusive +/-500 band hides the triangle. Treasure, Area Quest, and mini-game
+  guidance all compare against `playerZ - 150`.
+
+The Area Quest catalog keeps the original 147 MnMRadar marker coordinates and
+adds ActorPositionData-derived height-band profiles. Exactly 144 rows have a
+profile, one of those has two separated bands, and three have no source
+  profile. Move_Check-only trigger bands are excluded when a real task-actor band
+  exists. Authored marker Z only selects the uniquely nearest existing band for
+  the multi-band row; it never replaces source height, and an exact-distance tie
+  fails closed neutral. The shared `-150` comparison offset calibrates the
+  player's root for every compact height channel and is not an Area Quest height
+  source. The lower transparent clock remains a numeric world-time
+display, not weather. Its four configured presentation bands start at 06:00,
+12:00, 18:00, and 21:00 and use
 sunrise, full-sun, sunset, and crescent-star glyphs. These names and thresholds
 are presentation policy, not confirmed game-native phase semantics. The wider
 clock group adds horizontal separation and sits six reference pixels lower.
@@ -111,22 +255,26 @@ real geometry edge, so fullscreen, windowed, and DPI transitions no longer
   2560x1080, ordinary windowed sizes, fullscreen-sized inputs, and DPI changes.
   Those numeric inputs do not prove a 3840x2160 game viewport with an internal
   21:9 content rect, native 21:9, windowed client geometry, or runtime Slate
-  layout. The expanded map
-samples the live `PlayerIconWidget` alignment pivot at attach time:
-`LocalToAbsolute` through the player icon's current cached Slate geometry,
-followed by `AbsoluteToLocal` through the selected native icon Canvas's current
-  cached geometry. `WorldMapUISize` is authored metadata, not the parent extent.
+  layout. The expanded map samples the live `PlayerIconWidget` alignment pivot
+  at attach time. The player pivot and read-only native icon Canvas cached
+  geometry are transformed through `LocalToAbsolute`, then through the game
+  viewport geometry's `AbsoluteToLocal` to produce viewport-local host
+  coordinates. `WorldMapUISize` is authored metadata, not the native Canvas or
+  viewport extent.
   Initial attachment retains only numeric observations and uses its separate
   bounded three-attempt readiness service. A later attach, map-image edge, F7
   resume, or exact zoom event arms the five-deadline tail described above. Each
-  tail observation re-resolves the witnessed parent, anchor, and local
-  width/height; no sampled UObject wrapper or `FGeometry` crosses passes. Stable
-  equal extents permit one retained-host rebase, while a stable extent change
-  permits one bounded rebuild for the current attachment baseline. A successful
-  fresh attach establishes the next baseline. Missing, implausible, or still-
-  unstable geometry fails closed; no centered fallback, desktop-resolution
+  tail observation re-resolves the witnessed native Canvas, player anchor,
+  viewport geometry, and local width/height; no sampled UObject wrapper or
+  `FGeometry` crosses passes. Each outer viewport host uses the accepted
+  viewport-local atlas rectangle, and each `Panel_Point` Image remains local
+  `{0,0,atlas_width,atlas_height}`. Later layout transitions update only the
+  viewport-host transforms through the witnessed stable-geometry and bounded
+  map/zoom strategy; they do not mutate or participate in the native Canvas.
+  Missing, implausible, or final-unstable geometry fails closed;
+  no authored `3000`/`8000` extent, centered fallback, desktop-resolution
   substitution, or new polling schedule is published. Real 21:9, internal
-  black-bar, 16:10, and windowed behavior still require gameplay evidence.
+  black-bar, 16:10, and windowed behavior still require live gameplay evidence.
 
 Bird eggs are intentionally absent from the expanded-map atlas. The UObject
 creation listener accepts only the two exact egg classes and publishes weak
@@ -176,7 +324,7 @@ treasure save ID `11230106` at `(182813, 162051, 3150)`, the sole difference
 between the 1,693 unique render IDs and 1,692 unique actor IDs, and hardens the
   release and installer boundaries. At that R7 checkpoint, source, native-build,
   installer-matrix, and release-package gates passed. Those older artifact
-  results are historical; the current D4EE build boundary is stated above.
+  results are historical; the then-current D4EE build boundary is stated above.
   Gameplay and performance remain `NOT_VALIDATED`, and publication remains
   `BLOCKED`.
 
@@ -241,9 +389,10 @@ exact identity changes.
    Experimental build. A root, dual, malformed, or incomplete layout requires
    explicit confirmation before backed-up conversion.
 3. For the recommended transactional installation, download and fully extract
-   `DragonSwordNativeWorldRadarPostRender-v2.1.0-Installer.zip`.
+   `DragonSwordNativeWorldRadarPostRender-v2.2.1-Installer.zip` after the
+   candidate package has passed its release gates.
 4. Verify the SHA-256 sidecar, then run
-   `DragonSwordNativeWorldRadarPostRender-Setup-2.1.0.exe`. The Setup executable
+   `DragonSwordNativeWorldRadarPostRender-Setup-2.2.1.exe`. The Setup executable
    is unsigned and requests administrator access so it can apply one bounded
    transaction; it never launches or terminates the game.
 5. Select the exact `DSClient-Win64-Shipping.exe` when prompted. Setup performs
@@ -267,12 +416,12 @@ exact identity changes.
    only after strict ownership of the active installation is proven.
 8. Start the game in an open-world area and press F7 once.
 
-Two manual ExperimentalNested channels are also published:
+The 2.2.1 output contract also defines two manual ExperimentalNested channels:
 
-- `DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-No-UE4SS.zip` contains
+- `DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-No-UE4SS.zip` contains
   only the Mod payload and one clean single-product `mods.txt` for an already
   compatible ExperimentalNested runtime.
-- `DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip` contains
+- `DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip` contains
   the same Mod payload plus the pinned ExperimentalNested runtime for a direct
   closed-game installation.
 
@@ -349,21 +498,32 @@ changing files. See [Installation](docs/INSTALL.md) for the manual fallback.
 - F7 activates the radar or performs the documented bounded explicit recovery.
 - F8 disables radar features. F8 followed by F7 starts a fresh state
   reconciliation.
-- F6 opens the native visibility Hub. Compact `RADAR` and expanded `MAP`
-  categories apply immediately when changed and persist in
-  `config/visibility.ini`. The current file uses readable `[radar]`, `[map]`,
-  and `[modes]` sections with named `true|false` category keys and
+- F6 opens the native responsive settings page in Off, On, or Fault state.
+  Bug Report and Close occupy the top bar. Read-only status text uses a thin
+  state-colored strip; a separate Enable, Disable, or Retry action
+  keeps the page open, while Bug Report opens the fixed Nexus Posts page.
+  Language, compact `RADAR`,
+  expanded `MAP`, the three compact-only height indicators, and filter modes
+  persist in `config/visibility.ini`. The current file uses readable
+  `[radar]`, `[map]`, `[modes]`, `[height_arrows]`, and `[interface]` sections with
+  named `true|false` category keys and
   `available|all` mode values. It is bounded to 4 KiB, read once at startup,
   and never hot-polled. Strictly valid legacy schema 1-4 mask files remain
   accepted; the next real F6 change rewrites them atomically in the readable
-  current format. Bird eggs have an independent RADAR toggle and no
+  current format. All three height indicators default ON for a clean or safely
+  migrated configuration; a valid existing file keeps the user's choices. Bird
+  eggs have an independent RADAR toggle and no
   MAP toggle. `AREA QUEST MODE` defaults to `AVAILABLE`; selecting `ALL`
   displays every unfinished catalog task even when its prerequisite graph
   cannot yet be proven. Completed tasks remain hidden in both modes. `ASSAULT
   MODE` defaults to `AVAILABLE`; selecting `ALL` shows all 40 static Assault
   records regardless of active hours, defeat, cooldown, or save readiness.
   Switching back to `AVAILABLE` restores those live filters. Boss and area-
-  quest rules do not change. Close the Hub with `X` or F6.
+  quest rules do not change. The selector contains only the 11 explicit
+  languages. A legacy AUTO value resolves once on the next actual F6 opening or
+  F7 activation from `DGameUserSettings.LanguageText`, then Kismet and English,
+  and migrates to the matching explicit persisted language. Close the page with
+  `X` or F6.
 
 ## Compatibility, logs, and source builds
 
@@ -385,8 +545,10 @@ the operation before mutation. Runtime reflected ABI validation remains an
  a DLL hash.
 The packaged save-owner RVA remains the fast path. If a game update invalidates
 it, the existing below-normal save worker performs at most one process-lifetime
-scan of executable PE sections, accepts exactly one bounded pattern target,
-caches only the numeric RVA, and validates the live save key. It adds no
+scan of executable PE sections through `min(SizeOfRawData, VirtualSize)`, counts
+only pattern targets inside the mapped image, and accepts exactly one target.
+Packaged and structural routes share at most 24 active-`.db` key validations;
+only an authenticated result may be cached. It adds no
 watcher, update prompt, periodic scan, or steady-state work. Static catalog
  changes still require a separate data release; Update / Repair reinstalls the
  release's bundled tables, while F7 cannot regenerate them.
@@ -461,13 +623,21 @@ attribution, and provenance for the PAK-derived catalogs and MnMRadar-derived
 coordinate table. License files and notices in the binary archive are necessary
 records, but they do not resolve those questions. See [Dependency Sources and Release-Clearance Boundary](docs/DEPENDENCY_SOURCES.md)
 before publishing any archive.
-The exact source, build, package, installer, deployment, gameplay, and
-publication states for 2.1.0 are recorded independently in
+The historical source, build, package, installer, deployment, gameplay, and
+publication states for 2.1.0 remain recorded independently in
 [Release](docs/RELEASE.md) and [Acceptance Checklist](docs/ACCEPTANCE_CHECKLIST.md).
 The public-report closeout and its unvalidated reporter-environment boundaries
 are recorded in [Nexus Feedback Audit for 2.0.0](docs/NEXUS_FEEDBACK_AUDIT_2_0_0.md).
 Post-2.0.0 corrective feedback and the owner matrix are recorded
 in [Runtime Feedback Audit for 2.1.0](docs/RUNTIME_FEEDBACK_AUDIT_2_1_0.md).
+The current 2.2.1 fixes-only scope and acceptance boundary are recorded in
+[Runtime Feedback Audit for 2.2.1](docs/RUNTIME_FEEDBACK_AUDIT_2_2_1.md).
+The [2.2.0 audit](docs/RUNTIME_FEEDBACK_AUDIT_2_2_0.md) remains historical
+feature-release evidence.
+The controller-menu and Area Quest height-arrow patch boundary remains
+preserved in
+[Runtime Feedback Audit for 2.1.1](docs/RUNTIME_FEEDBACK_AUDIT_2_1_1.md); it is
+historical evidence and is not relabelled as 2.2.1.
 The related [DragonSwordWorldRadar](https://github.com/xiaofei-dev/DragonSwordWorldRadar)
 repository is now the control workspace for all maintained DragonSword Mods,
 not only the historical external Radar. New public commits use a source-only
@@ -946,10 +1116,10 @@ cache described above.
 Experimental-only Setup artifact, runs the isolated 20-case bootstrap,
 conversion, migration, conflict, confirmation-token, and rollback matrix,
 requires the two-case manual-install matrix, and re-extracts all three ZIPs
-before publication. The exact output is `dist/final-2.1.0` with
-`DragonSwordNativeWorldRadarPostRender-v2.1.0-Installer.zip`,
-`DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-No-UE4SS.zip`,
-`DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip`,
+before publication. The 2.2.1 output contract is `dist/final-2.2.1` with
+`DragonSwordNativeWorldRadarPostRender-v2.2.1-Installer.zip`,
+`DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-No-UE4SS.zip`,
+`DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip`,
 `release-manifest.json`, and `SHA256SUMS.txt`. Legacy
 `Stage-Release.ps1`, `Install.cmd`, and
 `installer/Install-DragonSwordNativeWorldRadar.ps1` remain retired.
@@ -960,17 +1130,37 @@ developer deployment backups use `dist/work/deployment`. The project root must
 not contain `build-*`, `staging`, or `runtime` output directories. The pinned
 dependency cache remains separately under `.sdk` and is not a deployable output.
 
-The current source passed the core gate, all four static source gates, a clean
-native `/WX` build, the isolated Setup `20/20` matrix, the manual-copy `2/2`
-matrix, payload equivalence, and three-archive re-extraction. Its packaged
-`main.dll` SHA-256 is
-`D4EE700178244096D3095BB55F5F88F94396E46D1A5C926FD2963FFEFEDA3775`.
-The authoritative release is `dist/final-2.1.0`; the older `4AFE...` and
-`BDE21...` outputs are historical and non-authoritative. A local 2.1.0
-diagnostic DLL ran and the owner accepted current gameplay, but its installed
-hash was not independently matched to `D4EE...`. Source, build, installer, and
-package results do not substitute for that receipt or an external frame-time
-capture.
+The historical exact 2.2.0 replacement passed Core `2/2`, the compact, world-map,
+PostRender, and release-hygiene gates, and a clean native `/W4 /WX` build. Its
+source-bound `main.dll` SHA-256 is
+`6AEFDACC1A44EF6F387456CB31FE1A6828259EF7ACDEE1D1FE13BAE10BDFA4D5`, with
+compiled-source SHA-256
+`A98660932CC5DA1BC3E2B9D262DBFC13E0FED3935A6174B5C92E8622BBA2A1EC`.
+`Build-Release.ps1` package validation passed for that exact DLL: Setup reports
+`20/20`, the manual-copy matrix reports `2/2`, payload equivalence, manual layout,
+and clean-target policy validation pass, and all three public ZIPs re-extract
+byte-identically. Local diagnostics-enabled deployment of exact DLL
+`6AEFDACC...` passed with matching source, build, and installed hashes. Its
+rollback backup is
+`dist/work/deployment/deploy-backups/20260903-003509-033-native-only-deploy`.
+Backup
+`dist/work/deployment/deploy-backups/20260902-234105-640-native-only-deploy`
+belongs to the superseded intermediate 59529B2A deployment and is not 2.2.0
+candidate evidence. This is not Setup ownership. The earlier 634D283A local debug deployment and
+rollback backup remain superseded historical evidence only.
+That historical evidence is not 2.2.1 evidence. Current exact-artifact 2.2.1
+source/static/build/package/installer checks and rollback-backed developer
+deployment passed for DLL `C2182308...` and compiled source `DE0100B2...`.
+Gameplay, native-icon stability, click-target alignment, controller behavior,
+height visuals, responsive layout, localization glyphs, exit behavior, and
+external performance remain `NOT_VALIDATED`. The available healthy log is bound
+to the prior exact 84A360B0 DLL and cannot validate either the historical
+6AEFDACC 2.2.0 artifact or the current 2.2.1 candidate bytes.
+Historical 2.1.1 automated and deployment
+evidence remains bound to `dist/final-2.1.1` and packaged DLL SHA-256
+`B89F8584274850ADC35D0703725A14F00A14F0F9093574DB09F022E0B68F2F3B`.
+The earlier `D4EE...`, `4AFE...`, and `BDE21...` artifacts and accepted local
+gameplay remain explicitly scoped to the historical 2.1.0 audits.
 
 The native build requires `IconFontCppHeaders` commit
 `210b5a399a64270674560d633638952d1e8d804d`; this explicit source override
@@ -999,22 +1189,108 @@ the short mutation transaction; it does not perform a late check that could
 force rollback writes after the game has started.
 Build and deployment are static evidence only.
 
-The corrected 2.1.0 installer gate requires 20 passed, zero failed, and zero
-skipped cases; the manual gate requires 2 passed, zero failed, and zero skipped.
+The historical corrected 2.1.0 installer gate required 20 passed, zero failed,
+and zero skipped cases; the manual gate requires 2 passed, zero failed, and zero
+skipped.
 Setup and both manual packages carry immutable public defaults, and no artifact contains
 `enabled.txt`, local logs, backups, or runtime state. Package checks do not
 deploy or launch the game and do not establish gameplay or publication
 acceptance.
 
-## Runtime acceptance for 2.1.0
+## Runtime acceptance for 2.2.1
 
-- Require `START version=2.1.0`, runtime label
-  `DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_1_0`, provider/hook
+- Require `START version=2.2.1`, runtime label
+  `DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1`, and the final packaged DLL
+  SHA-256 recorded in `dist/final-2.2.1/release-manifest.json`.
+- Confirm F6 fits as one page at representative windowed/fullscreen, DPI,
+  16:9, 16:10, and 21:9 layouts. Every section and close control must remain
+  readable and reachable with the longest localized strings. Bug Report and
+  Close must remain in the top bar; the status text must stay read-only with its
+  thin state strip; the independent status action must keep the page open; and
+  translucent cards, equal-width filter choices, text alignment, and hit regions
+  must remain correct.
+- Confirm the three compact-only height settings all default ON for a clean
+  install. Each selection must persist independently, and an existing valid
+  configuration must retain its previous choices.
+- Exercise Treasure, Area Quest, and Fly/Mole/Wave targets above and below the player.
+  Treasure must keep its unchanged category-colored six-piece full arrow to the
+  left of the selected chest. Every visible Area Quest
+  must use authored marker Z to select the uniquely nearest existing source band
+  for a multi-band profile without treating it as height. It preserves the black
+  frame with three white dots inside the selected band's inclusive +/-500
+  margin, uses an up triangle below that band, a down triangle above it, and
+  remains neutral on an exact-distance tie or missing profile. The nearest visible
+  Fly/Mole/Wave marker must use its actual kind palette for a shaftless triangle
+  centered directly below its icon with a near-black contrast outline and
+  unchanged size, position, and projection: target high shows up, target low shows down,
+  and the inclusive +/-500 band hides it. All three height channels compare
+  against `playerZ - 150`; Treasure retains its existing dead-zone behavior.
+- Confirm all 83 map-100 Fly/Mole/Wave rows use their exact trusted
+  `NPC_Start` height. A missing or ambiguous height must hide only the shared
+  mini-game triangle, not the mini-game marker; the persisted key remains `mole`.
+- Inspect English, Japanese, Korean, Simplified Chinese, Traditional Chinese,
+  French, German, Spanish (Spain), Russian, Thai, and Portuguese (Brazil) for
+  correct terminology, glyph coverage, clipping, slot-safe line height, and
+  persistence. Confirm exact-size records use the post-viewport/prepass
+  Font.Size reapply/readback path, and force both preparations to fail once to
+  confirm the bounded no-Font-mutation render-scale fallback still presents the
+  complete page without a partially valid tree. Confirm Korean and Traditional
+  Chinese 2x overlays use pinned DroidSansFallback at base size 32, a one-pixel
+  translucent stroke, and role-specific optical baselines. Confirm all 30 fixed
+  main-panel text slots in each status-specific overlay, only the ko/zh-Hant
+  names in the shared popup, regenerated current-layout coordinates, the
+  canonical `assets/ui/f6` payload, and native game-font rendering for the other
+  nine languages. Static no-clipping checks do not replace in-game size, weight,
+  and alignment acceptance.
+- Seed a legacy AUTO preference, change game language, and confirm the next
+  actual F6 opening or F7 activation reads `DGameUserSettings.LanguageText`,
+  applies the Kismet and English fallbacks when required, and persists the
+  matching explicit language. Confirm AUTO/Use Game Language is not displayed,
+  explicit choices persist, and no recurring language/font work is added.
+- Confirm F6 opens while Radar is Off, On, and Faulted, reports the matching
+  state through read-only text and a thin strip, exposes a separate
+  Enable/Disable/Retry action without closing the page, rejects Enable before a
+  playable world is ready, and opens the fixed Nexus Posts page from the top-bar
+  Bug Report control.
+- Repeat the physical-controller world-map and pause-menu suppression test with
+  no hardware cursor. No controller mapping read is required.
+- At windowed/fullscreen 16:9, 16:10, 21:9, varied DPI, and multiple zoom
+  levels, confirm the native icon Canvas remains read only: no Mod child, slot,
+  desired-size, prepass, ordering, or hit-test mutation is permitted. Confirm
+  both hit-test-invisible atlas hosts remain viewport owned and their accepted
+  viewport-local transforms track the native Canvas/player geometry without
+  moving native icons or click targets. Same-parent observations may update only
+  host transforms; they must not rerasterize, rebuild or reproject marker data,
+  remove/add, or reparent. Each `Panel_Point` Image remains local
+  `{0,0,atlas_width,atlas_height}`. No fixed `3000`/`8000` extent may appear in
+  the live projection path. Confirm capacity 4,096 covers the accepted 2,779-row
+  maximum with 1,317 spare slots. Inspect revision 50 outlines, shadows, and
+  internal details at 3072, capture the approximately 72 MiB raw two-atlas BGRA
+  envelope, and confirm marker coordinates and projection remain unchanged.
+- Capture diagnostics-disabled same-session frame-time evidence and confirm no
+  new scan, SQL, filesystem access, PAK extraction, language poll, or unbounded
+  retry in steady state.
+
+All items above are `NOT_VALIDATED` until captured against the exact 2.2.1
+artifact. Static and deterministic verification cannot replace this live visual
+acceptance.
+
+## Historical runtime acceptance for 2.1.1
+
+- Require `START version=2.1.1`, runtime label
+  `DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_1_1`, provider/hook
   readiness including `AREA_QUEST_EVENT_HOOK_READY`, and
   `AREA_QUEST_TASK_CLASS_MAP ready=true bindings=147
   ambiguities=0` with success at `attempt=1/2` or `attempt=2/2`. If the first
   attempt fails, require exactly one delayed second attempt and no third or
   steady retry.
+- With a real controller and hidden hardware cursor, require the compact host
+  to collapse while the world map or pause menu is open and to restore after
+  close, including after F7 and travel. Confirm edge-only diagnostics and no
+  added timer, controller-mapping read, scan, or 16 ms reflected query.
+- Treat the former 2.1.1 single-height examples as historical artifact tests,
+  not current 2.2.1 acceptance. Current task-height acceptance is owned by the
+  144-profile height-band matrix above.
 - The installed gameplay-test copy must report
   `runtime_diagnostics=startup_config_once config_debug_logging=true
   log_schema=2`. Separately
@@ -1102,12 +1378,18 @@ acceptance.
   and 1,250 ms for the latest trigger. Each due game-thread pass must take one
   fresh observation; overdue deadlines must never collapse into multiple
   observations in one pass. The first four passes must be read-only. The final
-  pass may mutate only after an exact retained-
-  parent witness and stable parent-local geometry. Equal extents may rebase the
-  two retained hosts; one stable extent change may consume one bounded full
-  attach for the current baseline, and only its success establishes the next
-  baseline. Afterward both hosts must remain above native
-  children with no continuing restack or steady poll.
+  pass may otherwise mutate only under the existing exact retained-parent
+  witness and stable parent-local geometry rules. The correction must introduce
+  no new parent-size post-check, growth-rejection rule, or extent-change token;
+  later layout transitions remain on the existing bounded map/zoom
+  reconstruction strategy.
+  Each outer native Canvas slot must remain the atlas parent-local rectangle,
+  and each `Panel_Point` Image must remain local
+  `{0,0,atlas_width,atlas_height}`. Afterward both hosts must remain above
+  native children with no continuing restack or steady poll. The current
+  replacement DLL still requires live alignment acceptance, and a
+  dense-Treasure flicker pass must be diagnosed independently rather than inferred
+  from this placement contract.
 - With the expanded map attached and visible, minimize the game and restore it.
   If the game creates a replacement `DLayerMap`, require the old renderer to
   remain fail-closed without failure 103/state 5, then require the replacement
@@ -1210,7 +1492,8 @@ acceptance.
 - With accepted bits pending, exercise F7, F8 disable, travel, and activity
   suppression separately. Each authoritative boundary may settle cooldown and
   eligibility numerically before reset but must not call the renderer. Only
-  process shutdown or UObject-array shutdown may hard-clear an unconsumed mask.
+  safe live-GameThread process-lifetime cleanup or the TitleMap owner boundary
+  may hard-clear an unconsumed mask. UObject-array shutdown does not.
   Confirm there is no new polling, timer, enumeration, SQL, dynamic queue, or
   steady work.
 - During the encounter test, confirm there is no `NEARBY_CLASS_CATCHUP` line

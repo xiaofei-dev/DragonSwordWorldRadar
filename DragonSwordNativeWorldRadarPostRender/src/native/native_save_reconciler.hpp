@@ -1,6 +1,7 @@
 #pragma once
 
 #include <dswros/owner_pointer_pattern.hpp>
+#include <dswros/save_key_field_policy.hpp>
 
 #include <atomic>
 #include <array>
@@ -60,6 +61,14 @@ enum class SaveOwnerPointerRoute : std::uint8_t {
     RuntimePattern,
 };
 
+enum class SaveKeyFieldRoute : std::uint8_t {
+    None,
+    LegacyFixedOffset,
+    ProcessCache,
+    KnownCompatibilityOffset,
+    DatabaseValidatedScan,
+};
+
 struct SaveReconcileResult {
     std::uint32_t activation{};
     std::uint32_t request_id{};
@@ -75,6 +84,10 @@ struct SaveReconcileResult {
     bool dynamic_quest_completion_query_available{};
     bool dynamic_quest_completion_identity_ambiguous{};
     SaveOwnerPointerRoute owner_pointer_route{SaveOwnerPointerRoute::None};
+    SaveKeyFieldRoute save_key_field_route{SaveKeyFieldRoute::None};
+    std::uint32_t save_key_field_offset{};
+    std::uint32_t save_key_candidate_count{};
+    std::uint32_t save_key_validation_count{};
     dswros::OwnerPointerPatternStatus owner_pointer_pattern_status{
         dswros::OwnerPointerPatternStatus::InvalidImage};
     bool owner_pointer_pattern_attempted{};
@@ -136,6 +149,7 @@ private:
     std::uint64_t cached_owner_pointer_rva_{};
     SaveOwnerPointerRoute cached_owner_pointer_route_{
         SaveOwnerPointerRoute::None};
+    std::size_t cached_save_key_field_offset_{};
     dswros::OwnerPointerPatternStatus owner_pointer_pattern_status_{
         dswros::OwnerPointerPatternStatus::InvalidImage};
     bool owner_pointer_pattern_attempted_{};

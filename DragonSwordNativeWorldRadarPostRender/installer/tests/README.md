@@ -24,12 +24,17 @@ directory.
 
 ```powershell
 .\tools\Test-Installer.ps1 `
-  -InstallerExe 'C:\candidate\DragonSwordNativeWorldRadarPostRender-Setup-2.1.0.exe' `
+  -InstallerExe 'C:\candidate\DragonSwordNativeWorldRadarPostRender-Setup-2.2.1.exe' `
   -SupportedGameExecutable 'G:\fixtures\DSClient-Win64-Shipping.exe' `
   -ExperimentalUE4SSDll 'G:\fixtures\UE4SS.dll' `
   -ExperimentalDwmapiDll 'G:\fixtures\dwmapi.dll' `
   -WorkingDirectory 'G:\dsnwr-installer-tests'
 ```
+
+The historical 2.2.0 runner reported 20 passed, 0 failed, and 0 skipped. The
+manual-copy runner separately reports 2 passed, 0 failed, and 0 skipped.
+Historical 2.1.1 results and hashes are not 2.2.0 evidence. The 2.2.1 installer
+matrix remains pending until the new Setup executable is built and tested.
 
 The fixture hashes do not form compatibility allowlists. Existing game,
 loader, and proxy compatibility is based on the exact path/layout plus bounded

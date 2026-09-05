@@ -19,7 +19,7 @@ $expectedOfficialUE4SSZipHash = '4B47D4BCEDDD2F561A4E395BFA00924CCFC945AF576A2D0
 $productName = 'DragonSwordNativeWorldRadarPostRender'
 $legacyName = 'DragonSwordWorldRadarObjectState'
 $externalLegacyName = 'DragonSwordWorldRadar'
-$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_1_0'
+$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1'
 $expectedTestCount = 29
 
 function Resolve-RequiredLeaf {
@@ -274,7 +274,7 @@ function New-ValidFixture {
 }
 
 function Write-OwnedMetadata {
-    param([string]$ModDirectory, [string]$Name, [string]$Version = '2.1.0')
+    param([string]$ModDirectory, [string]$Name, [string]$Version = '2.2.1')
     $releasePath = Join-Path $ModDirectory 'metadata\release.json'
     if ($Name -eq $script:ProductName) {
         Write-Utf8Text -Path $releasePath `
@@ -491,7 +491,7 @@ function Test-EmbeddedResourceContract {
 
     $manifest = Get-ManifestMap
     $fixed = [ordered]@{
-        version = '2.1.0'
+        version = '2.2.1'
         runtime_label = $script:RuntimeLabel
         game_compatibility_policy = $script:GameCompatibilityPolicy
         stable_ue4ss_sha256 = $script:ExpectedStableUE4SSHash
@@ -1087,13 +1087,27 @@ Invoke-InstallerCase 'Recognized upgrade preserves both live configurations' {
                 "world_mask=18`narea_quest_mode=available`nassault_mode=all`n"
         },
         [pscustomobject]@{
-            Name = 'sectioned'
+            Name = 'sectioned-2.1.1'
             Text = "[radar]`nclock=false`ntreasure=true`nboss=true`n" +
                 "assault=false`nmini_games=true`narea_quests=true`nbird_eggs=false`n`n" +
                 "[map]`ntreasure=true`nboss=false`nassault=true`nmini_games=true`n" +
                 "area_quests=false`n`n[modes]`narea_quests=all`nassault=available`n"
         }
     )
+    $languageIds = @(
+        'auto', 'en', 'ja', 'ko', 'zh-hans', 'zh-hant',
+        'fr', 'de', 'es-es', 'ru', 'th', 'pt-br')
+    foreach ($languageId in $languageIds) {
+        $recognizedVisibilityConfigs += [pscustomobject]@{
+            Name = 'sectioned-2.2.1-' + $languageId
+            Text = "[radar]`nclock=false`ntreasure=true`nboss=true`n" +
+                "assault=false`nmini_games=true`narea_quests=true`nbird_eggs=false`n`n" +
+                "[map]`ntreasure=true`nboss=false`nassault=true`nmini_games=true`n" +
+                "area_quests=false`n`n[modes]`narea_quests=all`nassault=available`n`n" +
+                "[height_arrows]`ntreasure=false`narea_quests=true`nmole=true`n`n" +
+                "[interface]`nlanguage=$languageId`n"
+        }
+    }
     foreach ($recognizedConfig in $recognizedVisibilityConfigs) {
         $fixture = New-ValidFixture (Join-Path $fixtureRoot $recognizedConfig.Name)
         Write-OwnedMetadata -ModDirectory $fixture.Target -Name $script:ProductName
@@ -1118,6 +1132,41 @@ Invoke-InstallerCase 'Recognized upgrade preserves both live configurations' {
             $diagnostics "Recognized $($recognizedConfig.Name) upgrade changed diagnostics.ini bytes."
         Assert-True (-not (Test-Path -LiteralPath (Join-Path $fixture.Target 'enabled.txt'))) `
             "Recognized $($recognizedConfig.Name) upgrade retained an obsolete owned enabled.txt marker."
+    }
+
+    $validateVisibility = $engineType.GetMethod(
+        'ValidateVisibilityConfig',
+        [System.Reflection.BindingFlags]'Static, NonPublic')
+    Assert-True ($null -ne $validateVisibility) `
+        'The strict visibility validator reflection seam is missing.'
+    $baseSections = "[radar]`nclock=true`ntreasure=true`nboss=true`n" +
+        "assault=true`nmini_games=true`narea_quests=true`nbird_eggs=true`n" +
+        "[map]`ntreasure=true`nboss=true`nassault=true`nmini_games=true`n" +
+        "area_quests=true`n[modes]`narea_quests=available`nassault=available`n"
+    $invalidVisibilityConfigs = @(
+        $baseSections +
+            "[height_arrows]`ntreasure=true`narea_quests=false`nmole=false`n",
+        $baseSections +
+            "[height_arrows]`ntreasure=true`narea_quests=false`nmole=false`n" +
+            "[interface]`nlanguage=unknown`n",
+        $baseSections +
+            "[height_arrows]`ntreasure=true`narea_quests=false`n" +
+            "[interface]`nlanguage=auto`n",
+        $baseSections +
+            "[height_arrows]`ntreasure=TRUE`narea_quests=false`nmole=false`n" +
+            "[interface]`nlanguage=auto`n"
+    )
+    foreach ($invalidVisibility in $invalidVisibilityConfigs) {
+        $caught = $null
+        try {
+            [void]$validateVisibility.Invoke($null, [object[]]@(
+                (ConvertTo-Utf8Bytes -Text $invalidVisibility -Bom $false),
+                $false))
+        } catch {
+            $caught = $_.Exception
+        }
+        Assert-True ($null -ne $caught) `
+            'A partial, unknown-language, incomplete, or non-canonical 2.2 visibility config was accepted.'
     }
 }
 

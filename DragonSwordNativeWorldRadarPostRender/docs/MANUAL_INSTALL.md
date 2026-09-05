@@ -1,4 +1,4 @@
-# DragonSword Native World Radar 2.1.0 - Manual Installation
+# DragonSword Native World Radar 2.2.1 - Manual Installation
 
 The two manual packages target only ExperimentalNested UE4SS. They contain no
 CMD, BAT, PowerShell, or executable installer and perform no automatic path,
@@ -6,7 +6,7 @@ version, layout, ownership, backup, merge, rollback, or uninstall operation.
 
 ## Manual installation without UE4SS
 
-Use `DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-No-UE4SS.zip` only
+Use `DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-No-UE4SS.zip` only
 when the tested ExperimentalNested UE4SS runtime is already installed.
 
 1. Close DragonSword Awakening.
@@ -35,7 +35,7 @@ would remove the enablement entries for other installed Mods.
 ## Manual installation with UE4SS
 
 Use
-`DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip`
+`DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip`
 for a clean target with no existing UE4SS. It contains the tested
 ExperimentalNested UE4SS v3.0.1 Beta #0 commit `1c1a1497`.
 
@@ -81,6 +81,18 @@ binary and bundled catalogs while preserving validated user copies of:
 If a manual update is unavoidable, back up those files and the active
 `mods.txt`, copy only the new Mod folder, restore the user files, and confirm
 that exactly one enabled Radar line remains.
+
+The 2.2.x visibility file also stores the three compact-only height-arrow
+switches and the UI language preference. Clean defaults enable Treasure, Area
+Quest, and Mole height guidance. A valid existing configuration keeps its
+choices. The selector contains only 11 explicit languages. A legacy AUTO value
+migrates on the next actual F6 opening or F7 activation through
+`DGameUserSettings.LanguageText`, Kismet, and English to one persisted explicit
+language; AUTO is not displayed. A saved explicit language remains authoritative.
+
+F6 remains available while Radar is Off, On, or Faulted. The status action is
+Enable, Disable, or Retry; Enable still requires a loaded playable world. The
+Bug Report action opens the fixed Nexus Posts page.
 
 ## Remove the Radar
 

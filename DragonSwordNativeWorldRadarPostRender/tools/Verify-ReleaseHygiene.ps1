@@ -39,14 +39,24 @@ function Assert-NotContains {
     Assert-True ($Text -notmatch $Pattern) $Message
 }
 
+& (Join-Path $PSScriptRoot 'Verify-F6LocalizedTextOverlays.ps1') | Out-Null
+
+$deployScript = Read-ProjectText 'tools\Deploy-NativePrototype.ps1'
+Assert-NotContains $deployScript `
+    '\$prohibited\s*=\s*@\([\s\S]{0,300}?["'']assets["'']' `
+    'Deployment must allow the verified assets/ui/f6 runtime payload.'
+Assert-Contains $deployScript `
+    'Test-DsnwrRuntimePayload[\s\S]*?-InstalledConfiguration' `
+    'Deployment must still validate the complete installed runtime payload.'
+
 $release = Read-ProjectText 'metadata\release.json' | ConvertFrom-Json
 $profile = Read-ProjectText 'metadata\installer-product-profile.json' |
     ConvertFrom-Json
 $providers = Read-ProjectText 'metadata\data-providers.json' | ConvertFrom-Json
 $version = [string]$release.version
-$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_1_0'
+$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1'
 
-Assert-True ($version -eq '2.1.0' `
+Assert-True ($version -eq '2.2.1' `
     -and [string]$release.runtime_label -eq $runtimeLabel `
     -and [string]$profile.product.public_version -eq $version `
     -and [string]$profile.product.runtime_label -eq $runtimeLabel) `
@@ -136,10 +146,10 @@ Assert-True (@($release.compatibility_contract.supported_layouts).Count -eq 1 `
         'experimental_nested' `
     -and [string]$release.compatibility_contract.unsupported_policy -match `
         'without a fixed DLL-hash allowlist' `
-    -and [int]$release.release_layout.installer_matrix_gate.passed -eq 20 `
-    -and [int]$release.release_layout.manual_install_matrix_gate.passed -eq 2 `
-    -and [int]$release.release_layout.manual_install_matrix_gate.failed -eq 0 `
-    -and [int]$release.release_layout.manual_install_matrix_gate.skipped -eq 0) `
+    -and [int]$release.release_layout.installer_matrix_gate.required_passed -eq 20 `
+    -and [int]$release.release_layout.manual_install_matrix_gate.required_passed -eq 2 `
+    -and [int]$release.release_layout.manual_install_matrix_gate.required_failed -eq 0 `
+    -and [int]$release.release_layout.manual_install_matrix_gate.required_skipped -eq 0) `
     'Release metadata still exposes an obsolete hash-gated or manual-channel contract.'
 
 Assert-True ([string]$providers.release_installer.game_compatibility_policy -match `
@@ -155,10 +165,10 @@ Assert-True ([string]$providers.release_installer.game_compatibility_policy -mat
 $engine = Read-ProjectText 'installer\InstallerEngine.cs'
 $visibilityConfig = Read-ProjectText 'config\visibility.ini'
 $visibilityParser = Read-ProjectText 'include\dswros\visibility_config.hpp'
-Assert-Contains $engine 'ProductVersion\s*=\s*"2\.1\.0"' `
+Assert-Contains $engine 'ProductVersion\s*=\s*"2\.2\.1"' `
     'Setup engine product version differs from the release identity.'
 Assert-Contains $engine `
-    'RuntimeLabel\s*=\s*"DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_1_0"' `
+    'RuntimeLabel\s*=\s*"DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1"' `
     'Setup engine runtime label differs from the release identity.'
 Assert-Contains $engine 'IsStructurallyValidX64Dll' `
     'Setup does not contain bounded structural UE4SS DLL validation.'
@@ -181,6 +191,18 @@ Assert-Contains $engine `
     'Setup does not require Assault mode only for schema 4.'
 Assert-Contains $engine 'ValidateSectionedVisibilityConfig' `
     'Setup does not validate the readable sectioned visibility format.'
+Assert-Contains $engine `
+    '"height_arrows"[\s\S]*?"treasure",\s*"area_quests",\s*"mole"' `
+    'Setup does not validate all three height-arrow preferences.'
+Assert-Contains $engine `
+    '"interface"[\s\S]*?"language"' `
+    'Setup does not validate the interface-language preference.'
+Assert-Contains $engine `
+    '"auto",\s*"en",\s*"ja",\s*"ko",\s*"zh-hans",\s*"zh-hant",[\s\S]*?"fr",\s*"de",\s*"es-es",\s*"ru",\s*"th",\s*"pt-br"' `
+    'Setup does not accept exactly Auto plus the game''s 11 interface languages.'
+Assert-Contains $engine `
+    'legacyLayout\s*=\s*seenSections\.SetEquals\(legacySections\)[\s\S]*?currentLayout\s*=\s*seenSections\.SetEquals\(required\.Keys\)' `
+    'Setup does not preserve complete old three-section settings while requiring five sections for the public default.'
 Assert-Contains $engine 'strict 4 KiB size limit' `
     'Setup visibility validation is not bounded to the runtime 4 KiB limit.'
 Assert-Contains $engine '"available"' `
@@ -193,22 +215,32 @@ Assert-Contains $engine `
     'embedded public visibility default must use the readable sectioned format' `
     'Setup does not require the readable format for the embedded public default.'
 Assert-Contains $engine `
-    'enable every display category and use available modes' `
+    'enable every display category and height indicator, use available modes, and follow the game language' `
     'Setup does not enforce the complete readable public visibility default.'
-Assert-True ($visibilityConfig -match '(?m)^\[radar\]$' `
-    -and $visibilityConfig -match '(?m)^clock=true$' `
-    -and $visibilityConfig -match '(?m)^bird_eggs=true$' `
-    -and $visibilityConfig -match '(?m)^\[map\]$' `
-    -and $visibilityConfig -match '(?m)^\[modes\]$' `
-    -and $visibilityConfig -match '(?m)^area_quests=available$' `
-    -and $visibilityConfig -match '(?m)^assault=available$') `
-    'The source public visibility default is not readable, fully enabled, and AVAILABLE.'
+Assert-True ($visibilityConfig -match '(?m)^\[radar\]\r?$' `
+    -and $visibilityConfig -match '(?m)^clock=true\r?$' `
+    -and $visibilityConfig -match '(?m)^bird_eggs=true\r?$' `
+    -and $visibilityConfig -match '(?m)^\[map\]\r?$' `
+    -and $visibilityConfig -match '(?m)^\[modes\]\r?$' `
+    -and $visibilityConfig -match '(?m)^area_quests=available\r?$' `
+    -and $visibilityConfig -match '(?m)^assault=available\r?$' `
+    -and $visibilityConfig -match `
+        '(?ms)^\[height_arrows\]\r?\n(?:#[^\r\n]*\r?\n)*treasure=true\r?\narea_quests=true\r?\nmole=true\r?$' `
+    -and $visibilityConfig -match `
+        '(?ms)^\[interface\]\r?\n(?:#[^\r\n]*\r?\n)*language=auto\r?$' `
+    -and [regex]::Matches(
+        $visibilityConfig, '(?m)^\[[a-z_]+\]\r?$').Count -eq 5) `
+    'The source public visibility default is not the complete five-section 2.2 default.'
 Assert-True ($visibilityParser -match 'kMaximumVisibilityConfigBytes\s*=\s*4096U' `
     -and $visibilityParser -match 'parse_visibility_config\(' `
     -and $visibilityParser -match 'format_visibility_config\(' `
     -and $visibilityParser -match `
+        'old_sectioned\s*=\s*seen_sections\s*==\s*0x07U' `
+    -and $visibilityParser -match `
+        'current_sectioned\s*=\s*seen_sections\s*==\s*0x1FU' `
+    -and $visibilityParser -match `
         'VisibilityConfigFormat::LegacySchema1[\s\S]*?VisibilityConfigFormat::LegacySchema4') `
-    'The runtime parser lost its 4 KiB bound, readable formatter, or legacy schema 1-4 migration path.'
+    'The runtime parser lost its 4 KiB bound, five-section formatter, complete old three-section migration, or legacy schema 1-4 path.'
 Assert-Contains $engine 'retainBackupAfterCommit' `
     'Setup does not distinguish temporary rollback from retained conversion backup.'
 Assert-Contains $engine 'Observed UE4SS SHA-256 \(provenance only\)' `
@@ -232,10 +264,10 @@ Assert-Contains $builder 'dist\\work\\build\\native\\main\.dll' `
     'Installer builder reads the native DLL outside dist/work.'
 Assert-Contains $builder 'dist\\work\\build\\installer' `
     'Installer builder writes outside dist/work.'
-Assert-Contains $builder '\$version\s*=\s*''2\.1\.0''' `
+Assert-Contains $builder '\$version\s*=\s*''2\.2\.1''' `
     'Installer builder version differs from the release identity.'
 Assert-Contains $builder `
-    '\$runtimeLabel\s*=\s*''DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_1_0''' `
+    '\$runtimeLabel\s*=\s*''DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1''' `
     'Installer builder runtime label differs from the release identity.'
 foreach ($required in @(
         'Payload.Manifest.ini',
@@ -258,7 +290,7 @@ Assert-Contains $builder 'Get-AuthenticodeSignature' `
 $releaseBuilder = Read-ProjectText 'tools\Build-Release.ps1'
 Assert-Contains $releaseBuilder 'dist\\work\\build\\native' `
     'Release builder writes the native build outside dist/work.'
-Assert-Contains $releaseBuilder '\$version\s*=\s*''2\.1\.0''' `
+Assert-Contains $releaseBuilder '\$version\s*=\s*''2\.2\.1''' `
     'Release builder version differs from the release identity.'
 Assert-Contains $releaseBuilder 'Test-Installer\.ps1' `
     'The release builder does not run the isolated installer matrix.'
@@ -400,10 +432,16 @@ Assert-True ($testMatrix -match `
     -and $integrationMatrix -match `
         'schema 3 visibility[\s\S]*?schema_version=3[\s\S]*?area_quest_mode=all' `
     -and $integrationMatrix -match `
-        'Name = ''sectioned''[\s\S]*?\[radar\][\s\S]*?\[map\][\s\S]*?\[modes\]' `
+        'Name = ''sectioned-2\.1\.1''[\s\S]*?\[radar\][\s\S]*?\[map\][\s\S]*?\[modes\]' `
+    -and $integrationMatrix -match `
+        '''auto'',\s*''en'',\s*''ja'',\s*''ko'',\s*''zh-hans'',\s*''zh-hant'',[\s\S]*?''fr'',\s*''de'',\s*''es-es'',\s*''ru'',\s*''th'',\s*''pt-br''' `
+    -and $integrationMatrix -match `
+        'Name = ''sectioned-2\.2\.1-''\s*\+\s*\$languageId[\s\S]*?\[height_arrows\][\s\S]*?\[interface\][\s\S]*?language=\$languageId' `
+    -and $integrationMatrix -match `
+        'partial, unknown-language, incomplete, or non-canonical 2\.2 visibility config was accepted' `
     -and $integrationMatrix -match `
         'Recognized \$\(\$recognizedConfig\.Name\) upgrade changed visibility\.ini bytes') `
-    'Installer tests do not cover schema-4 Assault validation and legacy/current user-config preservation.'
+    'Installer tests do not cover schema-4 validation, complete old three-section preservation, all 12 language preferences, and current five-section rejection cases.'
 
 $installerForm = Read-ProjectText 'installer\InstallerForm.cs'
 $installerEngine = Read-ProjectText 'installer\InstallerEngine.cs'
@@ -455,6 +493,7 @@ foreach ($scriptName in @(
         'ReleaseLayout.ps1',
         'Test-Installer.ps1',
         'Test-ManualInstall.ps1',
+        'Verify-F6LocalizedTextOverlays.ps1',
         'Verify-ReleaseHygiene.ps1')) {
     [scriptblock]::Create((Read-ProjectText "tools\$scriptName")) | Out-Null
 }
@@ -474,6 +513,22 @@ foreach ($requiredPath in @(
     Assert-True (@($payload | Where-Object RelativePath -eq $requiredPath).Count -eq 1) `
         "The public runtime payload omits or duplicates $requiredPath."
 }
+$expectedF6OverlayPaths = @(
+    'assets/ui/f6/ko-fault.tga',
+    'assets/ui/f6/ko-off.tga',
+    'assets/ui/f6/ko-on.tga',
+    'assets/ui/f6/language-popup.tga',
+    'assets/ui/f6/manifest.json',
+    'assets/ui/f6/zh-hant-fault.tga',
+    'assets/ui/f6/zh-hant-off.tga',
+    'assets/ui/f6/zh-hant-on.tga'
+) | Sort-Object
+$actualF6OverlayPaths = @($payload | Where-Object {
+        $_.RelativePath -like 'assets/ui/f6/*'
+    } | ForEach-Object { $_.RelativePath }) | Sort-Object
+Assert-True (($actualF6OverlayPaths -join '|') -eq `
+        ($expectedF6OverlayPaths -join '|')) `
+    'The public runtime payload does not contain the exact F6 overlay set.'
 Assert-True (@($payload | Where-Object {
             $_.RelativePath -match `
                 '(?i)(^|/)enabled\.txt$|(^|/)runtime/(logs|diagnostics|backups)(/|$)|(^|/)config/(visibility|diagnostics)\.ini$'

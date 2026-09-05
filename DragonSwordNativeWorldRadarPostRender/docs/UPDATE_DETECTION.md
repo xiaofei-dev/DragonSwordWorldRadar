@@ -44,30 +44,80 @@ A structurally valid older Radar release remains eligible for Update / Repair.
 owner-pointer RVA, and provenance. It contains neither the SQLCipher key nor an
 absolute process address.
 
-The packaged RVA is the zero-scan fast path when its executable length and live
-save-key validation succeed. If a game update moves that pointer, the existing
-below-normal save worker maps the current executable and scans executable PE
-sections at most once for the lifetime of the game process. The resolver:
+The packaged owner RVA is a zero-pattern-scan fast path, and verified member
+offset `0x128` is a zero-field-scan fast path. Neither is a fixed compatibility
+requirement. The owner-pointer RVA and the key member's offset inside that owner
+are independent compatibility layers. The September 2026
+game build identified locally by Steam build `25076183`, executable length
+  `162606488`, and SHA-256
+  `B3E0B8CAB6752ACB981E104CA95A0105F76FCDD42EE622A8063AB8DE44FCA94C`
+  moved the owner RVA to
+`0x94F4FA8` and the key `FString` from owner offset `0x120` to `0x128`.
 
-- accepts exactly one complete owner-pointer instruction pattern;
-- rejects zero or multiple matches;
-- requires the RIP-relative target to remain inside `SizeOfImage`;
+If every key candidate reached through the packaged owner fails to authenticate
+the current active `.db`, a FullActivation clears the stale numeric fast-path
+state, maps the current executable, and scans its executable PE sections at
+most once for the lifetime of the game process. Each section scan is limited
+to `min(SizeOfRawData, VirtualSize)`, so raw padding outside the mapped section
+cannot create a match. This also covers a stale
+packaged RVA in an update whose executable happens to retain the same file
+length. The resolver:
+
+- accepts exactly one complete owner-pointer instruction pattern whose
+  RIP-relative target remains inside `SizeOfImage`;
+- counts only those valid in-image targets, so an incidental complete byte
+  pattern with an out-of-image target neither creates ambiguity nor wins;
+- rejects zero or multiple valid in-image targets;
 - caches only the resolved numeric RVA;
-- validates the current live save key before reconciliation continues.
+- reruns the same bounded key-field discovery against that owner;
+- validates the current live save key against the active `.db` before
+  reconciliation continues.
 
-Failure disables only that save-reconciliation attempt and remains fail closed.
+After resolving the owner, reconciliation tries a process-cached key-field
+offset, legacy `0x120`, verified current `0x128`, and only then a bounded aligned
+owner-field scan. A structurally plausible candidate is accepted only when it
+authenticates the active `.db` through a real `sqlite_master` read. A `.bak`
+cannot select an older key. Packaged-owner fast offsets are tried first without
+opening its aligned neighborhood scan. If they fail and the structural owner is
+needed, it receives only the remaining part of one shared budget: at most 24
+active `.db` key validations total across both owner routes in one explicit F7
+FullActivation. A successful numeric offset is cached for the process.
+Neither key bytes nor absolute process addresses are logged or persisted.
+
+Failure to find one unique structural signature or to authenticate a key after
+the retry disables only that save-reconciliation attempt and remains fail
+closed.
+The F6 status becomes Fault, and F6 Retry or an explicit F7 starts one fresh
+bounded activation.
 There is no game-thread scan, recurring retry, timer, watcher, UObject
 enumeration, or retained UObject. A later manual F7 can retry live-key access
 through the already cached numeric result, but it cannot replenish the one
 process-lifetime pattern scan.
+
+The historical exact 2.2.0 clean-build and local developer-deployment evidence
+is bound
+to native DLL SHA-256
+`6AEFDACC1A44EF6F387456CB31FE1A6828259EF7ACDEE1D1FE13BAE10BDFA4D5`
+from compiled-source SHA-256
+`A98660932CC5DA1BC3E2B9D262DBFC13E0FED3935A6174B5C92E8622BBA2A1EC`.
+The rollback-backed local deployment passed with diagnostics enabled, but it is
+not Setup ownership and does not validate runtime/gameplay behavior.
+`Build-Release.ps1` package validation passed for that exact DLL: Setup reports
+`20/20`, Manual reports `2/2`, payload equivalence, manual layout, and clean-target
+policy validation pass, and all three public ZIPs re-extract byte-identically.
+These records remain historical 2.2.0 evidence. Version 2.2.1 changes only the
+world-map ownership boundary; its exact source, build, package, installer,
+deployment, gameplay, and performance validation remain pending.
 
 ## What F7 does
 
 F7 activates the already installed native Mod and starts its bounded runtime
 and save-backed resynchronization. It does not run Setup, replace files, extract
 game data, regenerate `save_owner_pointer.cfg`, or rebuild immutable catalogs.
-Therefore F7 is the correct normal recovery action after a compatible update,
-but it is not equivalent to installation.
+Therefore F7 is the correct normal recovery action after a structurally
+compatible update, but it is not equivalent to installation. This mechanism is
+update tolerant; it does not guarantee compatibility with every future game
+version.
 
 ## When a new Radar release is still required
 

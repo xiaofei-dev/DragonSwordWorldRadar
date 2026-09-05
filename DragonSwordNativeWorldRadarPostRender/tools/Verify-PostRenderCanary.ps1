@@ -37,6 +37,17 @@ function Get-VisibilityHubMethod {
     return $match.Value
 }
 
+function Get-VisibilityHubFreeFunction {
+    param([string]$Text, [string]$Name, [string]$ReturnType)
+    $pattern =
+        '(?ms)^\s*(?:\[\[nodiscard\]\]\s*)?' +
+        $ReturnType + '\s+' + [regex]::Escape($Name) +
+        '\s*\([^;]*?\)\s*(?:noexcept\s*)?\{(?:(?!^\}).)*^\}'
+    $match = [regex]::Match($Text, $pattern)
+    Assert-True $match.Success "Visibility Hub free function was not found: $Name"
+    return $match.Value
+}
+
 $config = Get-Content (Join-Path $projectRoot 'config\postrender_canary.ini') -Raw
 $source = Get-Content (Join-Path $projectRoot 'src\native\postrender_canary.cpp') -Raw
 $lateSource = Get-Content (Join-Path $projectRoot 'src\native\late_present_canary.cpp') -Raw
@@ -53,6 +64,13 @@ $visibilityConfig = Get-Content `
     (Join-Path $projectRoot 'config\visibility.ini') -Raw
 $visibilityParser = Get-Content `
     (Join-Path $projectRoot 'include\dswros\visibility_config.hpp') -Raw
+$radarPreferences = Get-Content `
+    (Join-Path $projectRoot 'include\dswros\radar_preferences.hpp') -Raw
+$radarLocalization = Get-Content `
+    (Join-Path $projectRoot 'include\dswros\radar_localization.hpp') -Raw
+$visibilityHubPolicy = Get-Content `
+    (Join-Path $projectRoot `
+        'include\dswros\radar_visibility_hub_policy.hpp') -Raw
 $diagnosticsConfig = Get-Content `
     (Join-Path $projectRoot 'config\diagnostics.ini') -Raw
 $diagnosticsParser = Get-Content `
@@ -69,24 +87,26 @@ $metadata = Get-Content (Join-Path $projectRoot 'metadata\release.json') -Raw | 
 $mainCode = Remove-CppComments $main
 $nativeEventLogCode = Remove-CppComments $nativeEventLog
 $visibilityHubCode = Remove-CppComments $visibilityHub
+$compatibleFontProperty = Get-VisibilityHubFreeFunction `
+    $visibilityHubCode 'compatible_font_property' 'FStructProperty\s*\*'
 
-Assert-True ($config -match '(?m)^postrender_hook_enabled=false$') `
+Assert-True ($config -match '(?m)^postrender_hook_enabled=false\r?$') `
     'The PostRender hook must be disabled by default.'
-Assert-True ($config -match '(?m)^postrender_canary_enabled=false$') `
+Assert-True ($config -match '(?m)^postrender_canary_enabled=false\r?$') `
     'The PostRender canary must be disabled by default.'
-Assert-True ($config -match '(?m)^postrender_relative_marker_enabled=false$') `
+Assert-True ($config -match '(?m)^postrender_relative_marker_enabled=false\r?$') `
     'The relative marker must be disabled by default.'
-Assert-True ($config -match '(?m)^postrender_vtable_slot=112$') `
+Assert-True ($config -match '(?m)^postrender_vtable_slot=112\r?$') `
     'The audited candidate slot must remain explicit.'
-Assert-True ($config -match '(?m)^late_present_hook_enabled=false$') `
+Assert-True ($config -match '(?m)^late_present_hook_enabled=false\r?$') `
     'The late Present hook must be disabled by default.'
-Assert-True ($config -match '(?m)^late_present_canary_enabled=false$') `
+Assert-True ($config -match '(?m)^late_present_canary_enabled=false\r?$') `
     'The late Present canary must be disabled by default.'
-Assert-True ($config -match '(?m)^late_present_relative_marker_enabled=false$') `
+Assert-True ($config -match '(?m)^late_present_relative_marker_enabled=false\r?$') `
     'The late Present relative marker must be disabled by default.'
 Assert-True ($metadata.name -eq 'DragonSwordNativeWorldRadarPostRender') `
     'Release metadata names the wrong mod.'
-Assert-True ($metadata.version -eq '2.1.0') `
+Assert-True ($metadata.version -eq '2.2.1') `
     'Release metadata version is stale for the current native milestone.'
 Assert-True ($cmake -notmatch 'src/native/late_present_canary\.cpp') `
     'The runtime-rejected late Present source must not be compiled.'
@@ -122,8 +142,12 @@ Assert-True ($umgSource -match 'RemoveFromParent') `
     'The UMG child cleanup path is missing.'
 Assert-True ($umgHeader -match 'FWeakObjectPtr') `
     'The UMG lifecycle must retain weak identities only.'
-Assert-True ($deploy -match "'host', 'installer', 'scripts', 'src', 'tools', 'assets'") `
-    'The native-only deployment prohibited-path gate is missing.'
+Assert-True ($deploy -match "'host', 'installer', 'scripts', 'src', 'tools'" `
+    -and $deploy -notmatch `
+        "'host', 'installer', 'scripts', 'src', 'tools', 'assets'" `
+    -and $deploy -match `
+        'Test-DsnwrRuntimePayload[\s\S]*?-InstalledConfiguration') `
+    'Deployment must prohibit source trees while allowing only the verified assets/ui/f6 runtime payload.'
 Assert-True ($deploy -match "'runtime\\bridge'.*'runtime\\diagnostics'.*'runtime\\launch.request'") `
     'The native-only deployment must quarantine stale overlay runtime triggers.'
 Assert-True ($deploy -match "enabled\.txt") `
@@ -414,32 +438,55 @@ Assert-True ($deploy -match `
 $visibilityInstallBlock = [regex]::Match(
     $deploy,
     '(?ms)\$installedVisibilityConfig\s*=\s*Join-Path\s+\$target\s+''config\\visibility\.ini''[\s\S]*?^\}\s*else\s*\{[\s\S]*?^\}').Value
-Assert-True ($visibilityConfig -match '(?m)^\[radar\]$' `
-    -and $visibilityConfig -match '(?m)^clock=true$' `
-    -and $visibilityConfig -match '(?m)^bird_eggs=true$' `
-    -and $visibilityConfig -match '(?m)^\[map\]$' `
-    -and $visibilityConfig -match '(?m)^\[modes\]$' `
-    -and $visibilityConfig -match '(?m)^area_quests=available$' `
-    -and $visibilityConfig -match '(?m)^assault=available$' `
+Assert-True ($visibilityConfig -match '(?m)^\[radar\]\r?$' `
+    -and $visibilityConfig -match '(?m)^clock=true\r?$' `
+    -and $visibilityConfig -match '(?m)^bird_eggs=true\r?$' `
+    -and $visibilityConfig -match '(?m)^\[map\]\r?$' `
+    -and $visibilityConfig -match '(?m)^\[modes\]\r?$' `
+    -and $visibilityConfig -match '(?m)^area_quests=available\r?$' `
+    -and $visibilityConfig -match '(?m)^assault=available\r?$' `
+    -and $visibilityConfig -match '(?m)^\[height_arrows\]\r?$' `
+    -and $visibilityConfig -match `
+        '(?ms)^\[height_arrows\]\r?\n(?:#[^\r\n]*\r?\n)*treasure=true\r?\narea_quests=true\r?\nmole=true\r?$' `
+    -and $visibilityConfig -match '(?m)^\[interface\]\r?$' `
+    -and $visibilityConfig -match '(?m)^language=auto\r?$' `
+    -and [regex]::Matches(
+        $visibilityConfig, '(?m)^\[[a-z_]+\]\r?$').Count -eq 5 `
     -and $visibilityParser -match 'kMaximumVisibilityConfigBytes\s*=\s*4096U' `
     -and $visibilityParser -match `
         'VisibilityConfigFormat::LegacySchema1[\s\S]*?VisibilityConfigFormat::LegacySchema4' `
+    -and $visibilityParser -match `
+        'old_sectioned\s*=\s*seen_sections\s*==\s*0x07U' `
+    -and $visibilityParser -match `
+        'current_sectioned\s*=\s*seen_sections\s*==\s*0x1FU[\s\S]*?height_arrow_keys\s*==\s*0x07U[\s\S]*?interface_keys\s*==\s*0x01U' `
+    -and $visibilityParser -match `
+        'bool\s+height_treasure\{true\}[\s\S]*?bool\s+height_area_quests\{true\}[\s\S]*?bool\s+height_mole\{true\}[\s\S]*?RadarLanguagePreference\s+language\{RadarLanguagePreference::Auto\}' `
     -and $visibilityParser -match 'parse_visibility_config\(' `
     -and $visibilityParser -match 'format_visibility_config\(' `
+    -and [regex]::Matches(
+        $radarPreferences,
+        'case\s+RadarLanguagePreference::[A-Za-z]+:\s*return\s+"[^"]+"').Count -eq 12 `
+    -and [regex]::Matches(
+        $radarPreferences,
+        'case\s+RadarUiLanguage::[A-Za-z]+:\s*return\s+"[^"]+"').Count -eq 11 `
+    -and $radarLocalization -match `
+        'array<const wchar_t\*,\s*7>\s+marker_categories[\s\S]*?array<const wchar_t\*,\s*3>\s+height_categories' `
+    -and [regex]::Matches(
+        $radarLocalization, '(?<![A-Za-z0-9_])L"').Count -eq 341 `
     -and $visibilityHubHeader -match `
         'AreaQuests,[\s\S]*?BirdEggs,[\s\S]*?Count' `
     -and $visibilityHubHeader -match `
         'enum class AssaultDisplayMode[\s\S]*?Current,[\s\S]*?All' `
     -and $visibilityHubHeader -match `
-        'RadarVisibilityHubResult[\s\S]*?AssaultDisplayMode\s+assault_mode\{AssaultDisplayMode::Current\}' `
+        'RadarVisibilityHubResult[\s\S]*?AssaultDisplayMode\s+assault_mode\{AssaultDisplayMode::Current\}[\s\S]*?height_indicators[\s\S]*?RadarLanguagePreference\s+language' `
     -and $visibilityHubHeader -match `
         'kRadarVisibilityAllCategories\s*=\s*0x7FU' `
     -and $visibilityHubHeader -match `
         'kRadarVisibilityWorldCategories\s*=\s*0x3EU' `
     -and $visibilityHubCode -match `
-        'std::array<RowDefinition,\s*7>[\s\S]*?L"BIRD EGGS"[\s\S]*?RadarVisibilityCategory::BirdEggs' `
+        'std::array<RowDefinition,\s*7>[\s\S]*?RadarVisibilityCategory::BirdEggs' `
     -and $visibilityHubCode -match `
-        'column\s*==\s*1[\s\S]*?definition\.category\s*==\s*RadarVisibilityCategory::Clock[\s\S]*?definition\.category[\s\S]*?==\s*RadarVisibilityCategory::BirdEggs[\s\S]*?add_text\([\s\S]*?L"-"' `
+        'localized\.marker_categories\[category_index\]' `
     -and $visibilityHubCode -match `
         'column\s*==\s*1[\s\S]*?category\s*==\s*static_cast<std::size_t>\([\s\S]*?RadarVisibilityCategory::Clock\)[\s\S]*?category\s*==\s*static_cast<std::size_t>\([\s\S]*?RadarVisibilityCategory::BirdEggs\)[\s\S]*?continue' `
     -and $deploy -match `
@@ -456,7 +503,7 @@ Assert-True ($visibilityConfig -match '(?m)^\[radar\]$' `
     -and [regex]::Matches(
         $deploy,
         'Copy-Item\s+-LiteralPath\s+\$sourceVisibilityConfig').Count -eq 1) `
-    'Exact-mirror deployment, compact-only bird eggs, and the readable AVAILABLE public defaults no longer agree.'
+    'Exact-mirror deployment, compact-only bird eggs, five-section 2.2 defaults, migration, and complete localization no longer agree.'
 Assert-True ($deploy -match `
         '\[ValidateSet\(''Preserve'',\s*''Enable'',\s*''Disable''\)\]' `
     -and $deploy -match `
@@ -465,6 +512,52 @@ Assert-True ($deploy -match `
     -and $deploy -match 'debug_logging=false' `
     -and $deploy -match 'AllowUserDiagnostics') `
     'Deployment must preserve diagnostics by default while supporting one explicit test-install override.'
+$treasureOverrideValidator = [regex]::Match(
+    $deploy,
+    '(?ms)^function\s+Assert-ValidTreasureOverrides\s*\{.*?^\}')
+Assert-True ($treasureOverrideValidator.Success `
+    -and $treasureOverrideValidator.Value -match '64KB' `
+    -and $treasureOverrideValidator.Value -match `
+        'UTF8Encoding\]::new\(\$false,\s*\$true\)' `
+    -and $treasureOverrideValidator.Value -match `
+        'contains a bare carriage return' `
+    -and $treasureOverrideValidator.Value -match `
+        'mixes CRLF and LF line endings' `
+    -and $treasureOverrideValidator.Value -match `
+        '\$fields\[0\]\s+-cne\s+''ignore''' `
+    -and $treasureOverrideValidator.Value -match '\$ignored\.Add\(\$id\)') `
+    'Deployment must strictly validate bounded UTF-8 treasure overrides with canonical unique ignore rows.'
+Assert-True ($deploy -match `
+        'Assert-ValidTreasureOverrides\s+-Path\s+\$sourceOverrides' `
+    -and $deploy -match `
+        '\$preservedTreasureOverrides\s*=\s*Join-Path\s+\$backup[\s\S]*?preserved\\treasure_overrides\.txt' `
+    -and $deploy -match `
+        'Copy-Item\s+-LiteralPath\s+\$currentTreasureOverrides[\s\S]*?-Destination\s+\$preservedTreasureOverrides\s+-Force' `
+    -and $deploy -match `
+        '\$preservedTreasureOverridesHash\s*=\s*\(Get-FileHash[\s\S]*?\$preservedTreasureOverrides\s+-Algorithm\s+SHA256\)\.Hash' `
+    -and $deploy -match `
+        '\$currentTargetExists\s+-ne\s+\$targetExisted' `
+    -and $deploy -match `
+        'Installed treasure overrides changed while deployment was staged') `
+    'Deployment must capture a validated override and fail closed if its source changes before mutation.'
+$installedPayloadVerification = [regex]::Match(
+    $deploy,
+    '(?ms)Test-DsnwrRuntimePayload\s+-ProjectRoot\s+\$projectRoot\s+-DllPath\s+\$sourceDll\s+`?\s*-PayloadRoot\s+\$target[\s\S]*?-InstalledConfiguration\s*\|\s*Out-Null')
+$treasureOverrideRestore = [regex]::Match(
+    $deploy,
+    '(?ms)\$installedTreasureOverrides\s*=\s*Join-Path\s+\$target[\s\S]*?Assert-ValidTreasureOverrides\s+-Path\s+\$installedTreasureOverrides[\s\S]*?Installed treasure overrides after deployment')
+Assert-True ($installedPayloadVerification.Success `
+    -and $treasureOverrideRestore.Success `
+    -and $installedPayloadVerification.Index -lt $treasureOverrideRestore.Index `
+    -and $treasureOverrideRestore.Value -match `
+        'Copy-Item\s+-LiteralPath\s+\$preservedTreasureOverrides[\s\S]*?-Destination\s+\$installedTreasureOverrides\s+-Force' `
+    -and $deploy -match `
+        '\$expectedOverrideHash\s*=\s*if\s*\(\$treasureOverridesExisted\)[\s\S]*?\$preservedTreasureOverridesHash[\s\S]*?\$sourceOverrides' `
+    -and $deploy -match `
+        '\$expectedOverrideHash\s+-ne\s+\$installedOverrideHash' `
+    -and $deploy -match `
+        'Installed treasure overrides were not preserved byte-for-byte') `
+    'Deployment must verify the stock payload before restoring and hashing the preserved user override.'
 Assert-True ($deploy -match `
         '\. \(Join-Path \$PSScriptRoot ''ReleaseLayout\.ps1''\)' `
     -and $deploy -match `
@@ -491,6 +584,21 @@ $serviceEngineTickFault = Get-NativeOwnerFunction `
     $mainCode 'service_engine_tick_fault'
 $serviceVisibilityHub = Get-NativeOwnerFunction `
     $mainCode 'service_visibility_hub'
+$openVisibilityHubWhenReady = Get-NativeOwnerFunction `
+    $mainCode 'open_visibility_hub_when_ready'
+$serviceVisibilityHubToggleRequest = Get-NativeOwnerFunction `
+    $mainCode 'service_visibility_hub_toggle_request'
+$requestRadarActivation = Get-NativeOwnerFunction `
+    $mainCode 'request_radar_activation'
+$radarModStatus = [regex]::Match(
+    $mainCode,
+    '(?ms)^\s{4}\[\[nodiscard\]\]\s+dsnwr::RadarModStatus\s+radar_mod_status\s*\([^;]*?\)[^{]*\{(?:(?!^\s{4}\}).)*^\s{4}\}').Value
+$handleVisibilityHubResult = Get-NativeOwnerFunction `
+    $mainCode 'handle_visibility_hub_result'
+$flushVisibilityHubWorldMapRefresh = Get-NativeOwnerFunction `
+    $mainCode 'flush_visibility_hub_world_map_refresh'
+$establishVisibilityHubBaseline = Get-NativeOwnerFunction `
+    $mainCode 'establish_visibility_hub_baseline'
 $applyVisibilityHubResult = Get-NativeOwnerFunction `
     $mainCode 'apply_visibility_hub_result'
 $collectWorldMapSnapshot = Get-NativeOwnerFunction `
@@ -508,6 +616,12 @@ $evaluateAreaQuestCondition = [regex]::Match(
     $mainCode,
     '(?ms)^\s{4}\[\[nodiscard\]\]\s+dswros::AreaQuestEligibilityProof\s+evaluate_area_quest_condition\s*\([^;]*?\)[^{]*\{(?:(?!^\s{4}\}).)*^\s{4}\}').Value
 $activateOwner = Get-NativeOwnerFunction $mainCode 'activate'
+$probeActivityContext = Get-NativeOwnerFunction `
+    $mainCode 'probe_activity_context_guarded'
+$runtimeVisibilityService = Get-NativeOwnerFunction `
+    $mainCode 'service_runtime_visibility_edges'
+$updateCompactPool = Get-NativeOwnerFunction `
+    $mainCode 'update_compact_pool'
 $disableOwner = Get-NativeOwnerFunction $mainCode 'disable'
 $disableForMainMenuOwner = Get-NativeOwnerFunction `
     $mainCode 'disable_for_main_menu_owner_boundary'
@@ -520,26 +634,40 @@ $hubOpenService = Get-VisibilityHubMethod `
     $visibilityHubCode 'service_open_panel'
 $hubToggle = Get-VisibilityHubMethod `
     $visibilityHubCode 'toggle'
+$hubOpenGuarded = Get-VisibilityHubMethod `
+    $visibilityHubCode 'open_guarded'
 $hubOpenUnsafe = Get-VisibilityHubMethod `
     $visibilityHubCode 'open_unsafe'
 $hubServiceUnsafe = Get-VisibilityHubMethod `
     $visibilityHubCode 'service_unsafe'
 $hubDetachUnsafe = Get-VisibilityHubMethod `
     $visibilityHubCode 'detach_unsafe'
+$hubRefreshLocalizedText = Get-VisibilityHubMethod `
+    $visibilityHubCode 'refresh_localized_text_unsafe'
+$hubRefreshModStatus = Get-VisibilityHubMethod `
+    $visibilityHubCode 'refresh_mod_status_unsafe'
+$hubRecenterNativeText = Get-VisibilityHubMethod `
+    $visibilityHubCode 'recenter_native_text_unsafe'
+$hubSetLanguagePopupVisibility = Get-VisibilityHubMethod `
+    $visibilityHubCode 'set_language_popup_visibility_unsafe'
+$tryReadDesiredSize = Get-VisibilityHubFreeFunction `
+    $visibilityHubCode 'try_read_desired_size' 'bool'
 $setHubText = [regex]::Match(
     $visibilityHubCode,
     '(?ms)^void\s+set_text\s*\([^;]*?\)[^{]*\{(?:(?!^\}).)*^\}').Value
 $closedHubGuardIndex = $serviceVisibilityHub.IndexOf(
     'if (!visibility_hub_.is_open()', [StringComparison]::Ordinal)
 $closedHubControllerIndex = $serviceVisibilityHub.IndexOf(
-    'current_player_controller(engine)', [StringComparison]::Ordinal)
+    'current_player_controller_for_visibility_hub(engine)',
+    [StringComparison]::Ordinal)
 $hubOpenGuardIndex = $hubOpenService.IndexOf(
     'if (state_ != RadarVisibilityHubState::Open)',
     [StringComparison]::Ordinal)
 $hubOpenControllerIndex = $hubOpenService.IndexOf(
     'if (!current_controller)', [StringComparison]::Ordinal)
 $hubGuardedServiceIndex = $hubOpenService.IndexOf(
-    'service_guarded(current_controller)', [StringComparison]::Ordinal)
+    'service_guarded(current_controller, current_mod_status)',
+    [StringComparison]::Ordinal)
 Assert-True ([regex]::Matches(
         $mainCode,
         'register_keydown_event\(Input::Key::F6').Count -eq 1 `
@@ -547,15 +675,21 @@ Assert-True ([regex]::Matches(
         'kVisibilityHubServiceInterval\s*=\s*std::chrono::milliseconds\{50\}' `
     -and $mainCode -match `
         'kVisibilityHubToggleDebounce\s*=\s*std::chrono::milliseconds\{250\}' `
+    -and $mainCode -match `
+        'kVisibilityHubOpenRetryInterval\s*=\s*std::chrono::milliseconds\{250\}' `
+    -and $mainCode -match `
+        'kVisibilityHubOpenPendingLifetime\s*=\s*std::chrono::seconds\{15\}' `
+    -and $serviceVisibilityHubToggleRequest -match `
+        'f6_requests_\.exchange\(\s*0,\s*std::memory_order_acq_rel\)' `
+    -and $serviceVisibilityHubToggleRequest -match `
+        'visibility_hub_open_pending_[\s\S]*?reason=second_f6[\s\S]*?kVisibilityHubOpenPendingLifetime' `
     -and $engineTickUnsafe -match `
-        'f6_requests_\.exchange\(0,\s*std::memory_order_acq_rel\)' `
-    -and $engineTickUnsafe -match `
-        '!enabled_\s*\|\|\s*transition_active_[\s\S]*?reason=radar_not_active' `
+        'service_visibility_hub_toggle_request\(engine,\s*now\)[\s\S]*?service_visibility_hub\(engine,\s*now\)[\s\S]*?required_runtime_ready_' `
     -and [regex]::Matches(
         $engineTickUnsafe,
         'service_visibility_hub\(engine,\s*now\)').Count -eq 1 `
     -and $mainCode -match 'std::atomic<std::uint32_t>\s+f6_requests_') `
-    'F6 visibility-Hub ownership must be one debounced engine-thread transaction.'
+    'F6 visibility-Hub ownership must be one debounced engine-thread transaction with a bounded controller wait available while Radar is off.'
 Assert-True ($hubToggle -match `
         'state_\s*==\s*RadarVisibilityHubState::Faulted[\s\S]*?faults_before_detach\s*=\s*fault_count_[\s\S]*?detach_guarded\(current_controller\)[\s\S]*?fault_count_\s*==\s*faults_before_detach[\s\S]*?abi_failure_mask_\s*==\s*0[\s\S]*?state_\s*=\s*RadarVisibilityHubState::Ready') `
     'A prior runtime-only Hub fault must be recoverable only by a later explicit F6 after clean guarded handle reset and valid ABI.'
@@ -575,8 +709,37 @@ Assert-True ($closedHubGuardIndex -ge 0 `
     -and $hubOpenService -notmatch `
         'ProcessEvent|FindAllOf|FindFirstOf|StaticFindObject|filesystem|fstream|std::vector|\bnew\b' `
     -and $mainCode -match `
-        'visibility_hub=f6_transient_native_umg_auto_apply_change_only_x_close_cursor_reassert_open_only') `
+        'visibility_hub=f6_transient_native_umg_auto_apply_change_only_titlebar_bug_report_status_signal_action_keeps_open_x_close_cursor_reassert_open_only') `
     'A closed Visibility Hub must return before controller lookup or any UObject/reflection/file work; 50 ms service is open-only.'
+Assert-True ($radarModStatus.Length -gt 0 `
+    -and $radarModStatus -match `
+        'engine_tick_fault_terminal_' `
+    -and $openVisibilityHubWhenReady -match `
+        'current_mod_status\s*=\s*radar_mod_status\(\)[\s\S]*?transition_active_[\s\S]*?current_mod_status\s*!=\s*dsnwr::RadarModStatus::Fault[\s\S]*?visibility_hub_open_pending_until_\s*=\s*now\s*\+\s*kVisibilityHubOpenPendingLifetime' `
+    -and [regex]::Matches(
+        $serviceEngineTickFault,
+        'engine_tick_fault_terminal_\s*=\s*true').Count -eq 2 `
+    -and $activateOwner -match `
+        'enabled_\s*=\s*true;[\s\S]*?engine_tick_fault_terminal_\s*=\s*false' `
+    -and $serviceVisibilityHubToggleRequest -match `
+        'if\s*\(!controller\)[\s\S]*?visibility_hub_\.detach\(\)[\s\S]*?else\s*\{' `
+    -and $serviceVisibilityHubToggleRequest -notmatch `
+        'if\s*\(!controller\)[\s\S]{0,500}?release_for_travel\(\)') `
+    'Terminal engine-tick faults must keep F6 FAULT/RETRY reachable, and a missing transient controller must still restore input through the Hub owner.'
+Assert-True ($requestRadarActivation -match `
+        'bool\s+preserve_visibility_hub\s*=\s*false' `
+    -and [regex]::Matches(
+        $requestRadarActivation,
+        'activate\(engine,\s*preserve_visibility_hub\)').Count -eq 2 `
+    -and $handleVisibilityHubResult -match `
+        'RadarVisibilityHubCommand::DisableMod[\s\S]*?disable\(true\)' `
+    -and $handleVisibilityHubResult -match `
+        'RadarVisibilityHubCommand::EnableMod[\s\S]*?request_radar_activation\([\s\S]*?"f6_status_action",\s*true\)' `
+    -and $activateOwner -match `
+        'if\s*\(!preserve_visibility_hub\)[\s\S]*?visibility_hub_\.detach\(\)' `
+    -and $disableOwner -match `
+        'if\s*\(!preserve_visibility_hub\)[\s\S]*?visibility_hub_\.detach\(\)') `
+    'The in-panel Enable, Disable, and Retry actions must preserve the open Hub while ordinary F7/F8 lifecycle calls retain detach-by-default behavior.'
 Assert-True ($applyVisibilityHubResult -match `
         'result\.action\s*!=\s*dsnwr::RadarVisibilityHubAction::Applied[\s\S]*?\|\|\s*!result\.changed[\s\S]*?return;' `
     -and $applyVisibilityHubResult -match `
@@ -585,9 +748,13 @@ Assert-True ($applyVisibilityHubResult -match `
         'area_quest_display_mode_\s*=\s*result\.area_quest_mode' `
     -and $applyVisibilityHubResult -match `
         'assault_display_mode_\s*=\s*result\.assault_mode' `
+    -and $applyVisibilityHubResult -match `
+        'height_indicator_mask_\s*=\s*static_cast<dswros::HeightIndicatorMask>\([\s\S]*?result\.height_indicators' `
+    -and $applyVisibilityHubResult -match `
+        'language_preference_\s*=\s*result\.language[\s\S]*?active_ui_language_\s*=\s*dswros::resolve_radar_ui_language' `
     -and [regex]::Matches(
         $mainCode,
-        'persist_visibility_settings\(').Count -eq 2 `
+        'persist_visibility_settings\(').Count -eq 3 `
     -and [regex]::Matches(
         $mainCode,
         'load_visibility_settings\(').Count -eq 2 `
@@ -596,19 +763,77 @@ Assert-True ($applyVisibilityHubResult -match `
     -and $mainCode -match 'format_visibility_config\(' `
     -and $mainCode -match 'parse_visibility_config\(' `
     -and $visibilityParser -match 'VisibilityConfigFormat::LegacySchema4' `
+    -and $visibilityParser -match `
+        'old_sectioned\s*=\s*seen_sections\s*==\s*0x07U' `
+    -and $mainCode -match `
+        'migrate_legacy_auto_language_preference[\s\S]*?RadarLanguagePreference::Auto[\s\S]*?resolve_explicit_radar_language_preference[\s\S]*?persist_visibility_settings' `
     -and $mainCode -match `
         'assault_mode=[\s\S]*?AssaultDisplayMode::All[\s\S]*?"current"') `
-    'Visibility settings must load once at owner construction, migrate legacy schema 1-4, and persist the readable format only after a real Hub selection change.'
-Assert-True ($applyVisibilityHubResult -match `
-        'if\s*\(world_changed\)[\s\S]*?visibility_hub_\.is_open\(\)[\s\S]*?visibility_hub_world_map_baseline_mask_[\s\S]*?visibility_hub_world_map_baseline_area_quest_mode_[\s\S]*?visibility_hub_world_map_baseline_assault_mode_' `
+    'Visibility settings must load once, migrate legacy schema 1-4 and complete old three-section files, persist legacy AUTO once as the detected explicit language, and otherwise persist 2.2 selections only after a real Hub change.'
+$detectCurrentLanguage = [regex]::Match(
+    $mainCode,
+    '(?ms)^\s{4}\[\[nodiscard\]\]\s+dswros::RadarUiLanguage\s+detect_current_game_language\s*\([^;]*?\)[^{]*\{(?:(?!^\s{4}\}).)*^\s{4}\}').Value
+Assert-True ($detectCurrentLanguage.Length -gt 0 `
     -and $mainCode -match `
-        'VISIBILITY_HUB_WORLD_MAP_REFRESH[\s\S]*?action=single_coalesced_rebuild' `
+        'detect_current_game_language_guarded\s*\([\s\S]*?__try[\s\S]*?detect_current_game_language\(engine\)[\s\S]*?seh_fault_fallback_en' `
     -and $mainCode -match `
-        'RadarVisibilityHubAction::Opened[\s\S]*?visibility_hub_world_map_baseline_valid_\s*=\s*true[\s\S]*?visibility_hub_world_map_baseline_mask_[\s\S]*?visibility_hub_world_map_baseline_area_quest_mode_[\s\S]*?visibility_hub_world_map_baseline_assault_mode_' `
+        'current_player_controller_for_visibility_hub\s*\([\s\S]*?__try[\s\S]*?current_player_controller\(engine\)[\s\S]*?return\s+nullptr' `
     -and [regex]::Matches(
-        $mainCode,
-        'flush_visibility_hub_world_map_refresh\("(?:x_close|f6_close)"\)').Count -eq 2) `
-    'Hub changes must persist immediately while only the final net expanded-map change can cause one close-edge rebuild.'
+        $mainCode, 'ProcessEvent\(current_language_function_').Count -eq 1 `
+    -and $activateOwner -match `
+        'detected_game_language_\s*=\s*detect_current_game_language_guarded\(engine\)[\s\S]*?resolve_radar_ui_language' `
+    -and $detectCurrentLanguage -match `
+        'game_user_settings_language_schema_ready_[\s\S]*?engine_game_user_settings_property_[\s\S]*?game_language_text_property_[\s\S]*?game_language_text_numeric_property_[\s\S]*?radar_ui_language_from_game_setting' `
+    -and $detectCurrentLanguage -match `
+        'internationalization_language_schema_ready_[\s\S]*?ProcessEvent\(current_language_function_[\s\S]*?RadarUiLanguage::English' `
+    -and $openVisibilityHubWhenReady -match `
+        'detect_current_game_language_guarded\(engine\)[\s\S]*?visibility_hub_\.toggle' `
+    -and $openVisibilityHubWhenReady -match `
+        'current_player_controller_for_visibility_hub\(engine\)' `
+    -and $serviceVisibilityHubToggleRequest -match `
+        'current_player_controller_for_visibility_hub\(engine\)' `
+    -and $serviceVisibilityHub -match `
+        'current_player_controller_for_visibility_hub\(engine\)' `
+    -and $mainCode -match `
+        'CastField<FEnumProperty>\(game_language_text_property_\)[\s\S]*?GetUnderlyingProperty\(\)' `
+    -and $mainCode -match `
+        'game_language_text_numeric_property_\s*->GetUnsignedIntPropertyValue' `
+    -and $mainCode -match `
+        'schedule=f7_and_f6_open' `
+    -and ($probeActivityContext + $runtimeVisibilityService + `
+        $updateCompactPool) -notmatch `
+        'current_language|detect_current_game_language|internationalization') `
+    'LanguageText must be sampled once per F7 and real F6 open through bounded fault guards, fall back through UE culture then English, and never enter the 16 ms or 250 ms paths.'
+$hubCompactChange = [regex]::Match(
+    $applyVisibilityHubResult,
+    '(?s)const bool compact_changed\s*=.*?;\s*const bool world_changed').Value
+$hubWorldChange = [regex]::Match(
+    $applyVisibilityHubResult,
+    '(?s)const bool world_changed\s*=.*?;\s*const bool bird_egg_visibility_changed').Value
+Assert-True ($hubCompactChange.Length -gt 0 `
+    -and $hubCompactChange -match 'height_indicators_changed' `
+    -and $hubCompactChange -notmatch 'language_changed' `
+    -and $hubWorldChange.Length -gt 0 `
+    -and $hubWorldChange -notmatch 'height_indicators_changed|language_changed' `
+    -and $applyVisibilityHubResult -match `
+        'if\s*\(compact_changed\)[\s\S]*?compact_rebind_dirty_\s*=\s*true' `
+    -and $applyVisibilityHubResult -match `
+        'if\s*\(world_changed\)[\s\S]*?visibility_hub_\.is_open\(\)[\s\S]*?visibility_hub_world_map_baseline_mask_[\s\S]*?visibility_hub_world_map_baseline_area_quest_mode_[\s\S]*?visibility_hub_world_map_baseline_assault_mode_' `
+    -and $flushVisibilityHubWorldMapRefresh -match `
+        'VISIBILITY_HUB_WORLD_MAP_REFRESH' `
+    -and $flushVisibilityHubWorldMapRefresh -match `
+        '"single_coalesced_rebuild"' `
+    -and $mainCode -match `
+        'RadarVisibilityHubAction::Opened[\s\S]*?establish_visibility_hub_baseline\(\)' `
+    -and $establishVisibilityHubBaseline -match `
+        'visibility_hub_world_map_baseline_valid_\s*=\s*true[\s\S]*?visibility_hub_world_map_baseline_mask_[\s\S]*?visibility_hub_world_map_baseline_area_quest_mode_[\s\S]*?visibility_hub_world_map_baseline_assault_mode_' `
+    -and $handleVisibilityHubResult -match `
+        'RadarVisibilityHubAction::Closed[\s\S]*?flush_visibility_hub_world_map_refresh\(close_reason\)' `
+    -and $serviceVisibilityHub -match `
+        'handle_visibility_hub_result\([\s\S]*?"x_close"\)' `
+    -and $serviceVisibilityHubToggleRequest -match `
+        'handle_visibility_hub_result\([\s\S]*?"f6_toggle"\)') `
+    'Height changes may dirty only compact rebind, language changes may update text/persistence only, and only a net map selection may cause one close-edge atlas rebuild.'
 Assert-True ($visibilityHubHeader -match `
         'RadarVisibilityHubAction[\s\S]*?Applied,[\s\S]*?Closed,[\s\S]*?Rejected' `
     -and $visibilityHubHeader -match 'FWeakObjectPtr\s+close_control_' `
@@ -621,12 +846,12 @@ Assert-True ($visibilityHubHeader -match `
     -and $hubServiceUnsafe -match `
         'close_control_\.Get\(\)[\s\S]*?is_checked\(close_control,[\s\S]*?detach_unsafe\(current_controller\)[\s\S]*?RadarVisibilityHubAction::Closed' `
     -and $hubServiceUnsafe -match `
-        'pending_masks_\s*==\s*source_masks_[\s\S]*?pending_area_quest_mode_\s*==\s*source_area_quest_mode_[\s\S]*?pending_assault_mode_\s*==\s*source_assault_mode_[\s\S]*?RadarVisibilityHubAction::None' `
+        'pending_masks_\s*==\s*source_masks_[\s\S]*?pending_area_quest_mode_\s*==\s*source_area_quest_mode_[\s\S]*?pending_assault_mode_\s*==\s*source_assault_mode_[\s\S]*?pending_height_indicators_\s*==\s*source_height_indicators_[\s\S]*?pending_language_\s*==\s*source_language_[\s\S]*?RadarVisibilityHubAction::None' `
     -and $hubServiceUnsafe -match `
-        'const RadarVisibilityMaskWord applied\s*=\s*pending_masks_[\s\S]*?source_masks_\s*=\s*applied[\s\S]*?source_area_quest_mode_\s*=\s*applied_mode[\s\S]*?source_assault_mode_\s*=\s*applied_assault_mode[\s\S]*?RadarVisibilityHubAction::Applied' `
+        'const RadarVisibilityMaskWord applied\s*=\s*pending_masks_[\s\S]*?applied_height_indicators[\s\S]*?applied_language[\s\S]*?source_masks_\s*=\s*applied[\s\S]*?source_height_indicators_\s*=\s*applied_height_indicators[\s\S]*?source_language_\s*=\s*applied_language[\s\S]*?RadarVisibilityHubAction::Applied' `
     -and $hubServiceUnsafe -notmatch `
         'source_masks_\s*=\s*applied[\s\S]*?detach_unsafe') `
-    'Hub selections must auto-apply exactly on mask, area-mode, or Assault-mode changes while X or a second F6 closes without Apply/Cancel controls.'
+    'Hub selections must auto-apply exactly on mask, filter-mode, height, or language changes while X or a second F6 closes without Apply/Cancel controls.'
 $hubOpenInputIndex = $hubOpenUnsafe.IndexOf(
     'set_input_mode_game_and_ui_, &input', [StringComparison]::Ordinal)
 $hubOpenCursorIndex = $hubOpenUnsafe.IndexOf(
@@ -640,43 +865,223 @@ Assert-True ($hubOpenInputIndex -ge 0 `
         'if\s*\(cursor_visible\)[\s\S]*?set_input_mode_game_and_ui_') `
     'Hub opening must set GameAndUI before the cursor write and reassert input only after an open-panel cursor overwrite is observed.'
 Assert-True ($visibilityHubCode -match `
-        'kReferencePanelWidth\s*=\s*620\.0' `
+        'kReferencePanelWidth\s*=\s*680\.0' `
     -and $visibilityHubCode -match `
-        'kReferencePanelHeight\s*=\s*526\.0' `
+        'kReferencePanelHeight\s*=\s*660\.0' `
+    -and $visibilityHubCode -match `
+        'kMinimumViewportMargin\s*=\s*16\.0' `
     -and $hubOpenUnsafe -match `
-        'std::min\(\s*viewport_size\.return_value\.x\s*/\s*2560\.0,\s*viewport_size\.return_value\.y\s*/\s*1440\.0\)' `
+        'std::min\(\s*viewport_size\.return_value\.x\s*/\s*kReferenceViewportWidth,\s*viewport_size\.return_value\.y\s*/\s*kReferenceViewportHeight\)' `
+    -and $hubOpenUnsafe -match `
+        'fit_width\s*=\s*viewport_size\.return_value\.x[\s\S]*?-\s*kMinimumViewportMargin\s*\*\s*2\.0' `
+    -and $hubOpenUnsafe -match `
+        'fit_height\s*=\s*viewport_size\.return_value\.y[\s\S]*?-\s*kMinimumViewportMargin\s*\*\s*2\.0' `
+    -and $hubOpenUnsafe -match `
+        'fit_scale\s*=\s*std::min\([\s\S]*?fit_width\s*/\s*kReferencePanelWidth,[\s\S]*?fit_height\s*/\s*kReferencePanelHeight\)' `
+    -and $hubOpenUnsafe -match `
+        'display_scale\s*=\s*std::min\(reference_scale,\s*fit_scale\)' `
     -and $hubOpenUnsafe -match `
         'const double unit_scale\s*=\s*display_scale\s*/\s*static_cast<double>\(viewport_scale\.return_value\)' `
     -and $hubOpenUnsafe -match `
         '\(viewport_size\.return_value\.x\s*-\s*physical_width\)\s*\*\s*0\.5' `
     -and $hubOpenUnsafe -match `
         '\(viewport_size\.return_value\.y\s*-\s*physical_height\)\s*\*\s*0\.5') `
-    'Hub layout must preserve aspect-ratio-aware viewport scaling, DPI conversion, and centering.'
-Assert-True ($visibilityHubCode -match `
-        '/Script/UMG\.Widget:SetRenderScale' `
+    'The 680x660 Hub must fit-clamp against both viewport dimensions, preserve DPI conversion, and remain centered.'
+Assert-True ($hubOpenUnsafe -match `
+        'LocalizedTextSlot::BugReport,\s*localized\.bug_report,\s*411\.0,\s*17\.0,\s*126\.0,\s*26\.0' `
+    -and $hubOpenUnsafe -match `
+        'LocalizedTextSlot::Close,\s*localized\.close,\s*559\.0,\s*17\.0,\s*94\.0,\s*26\.0' `
+    -and $hubOpenUnsafe -match `
+        'bug_report_control,\s*400\.0,\s*8\.0,\s*146\.0,\s*50\.0' `
+    -and $hubOpenUnsafe -match `
+        'mod_status_visual\s*=\s*add_border\(\s*146\.0,\s*143\.0,\s*5\.0,\s*22\.0' `
+    -and $hubOpenUnsafe -notmatch 'kStatusBadgeSurface' `
+    -and $hubOpenUnsafe -match `
+        'const\s+std::array<double,\s*2>\s+mode_width\{\{154\.0,\s*154\.0\}\}' `
+    -and $hubOpenUnsafe -match `
+        'mode_x\[0\]\s*\+\s*4\.0,\s*y\s*\+\s*3\.0,\s*mode_width\[0\]\s*-\s*8\.0' `
+    -and $hubOpenUnsafe -match `
+        'mode_x\[1\]\s*\+\s*4\.0,\s*y\s*\+\s*3\.0,\s*mode_width\[1\]\s*-\s*8\.0') `
+    'The polished Hub must keep title-bar Bug Report and Close targets separate, render status as a non-button signal, and give both filter choices identical centered geometry.'
+Assert-True ($hubInitialize -match `
+        '/Script/UMG\.TextBlock:SetFont' `
+    -and $hubInitialize -match `
+        'find_function_property\(set_font_,\s*L"InFontInfo"\)' `
+    -and $hubInitialize -match `
+        'reflected_font_contract_invalid\s*=[\s\S]*?set_font_value_property_->GetStruct\(\)[\s\S]*?expected_font_property->GetStruct\(\)[\s\S]*?kFontParameterCapacity[\s\S]*?record_font_abi_failure\(\s*1U\s*<<\s*12U,\s*reflected_font_contract_invalid\s*\)' `
+    -and $hubInitialize -match `
+        'font_layout_abi_available_\s*=\s*!reflected_font_contract_invalid' `
+    -and $hubInitialize -notmatch `
+        'abi_failure_mask_\s*\|=\s*1U\s*<<\s*25U' `
     -and $visibilityHubCode -match `
-        '/Script/UMG\.Widget:SetRenderTransformPivot' `
-    -and $hubInitialize -match `
-        'require_parameters\(1U\s*<<\s*25U,\s*set_render_scale_,\s*16\)' `
-    -and $hubInitialize -match `
-        'require_parameters\(1U\s*<<\s*26U,\s*set_render_pivot_,\s*16\)' `
+        'reference_slot_height\s*\*\s*unit_scale\s*/\s*kTextLineHeightSafety' `
+    -and $visibilityHubCode -match `
+        'compatible_font_metric\([\s\S]*?IsInteger\(\)[\s\S]*?IsFloatingPoint\(\)' `
+    -and $visibilityHubCode -match `
+        'read_font_metric\([\s\S]*?GetFloatingPointPropertyValue\([\s\S]*?GetSignedIntPropertyValue\(' `
+    -and $visibilityHubCode -match `
+        'write_font_metric\([\s\S]*?SetFloatingPointPropertyValue\([\s\S]*?CanHoldSignedValueInternal\([\s\S]*?SetIntPropertyValue\([\s\S]*?font_metric_matches\(' `
+    -and $visibilityHubCode -match `
+        'CopyCompleteValue\(parameter_font,\s*font_value\)[\s\S]*?write_font_metric\([\s\S]*?size_property,\s*parameter_size,\s*target_size\)[\s\S]*?ProcessEvent\(set_font,\s*parameters\.data\(\)\)[\s\S]*?font_metric_matches\(committed_size,\s*target_size\)' `
     -and $hubOpenUnsafe -match `
-        'VectorParameters\s+pivot\{\{0\.0,\s*0\.0\}\}[\s\S]*?text_block->ProcessEvent\(set_render_pivot_,\s*&pivot\)' `
+        'calculate_target_font_size\([\s\S]*?apply_font_size_and_commit\([\s\S]*?text_font_records\[text_font_record_count\+\+\]' `
+    -and $hubInitialize -match `
+        '/Script/UMG\.Widget:SetRenderScale[\s\S]*?GetParmsSize\(\)[\s\S]*?sizeof\(VectorParameters\)[\s\S]*?/Script/UMG\.Widget:SetRenderTransformPivot[\s\S]*?GetParmsSize\(\)[\s\S]*?sizeof\(VectorParameters\)' `
     -and $hubOpenUnsafe -match `
-        'const double scaled_text\s*=\s*unit_scale\s*\*\s*text_scale[\s\S]*?VectorParameters\s+scale\{\{scaled_text,\s*scaled_text\}\}[\s\S]*?text_block->ProcessEvent\(set_render_scale_,\s*&scale\)') `
-    'Every Hub TextBlock must use the same open-time viewport/DPI scale as its panel geometry with a top-left pivot.'
+        'if\s*\(!preparation\.prepared\)[\s\S]*?layout_failure\s*=\s*text_runtime_failure_[\s\S]*?game_text_block_class_usable[\s\S]*?NewObject<UObject>\([\s\S]*?game_text_block_class_[\s\S]*?if\s*\(!text_block\)[\s\S]*?NewObject<UObject>\([\s\S]*?text_block_class_[\s\S]*?target_font_size\s*=\s*0[\s\S]*?DTextBlockRenderScaleFallback[\s\S]*?TextBlockRenderScaleFallback[\s\S]*?font_fallback_reason_\s*=\s*layout_failure[\s\S]*?text_runtime_failure_\s*=\s*0' `
+    -and $hubOpenUnsafe -match `
+        'if\s*\(!font_layout_abi_available_\)[\s\S]*?text_runtime_failure_\s*=\s*sizing_failure[\s\S]*?return\s+false' `
+    -and $hubOpenUnsafe -match `
+        'target_font_size\s*==\s*0[\s\S]*?pivot_axis\s*=\s*justification\s*==\s*kTextCenter[\s\S]*?0\.5[\s\S]*?0\.0[\s\S]*?ProcessEvent\(set_render_pivot_[\s\S]*?rendered_scale\s*=\s*unit_scale\s*\*\s*role_scale[\s\S]*?ProcessEvent\(set_render_scale_' `
+    -and $hubOpenUnsafe -match `
+        'ProcessEvent\(add_to_viewport_,\s*&add_to_viewport\)[\s\S]*?ProcessEvent\(force_layout_prepass_,\s*nullptr\)[\s\S]*?for\s*\([^)]*text_font_record_count[\s\S]*?record\.target_size\s*==\s*0[\s\S]*?continue[\s\S]*?apply_font_size_and_commit\([\s\S]*?ProcessEvent\(force_layout_prepass_,\s*nullptr\)[\s\S]*?record\.target_size\s*==\s*0[\s\S]*?continue[\s\S]*?read_font_size\([\s\S]*?!font_metric_matches\([\s\S]*?readback_size,\s*record\.target_size[\s\S]*?last_failure_\s*=\s*37' `
+    -and $hubOpenUnsafe -match `
+        'host_\s*=\s*host[\s\S]*?ProcessEvent\(add_to_viewport_,\s*&add_to_viewport\)[\s\S]*?last_failure_\s*=\s*37' `
+    -and $hubOpenGuarded -match `
+        'result\.action\s*==\s*RadarVisibilityHubAction::Rejected[\s\S]*?host_\.Get\(\)[\s\S]*?detach_guarded\(current_controller\)' `
+    -and $hubDetachUnsafe -match `
+        'host\s*&&\s*remove_from_parent_[\s\S]*?ProcessEvent\(remove_from_parent_,\s*nullptr\)[\s\S]*?reset_runtime_handles\(\)') `
+    'The Hub must prefer verified Font.Size layout while retaining the live-accepted render-scale text path as a bounded non-blocking fallback; exact-font records still recommit and verify after viewport construction.'
+Assert-True ($visibilityHubCode -match `
+        '/Script/DSClient\.DTextBlock' `
+    -and $visibilityHubCode -match `
+        '/Script/DSClient\.Default__DTextBlock' `
+    -and $hubInitialize -match `
+        'game_text_block_class_->GetClassDefaultObject\(\)\.Get\(\)[\s\S]*?if\s*\(!game_text_block_default\)[\s\S]*?/Script/DSClient\.Default__DTextBlock' `
+    -and $hubInitialize -match `
+        'font_object_is_compatible\([\s\S]*?game_text_block_default_\.Get\(\)[\s\S]*?expected_font_property' `
+    -and $visibilityHubPolicy -match `
+        'kRadarVisibilityHubEssentialDetailMask\s*=\s*\(1U\s*<<\s*0U\)\s*\|\s*\(1U\s*<<\s*1U\)\s*\|\s*\(1U\s*<<\s*2U\)\s*\|\s*\(1U\s*<<\s*3U\)\s*\|\s*\(1U\s*<<\s*4U\)\s*\|\s*\(1U\s*<<\s*9U\)\s*\|\s*\(1U\s*<<\s*10U\)\s*\|\s*\(1U\s*<<\s*11U\)\s*;' `
+    -and $visibilityHubPolicy -match `
+        'static_assert\(\s*kRadarVisibilityHubEssentialDetailMask\s*==\s*0xE1FU\s*\)' `
+    -and $visibilityHubPolicy -notmatch `
+        'kRadarVisibilityHubEssentialDetailMask\s*=[^;]*(?:1U\s*<<\s*5U|1U\s*<<\s*6U|1U\s*<<\s*7U|1U\s*<<\s*8U)' `
+    -and $hubInitialize -match `
+        'radar_visibility_hub_font_detail_is_fatal\(\s*font_abi_detail_mask_\s*\)' `
+    -and $visibilityHubCode -match `
+        'ForceApplyLanguageFont' `
+    -and $hubOpenUnsafe -match `
+        'resolved_ui_language_\s*=\s*dswros::resolve_radar_ui_language\(' `
+    -and $hubOpenUnsafe -notmatch `
+        'resolved_ui_language_\s*=\s*.*\?[^;]*RadarUiLanguage::English' `
+    -and $hubOpenUnsafe -match `
+        'bool\s+use_game_text_widgets\s*=\s*game_text_block_usable' `
+    -and $hubOpenUnsafe -match `
+        'radar_visibility_hub_font_plan\([\s\S]*?game_text_block_class_usable,[\s\S]*?game_default_font_compatible\)' `
+    -and $visibilityHubPolicy -match `
+        'prepare_radar_visibility_hub_text_with_fallback\([\s\S]*?if\s*\(use_game_text_widget\)[\s\S]*?GameTextBlock[\s\S]*?if\s*\(game\.prepared\)[\s\S]*?fallback_reason\s*=\s*game\.failure[\s\S]*?base_attempted\s*=\s*true[\s\S]*?BaseTextBlock[\s\S]*?terminal_failure\s*=\s*base\.prepared\s*\?\s*0U\s*:\s*base\.failure' `
+    -and $hubOpenUnsafe -match `
+        'initial_use_game_text_widgets\s*=\s*use_game_text_widgets[\s\S]*?prepare_radar_visibility_hub_text_with_fallback\([\s\S]*?initial_use_game_text_widgets[\s\S]*?GameTextBlock[\s\S]*?prepare_text_widget\([\s\S]*?game_text_block_class_,\s*true,\s*1,\s*2,\s*3\)[\s\S]*?game_prepare_failed\s*=\s*!prepared[\s\S]*?if\s*\(initial_use_game_text_widgets\s*&&\s*game_prepare_failed\)[\s\S]*?font_fallback_reason_\s*=\s*text_runtime_failure_[\s\S]*?RadarVisibilityHubFontSource::TextBlockFallback[\s\S]*?use_game_text_widgets\s*=\s*false[\s\S]*?prepare_text_widget\([\s\S]*?text_block_class_,\s*false,\s*5,\s*6,\s*7\)[\s\S]*?preparation\.game_attempted\s*&&\s*preparation\.base_attempted[\s\S]*?font_fallback_reason_\s*=\s*preparation\.fallback_reason[\s\S]*?text_runtime_failure_\s*=\s*preparation\.terminal_failure[\s\S]*?if\s*\(!preparation\.prepared\)' `
+    -and $hubOpenUnsafe -match `
+        'use_game_font\s*&&\s*force_language_font_available[\s\S]*?\(void\)write_bool_property\([\s\S]*?force_apply_language_font_property_[\s\S]*?true' `
+    -and $hubOpenUnsafe -match `
+        'use_game_font\s*&&\s*copy_game_default_font[\s\S]*?!copy_font_preserving_layout_metrics\([\s\S]*?game_text_block_default[\s\S]*?text_block[\s\S]*?expected_font_property[\s\S]*?copy_game_default_font\s*=\s*false[\s\S]*?RadarVisibilityHubFontSource::[\s\S]*?DTextBlockInheritedDefault' `
+    -and $hubOpenUnsafe -match `
+        'RadarVisibilityHubFontPlanSource::TextBlockFallback[\s\S]*?RadarVisibilityHubFontSource::TextBlockFallback[\s\S]*?RadarVisibilityHubFontPlanSource::[\s\S]*?DTextBlockInheritedDefault[\s\S]*?RadarVisibilityHubFontSource::DTextBlockInheritedDefault[\s\S]*?RadarVisibilityHubFontSource::DTextBlockClassDefaultObject' `
+    -and $visibilityHubCode -match `
+        'read_font_size_raw\([\s\S]*?source_size\s*==\s*0[\s\S]*?source_size\s*=\s*kReferenceHubFontSize[\s\S]*?source_size\s*<\s*0\s*\|\|\s*source_size\s*>\s*kMaximumHubFontSize[\s\S]*?return\s+false' `
+    -and $compatibleFontProperty -match `
+        'IsA\(text_block_class\)[\s\S]*?property\s*=\s*expected_font_property[\s\S]*?GetOwner<UClass>\(\)[\s\S]*?GetClassPrivate\(\)[\s\S]*?IsChildOf\(property_owner\)[\s\S]*?GetOffset_Internal\(\)\s*<\s*0[\s\S]*?IsInContainer\(actual_class\)[\s\S]*?ContainerPtrToValuePtr<void>\(text_block\)' `
+    -and $compatibleFontProperty -notmatch `
+        'GetPropertyByNameInChain\s*\(' `
+    -and $hubOpenUnsafe -match `
+        'text_font_record_count\s*==\s*0[\s\S]*?text_runtime_failure_\s*=\s*10[\s\S]*?apply_font_size_and_commit\([\s\S]*?text_runtime_failure_\s*=\s*11[\s\S]*?!font_metric_matches\([\s\S]*?readback_size,\s*record\.target_size[\s\S]*?text_runtime_failure_\s*=\s*12' `
+    -and $hubOpenUnsafe -notmatch `
+        'last_failure_\s*=\s*38' `
+    -and $visibilityHubCode -match `
+        'CopyCompleteValue\(destination_value,\s*source_value\)[\s\S]*?write_font_metric\(size_property,\s*size_value,\s*original_size\)[\s\S]*?write_font_metric\([\s\S]*?spacing_property,\s*spacing_value,\s*original_spacing\)' `
+    -and $visibilityHubCode -notmatch `
+        'compact_layer_donor_root|resolve_font_donor|TextTrackingButton' `
+    -and $nativeTests -match `
+        'optional_font_details\s*\{[\s\S]*?1U\s*<<\s*5U[\s\S]*?1U\s*<<\s*6U[\s\S]*?1U\s*<<\s*7U[\s\S]*?1U\s*<<\s*8U[\s\S]*?1U\s*<<\s*12U[\s\S]*?essential_hub_details\s*\{[\s\S]*?1U\s*<<\s*0U[\s\S]*?1U\s*<<\s*1U[\s\S]*?1U\s*<<\s*2U[\s\S]*?1U\s*<<\s*3U[\s\S]*?1U\s*<<\s*4U[\s\S]*?1U\s*<<\s*9U[\s\S]*?1U\s*<<\s*10U[\s\S]*?1U\s*<<\s*11U[\s\S]*?DTextBlockInheritedDefault[\s\S]*?DTextBlockClassDefaultObject[\s\S]*?base_only_result[\s\S]*?!base_only_result\.game_attempted[\s\S]*?base_only_result\.base_attempted[\s\S]*?fallback_reason\s*==\s*3U[\s\S]*?terminal_failure\s*==\s*6U' `
+    -and $openVisibilityHubWhenReady -match `
+        'visibility_hub_\.toggle\(\s*controller,\s*visibility_masks_' `
+    -and $mainCode -notmatch `
+        'visibility_hub_\.toggle\([\s\S]{0,160}?current_compact_layer_guarded\(\)') `
+    'F6 must prefer the language-aware DTextBlock, seed deferred zero-size fonts safely, retry the base TextBlock in the same transaction, and remain independent of compact-layer lifetime and selected language.'
+$hubTextRecordIndex = $hubOpenUnsafe.IndexOf(
+    'text_layout_record_count_ = text_font_record_count',
+    [StringComparison]::Ordinal)
+$hubAddToViewportIndex = $hubOpenUnsafe.IndexOf(
+    'host->ProcessEvent(add_to_viewport_', [StringComparison]::Ordinal)
+$hubInitialRecenterIndex = $hubOpenUnsafe.IndexOf(
+    'recenter_native_text_unsafe()', [StringComparison]::Ordinal)
+$hubPublishOpenIndex = $hubOpenUnsafe.IndexOf(
+    'state_ = RadarVisibilityHubState::Open', [StringComparison]::Ordinal)
+$restoreTextPositionIndex = $hubRecenterNativeText.IndexOf(
+    'record.authored_x, record.authored_y', [StringComparison]::Ordinal)
+$restoreTextSizeIndex = $hubRecenterNativeText.IndexOf(
+    'record.authored_width, record.authored_height',
+    [StringComparison]::Ordinal)
+$measureTextPrepassIndex = $hubRecenterNativeText.IndexOf(
+    'host->ProcessEvent(force_layout_prepass_', [StringComparison]::Ordinal)
+$readDesiredTextIndex = $hubRecenterNativeText.IndexOf(
+    'try_read_desired_size(', [StringComparison]::Ordinal)
+$centerTextPolicyIndex = $hubRecenterNativeText.IndexOf(
+    'center_radar_visibility_hub_text_slot(', [StringComparison]::Ordinal)
+$applyCenteredTextPositionIndex = $hubRecenterNativeText.IndexOf(
+    'record.authored_x, centered.top', [StringComparison]::Ordinal)
+$applyCenteredTextSizeIndex = $hubRecenterNativeText.IndexOf(
+    'record.authored_width, centered.height', [StringComparison]::Ordinal)
+Assert-True ($hubInitialize -match `
+        '/Script/UMG\.Widget:GetDesiredSize' `
+    -and $hubInitialize -match `
+        'get_desired_size_->GetParmsSize\(\)[\s\S]*?sizeof\(VectorReturnParameters\)[\s\S]*?viewport_size_return_property[\s\S]*?return_property->GetStruct\(\)[\s\S]*?viewport_size_return_property->GetStruct\(\)[\s\S]*?get_desired_size_\s*=\s*nullptr' `
+    -and $visibilityHubCode -match `
+        'struct\s+HubTextFontRecord[\s\S]*?UObject\*\s+widget[\s\S]*?UObject\*\s+slot[\s\S]*?allow_desired_size_centering[\s\S]*?authored_x[\s\S]*?authored_y[\s\S]*?authored_width[\s\S]*?authored_height' `
+    -and $hubOpenUnsafe -match `
+        'UObject\*\s+text_slot\s*=\s*add_widget\([\s\S]*?text_font_records\[text_font_record_count\+\+\]\s*=\s*\{[\s\S]*?text_slot[\s\S]*?x,[\s\S]*?y,[\s\S]*?width,[\s\S]*?height' `
+    -and $visibilityHubHeader -match `
+        'struct\s+TextLayoutRecord\s*\{[\s\S]*?FWeakObjectPtr\s+widget[\s\S]*?FWeakObjectPtr\s+slot[\s\S]*?allow_desired_size_centering[\s\S]*?authored_x[\s\S]*?authored_y[\s\S]*?authored_width[\s\S]*?authored_height[\s\S]*?\};[\s\S]*?std::array<TextLayoutRecord,\s*kMaximumTextLayoutRecordCount>[\s\S]*?text_layout_records_[\s\S]*?text_layout_record_count_' `
+    -and $hubOpenUnsafe -match `
+        'text_layout_record_count_\s*=\s*text_font_record_count[\s\S]*?text_layout_records_\[index\]\s*=\s*\{[\s\S]*?source\.widget,[\s\S]*?source\.slot,[\s\S]*?source\.allow_desired_size_centering,[\s\S]*?source\.authored_x\s*\*\s*unit_scale,[\s\S]*?source\.authored_y\s*\*\s*unit_scale,[\s\S]*?source\.authored_width\s*\*\s*unit_scale,[\s\S]*?source\.authored_height\s*\*\s*unit_scale' `
+    -and $hubTextRecordIndex -ge 0 `
+    -and $hubTextRecordIndex -lt $hubAddToViewportIndex `
+    -and $hubAddToViewportIndex -lt $hubInitialRecenterIndex `
+    -and $hubInitialRecenterIndex -lt $hubPublishOpenIndex `
+    -and $hubRefreshLocalizedText -match `
+        'set_text\([\s\S]*?refresh_packaged_text_overlay_unsafe\([\s\S]*?return\s+recenter_native_text_unsafe\(\);' `
+    -and $hubRefreshModStatus -match `
+        'set_text\([\s\S]*?refresh_packaged_text_overlay_unsafe\([\s\S]*?return\s+recenter_native_text_unsafe\(\);' `
+    -and $hubSetLanguagePopupVisibility -match `
+        'popup_visibility\s*=\s*visible\s*\?\s*kVisible\s*:\s*kCollapsed[\s\S]*?set_visibility\([\s\S]*?popup_visibility[\s\S]*?language_dropdown_expanded_\s*=\s*visible;[\s\S]*?return\s+!visible\s*\|\|\s*recenter_native_text_unsafe\(\);' `
+    -and $restoreTextPositionIndex -ge 0 `
+    -and $restoreTextPositionIndex -lt $restoreTextSizeIndex `
+    -and $restoreTextSizeIndex -lt $measureTextPrepassIndex `
+    -and $measureTextPrepassIndex -lt $readDesiredTextIndex `
+    -and $readDesiredTextIndex -lt $centerTextPolicyIndex `
+    -and $centerTextPolicyIndex -lt $applyCenteredTextPositionIndex `
+    -and $applyCenteredTextPositionIndex -lt $applyCenteredTextSizeIndex `
+    -and $tryReadDesiredSize -match `
+        'std::isfinite\(desired_size\.x\)[\s\S]*?std::isfinite\(desired_size\.y\)' `
+    -and $hubRecenterNativeText -match `
+        'if\s*\(!record\.allow_desired_size_centering[\s\S]*?try_read_desired_size\([\s\S]*?if\s*\(!centered\.centered\)\s*\{\s*continue;\s*\}' `
+    -and ([regex]::Matches(
+            $hubRecenterNativeText,
+            'set_slot_vector\(\s*slot,').Count -eq 4) `
+    -and $hubRecenterNativeText -notmatch `
+        'controls_|control_|visual_|set_is_checked_|set_visibility_|set_slot_z_order|world_map|compact_' `
+    -and $hubOpenUnsafe -match `
+        'VectorParameters\s+pivot\{\{pivot_axis,\s*0\.5\}\}' `
+    -and $visibilityHubPolicy -match `
+        'center_radar_visibility_hub_text_slot\([\s\S]*?return\s*\{authored_top,\s*authored_height,\s*false\};[\s\S]*?authored_top\s*\+\s*\(authored_height\s*-\s*desired_height\)\s*\*\s*0\.5' `
+    -and $nativeTests -match `
+        'center_radar_visibility_hub_text_slot\([\s\S]*?100\.0,\s*26\.0,\s*18\.0[\s\S]*?104\.0[\s\S]*?150\.0,\s*39\.0,\s*27\.0[\s\S]*?oversized_line\.top,\s*100\.0[\s\S]*?oversized_line\.height,\s*26\.0[\s\S]*?infinity\(\)[\s\S]*?quiet_NaN\(\)[\s\S]*?invalid_line\.top,\s*100\.0[\s\S]*?invalid_line\.height,\s*26\.0') `
+    'Every native F6 text slot must persist authored geometry, recenter exact font-layout records after each text-visibility lifecycle change, and preserve render-scale fallback slots without changing button hit regions or map geometry.'
 Assert-True ($visibilityHubCode -match 'kPanelFrame' `
     -and $visibilityHubCode -match 'kContentBackground' `
     -and $visibilityHubCode -match 'kCompactHeader' `
     -and $visibilityHubCode -match 'kWorldHeader' `
     -and $visibilityHubCode -match `
-        'L"RADAR"[\s\S]*?0\.66' `
+        'LocalizedTextSlot::Radar,\s*localized\.radar' `
     -and $visibilityHubCode -match `
-        'L"MAP"[\s\S]*?0\.66' `
-    -and $visibilityHubCode -notmatch `
-        'L"MINIMAP"|L"WORLD MAP"' `
+        'LocalizedTextSlot::Map,\s*localized\.map' `
     -and $hubOpenUnsafe -match `
-        'const double scaled_text\s*=\s*unit_scale\s*\*\s*text_scale' `
+        'LocalizedTextSlot::Language,\s*localized\.language,\s*176\.0,\s*76\.0,\s*328\.0[\s\S]*?LocalizedTextSlot::LanguageValue,\s*language_display\.data\(\),\s*200\.0,\s*92\.0,\s*280\.0' `
+    -and $visibilityHubCode -notmatch `
+        'L"(?:MINIMAP|WORLD MAP|RADAR SETTINGS|MARKER VISIBILITY|BIRD EGGS|AVAILABLE|ALL|CLOSE)"' `
+    -and $hubOpenUnsafe -match `
+        'std::array<HubTextFontRecord,\s*kMaximumHubTextCount>\s+text_font_records' `
     -and $visibilityHubCode -match `
         'row\s*%\s*2U\s*==\s*0U\s*\?\s*kBaseRow\s*:\s*kAlternateRow') `
     'Hub visual hierarchy must retain its framed panel, column chips, and alternating row surfaces.'
@@ -685,7 +1090,7 @@ Assert-True ($visibilityHubHeader -match `
     -and $visibilityHubHeader -match `
         'area_mode_available_control_[\s\S]*?area_mode_all_control_' `
     -and $visibilityHubCode -match `
-        'L"AREA QUEST MODE"[\s\S]*?L"AVAILABLE"[\s\S]*?L"ALL"' `
+        'localized\.marker_categories\[static_cast<std::size_t>\([\s\S]*?RadarVisibilityCategory::AreaQuests\)\][\s\S]*?localized\.available[\s\S]*?localized\.all' `
     -and $hubServiceUnsafe -match `
         'available_checked[\s\S]*?all_checked[\s\S]*?pending_area_quest_mode_[\s\S]*?set_checked' `
     -and $applyVisibilityHubResult -match `
@@ -698,7 +1103,7 @@ Assert-True ($visibilityHubHeader -match `
     -and $visibilityHubHeader -match `
         'assault_mode_current_control_[\s\S]*?assault_mode_all_control_[\s\S]*?assault_mode_current_visual_[\s\S]*?assault_mode_all_visual_' `
     -and $visibilityHubCode -match `
-        'L"ASSAULT MODE"[\s\S]*?L"AVAILABLE"[\s\S]*?L"ALL"' `
+        'localized\.marker_categories\[static_cast<std::size_t>\([\s\S]*?RadarVisibilityCategory::Assault\)\][\s\S]*?localized\.available[\s\S]*?localized\.all' `
     -and $hubOpenUnsafe -match `
         'source_assault_mode_\s*=\s*current_assault_mode[\s\S]*?pending_assault_mode_\s*=\s*current_assault_mode' `
     -and $hubServiceUnsafe -match `
@@ -743,19 +1148,21 @@ Assert-True ($engineTick -match `
     -and $serviceEngineTickFault -notmatch `
         'while\s*\(|sleep_for|FindAllOf|FindFirstOf|StaticFindObject') `
     'A top-level engine-tick fault must defer guarded cleanup to the next game-thread tick, permit only one automatic activation, and stop without retry loops after another failure.'
-Assert-True ($engineTickUnsafe -match `
-        'retryable_attach_failure\s*=[\s\S]*?WorldMapUmgRendererState::Faulted[\s\S]*?area_quest_scan_faulted_' ) `
-    'Explicit F7 must run a full bounded activation for world-map or area-task scan faults.'
+Assert-True ($requestRadarActivation -match `
+        'retryable_attach_failure\s*=[\s\S]*?engine_tick_fault_terminal_[\s\S]*?WorldMapUmgRendererState::Faulted[\s\S]*?area_quest_scan_faulted_' `
+    -and $requestRadarActivation -match `
+        'engine_tick_fault_terminal_[\s\S]*?!engine_tick_fault_cleanup_failed_[\s\S]*?engine_tick_fault_recovery_attempts_\s*=\s*0[\s\S]*?activate\(engine,\s*preserve_visibility_hub\)' ) `
+    'Explicit F6/F7 retry must run one new bounded activation for terminal engine, world-map, or area-task scan faults without bypassing a failed cleanup.'
 
 $appendEventLog = [regex]::Match(
     $nativeEventLogCode,
-    '(?ms)^void\s+append_native_event_log\s*\([^;]*?\)[^{]*\{(?:(?!^\}).)*^\}').Value
+    '(?ms)^bool\s+append_native_event_log\s*\([^;]*?\)[^{]*\{(?:(?!^\}).)*^\}').Value
 $appendEventLine = [regex]::Match(
     $nativeEventLogCode,
     '(?ms)^bool\s+append_line_locked\s*\([^;]*?\)[^{]*\{(?:(?!^\}).)*^\}').Value
 $tryEnqueue = [regex]::Match(
     $nativeEventLogCode,
-    '(?ms)^void\s+try_enqueue\s*\([^;]*?\)[^{]*\{(?:(?!^\}).)*^\}').Value
+    '(?ms)^bool\s+try_enqueue\s*\([^;]*?\)[^{]*\{(?:(?!^\}).)*^\}').Value
 $writerLoop = [regex]::Match(
     $nativeEventLogCode,
     '(?ms)^void\s+writer_loop\s*\([^;]*?\)[^{]*\{(?:(?!^\}).)*^\}').Value
@@ -803,8 +1210,8 @@ $appendFastReturn = $appendEventLog.IndexOf(
     'if (!event_log_state().enabled.load', [StringComparison]::Ordinal)
 $appendEnqueue = $appendEventLog.IndexOf(
     'try_enqueue', [StringComparison]::Ordinal)
-Assert-True ($diagnosticsConfig -match '(?m)^\[diagnostics\]$' `
-    -and $diagnosticsConfig -match '(?m)^debug_logging=false$') `
+Assert-True ($diagnosticsConfig -match '(?m)^\[diagnostics\]\r?$' `
+    -and $diagnosticsConfig -match '(?m)^debug_logging=false\r?$') `
     'Release-source diagnostics must default to exactly disabled.'
 Assert-True ($diagnosticsParser -match `
         'kMaximumDiagnosticsConfigBytes\s*=\s*2048' `

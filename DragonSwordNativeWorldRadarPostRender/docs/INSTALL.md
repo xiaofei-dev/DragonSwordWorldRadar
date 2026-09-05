@@ -2,7 +2,7 @@
 
 ## Release identity
 
-Native World Radar 2.1.0 uses the ExperimentalNested UE4SS directory contract.
+Native World Radar 2.2.1 uses the ExperimentalNested UE4SS directory contract.
 The game executable and existing UE4SS loader/proxy are validated structurally
 rather than through fixed compatibility hashes, so a compatible game or UE4SS
 update does not require rebuilding the Mod.
@@ -30,7 +30,7 @@ resynchronization; it is not an installer and does not rebuild static catalogs.
 1. Close DragonSword Awakening.
 2. Fully extract the installer archive.
 3. Verify the Setup executable against its `.sha256` sidecar.
-4. Run `DragonSwordNativeWorldRadarPostRender-Setup-2.1.0.exe`.
+4. Run `DragonSwordNativeWorldRadarPostRender-Setup-2.2.1.exe`.
 5. Select `DSClient-Win64-Shipping.exe` from `DS/Binaries/Win64`.
 6. Setup inspects the selected path and automatically presents `Install`,
    `Update`, or `Repair`. `Uninstall` remains disabled unless an active Radar
@@ -126,16 +126,24 @@ exact legacy one-line `event_log_enabled=true|false` form remains accepted for
 preserved older installations. The log is written under `runtime/logs` and is
 never included in a release package.
 
-Fresh visibility configuration uses schema 4 and includes
-`area_quest_mode=available` plus `assault_mode=available`. The accepted area-quest
-values are `available` and `all`; the accepted Assault values are `available`
-and `all`, with legacy `current` accepted as an alias. Setup continues to accept
-and preserve valid schema-1/schema-2 files
-without either key and valid schema-3 files with only `area_quest_mode`. Those
-older schemas and the legacy `assault_mode=current` token load Assault mode as
-`AVAILABLE`. A schema-4 file missing either
-mode, an older schema carrying a key it does not own, or any other mode value is
-rejected before mutation.
+Fresh visibility configuration uses readable `[radar]`, `[map]`, `[modes]`,
+`[height_arrows]`, and `[interface]` sections. Height-arrow defaults are
+Treasure ON, Area Quest ON, and Mole ON. A valid existing configuration keeps
+its choices. The interface stores one of 11 explicit languages. A legacy AUTO
+value migrates on the next actual F6 opening or F7 activation by resolving
+`DGameUserSettings.LanguageText`, then Kismet and English, and persisting the
+matching explicit language; AUTO is not displayed. Explicit choices persist and
+remain authoritative. Strictly valid older formats remain upgrade-readable;
+the next real F6 change atomically writes the current complete format. Setup
+rejects malformed, oversized, duplicate, unknown, mixed, or incomplete content
+before mutation.
+
+F6 may open while Radar is Off, On, or Faulted. Bug Report and Close are
+separate top-bar controls. Read-only status text uses a thin state-colored strip;
+Enable, Disable, or Retry is a separate action that keeps the page open. Enable
+still requires a loaded playable world, and Bug Report opens the fixed Nexus
+Posts page. These runtime controls do not run Setup or
+change installed files beyond the normal bounded visibility-config save.
 
 ## Transaction, backup, and rollback
 
@@ -186,7 +194,7 @@ been accepted in game.
 
 ## Manual installation without UE4SS
 
-Use `DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-No-UE4SS.zip` only
+Use `DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-No-UE4SS.zip` only
 when a structurally compatible ExperimentalNested UE4SS runtime is already
 installed. Fully extract the archive and close the game. Copy only
 `ue4ss/Mods/DragonSwordNativeWorldRadarPostRender` into the existing
@@ -208,7 +216,7 @@ never supports StableRoot.
 
 ## Manual installation with UE4SS
 
-`DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip` contains
+`DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip` contains
 the same Mod payload plus the pinned integrity-verified ExperimentalNested
 runtime and a clean enabled `mods.txt`. It is valid only when the target has no
 existing UE4SS installation. Fully extract it, close the game, and copy
@@ -246,5 +254,42 @@ game saves as part of Radar removal.
 
 Successful compilation, package hashing, isolated installation, or rollback
 testing proves only those stages. Fresh in-game startup, F7 activation, world
-transition, map rendering, and owner-observed performance remain separate
-runtime acceptance requirements for the exact rebuilt installer.
+transition, map rendering, physical-controller behavior, all three height
+controls, the responsive F6 status/actions/Bug Report page, all 11 language
+glyph sets, and owner-observed
+performance remain separate runtime acceptance requirements for the exact
+rebuilt installer. Refreshed Core `2/2`, all static gates, release hygiene, and
+the clean native `/W4 /WX` build passed for DLL
+`6AEFDACC1A44EF6F387456CB31FE1A6828259EF7ACDEE1D1FE13BAE10BDFA4D5`,
+bound to compiled-source SHA-256
+`A98660932CC5DA1BC3E2B9D262DBFC13E0FED3935A6174B5C92E8622BBA2A1EC`.
+`Build-Release.ps1` package validation passed for that exact DLL: Setup reports
+  `20/20`, the manual-copy matrix reports `2/2`, payload equivalence, manual
+  layout, and clean-target policy validation pass, and all three public ZIPs
+  re-extract byte-identically. Local diagnostics-enabled deployment of exact
+  DLL `6AEFDACC...` passed with matching source, build, and installed hashes.
+  Its rollback backup is
+  `dist/work/deployment/deploy-backups/20260903-003509-033-native-only-deploy`.
+  The prior backup
+  `dist/work/deployment/deploy-backups/20260902-234105-640-native-only-deploy`.
+  belongs to the superseded intermediate 59529B2A deployment and is not current
+  candidate evidence. This does not establish Setup ownership. The earlier 634D283A deployment and
+  backup are historical only.
+
+The packaged game-1.0.11 owner RVA and member offset `0x128` are fast paths,
+not version locks. One FullActivation shares a total budget of at most 24
+active-`.db` key validations across packaged and structural owner routes. If
+the packaged candidates fail, FullActivation scans the current executable at
+most once for exactly one retained structural signature. That scan counts only
+targets inside the mapped image and scans executable sections through
+`min(SizeOfRawData, VirtualSize)`. Structurally incompatible updates fail
+closed; compatibility with every future version is not promised. Current F6
+source uses measured desired-size evidence for exact font-layout TextBlocks
+after first open, language changes, status changes, and language-popup display.
+`GetDesiredSize` must return the known `Vector2D` structure identity. Invalid
+evidence and the render-scale fallback keep authored text geometry, and this
+pass changes no button hit box, map geometry,
+or per-frame path. Live F6 visual behavior, gameplay, controller handling,
+clean exit, and performance remain `NOT_VALIDATED` for 6AEFDACC.
+Historical 2.2.0 and 2.1.1 evidence is not 2.2.1 evidence. Exact-artifact 2.2.1
+gameplay acceptance remains pending.

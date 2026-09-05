@@ -73,9 +73,17 @@ $visibilityConfig = Get-Content `
     (Join-Path $projectRoot 'config\visibility.ini') -Raw
 $visibilityParser = Get-Content `
     (Join-Path $projectRoot 'include\dswros\visibility_config.hpp') -Raw
+$radarPreferences = Get-Content `
+    (Join-Path $projectRoot 'include\dswros\radar_preferences.hpp') -Raw
+$radarLocalization = Get-Content `
+    (Join-Path $projectRoot 'include\dswros\radar_localization.hpp') -Raw
 $saveReconciler = Get-Content (Join-Path $projectRoot 'src\native\native_save_reconciler.cpp') -Raw
 $saveReconcilerHeader = Get-Content (Join-Path $projectRoot 'src\native\native_save_reconciler.hpp') -Raw
+$saveKeyPolicy = Get-Content `
+    (Join-Path $projectRoot 'include\dswros\save_key_field_policy.hpp') -Raw
 $areaQuestVisibility = Get-Content (Join-Path $projectRoot 'include\dswros\area_quest_visibility.hpp') -Raw
+$compactMenuState = Get-Content `
+    (Join-Path $projectRoot 'include\dswros\compact_menu_state.hpp') -Raw
 $model = Get-Content (Join-Path $projectRoot 'include\dswros\compact_render_model.hpp') -Raw
 $objectState = Get-Content (Join-Path $projectRoot 'include\dswros\object_state.hpp') -Raw
 $renderProjection = Get-Content `
@@ -83,6 +91,15 @@ $renderProjection = Get-Content `
 $nativeTests = Get-Content (Join-Path $projectRoot 'tests\native_state_tests.cpp') -Raw
 $cmake = Get-Content (Join-Path $projectRoot 'CMakeLists.txt') -Raw
 $deploy = Get-Content (Join-Path $projectRoot 'tools\Deploy-NativePrototype.ps1') -Raw
+$areaQuestHeightBuilderPath = Join-Path $projectRoot `
+    'tools\Build-AreaQuestHeightCatalog.ps1'
+$areaQuestHeightBuilder = Get-Content `
+    -LiteralPath $areaQuestHeightBuilderPath -Raw
+$areaQuestHeightVerification = & $areaQuestHeightBuilderPath -VerifyOnly
+$moleHeightBuilderPath = Join-Path $projectRoot `
+    'tools\Build-MoleHeightCatalog.ps1'
+$moleHeightBuilder = Get-Content -LiteralPath $moleHeightBuilderPath -Raw
+$moleHeightVerification = & $moleHeightBuilderPath -VerifyOnly
 $treasureOverrides = Get-Content `
     (Join-Path $projectRoot 'src\data\defaults\treasure_overrides.txt') -Raw
 $treasureRenderCatalog = Get-Content `
@@ -130,11 +147,11 @@ Assert-True ($renderIds.Count -eq 1693 `
     -and $actorOnlyIds.Count -eq 0) `
     'Treasure render/Actor catalog difference must remain exactly the confirmed absent ID 11230106.'
 
-Assert-True ($metadata.version -eq '2.1.0' `
+Assert-True ($metadata.version -eq '2.2.1' `
     -and $mainCode -match `
-        'kVersion\s*=\s*STR\("2\.1\.0"\)' `
+        'kVersion\s*=\s*STR\("2\.2\.1"\)' `
     -and $mainCode -match `
-        'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_1_0') `
+        'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1') `
     'Release metadata version does not match the native compact-pool milestone.'
 Assert-True ($main -match '#include "compact_umg_renderer\.hpp"') `
     'The native owner does not include the compact UMG renderer.'
@@ -204,6 +221,12 @@ Assert-True ($renderer -match `
 Assert-True ($renderer -match `
         'AddToViewportParameters\s+add_to_viewport\s*\{\s*kViewportZOrder\s*\}') `
     'The audited high Z order is not used by the real AddToViewport call.'
+Assert-True ([regex]::Matches(
+        $renderer,
+        'set_visibility\(host,\s*set_visibility_,\s*kHitTestInvisible\)').Count -eq 2 `
+    -and $renderer -match `
+        'AddToViewportParameters[\s\S]*?ProcessEvent\(add_to_viewport_[\s\S]*?ProcessEvent\(set_position_in_viewport_[\s\S]*?set_visibility\(host,\s*set_visibility_,\s*kHitTestInvisible\)[\s\S]*?ProcessEvent\(force_layout_prepass_') `
+    'Compact attach must republish HitTestInvisible after Blueprint construction and before the layout prepass.'
 Assert-True ($renderer -match `
         'case 0:\s*return\s*\{1\.10,\s*0\.88' `
     -and $renderer -match 'case 1:\s*return\s*\{0\.82,\s*0\.46' `
@@ -228,26 +251,89 @@ foreach ($requiredGeometry in @(
 Assert-True ([regex]::Matches(
         $renderer,
         'NewObject<UObject>\(tree, canvas_panel_class_\)').Count -eq 3) `
-    'The renderer must retain one source-bounded movement, dual-height loop, and fixed clock Canvas allocation path.'
+    'The renderer must retain one source-bounded movement, three-height loop, and fixed clock Canvas allocation path.'
 Assert-True ($renderer -match 'marker_canvas->ProcessEvent\(add_child_to_canvas_, &add_clock_group\)' `
     -and $renderer -match 'movement_group->ProcessEvent\(\s*add_child_to_canvas_, &add_height_group\)' `
     -and $renderer -match 'root_panel_ = movement_group' `
     -and $renderer -match 'host_root_panel_ = marker_canvas') `
-    'Single-host movement, dual-height, and fixed-clock ownership is not explicit.'
+    'Single-host movement, three-height, and fixed-clock ownership is not explicit.'
 Assert-True ($renderer -notmatch 'Widget:GetParent|CanvasPanelSlot:GetPosition|CanvasPanelSlot:GetSize|CanvasPanelSlot:GetAlignment|CanvasPanelSlot:GetAnchors|CanvasPanelSlot:GetZOrder|player_tree|player_root|encounter_group') `
     'The runtime-faulting split encounter attachment returned.'
 Assert-True ($renderer -match 'height_group->ProcessEvent\(add_child_to_canvas_' `
     -and $renderer -match 'height_group->ProcessEvent\(\s*set_render_pivot_' `
-    -and $rendererHeader -match 'kCompactUmgHeightChannelCount\s*=\s*2' `
-    -and $renderer -match 'CompactUmgHeightChannel::AreaQuest') `
-    'The fixed pointer pieces must be children of two centered category groups.'
+    -and $rendererHeader -match 'kCompactUmgHeightChannelCount\s*=\s*3' `
+    -and $renderer -match 'CompactUmgHeightChannel::AreaQuest' `
+    -and $renderer -match 'CompactUmgHeightChannel::Mole') `
+    'The fixed pointer pieces must be children of three centered category groups.'
 Assert-True ($renderer -match `
-        'height_pointer_fill_color\s*\([\s\S]*?CompactUmgMarkerKind::AreaQuest[\s\S]*?\?\s*kOfficialCyan\s*:\s*treasure_color\(kind\)' `
+        'height_pointer_fill_color\s*\([\s\S]*?CompactUmgMarkerKind::Fly[\s\S]*?return\s+kFlyWing[\s\S]*?CompactUmgMarkerKind::Mole[\s\S]*?return\s+kHammer[\s\S]*?CompactUmgMarkerKind::Wave[\s\S]*?return\s+kWave[\s\S]*?return\s+treasure_color\(kind\)' `
     -and $renderer -match `
-        'const\s+LinearColor\s+fill\s*=\s*height_pointer_fill_color\(height_kind\[channel\]\)' `
+        'height_pointer_outline_color\s*\([\s\S]*?CompactUmgMarkerKind::Fly[\s\S]*?return\s+kFlyOutline[\s\S]*?CompactUmgMarkerKind::Mole[\s\S]*?return\s+kMoleHeightOutline[\s\S]*?CompactUmgMarkerKind::Wave[\s\S]*?return\s+kWaveOutline[\s\S]*?return\s+kOutline' `
+    -and $renderer -match `
+        'const\s+LinearColor\s+fill\s*=\s*height_pointer_fill_color\(kind\)' `
     -and $renderer -notmatch `
         'treasure_color\(height_kind\[channel\]\)') `
-    'Treasure and area-quest height channels must keep type-specific treasure and official-cyan fill colors.'
+    'Treasure and shared mini-game height pointers must keep independent category palettes.'
+Assert-True ($renderer -match `
+        'kMoleHeightOutline\{76\.0F\s*/\s*255\.0F,\s*45\.0F\s*/\s*255\.0F,[\s\S]*?26\.0F\s*/\s*255\.0F' `
+    -and $renderer -match `
+        'const\s+bool\s+mini_game_height\s*=\s*marker\.kind[\s\S]*?CompactUmgMarkerKind::Fly[\s\S]*?CompactUmgMarkerKind::Mole[\s\S]*?CompactUmgMarkerKind::Wave[\s\S]*?CompactUmgHeightChannel::Mole' `
+    -and $renderer -match `
+        'configure_mini_game_height_indicator_unsafe\([\s\S]*?MiniGameHeightIndicatorShape::Hidden[\s\S]*?kReferenceMiniGameTriangleHalfWidth[\s\S]*?kReferenceMiniGameTriangleHalfHeight[\s\S]*?kReferenceMiniGameTriangleFillBarHeight[\s\S]*?kReferenceMiniGameTriangleOutlineWidth[\s\S]*?std::array<LineSegment,\s*3>\s+outline[\s\S]*?set_line_geometry\([\s\S]*?kOutline[\s\S]*?kFillPieceOffset[\s\S]*?vertical_fraction[\s\S]*?bar_width[\s\S]*?bar_y' `
+    -and $renderer -match `
+        'translation\{\{[\s\S]*?0\.0,[\s\S]*?height_marker_half_widths_\[channel\][\s\S]*?kReferenceMiniGameTriangleClearance[\s\S]*?\+\s*half_height' `
+    -and $rendererHeader -match `
+        'mini_game_height_shape_codes_' `
+    -and $model -match `
+        'enum\s+class\s+MiniGameHeightIndicatorShape[\s\S]*?Hidden[\s\S]*?Above[\s\S]*?Below[\s\S]*?mini_game_height_indicator_shape\([\s\S]*?height_angle_degrees\s*<\s*0\.0' `
+    -and $nativeTests -match `
+        'shared Fly/Mole/Wave height state must hide inside the 500-unit deadzone,[\s\S]*?up triangle,[\s\S]*?down triangle') `
+    -and $renderer -match `
+        'set_slot_vector\(\s*slots\[piece\],\s*set_slot_size_,\s*bar_width,\s*fill_bar_height\)[\s\S]*?set_brush_color\(pieces\[piece\],\s*set_brush_color_,\s*fill\)' `
+    'Fly, Mole, and Wave must share one preallocated black-outlined solid below-marker triangle, keep category fill colors, hide in the deadzone, and restore on the next directional edge.'
+Assert-True ($model -match `
+        'enum\s+class\s+AreaQuestHeightIndicatorShape[\s\S]*?Aligned[\s\S]*?Above[\s\S]*?Below[\s\S]*?Unavailable' `
+    -and $model -match `
+        'kAreaQuestHeightBandCapacity\s*=\s*2[\s\S]*?struct\s+AreaQuestHeightBand[\s\S]*?double\s+minimum_z[\s\S]*?double\s+maximum_z[\s\S]*?struct\s+AreaQuestHeightProfile[\s\S]*?band_count' `
+    -and $model -match `
+        'area_quest_height_profile_valid\s*\([\s\S]*?profile\.band_count\s*==\s*0[\s\S]*?profile\.band_count\s*>\s*profile\.bands\.size\(\)[\s\S]*?band\.minimum_z\s*>\s*band\.maximum_z[\s\S]*?profile\.bands\[index\s*-\s*1\]\.maximum_z[\s\S]*?>=\s*band\.minimum_z' `
+    -and $model -match `
+        'kAreaQuestHeightDeadZone\s*=\s*500\.0[\s\S]*?area_quest_height_indicator_shape\s*\([\s\S]*?const\s+AreaQuestHeightProfile&\s+profile[\s\S]*?comparable_player_z[\s\S]*?band\.minimum_z\s*-\s*kAreaQuestHeightDeadZone[\s\S]*?band\.maximum_z\s*\+\s*kAreaQuestHeightDeadZone[\s\S]*?candidate_above\s*&&\s*!candidate_below[\s\S]*?candidate_below\s*&&\s*!candidate_above' `
+    -and $model -match `
+        'area_quest_height_profile_for_marker\s*\([\s\S]*?marker_z[\s\S]*?nearest_distance[\s\S]*?tie[\s\S]*?selected\.bands\[0\][\s\S]*?selected\.band_count\s*=\s*1' `
+    -and $nativeTests -match `
+        'Area Quest height UI must include the \+/-500-unit boundaries,[\s\S]*?uniquely nearest task-actor band[\s\S]*?fail closed for a tied or missing source') `
+    'The Area Quest height state mapping must validate at most two ordered bands, select one band from the authored marker Z, use its inclusive 500-unit deadzone, and fail closed for tied or missing profiles.'
+Assert-True ($renderer -match `
+        'Area Quest owns no separate pointer[\s\S]*?area_quest_channel\s*\?\s*kCollapsed\s*:\s*kVisible' `
+    -and $renderer -match `
+        'configure_area_quest_marker_shape_unsafe[\s\S]*?kCompactUmgMarkerPieceCount[\s\S]*?marker_pieces_\[marker_index\][\s\S]*?AreaQuestHeightIndicatorShape::Aligned[\s\S]*?marker_piece_style\([\s\S]*?CompactUmgMarkerKind::AreaQuest' `
+    -and $renderer -match `
+        'std::array<LineSegment,\s*3>\s+triangle[\s\S]*?set_brush_color\(pieces\[edge\],[\s\S]*?kOutline[\s\S]*?set_visibility\(pieces\[3\],[\s\S]*?kCollapsed' `
+    -and $renderer -notmatch 'indicator_center_x' `
+    -and $renderer -match `
+        'std::array<LineSegment,\s*3>\s+triangle\{\{[\s\S]*?center_x\s*-\s*half_width[\s\S]*?center_x,\s*apex_y[\s\S]*?center_x\s*\+\s*half_width' `
+    -and $renderer -match `
+        'AreaQuestHeightIndicatorShape::Unavailable[\s\S]*?show_alignment_dots[\s\S]*?kCollapsed' `
+    -and $renderer -match `
+        'const\s+bool\s+mini_game_height\s*=\s*marker\.kind[\s\S]*?CompactUmgMarkerKind::Fly[\s\S]*?\|\|\s*marker\.kind\s*==\s*CompactUmgMarkerKind::Mole[\s\S]*?\|\|\s*marker\.kind\s*==\s*CompactUmgMarkerKind::Wave' `
+    -and $renderer -match `
+        'marker\.show_height[\s\S]*?\(treasure_height\s*\|\|\s*mini_game_height\)[\s\S]*?const\s+std::size_t\s+channel\s*=\s*mini_game_height[\s\S]*?CompactUmgHeightChannel::Mole[\s\S]*?CompactUmgHeightChannel::Treasure') `
+    'Area Quest must reshape its existing four-piece task marker in place at center_x and must never request the separate left-side height group.'
+$areaQuestHeightUpdate = [regex]::Match(
+    $renderer,
+    '(?s)bool\s+CompactUmgRenderer::update_area_quest_height_indicators_unsafe\s*\(.*?(?=void\s+CompactUmgRenderer::update_world_clock)').Value
+Assert-True ($areaQuestHeightUpdate.Length -gt 0 `
+    -and $areaQuestHeightUpdate -match `
+        'active_marker_count_[\s\S]*?area_quest_height_active_\[index\][\s\S]*?const\s+dswros::AreaQuestHeightProfile&\s+height_profile\s*=\s*area_quest_height_profiles_\[index\][\s\S]*?area_quest_height_profile_valid\(height_profile\)[\s\S]*?area_quest_height_indicator_shape\(\s*height_profile,\s*comparable_player_z\)[\s\S]*?shape_code\s*==\s*area_quest_marker_shape_codes_\[index\][\s\S]*?height_transform_skip_count_[\s\S]*?configure_area_quest_marker_shape_unsafe' `
+    -and $rendererHeader -match `
+        'std::array<dswros::AreaQuestHeightProfile,\s*kCompactUmgMarkerCapacity>[\s\S]*?area_quest_height_profiles_[\s\S]*?std::array<bool,\s*kCompactUmgMarkerCapacity>[\s\S]*?area_quest_height_active_' `
+    -and $rendererHeader -notmatch 'area_quest_height_target_z_' `
+    -and $areaQuestHeightUpdate -notmatch `
+        'area_quest_height_target_z_|target_z\s*-\s*comparable_player_z' `
+    -and $renderer -match `
+        'apply_height_pointer_transform_unsafe[\s\S]*?CompactUmgHeightChannel::AreaQuest\)\)\s*\{\s*return\s+false') `
+    'Every retained profiled Area Quest must use one allocation-free height-band scan and mutate geometry only on a discrete state edge; legacy target-Z state is forbidden.'
 Assert-True ($renderer -match 'height_segments\{\{' `
     -and $renderer -match 'height_end_cap_inset' `
     -and $renderer -match 'height_outline_segments\(' `
@@ -288,9 +374,9 @@ Assert-True ($renderer -match 'case 0:\s*return\s*\{0\.98,\s*0\.98[\s\S]*?kOffic
     'Official-reference compact Boss or Assault contrast geometry regressed.'
 Assert-True ($main -match 'EncounterKind::Boss\s*\?\s*30\.0\s*:\s*27\.0' `
     -and $main -match '28\.0,[\s\S]*?CompactUmgMarkerKind::AreaQuest' `
-    -and $main -match 'compact_area_quest_height_target_valid_' `
+    -and $main -match 'update_area_quest_height_indicators\(' `
     -and $main -match 'CompactUmgHeightChannel::Treasure' `
-    -and $main -match 'CompactUmgHeightChannel::AreaQuest') `
+    -and $main -notmatch 'compact_area_quest_height_target_valid_') `
     'Compact Boss, Assault, or area-quest binding sizes regressed.'
 Assert-True ($renderer -match '0\.16,\s*0\.16,\s*-0\.22,[^\r\n]+kTreasureOther' `
     -and $renderer -match 'case 0:\s*return\s*\{0\.92,\s*0\.92,[^\r\n]+kTreasureOther' `
@@ -497,6 +583,9 @@ Assert-True ($model -match 'kCompactMapId\s*=\s*100') `
     'Compact treasure selection must remain constrained to map ID 100.'
 Assert-True ($model -match 'kComparablePlayerZOffset\s*=\s*-150\.0') `
     'Nearest treasure ranking must preserve the player Z adjustment.'
+Assert-True ($model -match 'kMiniGameHeightDeadZone\s*=\s*500\.0' `
+    -and $model -match 'mini_game_height_angle_from_delta') `
+    'Shared mini-game height guidance must use the calibrated inclusive 500-unit deadzone.'
 Assert-True ($model -match 'marker\.nearest = output_index == 0') `
     'Only one nearest treasure may receive emphasis.'
 Assert-True ($model -match 'height_target_z' `
@@ -513,6 +602,134 @@ Assert-True ($model -match 'effective_magnitude' `
     -and $model -match 'std::copysign') `
     'Height dead-zone mapping must remain continuous at its boundary.'
 
+$areaQuestCatalogPath = Join-Path $projectRoot `
+    'src\data\generated\area-quests.tsv'
+$areaQuestCatalogLines = @(Get-Content -LiteralPath $areaQuestCatalogPath)
+$areaQuestCatalogRows = @(Import-Csv -LiteralPath $areaQuestCatalogPath `
+    -Delimiter "`t")
+$expectedMissingAreaQuestHeightIds = @(
+    '1103108', '1104104', '1104203')
+$expectedMultiBandAreaQuestHeightIds = @('1103061')
+$profiledAreaQuestRows = @($areaQuestCatalogRows | Where-Object {
+        $_.HeightBandCount -eq '1' -or $_.HeightBandCount -eq '2'
+    })
+$multiBandAreaQuestRows = @($areaQuestCatalogRows | Where-Object {
+        $_.HeightBandCount -eq '2'
+    })
+$missingAreaQuestHeightRows = @($areaQuestCatalogRows | Where-Object {
+        $_.HeightBandCount -eq '0'
+    })
+$actualMultiBandAreaQuestHeightIds = @($multiBandAreaQuestRows |
+    ForEach-Object { [string]$_.Id } | Sort-Object)
+$actualMissingAreaQuestHeightIds = @($missingAreaQuestHeightRows |
+    ForEach-Object { [string]$_.Id } | Sort-Object)
+$multiBandAreaQuestHeightIdDifference = @(Compare-Object `
+    -ReferenceObject @($expectedMultiBandAreaQuestHeightIds | Sort-Object) `
+    -DifferenceObject $actualMultiBandAreaQuestHeightIds)
+$missingAreaQuestHeightIdDifference = @(Compare-Object `
+    -ReferenceObject @($expectedMissingAreaQuestHeightIds | Sort-Object) `
+    -DifferenceObject $actualMissingAreaQuestHeightIds)
+$invalidAreaQuestHeightBandCountRows = @(
+    $areaQuestCatalogRows | Where-Object {
+        $_.HeightBandCount -ne '0' -and $_.HeightBandCount -ne '1' `
+            -and $_.HeightBandCount -ne '2'
+    })
+$invalidUnusedAreaQuestHeightBands = @(
+    $areaQuestCatalogRows | Where-Object {
+        ($_.HeightBandCount -eq '0' `
+            -and ($_.Height1MinZ -ne '0' -or $_.Height1MaxZ -ne '0')) `
+        -or ($_.HeightBandCount -ne '2' `
+            -and ($_.Height2MinZ -ne '0' -or $_.Height2MaxZ -ne '0'))
+    })
+$areaQuest1110037 = @($areaQuestCatalogRows | Where-Object {
+        $_.Id -eq '1110037'
+    })
+$areaQuest1110016 = @($areaQuestCatalogRows | Where-Object {
+        $_.Id -eq '1110016'
+    })
+$areaQuest1101301 = @($areaQuestCatalogRows | Where-Object {
+        $_.Id -eq '1101301'
+    })
+Assert-True ($areaQuestCatalogLines.Count -eq 148 `
+    -and $areaQuestCatalogLines[0] -eq `
+        "Id`tX`tY`tZ`tHeight1MinZ`tHeight1MaxZ`tHeight2MinZ`tHeight2MaxZ`tHeightBandCount" `
+    -and $areaQuestCatalogRows.Count -eq 147 `
+    -and @($areaQuestCatalogRows.Id | Sort-Object -Unique).Count -eq 147 `
+    -and $profiledAreaQuestRows.Count -eq 144 `
+    -and $multiBandAreaQuestRows.Count -eq 1 `
+    -and $missingAreaQuestHeightRows.Count -eq 3 `
+    -and $multiBandAreaQuestHeightIdDifference.Count -eq 0 `
+    -and $missingAreaQuestHeightIdDifference.Count -eq 0 `
+    -and $invalidAreaQuestHeightBandCountRows.Count -eq 0 `
+    -and $invalidUnusedAreaQuestHeightBands.Count -eq 0 `
+    -and $areaQuest1110037.Count -eq 1 `
+    -and $areaQuest1110037[0].Height1MinZ -eq '24702' `
+    -and $areaQuest1110037[0].Height1MaxZ -eq '24702' `
+    -and $areaQuest1110037[0].Height2MinZ -eq '0' `
+    -and $areaQuest1110037[0].Height2MaxZ -eq '0' `
+    -and $areaQuest1110037[0].HeightBandCount -eq '1' `
+    -and $areaQuest1110016.Count -eq 1 `
+    -and $areaQuest1110016[0].Height1MinZ -eq '-648' `
+    -and $areaQuest1110016[0].Height1MaxZ -eq '-628' `
+    -and $areaQuest1110016[0].HeightBandCount -eq '1' `
+    -and $areaQuest1101301.Count -eq 1 `
+    -and $areaQuest1101301[0].Height1MinZ -eq '2912' `
+    -and $areaQuest1101301[0].Height1MaxZ -eq '2912' `
+    -and $areaQuest1101301[0].HeightBandCount -eq '1') `
+    'The 147-row Area Quest schema must retain 144 profiles, the exact 1103061 two-band profile, three exact missing profiles, and exclude the proven Move_Check-only bands from 1101301, 1110016, and 1110037.'
+
+Assert-True ($areaQuestHeightVerification.mode -eq 'VERIFIED' `
+    -and $areaQuestHeightVerification.rows -eq 147 `
+    -and $areaQuestHeightVerification.height_profile_rows -eq 144 `
+    -and $areaQuestHeightVerification.multi_band_rows -eq 1 `
+    -and $areaQuestHeightVerification.missing_height_rows -eq 3 `
+    -and $areaQuestHeightBuilder -match `
+        '11CA916050AFA25F856DF0AFF46CAE0D23F928E8490617FBD3B524DC183E3ACF' `
+    -and $areaQuestHeightBuilder -match `
+        'Height1MinZ`tHeight1MaxZ`tHeight2MinZ`tHeight2MaxZ`tHeightBandCount' `
+    -and $areaQuestHeightBuilder -match `
+        '\$bands\.Count\s*-gt\s*2' `
+    -and $areaQuestHeightBuilder -match `
+        '\$profileCount\s*-ne\s*144[\s\S]*?\$multiBandCount\s*-ne\s*1' `
+    -and $areaQuestHeightBuilder -match `
+        '1103108L,\s*1104104L,\s*1104203L' `
+    -and $areaQuestHeightBuilder -match `
+        '\$expectedMultiBand\s*=\s*@\(1103061L\)' `
+    -and $areaQuestHeightBuilder -match `
+        'Move_Check-only band[\s\S]*?\$taskActorBands\.Count\s*-gt\s*0[\s\S]*?\$bands\s*=\s*\$filteredBands' `
+    -and $areaQuestHeightBuilder -match `
+        'if\s*\(\$VerifyOnly\)[\s\S]*?not reproducible from the pinned source') `
+    'The checked-in nine-column Area Quest height-band catalog must remain reproducible from the pinned ActorPositionData source.'
+
+Assert-True ($moleHeightVerification.mode -eq 'VERIFIED' `
+    -and $moleHeightVerification.rows -eq 83 `
+    -and $moleHeightVerification.fly_rows -eq 33 `
+    -and $moleHeightVerification.mole_rows -eq 40 `
+    -and $moleHeightVerification.wave_rows -eq 10 `
+    -and $moleHeightVerification.trusted_mini_game_height_rows -eq 83 `
+    -and $moleHeightVerification.trusted_fly_height_rows -eq 33 `
+    -and $moleHeightVerification.trusted_mole_height_rows -eq 40 `
+    -and $moleHeightVerification.trusted_wave_height_rows -eq 10 `
+    -and $moleHeightBuilder -match `
+        '11CA916050AFA25F856DF0AFF46CAE0D23F928E8490617FBD3B524DC183E3ACF' `
+    -and $moleHeightBuilder -match `
+        'EDA335750F30C31D1A3E003C96B54024F671F600E18FCC02759970F7236CE9E3' `
+    -and $moleHeightBuilder -match `
+        'miniGameRows\.Count\s*-ne\s*176' `
+    -and $moleHeightBuilder -match `
+        'actorNodes\.Count\s*-ne\s*7536' `
+    -and $moleHeightBuilder -match `
+        'MiniGame_\(\?<kind>Fly\|Mole\|Wave\)_\(\?<id>\[0-9\]\+\)_NPC_Start' `
+    -and $moleHeightBuilder -match `
+        '\$mapId\s*-ne\s*100' `
+    -and $moleHeightBuilder -match `
+        '\[double\]::IsNaN\(\$parsed\)[\s\S]*?\[double\]::IsInfinity\(\$parsed\)' `
+    -and $moleHeightBuilder -match `
+        'height_z\s*=\s*\$heightText,\s*height_trusted\s*=\s*true' `
+    -and $moleHeightBuilder -match `
+        'if\s*\(\$VerifyOnly\)[\s\S]*?not reproducible from the pinned sources') `
+    'The exact 83-row pinned Fly/Mole/Wave NPC_Start height contract changed.'
+
 foreach ($catalog in @(
         'treasure-actors.tsv', 'boss-actors.tsv', 'assault-actors.tsv',
         'area-quests.tsv')) {
@@ -521,6 +738,9 @@ foreach ($catalog in @(
 }
 Assert-True ($deploy.Contains('Header = "SaveId`tClassName`tX`tY`tZ"')) `
     'Deployment does not validate the treasure actor SaveId header.'
+Assert-True ($deploy.Contains(
+        'Header = "Id`tX`tY`tZ`tHeight1MinZ`tHeight1MaxZ`tHeight2MinZ`tHeight2MaxZ`tHeightBandCount"')) `
+    'Deployment does not validate the nine-column Area Quest height-band header.'
 Assert-True ($deploy -match `
         'function\s+Assert-DragonSwordStopped' `
     -and $deploy -match `
@@ -551,8 +771,9 @@ Assert-True ($main -match '\b22\.0,' -and $main -match '\b14\.0,') `
     'Treasure icon sizes must preserve the strengthened 22/14 nearest emphasis.'
 Assert-True ($main -match 'nearest\.height_available' `
     -and $main -match 'nearest\.height_angle_degrees' `
-    -and $main -match 'compact_area_quest_height_target_valid_') `
-    'The nearest treasure and nearest visible area quest must request independent bounded height channels.'
+    -and $main -match 'area_quest_height_enabled' `
+    -and $main -match 'update_area_quest_height_indicators\(') `
+    'Treasure must retain stable-nearest height motion while all retained Area Quests receive independent bulk height updates.'
 Assert-True ($main -match 'SAVE_RECONCILE_APPLIED') `
     'Successful native save reconciliation is not applied to eligibility.'
 Assert-True ($main -match 'mark_treasure_opened\(observed\.id\)') `
@@ -563,9 +784,9 @@ Assert-True ($rendererHeader -match 'kCompactUmgMarkerPieceCount\s*=\s*4') `
     'Each fixed marker must use exactly four bounded glyph pieces.'
 Assert-True ($rendererHeader -notmatch 'kCompactUmgEncounterMarkerCapacity|kCompactUmgEncounterPieceCount|encounter_root_panel_') `
     'A second encounter widget pool must not return after the dev40 runtime fault.'
-Assert-True ($rendererHeader -match 'kCompactUmgHeightChannelCount\s*=\s*2' `
+Assert-True ($rendererHeader -match 'kCompactUmgHeightChannelCount\s*=\s*3' `
     -and $rendererHeader -match 'kCompactUmgHeightPieceCount\s*=\s*6') `
-    'Each of the two fixed height channels must use exactly six preallocated pieces.'
+    'Each of the three fixed height channels must use exactly six preallocated pieces.'
 Assert-True ($rendererHeader -match 'Boss' -and $rendererHeader -match 'Assault' `
     -and $rendererHeader -match 'Fly' -and $rendererHeader -match 'Mole' `
     -and $rendererHeader -match 'Wave' -and $rendererHeader -match 'AreaQuest' `
@@ -591,6 +812,34 @@ foreach ($forbidden in @(
 }
 Assert-True ($saveReconciler -match 'THREAD_PRIORITY_BELOW_NORMAL') `
     'The one-shot save worker must remain below normal priority.'
+Assert-True ($saveKeyPolicy -match `
+        'kLegacySaveKeyFieldOffset\s*=\s*0x120U' `
+    -and $saveKeyPolicy -match `
+        'kCompatibilitySaveKeyFieldOffset\s*=\s*0x128U' `
+    -and $saveKeyPolicy -match `
+        'kMaximumSaveKeyCandidates\s*=\s*24U' `
+    -and $saveReconcilerHeader -match `
+        'KnownCompatibilityOffset[\s\S]*?DatabaseValidatedScan' `
+    -and $saveReconciler -match `
+        'cached_key_field_offset[\s\S]*?kLegacySaveKeyFieldOffset[\s\S]*?kCompatibilitySaveKeyFieldOffset[\s\S]*?maximum_positive_distance' `
+    -and $saveReconciler -match `
+        'active_database_source\s*=\s*std::find_if[\s\S]*?L"\.db"[\s\S]*?active_database_snapshot_index\s*>?=\s*snapshots\.size\(\)[\s\S]*?database_accepts_save_key\(\s*api,\s*key_validation_snapshot' `
+    -and $saveReconciler -match `
+        'allow_key_field_discovery\s*=\s*[\s\S]*?SaveReconcileScope::FullActivation[\s\S]*?allow_key_field_discovery\s*&&\s*!key_found' `
+    -and $saveKeyPolicy -match `
+        'has_save_key_candidate_budget\([\s\S]*?validated_candidates\s*<\s*kMaximumSaveKeyCandidates' `
+    -and $saveReconciler -match `
+        'result\.save_key_candidate_count\s*=\s*0U;[\s\S]*?auto\s+discover_save_key\s*=\s*\[&\]\(bool\s+scan_neighborhood\)[\s\S]*?allow_key_field_discovery\s*&&\s*scan_neighborhood[\s\S]*?discover_save_key\(\s*result\.owner_pointer_route[\s\S]*?SaveOwnerPointerRoute::PackagedConfig\)[\s\S]*?discover_save_key\(true\)' `
+    -and $saveKeyPolicy -match `
+        'should_retry_packaged_owner_with_runtime_pattern\([\s\S]*?full_activation[\s\S]*?packaged_owner_selected[\s\S]*?!save_key_validated[\s\S]*?!runtime_pattern_attempted' `
+    -and $saveReconciler -match `
+        'read_runtime_pattern_owner[\s\S]*?request\.scope\s*!=\s*SaveReconcileScope::FullActivation[\s\S]*?should_retry_packaged_owner_with_runtime_pattern\([\s\S]*?SaveOwnerPointerRoute::PackagedConfig[\s\S]*?owner\s*=\s*read_runtime_pattern_owner\(\)[\s\S]*?key_found\s*=\s*discover_save_key\(true\)' `
+    -and $nativeTests -match `
+        'should_retry_packaged_owner_with_runtime_pattern\([\s\S]*?true,\s*true,\s*false,\s*false[\s\S]*?false,\s*true,\s*false,\s*false[\s\S]*?true,\s*false,\s*false,\s*false[\s\S]*?true,\s*true,\s*true,\s*false[\s\S]*?true,\s*true,\s*false,\s*true' `
+    -and $saveReconciler -match `
+        'SELECT count\(\*\) FROM sqlite_master;' `
+    -and $saveReconciler -notmatch 'append_log') `
+    'Save-key compatibility must authenticate the packaged fast path against the active database, reserve one shared 24-candidate budget for a full-activation-only unique pattern fallback, and keep key material out of logs.'
 Assert-True ($saveReconciler -match `
         'request_active_\s*\|\|\s*pending_\.has_value\(\)[\s\S]*?\|\|\s*completed_\.has_value\(\)' `
     -and $saveReconcilerHeader -match `
@@ -918,6 +1167,8 @@ $latchExactCompletion = Get-MainFunction `
 $serviceTaskClassMap = Get-MainFunction `
     $mainCode 'service_area_quest_task_class_map'
 $engineTickUnsafe = Get-MainFunction $mainCode 'engine_tick_unsafe'
+$requestRadarActivation = Get-MainFunction `
+    $mainCode 'request_radar_activation'
 $activitySuppressionEdge = Get-MainFunction `
     $mainCode 'apply_activity_suppression_edge'
 $compactRenderSuppressed = Get-MainFunction `
@@ -937,7 +1188,7 @@ Assert-True ($transitionBegin -match `
         'world_map_umg_renderer_|compact_umg_renderer_|reset_world_map_runtime|rebuild_area_quest_world_map_eligibility') `
     'Travel must drain same-frame exact-completion bits into numeric state before reset without touching a renderer during teardown.'
 $explicitF7TaskClassRearm = [regex]::Match(
-    $engineTickUnsafe,
+    $requestRadarActivation,
     '(?ms)if\s*\(enabled_[\s\S]*?AREA_QUEST_TASK_CLASS_MAP_REARMED[\s\S]*?rearm_world_map_from_f7').Value
 Assert-True ($explicitF7TaskClassRearm -match `
         'reset_area_quest_task_class_capture\(true\)' `
@@ -946,7 +1197,9 @@ Assert-True ($explicitF7TaskClassRearm -match `
     'Explicit F7 must retry only task-class mapping and preserve exact completion bits and revision fences.'
 Assert-True ($main -match `
         'compact_transition_hide=first_invalid_position_sample' `
-    -and $compactRenderSuppressed -match '!position_valid_' `
+    -and $compactRenderSuppressed -match `
+        'dswros::compact_render_suppressed\(' `
+    -and $compactMenuState -match '!state\.position_valid' `
     -and $engineTickUnsafe -match `
         'else\s*\{\s*position_valid_\s*=\s*false;[\s\S]*?apply_compact_suppression\(\);') `
     'The compact host must collapse on the first failed current-Pawn sample.'
@@ -996,7 +1249,7 @@ Assert-True ($mainCode -match `
         'area_quest_task_class_map_attempt_count_\s*>=\s*kAreaQuestTaskClassMapMaxAttempts' `
     -and $serviceTaskClassMap -match `
         'area_quest_task_class_map_retry_after_\s*=\s*now\s*\+\s*kAreaQuestTaskClassMapRetryDelay' `
-    -and $engineTickUnsafe -match `
+    -and $requestRadarActivation -match `
         'AREA_QUEST_TASK_CLASS_MAP_REARMED' `
     -and $engineTickUnsafe -match `
         'if\s*\(now\s*<\s*stable_after_\)\s*return;[\s\S]*?if\s*\(!activity_suppressed_\)\s*\{\s*service_area_quest_task_class_map\(engine,\s*now\);\s*\}') `
@@ -1130,14 +1383,14 @@ Assert-True ($disableForMainMenu -match `
     -and $disableForMainMenu -notmatch `
         'FindAllOf|FindFirstOf|StaticFindObject|ProcessEvent|sleep_for|while\s*\(') `
     'TitleMap must perform one bounded hard stop that clears every previous-save mutable owner while retaining only immutable catalogs, configuration, and the create listener.'
-Assert-True ($engineTickUnsafe -match `
-        'if\s*\(main_menu_activation_latched_\s*\|\|\s*!enabled_\)[\s\S]*?capture_current_world_identity_guarded\(\s*engine,\s*&current_world,\s*&current_world_object\)[\s\S]*?if\s*\(!is_open_world_identity\(current_world\)\)[\s\S]*?F7_REJECTED[\s\S]*?else\s*\{[\s\S]*?main_menu_activation_latched_\s*=\s*false[\s\S]*?baseline_world_key_\.clear\(\)[\s\S]*?activate\(engine\)' `
+Assert-True ($requestRadarActivation -match `
+        'if\s*\(main_menu_activation_latched_\s*\|\|\s*!enabled_\)[\s\S]*?capture_current_world_identity_guarded\(\s*engine,\s*&current_world,\s*&current_world_object\)[\s\S]*?if\s*\(!is_open_world_identity\(current_world\)\)[\s\S]*?F7_REJECTED[\s\S]*?return\s+false;[\s\S]*?main_menu_activation_latched_\s*=\s*false[\s\S]*?baseline_world_key_\.clear\(\)[\s\S]*?activate\(engine,\s*preserve_visibility_hub\)' `
     -and $captureCurrentWorldIdentity -match `
         'capture_current_world_identity_unsafe\(\s*engine,\s*output,\s*world_output\)[\s\S]*?return\s*!output->empty\(\)' `
     -and $serviceEngineTickFault -match `
         'const bool recover\s*=\s*was_enabled[\s\S]*?&&\s*!main_menu_activation_latched_[\s\S]*?engine_tick_fault_recovery_attempts_\s*==\s*0' `
     -and $mainCode -match 'bool\s+main_menu_activation_latched_') `
-    'Only explicit F7 after a freshly verified loaded open world may clear the TitleMap latch; automatic fault recovery must never bypass it.'
+    'Only an explicit F6/F7 activation after a freshly verified loaded open world may clear the TitleMap latch; automatic fault recovery must never bypass it.'
 Assert-True ($mainCode -match `
         'kQuestEventTriggerFunction\s*=\s*STR\("/Script/DS\.DETUtil:ETSendQuestEventTrigger"\)' `
     -and $mainCode -match 'kQuestEventParameterCapacity\s*=\s*64' `
@@ -1412,6 +1665,127 @@ Assert-True ($serviceCompletionWitnesses -match `
     'The exact-ID witness service must spend at most one query per tick, accept only END, preserve queue membership, and clear all fixed state on lifecycle reset.'
 
 $updateCompactPool = Get-MainFunction $mainCode 'update_compact_pool'
+$areaQuestSpec = [regex]::Match(
+    $mainCode,
+    '(?ms)^struct\s+AreaQuestSpec\s*\{(?<body>.*?)^\};').Groups[
+        'body'].Value
+$areaQuestCatalogLoader = [regex]::Match(
+    $mainCode,
+    '(?ms)^std::vector<AreaQuestSpec>\s+load_area_quest_catalog\s*\([^;]*?\)\s*\{(?:(?!^\}).)*^\}').Value
+$rebuildCompactSnapshotForHeight = Get-MainFunction `
+    $mainCode 'rebuild_compact_snapshot'
+$miniGameSpec = [regex]::Match(
+    $mainCode,
+    '(?ms)^struct\s+MiniGameSpec\s*\{(?<body>.*?)^\};').Groups[
+        'body'].Value
+$miniGameCatalogLoader = [regex]::Match(
+    $mainCode,
+    '(?ms)^std::vector<MiniGameSpec>\s+load_mini_game_catalog\s*\([^;]*?\)\s*\{(?:(?!^\}).)*^\}').Value
+$miniGameCompactCandidates = [regex]::Match(
+    $rebuildCompactSnapshotForHeight,
+    '(?ms)^\s{8}std::array<StaticRenderCandidate,\s*kExpectedMiniGameCount>\s+mini_game_candidates\{\};.*?(?=^\s{8}std::array<StaticRenderCandidate,\s*kExpectedAreaQuestCount>)').Value
+$miniGameCompactSelection = [regex]::Match(
+    $rebuildCompactSnapshotForHeight,
+    '(?ms)^\s{8}bool\s+mini_game_height_selected\{\};.*?(?=^\s{8}for\s*\(std::size_t\s+index\s*=\s*0;\s*index\s*<\s*bird_egg_keep)').Value
+$areaQuestCompactSelection = [regex]::Match(
+    $rebuildCompactSnapshotForHeight,
+    '(?ms)^\s{8}for\s*\(std::size_t\s+index\s*=\s*0;\s*index\s*<\s*area_quest_keep;\s*\+\+index\)\s*\{.*?(?=^\s{8}for\s*\(std::size_t\s+index\s*=\s*1;\s*index\s*<\s*treasure_keep)').Value
+$areaQuestHeightDiagnosticReport = Get-MainFunction `
+    $mainCode 'report_area_quest_height_diagnostics'
+Assert-True ($miniGameSpec.Length -gt 0 `
+    -and $miniGameSpec -match `
+        'dswros::Position\s+position\{\}[\s\S]*?double\s+height_z\{\}[\s\S]*?bool\s+height_trusted\{\}[\s\S]*?MiniGameKind\s+kind' `
+    -and $miniGameCatalogLoader.Length -gt 0 `
+    -and $miniGameCatalogLoader -match `
+        'declared_trusted\s*=\s*line\.find\("height_trusted = true"\)[\s\S]*?line\.find\("height_z = "\)' `
+    -and $miniGameCatalogLoader -match `
+        'spec\.height_z\s*=\s*std::stod\([\s\S]*?generated_number_field\(line,\s*"height_z"\)' `
+    -and $miniGameCatalogLoader -match `
+        'spec\.height_trusted\s*=\s*std::isfinite\(spec\.height_z\)[\s\S]*?std::abs\(spec\.height_z\s*-\s*spec\.position\.z\)\s*<=\s*0\.001' `
+    -and $miniGameCatalogLoader -match `
+        'catch\s*\(\.\.\.\)[\s\S]*?spec\.height_z\s*=\s*0\.0[\s\S]*?spec\.height_trusted\s*=\s*false' `
+    -and $miniGameCatalogLoader -match `
+        'result\.size\(\)\s*!=\s*kExpectedMiniGameCount[\s\S]*?fly_count\s*!=\s*33U[\s\S]*?mole_count\s*!=\s*40U[\s\S]*?wave_count\s*!=\s*10U' `
+    -and $miniGameCompactCandidates.Length -gt 0 `
+    -and $miniGameCompactCandidates -match `
+        'index\s*<\s*mini_game_catalog_\.size\(\)[\s\S]*?mini_game_eligibility_\[index\]\s*==\s*0[\s\S]*?spec\.map_id\s*!=\s*dswros::CompactRenderModel::kCompactMapId' `
+    -and $miniGameCompactCandidates -match `
+        'mini_game_candidates\[mini_game_candidate_count\+\+\][\s\S]*?case\s+MiniGameKind::Fly[\s\S]*?case\s+MiniGameKind::Mole[\s\S]*?case\s+MiniGameKind::Wave' `
+    -and $miniGameCompactCandidates -match `
+        'std::sort\([\s\S]*?mini_game_candidates\.begin\(\)[\s\S]*?mini_game_candidate_count[\s\S]*?left\.planar_distance_squared[\s\S]*?<\s*right\.planar_distance_squared[\s\S]*?left\.catalog_index\s*<\s*right\.catalog_index' `
+    -and $miniGameCompactSelection.Length -gt 0 `
+    -and $miniGameCompactSelection -match `
+        'spec\s*=\s*mini_game_catalog_\[[\s\S]*?mini_game_candidates\[index\]\.catalog_index\]' `
+    -and $miniGameCompactSelection -match `
+        'nearest_mini_game\s*=\s*!mini_game_height_selected[\s\S]*?show_height\s*=\s*nearest_mini_game[\s\S]*?HeightIndicatorCategory::Mole[\s\S]*?spec\.height_trusted[\s\S]*?std::isfinite\(spec\.height_z\)[\s\S]*?std::isfinite\(player_\.z\)' `
+    -and $miniGameCompactSelection -match `
+        'umg_mini_game_kind\(spec\.kind\)[\s\S]*?mini_game_height_angle_from_delta\([\s\S]*?spec\.height_z[\s\S]*?comparable_player_z\(\s*player_\.z\s*\)' `
+    -and $miniGameCompactSelection -match `
+        'if\s*\(nearest_mini_game\)[\s\S]*?mini_game_height_selected\s*=\s*true[\s\S]*?if\s*\(show_height\)[\s\S]*?compact_mole_height_target_valid_\s*=\s*true[\s\S]*?compact_mole_height_target_z_\s*=\s*spec\.height_z' `
+    -and $miniGameCompactSelection -notmatch `
+        'spec\.kind\s*==|spec\.kind\s*!=|switch\s*\(spec\.kind\)') `
+    'The exact 83-row Fly/Mole/Wave height catalog must remain trusted at load and feed one shared nearest-mini-game height selection without kind-specific filtering.'
+Assert-True ($areaQuestSpec.Length -gt 0 `
+    -and $areaQuestSpec -match `
+        'dswros::Position\s+position\{\}[\s\S]*?dswros::AreaQuestHeightProfile\s+height_profile\{\}' `
+    -and $areaQuestSpec -notmatch `
+        'height_z|height_trusted' `
+    -and $mainCode -match `
+        'kExpectedAreaQuestCount\s*=\s*147' `
+    -and $mainCode -match `
+        'kExpectedAreaQuestHeightProfileCount\s*=\s*144' `
+    -and $mainCode -match `
+        'kExpectedAreaQuestMultiBandCount\s*=\s*1' `
+    -and $areaQuestCatalogLoader -match `
+        'line\s*!=\s*"Id\\tX\\tY\\tZ\\tHeight1MinZ\\tHeight1MaxZ\\tHeight2MinZ\\tHeight2MaxZ\\tHeightBandCount"' `
+    -and $areaQuestCatalogLoader -match `
+        'fields\.size\(\)\s*!=\s*9U[\s\S]*?fields\[8\]\s*!=\s*"0"[\s\S]*?fields\[8\]\s*!=\s*"1"[\s\S]*?fields\[8\]\s*!=\s*"2"' `
+    -and $areaQuestCatalogLoader -match `
+        'spec\.height_profile\.bands\[0\][\s\S]*?std::stod\(fields\[4\]\)[\s\S]*?std::stod\(fields\[5\]\)[\s\S]*?spec\.height_profile\.bands\[1\][\s\S]*?std::stod\(fields\[6\]\)[\s\S]*?std::stod\(fields\[7\]\)' `
+    -and $areaQuestCatalogLoader -match `
+        'spec\.height_profile\.band_count\s*=\s*static_cast<std::uint8_t>\([\s\S]*?std::stoul\(fields\[8\]\)' `
+    -and $areaQuestCatalogLoader -match `
+        'area_quest_height_profile_valid\([\s\S]*?spec\.height_profile\)[\s\S]*?unused_bands_zero' `
+    -and $areaQuestCatalogLoader -match `
+        'height_profile_count\s*\+=\s*has_height_profile\s*\?\s*1U\s*:\s*0U[\s\S]*?multi_band_count\s*\+=' `
+    -and $areaQuestCatalogLoader -match `
+        'result\.size\(\)\s*!=\s*kExpectedAreaQuestCount[\s\S]*?height_profile_count[\s\S]*?!=\s*kExpectedAreaQuestHeightProfileCount[\s\S]*?multi_band_count[\s\S]*?!=\s*kExpectedAreaQuestMultiBandCount' `
+    -and $areaQuestCatalogLoader -notmatch `
+        'HeightZ|HeightTrusted|height_z|height_trusted' `
+    -and $areaQuestCompactSelection.Length -gt 0 `
+    -and $areaQuestCompactSelection -match `
+        'height_profile\s*=[\s\S]*?area_quest_height_profile_for_marker\([\s\S]*?spec\.height_profile,\s*spec\.position\.z[\s\S]*?show_height\s*=\s*area_quest_height_enabled[\s\S]*?area_quest_height_profile_valid\([\s\S]*?height_profile\)[\s\S]*?std::isfinite\(player_\.z\)' `
+    -and $areaQuestCompactSelection -match `
+        'comparable_player_z\s*=[\s\S]*?CompactRenderModel::comparable_player_z\(player_\.z\)' `
+    -and $areaQuestCompactSelection -match `
+        'area_quest_height_enabled\s*&&\s*!show_height[\s\S]*?show_height\s*\?\s*height_profile\s*:\s*dswros::AreaQuestHeightProfile\{\}[\s\S]*?show_height\s*\?\s*comparable_player_z\s*:\s*0\.0' `
+    -and $rebuildCompactSnapshotForHeight -match `
+        'capture_area_quest_height_diagnostics\s*=\s*dsnwr::native_event_log_enabled\(\)[\s\S]*?capture_area_quest_height_diagnostics[\s\S]*?area_quest_height_diagnostic_selections_\.fill\(\{\}\)' `
+    -and $areaQuestCompactSelection -match `
+        'if\s*\(capture_area_quest_height_diagnostics[\s\S]*?index\s*<\s*kAreaQuestHeightDiagnosticSlotCapacity\)[\s\S]*?area_quest_height_diagnostic_selections_\[index\]\s*=\s*\{[\s\S]*?spec\.id,[\s\S]*?catalog_index,[\s\S]*?height_profile,[\s\S]*?true,[\s\S]*?area_quest_height_enabled' `
+    -and $areaQuestCompactSelection -notmatch 'index\s*==\s*0' `
+    -and $areaQuestCompactSelection -notmatch `
+        'height_delta|height_z|height_trusted' `
+    -and $rendererHeader -match `
+        'dswros::AreaQuestHeightProfile\s+area_quest_height_profile\{\}' `
+    -and $rendererHeader -match `
+        'std::array<dswros::AreaQuestHeightProfile,\s*kCompactUmgMarkerCapacity>[\s\S]*?area_quest_height_profiles_' `
+    -and $rendererHeader -notmatch 'area_quest_height_target_z_' `
+    -and $mainCode -match `
+        'kAreaQuestHeightDiagnosticSlotCapacity\s*=\s*8[\s\S]*?kAreaQuestHeightDiagnosticMaximumEventsPerActivation\s*=\s*128U' `
+    -and $areaQuestHeightDiagnosticReport -match `
+        '!dsnwr::native_event_log_enabled\(\)[\s\S]*?area_quest_height_diagnostic_activation_\s*!=\s*activation_[\s\S]*?area_quest_height_diagnostic_states_\.fill\(\{\}\)' `
+    -and $areaQuestHeightDiagnosticReport -match `
+        'slot\s*<\s*area_quest_height_diagnostic_selections_\.size\(\)[\s\S]*?area_quest_height_indicator_shape\([\s\S]*?selection\.height_profile,\s*comparable_player_z\)[\s\S]*?!selection_changed\s*&&\s*!profile_changed\s*&&\s*!shape_changed[\s\S]*?continue' `
+    -and $areaQuestHeightDiagnosticReport -match `
+        'area_quest_height_diagnostic_event_count_[\s\S]*?>=\s*kAreaQuestHeightDiagnosticMaximumEventsPerActivation[\s\S]*?AREA_QUEST_HEIGHT_DIAGNOSTIC_LIMIT[\s\S]*?AREA_QUEST_HEIGHT_PROFILE' `
+    -and $areaQuestHeightDiagnosticReport -notmatch `
+        'FindAllOf|FindFirstOf|StaticFindObject|std::vector|\bnew\b|ifstream|ofstream' `
+    -and $mainCode -match `
+        'std::array<AreaQuestHeightDiagnosticSelection,[\s\S]*?kAreaQuestHeightDiagnosticSlotCapacity>[\s\S]*?area_quest_height_diagnostic_selections_[\s\S]*?std::array<AreaQuestHeightDiagnosticState,[\s\S]*?kAreaQuestHeightDiagnosticSlotCapacity>[\s\S]*?area_quest_height_diagnostic_states_' `
+    -and $mainCode -notmatch `
+        'compact_area_quest_height_target_z_|compact_area_quest_height_target_valid_') `
+    'Every retained Area Quest must select one validated actor-height band from its authored marker Z, then pass that profile and the shared comparable player Z to the renderer. Debug-only capture must remain fixed-slot, edge-triggered, event-capped, and allocation-free; legacy target-Z fallback remains forbidden.'
 $captureCompactLayer = Get-MainFunction `
     $mainCode 'capture_created_compact_layer_guarded'
 $consumeCompactLayer = Get-MainFunction `
@@ -1499,8 +1873,26 @@ $establishVisibilityBaseline = Get-MainFunction `
     $mainCode 'establish_encounter_visibility_baseline'
 $initializeWidgetIsVisible = Get-MainFunction `
     $mainCode 'initialize_widget_is_visible_schema'
+$readWorldMapLayerVisibility = Get-MainFunction `
+    $mainCode 'read_world_map_layer_visibility_guarded'
 $worldMapLayerVisible = Get-MainFunction `
     $mainCode 'world_map_layer_visible_guarded'
+$worldMapAtlasVisibilityAllowed = Get-MainFunction `
+    $mainCode 'world_map_atlas_visibility_allowed_guarded'
+$initializeGamePauseSchema = Get-MainFunction `
+    $mainCode 'initialize_game_pause_schema'
+$readGamePaused = Get-MainFunction `
+    $mainCode 'read_game_paused_guarded'
+$refreshCompactMenuState = Get-MainFunction `
+    $mainCode 'refresh_compact_menu_state'
+$latchWorldMapCompactSuppression = Get-MainFunction `
+    $mainCode 'latch_world_map_compact_suppression'
+$captureActivationContext = Get-MainFunction `
+    $mainCode 'capture_activation_context_unsafe'
+$worldMapActivationCatchUp = Get-MainFunction `
+    $mainCode 'world_map_activation_catch_up'
+$worldMapActivationCatchUpUnsafe = Get-MainFunction `
+    $mainCode 'world_map_activation_catch_up_unsafe'
 $refreshAtlasForRuntimeDelta = Get-MainFunction `
     $mainCode 'refresh_world_map_atlas_for_runtime_delta'
 $worldMapImagePost = Get-MainFunction $mainCode 'world_map_image_post'
@@ -1573,11 +1965,13 @@ Assert-True ($mainCode -match `
         $engineTickUnsafe,
         'service_runtime_visibility_edges\(now\)').Count -eq 1) `
     'Runtime encounter edges must use one 1 Hz scalar service inside the 250 ms control branch and outside the 16 ms position branch.'
-Assert-True ($engineTickUnsafe -match `
-        'retryable_attach_failure\s*=[\s\S]*?CompactAttachGateStatus::CurrentPlayerControllerUnavailable[\s\S]*?CompactAttachGateStatus::RendererRejected[\s\S]*?CompactUmgRendererState::Faulted[\s\S]*?WorldMapUmgRendererState::Faulted[\s\S]*?area_quest_scan_faulted_' `
-    -and $engineTickUnsafe -match `
-        'if\s*\(enabled_\s*&&\s*!transition_active_\s*&&\s*!retryable_attach_failure\)') `
-    'Explicit F7 must start one bounded activation for compact, world-map, or area-task scan faults instead of coalescing against stale state.'
+Assert-True ($requestRadarActivation -match `
+        'retryable_attach_failure\s*=[\s\S]*?CompactAttachGateStatus::CurrentPlayerControllerUnavailable[\s\S]*?CompactAttachGateStatus::RendererRejected[\s\S]*?CompactUmgRendererState::Faulted[\s\S]*?WorldMapUmgRendererState::Faulted[\s\S]*?area_quest_scan_faulted_[\s\S]*?save_reconcile_completed_[\s\S]*?!treasure_eligibility_ready_' `
+    -and $requestRadarActivation -match `
+        'if\s*\(enabled_\s*&&\s*!transition_active_\s*&&\s*!retryable_attach_failure\)' `
+    -and $mainCode -match `
+        'RadarModStatus\s+radar_mod_status\(\)\s+const\s+noexcept[\s\S]*?save_reconcile_completed_[\s\S]*?!treasure_eligibility_ready_[\s\S]*?RadarModStatus::Fault') `
+    'Explicit F6 Retry or F7 must start one bounded activation for renderer, area-task, or save-reconciliation faults instead of coalescing against stale state.'
 Assert-True ($activitySuppressionEdge -match `
         'if\s*\(activity_suppressed_\)\s*\{[\s\S]*?compact_umg_renderer_\.detach\s*\(\s*\);\s*reset_compact_pool_runtime\s*\(\s*\)' `
     -and $activitySuppressionEdge -match `
@@ -1596,6 +1990,21 @@ foreach ($forbiddenRuntimeEdgeWork in @(
             [regex]::Escape($forbiddenRuntimeEdgeWork)) `
         "Runtime visibility edge service contains forbidden recurring work: $forbiddenRuntimeEdgeWork"
 }
+$compactMenuStateCode = Remove-CppComments $compactMenuState
+Assert-True ($compactMenuStateCode -match `
+        'struct\s+CompactMenuState\s+final\s*\{[\s\S]*?bool\s+any_category_enabled\{\}[\s\S]*?bool\s+position_valid\{\}[\s\S]*?bool\s+mouse_cursor_visible\{\}[\s\S]*?bool\s+world_map_visible\{\}[\s\S]*?bool\s+game_paused\{\}[\s\S]*?bool\s+activity_suppressed\{\}' `
+    -and $compactMenuStateCode -match `
+        'return\s+!state\.any_category_enabled[\s\S]*?\|\|\s*!state\.position_valid[\s\S]*?\|\|\s*state\.mouse_cursor_visible[\s\S]*?\|\|\s*state\.world_map_visible[\s\S]*?\|\|\s*state\.game_paused[\s\S]*?\|\|\s*state\.activity_suppressed' `
+    -and $compactRenderSuppressed -match `
+        'return\s+dswros::compact_render_suppressed\(\{[\s\S]*?compact_radar_visibility_mask\(visibility_masks_\)\s*!=\s*0,[\s\S]*?position_valid_,[\s\S]*?mouse_cursor_visible_,[\s\S]*?world_map_compact_suppressed_,[\s\S]*?game_paused_,[\s\S]*?activity_suppressed_' `
+    -and $nativeTests -match `
+        'a visible world map must suppress rendering without a mouse cursor' `
+    -and $nativeTests -match `
+        'a paused game must suppress rendering without a mouse cursor' `
+    -and $nativeTests -match `
+        'compact menu-state classification must not allocate') `
+    'Compact suppression must remain one allocation-free pure helper covering categories, Pawn validity, cursor, controller map, pause, and activity state.'
+
 Assert-True ($mainCode -match `
         'kWidgetIsVisibleFunction\s*=\s*STR\("/Script/UMG\.Widget:IsVisible"\)' `
     -and $mainCode -match `
@@ -1608,14 +2017,130 @@ Assert-True ($mainCode -match `
         'CastField<FBoolProperty>\([\s\S]*?L"ReturnValue"' `
     -and $initializeWidgetIsVisible -match `
         'GetOffset_Internal\(\)\s*>=\s*0[\s\S]*?GetSize\(\)\s*>\s*0[\s\S]*?<=\s*parameter_bytes' `
+    -and $readWorldMapLayerVisibility -match `
+        'UObject\*\s+current_layer,\s*bool\*\s+visible' `
+    -and $readWorldMapLayerVisibility -match `
+        '!visible[\s\S]*?!current_layer[\s\S]*?!widget_is_visible_schema_ready_[\s\S]*?!widget_is_visible_function_[\s\S]*?!widget_is_visible_return_property_' `
+    -and $readWorldMapLayerVisibility -match `
+        'std::array<std::byte,[\s\S]*?kWidgetIsVisibleParameterCapacity>[\s\S]*?ProcessEvent\([\s\S]*?widget_is_visible_function_[\s\S]*?\*visible\s*=\s*widget_is_visible_return_property_->GetPropertyValue\([\s\S]*?return\s+true' `
     -and $worldMapLayerVisible -match `
-        '!current_layer[\s\S]*?!widget_is_visible_schema_ready_[\s\S]*?!widget_is_visible_function_[\s\S]*?!widget_is_visible_return_property_' `
-    -and $worldMapLayerVisible -match `
-        'std::array<std::byte,[\s\S]*?kWidgetIsVisibleParameterCapacity>[\s\S]*?ProcessEvent\([\s\S]*?widget_is_visible_function_[\s\S]*?GetPropertyValue' `
+        'read_world_map_layer_visibility_guarded\([\s\S]*?&visible\)\s*&&\s*visible' `
+    -and $worldMapAtlasVisibilityAllowed -match `
+        'world_map_compact_suppressed_[\s\S]*?read_world_map_layer_visibility_guarded\([\s\S]*?&native_layer_visible\)[\s\S]*?&&\s*native_layer_visible' `
+    -and $refreshCompactMenuState -match `
+        'widget_is_visible_schema_ready_[\s\S]*?&&\s*world_map_compact_suppressed_' `
+    -and $refreshCompactMenuState -notmatch `
+        'world_map_catch_up' `
+    -and $refreshCompactMenuState -match `
+        'world_map_compact_suppressed_[\s\S]*?world_map_candidate_available_[\s\S]*?!current_layer[\s\S]*?world_map_compact_suppressed_\s*=\s*false' `
+    -and $refreshCompactMenuState -match `
+        'exact_current_world_layer\s*=\s*current_layer[\s\S]*?object_world_guarded\(current_layer\)\s*==\s*current_world[\s\S]*?bool\s+visible\{\}[\s\S]*?read_world_map_layer_visibility_guarded\([\s\S]*?current_layer,\s*&visible\)\)\s*\{\s*world_map_compact_suppressed_\s*=\s*visible' `
+    -and [regex]::Matches(
+        $refreshCompactMenuState,
+        'world_map_compact_suppressed_\s*=').Count -eq 2 `
+    -and [regex]::Matches(
+        $mainCode,
+        'read_world_map_layer_visibility_guarded\(').Count -eq 4 `
     -and [regex]::Matches(
         $mainCode,
         'world_map_layer_visible_guarded\(').Count -eq 2) `
-    'World-map visibility must use one ABI-validated reflected IsVisible read only at an explicit runtime-delta edge.'
+    'World-map visibility must preserve an explicit unknown state, clear only a dead weak layer, and sample IsVisible only after the authoritative map-open latch.'
+
+$menuRequiredRuntimeExpression = [regex]::Match(
+    $onUnrealInit,
+    '(?ms)const bool required_runtime_ready\s*=\s*(?<expression>.*?);').Groups[
+        'expression'].Value
+Assert-True ($mainCode -match `
+        'kIsGamePausedFunction\s*=\s*STR\("/Script/Engine\.GameplayStatics:IsGamePaused"\)' `
+    -and $mainCode -match `
+        'kGameplayStaticsDefault\s*=\s*STR\("/Script/Engine\.Default__GameplayStatics"\)' `
+    -and $mainCode -match `
+        'kIsGamePausedParameterCapacity\s*=\s*16' `
+    -and $onUnrealInit -match `
+        'StaticFindObject<UFunction\*>\([\s\S]*?kIsGamePausedFunction[\s\S]*?StaticFindObject<UObject\*>\([\s\S]*?kGameplayStaticsDefault[\s\S]*?initialize_game_pause_schema\(\)' `
+    -and $initializeGamePauseSchema -match `
+        'GetParmsSize\(\)[\s\S]*?L"WorldContextObject"[\s\S]*?L"ReturnValue"[\s\S]*?parameter_bytes\s*>\s*0[\s\S]*?parameter_bytes\s*<=\s*kIsGamePausedParameterCapacity' `
+    -and $initializeGamePauseSchema -match `
+        'GetOffset_Internal\(\)\s*>=\s*0[\s\S]*?GetSize\(\)\s*>\s*0[\s\S]*?<=\s*parameter_bytes' `
+    -and $readGamePaused -match `
+        '!paused[\s\S]*?!world_context[\s\S]*?!game_pause_schema_ready_[\s\S]*?!is_game_paused_function_[\s\S]*?!game_pause_world_context_property_[\s\S]*?!game_pause_return_property_' `
+    -and $readGamePaused -match `
+        'gameplay_statics_default_\.Get\(\)[\s\S]*?std::array<std::byte,[\s\S]*?kIsGamePausedParameterCapacity>[\s\S]*?SetObjectPropertyValue\([\s\S]*?world_context\)[\s\S]*?ProcessEvent\([\s\S]*?is_game_paused_function_[\s\S]*?\*paused\s*=\s*game_pause_return_property_->GetPropertyValue' `
+    -and $refreshCompactMenuState -match `
+        'previous_pause_known\s*=\s*game_pause_sample_known_[\s\S]*?read_game_paused_guarded\([\s\S]*?reinterpret_cast<UObject\*>\(current_world\),\s*&paused\)[\s\S]*?game_pause_sample_known_\s*=\s*pause_known[\s\S]*?if\s*\(pause_known\)\s*\{\s*game_paused_\s*=\s*paused' `
+    -and $refreshCompactMenuState -match `
+        'previous_pause_known\s*!=\s*game_pause_sample_known_[\s\S]*?report_compact_menu_state_edge\(source,\s*pause_known\)' `
+    -and [regex]::Matches(
+        $refreshCompactMenuState, 'game_paused_\s*=').Count -eq 1 `
+    -and $menuRequiredRuntimeExpression.Length -gt 0 `
+    -and $menuRequiredRuntimeExpression -notmatch 'game_pause') `
+    'Controller pause suppression must use one optional ABI-validated IsGamePaused provider, preserve the previous value on an unknown sample, and log only known-state edges.'
+
+Assert-True ($latchWorldMapCompactSuppression -match `
+        '!enabled_[\s\S]*?transition_active_[\s\S]*?activity_suppressed_[\s\S]*?!widget_is_visible_schema_ready_[\s\S]*?world_map_compact_suppressed_[\s\S]*?world_map_compact_suppressed_\s*=\s*true[\s\S]*?apply_compact_suppression\(\)[\s\S]*?report_compact_menu_state_edge' `
+    -and $captureWorldMapCandidate -match `
+        'UObject\*\s+retained[\s\S]*?if\s*\(set_world_map_image_event\)\s*\{[\s\S]*?latch_world_map_compact_suppression\("set_world_map_image"\)[\s\S]*?\}' `
+    -and $worldMapImagePost -match `
+        'capture_world_map_candidate_unsafe\(context\.Context,\s*true\)' `
+    -and [regex]::Matches(
+        $mainCode,
+        'latch_world_map_compact_suppression\(').Count -eq 2 `
+    -and $activateOwner -match `
+        'capture_current_world_identity_guarded\([\s\S]*?engine,[\s\S]*?&activation_world_key,[\s\S]*?&activation_world\)[\s\S]*?world_map_activation_catch_up\(activation_world\)' `
+    -and $worldMapActivationCatchUp -match `
+        'UWorld\*\s+expected_world\s*=\s*nullptr[\s\S]*?world_map_layer_catch_up_attempted_[\s\S]*?world_map_activation_catch_up_unsafe\(expected_world\)' `
+    -and $worldMapActivationCatchUpUnsafe -match `
+        'object_world_guarded\(retained\)\s*==\s*expected_world[\s\S]*?refresh_compact_menu_state\([\s\S]*?expected_world,[\s\S]*?"world_map_activation_catch_up_retained"' `
+    -and $worldMapActivationCatchUpUnsafe -match `
+        'object_world_guarded\(current_layer\)[\s\S]*?!=\s*expected_world[\s\S]*?capture_world_map_candidate_unsafe\(current_layer,\s*false\)[\s\S]*?refresh_compact_menu_state\([\s\S]*?expected_world,[\s\S]*?"world_map_activation_catch_up_captured"' `
+    -and $captureActivationContext -match `
+        'refresh_compact_menu_state\([\s\S]*?reinterpret_cast<UWorld\*>\(world\),[\s\S]*?"f7_visibility_catch_up"' `
+    -and $transitionEndLifecycle -match `
+        'transition_active_\s*=\s*false[\s\S]*?world_map_activation_catch_up\(current_world\)[\s\S]*?refresh_compact_menu_state\([\s\S]*?current_world,\s*"travel_visibility_catch_up"' `
+    -and $activateOwner -match `
+        'world_map_compact_suppressed_\s*=\s*false[\s\S]*?game_paused_\s*=\s*false[\s\S]*?game_pause_sample_known_\s*=\s*false' `
+    -and $disableBody -match `
+        'world_map_compact_suppressed_\s*=\s*false[\s\S]*?game_paused_\s*=\s*false[\s\S]*?game_pause_sample_known_\s*=\s*false' `
+    -and $transitionBegin -match `
+        'transition_active_\s*=\s*true[\s\S]*?world_map_compact_suppressed_\s*=\s*false[\s\S]*?game_paused_\s*=\s*false[\s\S]*?game_pause_sample_known_\s*=\s*false') `
+    'SetWorldMapImage alone must create controller-map suppression; F7, travel, and same-world catch-up may only clear or service an existing latch.'
+
+$positionBranchEndIndex = $engineTickUnsafe.IndexOf(
+    'if (position_valid_ && now >= next_discovery_)',
+    [StringComparison]::Ordinal)
+$positionBranch = if ($positionBranchIndex -ge 0 `
+        -and $positionBranchEndIndex -gt $positionBranchIndex) {
+    $engineTickUnsafe.Substring(
+        $positionBranchIndex,
+        $positionBranchEndIndex - $positionBranchIndex)
+} else {
+    ''
+}
+Assert-True ($mainCode -match `
+        'kDiscoveryInterval\s*=\s*std::chrono::milliseconds\{250\}' `
+    -and $engineTickUnsafe -match `
+        'if\s*\(now\s*>=\s*next_activity_probe_\)[\s\S]*?next_activity_probe_\s*=\s*now\s*\+\s*kDiscoveryInterval[\s\S]*?probe_activity_context_guarded\(engine\)' `
+    -and $probeActivityContext -match `
+        'refresh_compact_menu_state\([\s\S]*?reinterpret_cast<UWorld\*>\(world\),[\s\S]*?"shared_250ms_activity_probe"' `
+    -and [regex]::Matches(
+        $probeActivityContext,
+        'refresh_compact_menu_state\(').Count -eq 1 `
+    -and $positionBranch.Length -gt 0 `
+    -and $positionBranch -notmatch `
+        'refresh_compact_menu_state|read_game_paused_guarded|read_world_map_layer_visibility_guarded|world_map_layer_visible_guarded|is_game_paused_function_|widget_is_visible_function_' `
+    -and $readPlayerPosition -notmatch `
+        'refresh_compact_menu_state|read_game_paused_guarded|read_world_map_layer_visibility_guarded|world_map_layer_visible_guarded' `
+    -and $updateCompactPool -notmatch `
+        'refresh_compact_menu_state|read_game_paused_guarded|read_world_map_layer_visibility_guarded|world_map_layer_visible_guarded' `
+    -and $refreshCompactMenuState -notmatch `
+        'FindAllOf|FindFirstOf|StaticFindObject|std::vector|\bnew\b|fstream|filesystem' `
+    -and [regex]::Matches(
+        $mainCode,
+        'read_game_paused_guarded\(').Count -eq 2 `
+    -and [regex]::Matches(
+        $mainCode,
+        'refresh_compact_menu_state\(').Count -eq 6) `
+    'Controller menu sampling must run only on the shared 250 ms control edge or bounded activation/travel edges and add no work to the 16 ms position path.'
 Assert-True ($refreshAtlasForRuntimeDelta -match `
         'world_map_marker_snapshot_built_\s*=\s*false' `
     -and $refreshAtlasForRuntimeDelta -match `
@@ -1706,6 +2231,62 @@ $activateLifecycle = Get-MainFunction $mainCode 'activate'
 $disableLifecycle = Get-MainFunction $mainCode 'disable'
 $engineTickGuarded = Get-MainFunction $mainCode 'engine_tick'
 $uobjectArrayShutdown = Get-MainFunction $mainCode 'OnUObjectArrayShutdown'
+$lateShutdownBranch = [regex]::Match(
+    $shutdownOwner,
+    '(?s)if\s*\(!live_game_thread_cleanup\)\s*\{.*?return;\s*\}(?=\s*if\s*\(shutdown_started_)').Value
+$processShutdownBranch = [regex]::Match(
+    $shutdownOwner,
+    '(?s)if\s*\(process_shutdown\)\s*\{.*?return;\s*\}').Value
+$processShutdownIndex = $shutdownOwner.IndexOf(
+    'if (process_shutdown)', [StringComparison]::Ordinal)
+$lateShutdownIndex = $shutdownOwner.IndexOf(
+    'if (!live_game_thread_cleanup)', [StringComparison]::Ordinal)
+$safeShutdownLatchIndex = $shutdownOwner.IndexOf(
+    'if (shutdown_started_.exchange', [StringComparison]::Ordinal)
+Assert-True ($mainCode -match `
+        'std::atomic<bool>\s+shutdown_started_\{\}[\s\S]*?std::atomic<bool>\s+uobject_array_shutdown_\{\}' `
+    -and $shutdownOwner -match `
+        'shutting_down_\.store\(true,\s*std::memory_order_release\)[\s\S]*?required_runtime_ready_\.store\(false,\s*std::memory_order_release\)[\s\S]*?instance_\.compare_exchange_strong\([\s\S]*?expected,\s*nullptr,\s*std::memory_order_acq_rel\)' `
+    -and $shutdownOwner -match `
+        'known_game_thread\s*=\s*game_thread_id_\.load\(std::memory_order_acquire\)[\s\S]*?process_shutdown\s*=\s*process_shutdown_in_progress\(\)[\s\S]*?live_game_thread_cleanup\s*=[\s\S]*?known_game_thread\s*!=\s*0[\s\S]*?known_game_thread\s*==\s*GetCurrentThreadId\(\)[\s\S]*?!uobject_array_shutdown_\.load\(std::memory_order_acquire\)[\s\S]*?!process_shutdown[\s\S]*?UnrealInitializer::StaticStorage::bIsInitialized' `
+    -and $processShutdownBranch.Length -gt 0 `
+    -and $processShutdownIndex -ge 0 `
+    -and $lateShutdownIndex -gt $processShutdownIndex `
+    -and $processShutdownBranch -notmatch `
+        'append_log|flush_native_event_log|save_reconciler_|\.Get\s*\(|ProcessEvent|UnregisterHook|unregister_callbacks|\.detach\s*\(' `
+    -and $lateShutdownBranch.Length -gt 0 `
+    -and $lateShutdownIndex -ge 0 `
+    -and $safeShutdownLatchIndex -gt $lateShutdownIndex `
+    -and $lateShutdownBranch -match `
+        'shutdown_deferred_logged_\.exchange\([\s\S]*?append_log\([\s\S]*?SHUTDOWN_DEFERRED[\s\S]*?uobject_access=false[\s\S]*?return' `
+    -and $lateShutdownBranch -notmatch `
+        'flush_native_event_log|\.Get\s*\(|ProcessEvent|UnregisterHook|unregister_callbacks|\.detach\s*\(|release_for_travel|abandon_runtime_handles|save_reconciler_\.shutdown' `
+    -and $shutdownOwner -match `
+        'shutdown_started_\.exchange\(true,\s*std::memory_order_acq_rel\)[\s\S]*?enabled_\s*=\s*false[\s\S]*?engine_tick_engine_\s*=\s*nullptr' `
+    -and $shutdownOwner -match `
+        'unregister_callbacks\(\)[\s\S]*?unregister_object_create_listener\(true\)[\s\S]*?wait_for_object_create_listener_callbacks\(\)' `
+    -and $shutdownOwner -match `
+        'visibility_hub_\.detach\(\)[\s\S]*?compact_umg_renderer_\.detach\(\)[\s\S]*?world_map_umg_renderer_\.detach\(\)' `
+    -and $shutdownOwner -match `
+        'save_reconciler_\.shutdown\(\)[\s\S]*?SHUTDOWN_COMPLETE[\s\S]*?umg=detached[\s\S]*?flush_native_event_log\(\)' `
+    -and $uobjectArrayShutdown -match `
+        'shutting_down_\.store\(true,\s*std::memory_order_release\)[\s\S]*?required_runtime_ready_\.store\(false,\s*std::memory_order_release\)[\s\S]*?instance_\.compare_exchange_strong\([\s\S]*?expected,\s*nullptr,\s*std::memory_order_acq_rel\)[\s\S]*?uobject_array_shutdown_\.store\(true,\s*std::memory_order_release\)' `
+    -and $uobjectArrayShutdown -match `
+        'unregister_object_create_listener\(true\)[\s\S]*?wait_for_object_create_listener_callbacks\(\)[\s\S]*?!shutdown_started_\.exchange\(true,\s*std::memory_order_acq_rel\)[\s\S]*?save_reconciler_\.shutdown\(\)[\s\S]*?SHUTDOWN_COMPLETE[\s\S]*?uobject_access=false[\s\S]*?flush_native_event_log\(\)' `
+    -and $uobjectArrayShutdown -notmatch `
+        '\.Get\s*\(|ProcessEvent|UnregisterHook|unregister_callbacks|\.detach\s*\(|release_for_travel|abandon_runtime_handles|visibility_hub_|compact_umg_renderer_|world_map_umg_renderer_' `
+    -and [regex]::Matches(
+        $mainCode,
+        'shutdown_started_\.exchange\(true,\s*std::memory_order_acq_rel\)').Count -eq 2 `
+    -and [regex]::Matches(
+        $shutdownOwner,
+        'flush_native_event_log\(\)').Count -eq 1 `
+    -and [regex]::Matches(
+        $uobjectArrayShutdown,
+        'flush_native_event_log\(\)').Count -eq 1 `
+    -and $mainCode -notmatch `
+        'release_for_travel|abandon_runtime_handles') `
+    'Process shutdown must be atomic-only; deferred non-GameThread shutdown may only enqueue a bounded diagnostic; exactly one live GameThread or UObject-array finalizer may join workers and flush logs.'
 $requiredRuntimeExpression = [regex]::Match(
     $onUnrealInit,
     '(?ms)const bool required_runtime_ready\s*=\s*(?<expression>.*?);').Groups[
@@ -1864,13 +2445,13 @@ Assert-True ($consumePendingEncounterDeaths -match `
         'engine_tick_fault_cleanup_in_progress_\s*=\s*true;[\s\S]*?disable\(\)' `
     -and [regex]::Matches(
         $mainCode,
-        'pending_encounter_death_mask_\.store\(0,\s*std::memory_order_release\)').Count -eq 3 `
+        'pending_encounter_death_mask_\.store\(0,\s*std::memory_order_release\)').Count -eq 2 `
     -and $shutdownOwner -match `
-        'pending_encounter_death_mask_\.store\(0,\s*std::memory_order_release\)' `
-    -and $uobjectArrayShutdown -match `
         'pending_encounter_death_mask_\.store\(0,\s*std::memory_order_release\)' `
     -and $disableForMainMenu -match `
         'pending_encounter_death_mask_\.store\(0,\s*std::memory_order_release\)' `
+    -and $uobjectArrayShutdown -notmatch `
+        'pending_encounter_death_(?:process_)?mask_\.store\s*\(' `
     -and $mainCode -notmatch 'ENCOUNTER_DEATH_EVENT_DROPPED') `
     'The fixed death mask must remain pending until the existing 250 ms owner or an authoritative numeric-only boundary can apply each bit, including after Engine Tick disables itself.'
 Assert-True ($objectState -match `
@@ -2178,65 +2759,254 @@ Assert-True ($birdEggBeginBranch.Length -gt 0 `
         'reset_bird_egg_active_visibility\(\)' `
     -and $disableLifecycle -match `
         'reset_bird_egg_active_visibility\(\)' `
-    -and $uobjectArrayShutdown -match `
+    -and $shutdownOwner -match `
         'clear_bird_egg_candidates\(\)') `
     'Bird-egg BeginPlay must publish only a weak candidate until its owned interaction component is ready; exact EndPlay, F7/F8, travel, and shutdown must retire, reset, or prune only weak current-world state.'
+$preferenceIds = @([regex]::Matches(
+        $radarPreferences,
+        'case\s+RadarLanguagePreference::[A-Za-z]+:\s*return\s+"([^"]+)"') |
+    ForEach-Object { $_.Groups[1].Value }) -join ','
+$uiLanguageIds = @([regex]::Matches(
+        $radarPreferences,
+        'case\s+RadarUiLanguage::[A-Za-z]+:\s*return\s+"([^"]+)"') |
+    ForEach-Object { $_.Groups[1].Value }) -join ','
+Assert-True ([regex]::Matches(
+        $visibilityConfig, '(?m)^\[[a-z_]+\]\r?$').Count -eq 5 `
+    -and $visibilityConfig -match `
+        '(?s)\[radar\].*?\[map\].*?\[modes\].*?\[height_arrows\].*?\[interface\]' `
+    -and $visibilityConfig -match '(?m)^clock=true\r?$' `
+    -and $visibilityConfig -match '(?m)^bird_eggs=true\r?$' `
+    -and $visibilityConfig -match '(?m)^area_quests=available\r?$' `
+    -and $visibilityConfig -match '(?m)^assault=available\r?$' `
+    -and $visibilityConfig -match `
+        '(?ms)^\[height_arrows\]\r?\n(?:#[^\r\n]*\r?\n)*treasure=true\r?\narea_quests=true\r?\nmole=true\r?$' `
+    -and $visibilityConfig -match `
+        '(?ms)^\[interface\]\r?\n(?:#[^\r\n]*\r?\n)*language=auto\r?$') `
+    'The 2.2 public visibility file must contain exactly five readable sections with Treasure height on, Area Quest/Mole height off, and automatic language.'
+Assert-True ($visibilityParser -match 'kMaximumVisibilityConfigBytes\s*=\s*4096U' `
+    -and $visibilityParser -match `
+        'enum class Section[\s\S]*?Radar,[\s\S]*?Map,[\s\S]*?Modes,[\s\S]*?HeightArrows,[\s\S]*?Interface' `
+    -and $visibilityParser -match `
+        'old_sectioned\s*=\s*seen_sections\s*==\s*0x07U' `
+    -and $visibilityParser -match `
+        'current_sectioned\s*=\s*seen_sections\s*==\s*0x1FU[\s\S]*?height_arrow_keys\s*==\s*0x07U[\s\S]*?interface_keys\s*==\s*0x01U' `
+    -and $visibilityParser -match `
+        'bool\s+height_treasure\{true\}[\s\S]*?bool\s+height_area_quests\{true\}[\s\S]*?bool\s+height_mole\{true\}[\s\S]*?RadarLanguagePreference\s+language\{RadarLanguagePreference::Auto\}' `
+    -and $visibilityParser -match `
+        'output\s*\+=\s*"\\n\\n\[height_arrows\]\\n"[\s\S]*?output\s*\+=\s*"\\n\\n\[interface\]\\n"' `
+    -and $visibilityParser -match `
+        'VisibilityConfigFormat::LegacySchema1[\s\S]*?VisibilityConfigFormat::LegacySchema4') `
+    'The runtime must accept and upgrade a complete old three-section file, emit the current five-section format, and retain legacy schema 1-4 migration.'
+Assert-True ($preferenceIds -eq `
+        'auto,en,ja,ko,zh-hans,zh-hant,fr,de,es-es,ru,th,pt-br' `
+    -and $uiLanguageIds -eq `
+        'en,ja,ko,zh-hans,zh-hant,fr,de,es-es,ru,th,pt-br' `
+    -and $radarPreferences -match `
+        'kRadarLanguagePreferenceCount[\s\S]*?RadarLanguagePreference::Count' `
+    -and $radarPreferences -match `
+        'kRadarUiLanguageCount[\s\S]*?RadarUiLanguage::Count' `
+    -and $radarLocalization -match `
+        'struct RadarLocalizedText[\s\S]*?language_name[\s\S]*?title[\s\S]*?language[\s\S]*?automatic[\s\S]*?marker_visibility[\s\S]*?radar[\s\S]*?map[\s\S]*?array<const wchar_t\*,\s*7>\s+marker_categories[\s\S]*?height_indicators[\s\S]*?radar_only[\s\S]*?array<const wchar_t\*,\s*3>\s+height_categories[\s\S]*?filter_modes[\s\S]*?available[\s\S]*?all[\s\S]*?close[\s\S]*?status[\s\S]*?status_off[\s\S]*?status_on[\s\S]*?status_fault[\s\S]*?enable_mod[\s\S]*?disable_mod[\s\S]*?retry_mod[\s\S]*?bug_report' `
+    -and [regex]::Matches(
+        $radarLocalization, '(?<![A-Za-z0-9_])L"').Count -eq 341 `
+    -and $radarLocalization -match `
+        'static_assert\(kRadarLocalizedText\.size\(\)\s*==\s*kRadarUiLanguageCount\)') `
+    'The language contract must expose exactly 12 preferences, 11 game languages, and 31 populated text fields per language.'
+$resolveLanguageFonts = [regex]::Match(
+    $visibilityHub,
+    '(?ms)^void\s+RadarVisibilityHub::resolve_language_fonts_once_unsafe\s*\([^;]*?\)\s*\{(?:(?!^\}).)*^\}').Value
+$openVisibilityHubUnsafe = [regex]::Match(
+    $visibilityHub,
+    '(?ms)^RadarVisibilityHubResult\s+RadarVisibilityHub::open_unsafe\s*\([^;]*?\)\s*\{(?:(?!^\}).)*^\}').Value
+$serviceVisibilityHubUnsafe = [regex]::Match(
+    $visibilityHub,
+    '(?ms)^RadarVisibilityHubResult\s+RadarVisibilityHub::service_unsafe\s*\([^;]*?\)\s*\{(?:(?!^\}).)*^\}').Value
+$visibilityHubResetRuntimeHandles = [regex]::Match(
+    $visibilityHub,
+    '(?ms)^void\s+RadarVisibilityHub::reset_runtime_handles\s*\([^;]*?\)[^{]*\{(?:(?!^\}).)*^\}').Value
+Assert-True ($radarPreferences -match `
+        'enum class RadarUiFontFamily[\s\S]*?Common,[\s\S]*?TraditionalChinese,[\s\S]*?Japanese,[\s\S]*?Thai' `
+    -and $radarPreferences -match `
+        'radar_ui_font_family[\s\S]*?SimplifiedChinese[\s\S]*?TraditionalChinese[\s\S]*?RadarUiFontFamily::TraditionalChinese[\s\S]*?RadarUiLanguage::Japanese[\s\S]*?RadarUiFontFamily::Japanese[\s\S]*?RadarUiLanguage::Thai[\s\S]*?RadarUiFontFamily::Thai[\s\S]*?RadarUiFontFamily::Common' `
+    -and $visibilityHub -match `
+        'DsCompositFont_CommonSystem[\s\S]*?DsCompositFont_TCSystem[\s\S]*?DsCompositFont_JPSystem[\s\S]*?DsCompositFont_THSystem[\s\S]*?FindAllOf\(L"Font",\s*loaded_fonts\)' `
+    -and $resolveLanguageFonts.Length -gt 0 `
+    -and $resolveLanguageFonts -match `
+        'bool\s+has_missing_font\s*=\s*false[\s\S]*?for\s*\(const auto&\s+font\s*:\s*language_fonts_\)[\s\S]*?!font\.Get\(\)[\s\S]*?has_missing_font\s*=\s*true' `
+    -and $resolveLanguageFonts -match `
+        'if\s*\(!has_missing_font\)[\s\S]*?return[\s\S]*?FindAllOf\(L"Font",\s*loaded_fonts\)' `
+    -and $resolveLanguageFonts -match `
+        '!language_fonts_\[index\]\.Get\(\)[\s\S]*?candidate_name\s*==\s*kLanguageFontObjectNames\[index\][\s\S]*?language_fonts_\[index\]\s*=\s*candidate' `
+    -and $openVisibilityHubUnsafe.Length -gt 0 `
+    -and $openVisibilityHubUnsafe -match `
+        'resolve_language_fonts_once_unsafe\(\)' `
+    -and $serviceVisibilityHubUnsafe.Length -gt 0 `
+    -and $serviceVisibilityHubUnsafe -notmatch `
+        'resolve_language_fonts_once_unsafe|FindAllOf\(L"Font"' `
+    -and [regex]::Matches(
+        $visibilityHub,
+        'resolve_language_fonts_once_unsafe\(\)').Count -eq 2 `
+    -and [regex]::Matches(
+        $visibilityHub,
+        'FindAllOf\(L"Font",\s*loaded_fonts\)').Count -eq 1 `
+    -and ($visibilityHub + $visibilityHubHeader) -notmatch `
+        'language_font_lookup_attempted_' `
+    -and $visibilityHubResetRuntimeHandles.Length -gt 0 `
+    -and $visibilityHubResetRuntimeHandles -notmatch `
+        'language_fonts_' `
+    -and $visibilityHub -match `
+        'find_reflected_property\(font_struct,\s*L"FontObject"\)[\s\S]*?CopyCompleteValue\(parameter_font,\s*live_font\)[\s\S]*?SetObjectPropertyValue\([\s\S]*?ProcessEvent\(set_font_[\s\S]*?GetObjectPropertyValue\(live_font_object\)[\s\S]*?force_apply_language_font_property_,\s*false' `
+    -and $visibilityHub -match `
+        'choice_label[\s\S]*?add_text\([\s\S]*?choice_language' `
+    -and [regex]::Matches(
+        $visibilityHub,
+        '\(void\)apply_language_font_unsafe\(text,\s*resolved_ui_language_\)').Count -eq 3) `
+    'Each real F6 open may retry only missing or expired loaded-system-font slots; service/render/tick paths must never scan, and resolved slots plus SetFont/readback behavior must remain preserved.'
+
+$openVisibilityHubWhenReady = Get-MainFunction `
+    $mainCode 'open_visibility_hub_when_ready'
+$detectCurrentLanguage = [regex]::Match(
+    $mainCode,
+    '(?ms)^\s{4}\[\[nodiscard\]\]\s+dswros::RadarUiLanguage\s+detect_current_game_language\s*\([^;]*?\)[^{]*\{(?:(?!^\s{4}\}).)*^\s{4}\}').Value
+Assert-True ($detectCurrentLanguage.Length -gt 0 `
+    -and $mainCode -match `
+        '/Script/Engine\.KismetInternationalizationLibrary:GetCurrentLanguage' `
+    -and $mainCode -match `
+        '/Script/Engine\.Default__KismetInternationalizationLibrary' `
+    -and $mainCode -match `
+        'detect_current_game_language_guarded\s*\([\s\S]*?__try[\s\S]*?detect_current_game_language\(engine\)[\s\S]*?seh_fault_fallback_en' `
+    -and $mainCode -match `
+        'current_player_controller_for_visibility_hub\s*\([\s\S]*?__try[\s\S]*?current_player_controller\(engine\)[\s\S]*?return\s+nullptr' `
+    -and [regex]::Matches(
+        $mainCode, 'ProcessEvent\(current_language_function_').Count -eq 1 `
+    -and $activateLifecycle -match `
+        'detected_game_language_\s*=\s*detect_current_game_language_guarded\(engine\)[\s\S]*?resolve_radar_ui_language' `
+    -and $detectCurrentLanguage -match `
+        'game_user_settings_language_schema_ready_[\s\S]*?engine_game_user_settings_property_[\s\S]*?game_language_text_property_[\s\S]*?game_language_text_numeric_property_[\s\S]*?radar_ui_language_from_game_setting' `
+    -and $mainCode -match `
+        'CastField<FEnumProperty>\(game_language_text_property_\)[\s\S]*?GetUnderlyingProperty\(\)' `
+    -and $mainCode -match `
+        'game_language_text_numeric_property_\s*->GetUnsignedIntPropertyValue' `
+    -and $detectCurrentLanguage -match `
+        'internationalization_language_schema_ready_[\s\S]*?ProcessEvent\(current_language_function_[\s\S]*?RadarUiLanguage::English' `
+    -and $detectCurrentLanguage -match `
+        'length\s*<=\s*0\s*\|\|\s*length\s*>\s*63[\s\S]*?RadarUiLanguage::English' `
+    -and $openVisibilityHubWhenReady -match `
+        'detect_current_game_language_guarded\(engine\)[\s\S]*?visibility_hub_\.toggle' `
+    -and $openVisibilityHubWhenReady -match `
+        'current_player_controller_for_visibility_hub\(engine\)' `
+    -and ($probeActivityContext + $runtimeVisibilityService + `
+        $updateCompactPool) -notmatch `
+        'current_language|detect_current_game_language|internationalization') `
+    'LanguageText must run once per F7 and real F6 open through bounded fault guards, fall back through GetCurrentLanguage then English, and remain absent from the 16 ms and 250 ms paths.'
+
+$serviceVisibilityHub = Get-MainFunction $mainCode 'service_visibility_hub'
+$serviceVisibilityHubToggleRequest = Get-MainFunction `
+    $mainCode 'service_visibility_hub_toggle_request'
+$handleVisibilityHubResult = Get-MainFunction `
+    $mainCode 'handle_visibility_hub_result'
+$flushVisibilityHubWorldMapRefresh = Get-MainFunction `
+    $mainCode 'flush_visibility_hub_world_map_refresh'
+$hubServiceOpenPanel = [regex]::Match(
+    $visibilityHub,
+    '(?ms)^RadarVisibilityHubResult\s+RadarVisibilityHub::service_open_panel\s*\([^;]*?\)[^{]*\{(?:(?!^\}).)*^\}').Value
+$hubCompactChange = [regex]::Match(
+    $applyVisibilityHubResult,
+    '(?s)const bool compact_changed\s*=.*?;\s*const bool world_changed').Value
+$hubWorldChange = [regex]::Match(
+    $applyVisibilityHubResult,
+    '(?s)const bool world_changed\s*=.*?;\s*const bool bird_egg_visibility_changed').Value
 Assert-True ($visibilityHubHeader -match `
         'Clock,[\s\S]*?Treasure,[\s\S]*?Boss,[\s\S]*?Assault,[\s\S]*?MiniGames,[\s\S]*?AreaQuests,[\s\S]*?BirdEggs,[\s\S]*?Count' `
     -and $visibilityHubHeader -match `
         'kRadarVisibilityAllCategories\s*=\s*0x7FU' `
     -and $visibilityHubHeader -match `
         'kRadarVisibilityWorldCategories\s*=\s*0x3EU' `
-    -and $visibilityConfig -match '(?m)^\[radar\]$' `
-    -and $visibilityConfig -match '(?m)^clock=true$' `
-    -and $visibilityConfig -match '(?m)^bird_eggs=true$' `
-    -and $visibilityConfig -match '(?m)^\[map\]$' `
-    -and $visibilityConfig -match '(?m)^\[modes\]$' `
-    -and $visibilityConfig -match '(?m)^area_quests=available$' `
-    -and $visibilityConfig -match '(?m)^assault=available$' `
-    -and $visibilityParser -match 'kMaximumVisibilityConfigBytes\s*=\s*4096U' `
-    -and $visibilityParser -match `
-        'VisibilityConfigFormat::LegacySchema1[\s\S]*?VisibilityConfigFormat::LegacySchema4' `
-    -and $mainCode -match 'parse_visibility_config\(' `
-    -and $mainCode -match 'format_visibility_config\(' `
-    -and $mainCode -match 'area_quest_mode=' `
-    -and $mainCode -match 'assault_mode=' `
     -and $visibilityHubHeader -match `
-        'enum class AssaultDisplayMode[\s\S]*?Current,[\s\S]*?All' `
+        'RadarVisibilityHubResult[\s\S]*?height_indicators\{[\s\S]*?kDefaultHeightIndicatorMask[\s\S]*?RadarLanguagePreference\s+language\{[\s\S]*?RadarLanguagePreference::Auto' `
+    -and $visibilityHub -match `
+        'pending_height_indicators_\s*==\s*source_height_indicators_[\s\S]*?pending_language_\s*==\s*source_language_' `
+    -and $visibilityHub -match `
+        'RadarVisibilityHubAction::Applied[\s\S]*?applied_height_indicators[\s\S]*?applied_language' `
+    -and $visibilityHub -match `
+        'localized\.marker_categories\[category_index\][\s\S]*?localized\.height_categories\[index\]' `
+    -and $visibilityHub -match `
+        'language_dropdown_control_[\s\S]*?language_choice_controls_[\s\S]*?language_choice_selected_visuals_' `
+    -and $visibilityHub -match `
+        'language_dropdown_expanded_[\s\S]*?pending_language_\s*=\s*[\s\S]*?explicit_radar_language_preference[\s\S]*?refresh_localized_text_unsafe\(\)[\s\S]*?set_language_popup_visibility_unsafe\(false\)' `
     -and $visibilityHubHeader -match `
-        'RadarVisibilityHubResult[\s\S]*?AssaultDisplayMode\s+assault_mode\{AssaultDisplayMode::Current\}' `
+        'kLanguageChoiceCount\s*=\s*[\s\S]*?kRadarUiLanguageCount' `
+    -and $visibilityHub -notmatch `
+        'choice_label\s*=\s*[\s\S]*?localized\.automatic' `
+    -and $mainCode -match `
+        'migrate_legacy_auto_language_preference[\s\S]*?resolve_explicit_radar_language_preference[\s\S]*?persist_visibility_settings' `
     -and $visibilityHub -match `
-        'column\s*==\s*1[\s\S]*?definition\.category\s*==\s*RadarVisibilityCategory::Clock[\s\S]*?definition\.category[\s\S]*?==\s*RadarVisibilityCategory::BirdEggs[\s\S]*?add_text\([\s\S]*?L"-"' `
+        '/Script/UMG\.TextLayoutWidget:SetJustification' `
     -and $visibilityHub -match `
-        'ends_radar_section\s*=\s*[\s\S]*?RadarVisibilityCategory::BirdEggs[\s\S]*?ends_radar_section\s*\?\s*3\.0\s*:\s*1\.0[\s\S]*?ends_radar_section\s*\?\s*kPanelAccent\s*:\s*kRowDivider' `
+        'void\s+set_justification[\s\S]*?!text_block\s*\|\|\s*!function[\s\S]*?return' `
+    -and $visibilityHub -notmatch `
+        'require_parameters\(1U\s*<<\s*27U' `
+    -and $visibilityHub -notmatch `
+        'append\(text\.automatic\)' `
+    -and $visibilityHub -notmatch `
+        'L"(?:RADAR SETTINGS|MARKER VISIBILITY|BIRD EGGS|AREA QUEST MODE|ASSAULT MODE|AVAILABLE|ALL|CLOSE)"') `
+    'F6 must publish height/language state, expose only eleven explicit language choices, migrate legacy AUTO on a bounded F6/F7 sample, and keep optional text centering from disabling the pre-created language popup.'
+Assert-True ($visibilityHub -match `
+        'kReferencePanelWidth\s*=\s*680\.0' `
     -and $visibilityHub -match `
-        'column\s*==\s*1[\s\S]*?category\s*==\s*static_cast<std::size_t>\([\s\S]*?RadarVisibilityCategory::Clock\)[\s\S]*?category\s*==\s*static_cast<std::size_t>\([\s\S]*?RadarVisibilityCategory::BirdEggs\)[\s\S]*?continue' `
+        'kReferencePanelHeight\s*=\s*660\.0' `
+    -and $visibilityHub -match `
+        'kMinimumViewportMargin\s*=\s*16\.0' `
+    -and $visibilityHub -match `
+        'fit_width\s*=\s*viewport_size\.return_value\.x[\s\S]*?-\s*kMinimumViewportMargin\s*\*\s*2\.0' `
+    -and $visibilityHub -match `
+        'fit_height\s*=\s*viewport_size\.return_value\.y[\s\S]*?-\s*kMinimumViewportMargin\s*\*\s*2\.0' `
+    -and $visibilityHub -match `
+        'fit_scale\s*=\s*std::min\([\s\S]*?fit_width\s*/\s*kReferencePanelWidth,[\s\S]*?fit_height\s*/\s*kReferencePanelHeight\)' `
+    -and $visibilityHub -match `
+        'display_scale\s*=\s*std::min\(reference_scale,\s*fit_scale\)' `
+    -and $visibilityHub -match `
+        'unit_scale\s*=\s*display_scale\s*/\s*static_cast<double>\(viewport_scale\.return_value\)' `
+    -and $visibilityHub -match `
+        '\(viewport_size\.return_value\.x\s*-\s*physical_width\)\s*\*\s*0\.5[\s\S]*?\(viewport_size\.return_value\.y\s*-\s*physical_height\)\s*\*\s*0\.5') `
+    'The redesigned 680x660 F6 panel must fit-clamp both panel dimensions, account for DPI, and remain centered.'
+Assert-True ($mainCode -match `
+        'kVisibilityHubServiceInterval\s*=\s*std::chrono::milliseconds\{50\}' `
+    -and $serviceVisibilityHub -match `
+        '\{\s*if\s*\(!visibility_hub_\.is_open\(\)[\s\S]*?return;' `
+    -and $hubServiceOpenPanel.Length -gt 0 `
+    -and $hubServiceOpenPanel -match `
+        '\{\s*if\s*\(state_\s*!=\s*RadarVisibilityHubState::Open\)[\s\S]*?return\s*\{' `
+    -and $hubServiceOpenPanel.IndexOf(
+        'if (!current_controller)', [StringComparison]::Ordinal) -gt `
+        $hubServiceOpenPanel.IndexOf(
+            'state_ != RadarVisibilityHubState::Open',
+            [StringComparison]::Ordinal)) `
+    'The closed F6 path must return before controller/UObject work; only an open panel may enter the 50 ms service.'
+Assert-True ($hubCompactChange.Length -gt 0 `
+    -and $hubCompactChange -match 'height_indicators_changed' `
+    -and $hubCompactChange -notmatch 'language_changed' `
+    -and $hubWorldChange.Length -gt 0 `
+    -and $hubWorldChange -notmatch 'height_indicators_changed|language_changed' `
     -and $applyVisibilityHubResult -match `
-        'bird_egg_visibility_changed[\s\S]*?RadarVisibilityCategory::BirdEggs' `
+        'if\s*\(compact_changed\)[\s\S]*?compact_rebind_dirty_\s*=\s*true' `
     -and $applyVisibilityHubResult -match `
-        'if\s*\(bird_egg_visibility_changed\)[\s\S]*?reset_bird_egg_active_visibility\(\)' `
+        'persist_visibility_settings\([\s\S]*?assault_display_mode_,\s*height_indicator_mask_,[\s\S]*?language_preference_' `
     -and $applyVisibilityHubResult -match `
         'if\s*\(world_changed\)[\s\S]*?visibility_hub_\.is_open\(\)[\s\S]*?visibility_hub_world_map_baseline_mask_[\s\S]*?visibility_hub_world_map_baseline_area_quest_mode_[\s\S]*?visibility_hub_world_map_baseline_assault_mode_' `
-    -and $applyVisibilityHubResult -match `
-        'assault_display_mode_\s*=\s*result\.assault_mode[\s\S]*?assault_mode_changed[\s\S]*?compact_changed[\s\S]*?world_changed' `
-    -and $applyVisibilityHubResult -match `
-        'persist_visibility_settings\([\s\S]*?visibility_masks_,\s*area_quest_display_mode_,[\s\S]*?assault_display_mode_' `
-    -and $visibilityHub -match `
-        'L"ASSAULT MODE"[\s\S]*?L"AVAILABLE"[\s\S]*?L"ALL"' `
-    -and $visibilityHub -match `
-        'assault_current_checked[\s\S]*?assault_all_checked[\s\S]*?pending_assault_mode_[\s\S]*?set_checked' `
-    -and $visibilityHub -match `
-        'pending_masks_\s*==\s*source_masks_[\s\S]*?pending_area_quest_mode_\s*==\s*source_area_quest_mode_[\s\S]*?pending_assault_mode_\s*==\s*source_assault_mode_' `
     -and $visibilityHub -notmatch `
         'std::chrono|Clock::|sqlite|sqlcipher|execute_optional_sql|request_area_quest_scan|service_runtime_visibility_edges' `
-    -and $mainCode -match `
-        'VISIBILITY_HUB_WORLD_MAP_REFRESH[\s\S]*?action=single_coalesced_rebuild' `
-    -and $mainCode -match `
-        'RadarVisibilityHubAction::Opened[\s\S]*?visibility_hub_world_map_baseline_valid_\s*=\s*true[\s\S]*?visibility_hub_world_map_baseline_mask_[\s\S]*?visibility_hub_world_map_baseline_area_quest_mode_[\s\S]*?visibility_hub_world_map_baseline_assault_mode_' `
-    -and [regex]::Matches(
-        $mainCode,
-        'flush_visibility_hub_world_map_refresh\("(?:x_close|f6_close)"\)').Count -eq 2) `
-    'F6 must preserve the schema-4 AVAILABLE public default, expose mutually exclusive Assault AVAILABLE/ALL controls without new timed work, and coalesce only net expanded-map changes to one close-edge transaction.'
+    -and $flushVisibilityHubWorldMapRefresh -match `
+        'VISIBILITY_HUB_WORLD_MAP_REFRESH' `
+    -and $flushVisibilityHubWorldMapRefresh -match `
+        '"single_coalesced_rebuild"' `
+    -and $handleVisibilityHubResult -match `
+        'RadarVisibilityHubAction::Closed[\s\S]*?flush_visibility_hub_world_map_refresh\(close_reason\)' `
+    -and $serviceVisibilityHub -match `
+        'handle_visibility_hub_result\([\s\S]*?"x_close"\)' `
+    -and $serviceVisibilityHubToggleRequest -match `
+        'handle_visibility_hub_result\([\s\S]*?"f6_toggle"\)') `
+    'Height changes may dirty only the compact rebind; language changes may update text and persistence only; neither may trigger the world atlas.'
 Assert-True ($rebuildCompactSnapshot -match `
         'encounter_visible_for_selected_mode\([\s\S]*?spec,\s*now_unix_seconds\)' `
     -and $collectWorldMapSnapshot -match `

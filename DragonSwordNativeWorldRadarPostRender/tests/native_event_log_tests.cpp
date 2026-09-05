@@ -18,6 +18,17 @@ void require(bool condition, const char* message) {
     }
 }
 
+template <typename Append>
+void require_event_enqueued(Append&& append, const char* message) {
+    for (int attempt = 0; attempt < 200; ++attempt) {
+        if (append()) {
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    require(false, message);
+}
+
 std::string read_all(const std::filesystem::path& path) {
     std::ifstream input{path, std::ios::binary};
     require(input.good(), "native event log was not created");
@@ -57,7 +68,12 @@ int main() {
         slow.compact_update_called = true;
         slow.discovery_called = true;
         slow.bird_egg_active_count = 2;
-        dsnwr::append_native_engine_tick_slow(slow, 2000, 1);
+        require_event_enqueued(
+            [&slow] {
+                return dsnwr::append_native_engine_tick_slow(
+                    slow, 2000, 1);
+            },
+            "structured slow record could not be enqueued");
 
         dsnwr::NativeEngineTickProfileReport profile{};
         profile.activation = 3;
@@ -69,7 +85,11 @@ int main() {
         }
         profile.slow_ticks = 1;
         profile.slow_threshold_us = 2000;
-        dsnwr::append_native_engine_tick_profile(profile);
+        require_event_enqueued(
+            [&profile] {
+                return dsnwr::append_native_engine_tick_profile(profile);
+            },
+            "structured profile record could not be enqueued");
         dsnwr::flush_native_event_log();
         require(!dsnwr::native_event_log_enabled(),
                 "shutdown did not disable producers");

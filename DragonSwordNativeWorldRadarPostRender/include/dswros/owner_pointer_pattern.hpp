@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -117,37 +118,36 @@ template <typename Value>
         const std::size_t header = section_table
             + section_index * kSectionHeaderSize;
         std::uint32_t virtual_address{};
+        std::uint32_t virtual_size{};
         std::uint32_t raw_size{};
         std::uint32_t raw_offset{};
         std::uint32_t characteristics{};
-        if (!detail::read_pe_value(image, header + 12U, virtual_address)
+        if (!detail::read_pe_value(image, header + 8U, virtual_size)
+            || !detail::read_pe_value(image, header + 12U, virtual_address)
             || !detail::read_pe_value(image, header + 16U, raw_size)
             || !detail::read_pe_value(image, header + 20U, raw_offset)
             || !detail::read_pe_value(
                 image, header + 36U, characteristics)) {
             return {};
         }
+        const std::uint32_t mapped_raw_size = virtual_size == 0U
+            ? raw_size
+            : std::min(raw_size, virtual_size);
         if ((characteristics & kExecutableSection) == 0U
-            || raw_size < kPatternSize) {
+            || mapped_raw_size < kPatternSize) {
             continue;
         }
         const std::size_t raw_begin = raw_offset;
         if (raw_begin > image.size()
-            || raw_size > image.size() - raw_begin) {
+            || mapped_raw_size > image.size() - raw_begin) {
             return {};
         }
-        const std::size_t raw_end = raw_begin + raw_size;
+        const std::size_t raw_end = raw_begin + mapped_raw_size;
         for (std::size_t offset = raw_begin;
              offset <= raw_end - kPatternSize; ++offset) {
             if (!detail::matches_owner_pointer_pattern(
                     image.data() + offset)) {
                 continue;
-            }
-            ++result.match_count;
-            if (result.match_count > 1U) {
-                result.status = OwnerPointerPatternStatus::Ambiguous;
-                result.rva = 0U;
-                return result;
             }
             std::int32_t displacement{};
             if (!detail::read_pe_value(image, offset + 3U, displacement)) {
@@ -163,15 +163,21 @@ template <typename Value>
                 out_of_range_target = true;
                 continue;
             }
+            ++result.match_count;
+            if (result.match_count > 1U) {
+                result.status = OwnerPointerPatternStatus::Ambiguous;
+                result.rva = 0U;
+                return result;
+            }
             result.rva = static_cast<std::uint64_t>(target);
         }
     }
-    if (result.match_count == 0U) {
-        return result;
-    }
-    if (out_of_range_target || result.rva == 0U) {
+    if (result.match_count == 0U && out_of_range_target) {
         result.status = OwnerPointerPatternStatus::TargetOutOfRange;
         result.rva = 0U;
+        return result;
+    }
+    if (result.match_count == 0U) {
         return result;
     }
     result.status = OwnerPointerPatternStatus::Unique;

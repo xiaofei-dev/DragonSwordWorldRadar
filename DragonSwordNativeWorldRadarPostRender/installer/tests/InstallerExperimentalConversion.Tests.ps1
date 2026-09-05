@@ -420,7 +420,7 @@ Run 'Update repair preserves user settings and refreshes bundled catalogs withou
     $state = InspectState $f
     Assert ([bool](Prop $state 'CanUpdate')) 'Owned current Radar did not enable Repair.'
     Assert ([bool](Prop $state 'CanUninstall')) 'Owned current Radar did not enable Uninstall.'
-    Equal ([string](Prop $state 'InstalledVersion')) '2.1.0' 'Current Radar version was not detected.'
+    Equal ([string](Prop $state 'InstalledVersion')) '2.2.1' 'Current Radar version was not detected.'
     $result = Install $f
     Assert ([bool](Prop $result 'UpdatedExistingRadar')) 'Install result did not report Update / Repair.'
     Equal (Get-Content (Join-Path $f.Target 'config\visibility.ini') -Raw) $visibility 'Visibility settings were overwritten.'
@@ -438,26 +438,26 @@ Run 'Older structurally owned Radar version is accepted for update' {
     $manifestPath = Join-Path $f.Target 'metadata\package-manifest.json'
     $recordPath = Join-Path $f.Target 'INSTALL-RECORD.txt'
     $release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
-    $release.version = '1.0.0'
+    $release.version = '2.1.1'
     WriteText $releasePath ($release | ConvertTo-Json -Depth 100)
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    $manifest.version = '1.0.0'
+    $manifest.version = '2.1.1'
     $releaseEntry = @($manifest.files | Where-Object path -eq 'metadata/release.json')
     Equal $releaseEntry.Count 1 'Release manifest entry is not unique.'
     $releaseEntry[0].size = (Get-Item -LiteralPath $releasePath).Length
     $releaseEntry[0].sha256 = Hash $releasePath
     WriteText $manifestPath ($manifest | ConvertTo-Json -Depth 100)
-    $record = (Get-Content -LiteralPath $recordPath -Raw) -replace 'Version: 2\.1\.0', 'Version: 1.0.0'
+    $record = (Get-Content -LiteralPath $recordPath -Raw) -replace 'Version: 2\.2\.1', 'Version: 2.1.1'
     WriteText $recordPath $record
     $state = InspectState $f
     Assert ([bool](Prop $state 'CanUpdate')) 'Owned older Radar did not enable Update.'
     Assert ([bool](Prop $state 'CanUninstall')) 'Owned older Radar did not enable Uninstall.'
-    Equal ([string](Prop $state 'InstalledVersion')) '1.0.0' 'Older Radar version was not detected.'
+    Equal ([string](Prop $state 'InstalledVersion')) '2.1.1' 'Older Radar version was not detected.'
     $plan = Inspect $f
     Assert ([bool](Prop $plan 'UpdatesExistingRadar')) 'Older owned Radar was not accepted for Update / Repair.'
     [void](Install $f)
     $updatedRelease = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
-    Equal ([string]$updatedRelease.version) '2.1.0' 'Update did not restore the current release version.'
+    Equal ([string]$updatedRelease.version) '2.2.1' 'Update did not restore the current release version.'
     AssertNoPersistentBackup $f
 }
 Run 'Injected late failure restores converted loader and Mods state' {

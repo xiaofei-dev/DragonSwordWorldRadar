@@ -68,6 +68,16 @@ struct ZOrderParameters {
     std::int32_t value{};
 };
 
+struct AddToViewportParameters {
+    std::int32_t z_order{};
+};
+
+struct PositionInViewportParameters {
+    Vector2D position{};
+    bool remove_dpi_scale{};
+    std::array<std::byte, 7> padding{};
+};
+
 struct VisibilityParameters {
     std::uint8_t visibility{};
 };
@@ -97,6 +107,8 @@ static_assert(sizeof(ObjectReturnParameters) == 8);
 static_assert(sizeof(AddChildParameters) == 16);
 static_assert(sizeof(VectorParameters) == 16);
 static_assert(sizeof(ZOrderParameters) == 4);
+static_assert(sizeof(AddToViewportParameters) == 4);
+static_assert(sizeof(PositionInViewportParameters) == 24);
 static_assert(sizeof(VisibilityParameters) == 1);
 static_assert(sizeof(GetPositionParameters) == 16);
 static_assert(sizeof(SetBrushFromTextureParameters) == 16);
@@ -120,12 +132,12 @@ constexpr std::int32_t kRadarMarkerZ =
 constexpr std::int32_t kMaxNativeIconCandidates = 4096;
 constexpr std::size_t kGeometryParameterCapacity = 256;
 constexpr std::uint32_t kTransparent = 0x00000000U;
-constexpr std::uint32_t kOutline = 0xFF0C121CU;
+constexpr std::uint32_t kOutline = 0xFF162432U;
 constexpr std::uint32_t kWhite = 0xFFFFFFFFU;
 constexpr std::uint32_t kGreen = 0xFF3FE67AU;
 constexpr std::uint32_t kOrange = 0xFFFFA22FU;
 constexpr std::uint32_t kBlue = 0xFF439FFFU;
-constexpr std::uint32_t kShadow = 0x7D000000U;
+constexpr std::uint32_t kShadow = 0x52050B12U;
 constexpr std::uint32_t kOfficialWhite = 0xFFF7FFFDU;
 constexpr std::uint32_t kOfficialPale = 0xFFD8F6EEU;
 constexpr std::uint32_t kOfficialGreen = 0xFF4D9F8BU;
@@ -134,10 +146,12 @@ constexpr std::uint32_t kOfficialCyan = 0xFF55EDE4U;
 constexpr std::uint32_t kFlyWing = 0xFF9ADBFFU;
 constexpr std::uint32_t kFlyArrow = 0xFF69C7FFU;
 constexpr std::uint32_t kHammer = 0xFFD29152U;
+constexpr std::uint32_t kHammerHandle = 0xFF8A5934U;
+constexpr std::uint32_t kHammerHighlight = 0xFFF0B56FU;
 constexpr std::uint32_t kWave = 0xFF325BE0U;
 constexpr std::uint32_t kAreaQuestBubble = 0xFFEFEDE7U;
-constexpr std::uint32_t kAreaQuestDark = 0x84232A2EU;
-constexpr std::uint64_t kAtlasStyleRevision = 48U;
+constexpr std::uint32_t kAreaQuestDark = 0xFF232A2EU;
+constexpr std::uint64_t kAtlasStyleRevision = 50U;
 
 enum class AtlasLayer : std::uint8_t {
     Background,
@@ -212,6 +226,12 @@ struct NativeIconTemplate {
     UObject* parent_canvas{};
 };
 
+enum class NativeIconTemplateLookupResult : std::uint32_t {
+    Found,
+    NotReady,
+    InvalidSchema,
+};
+
 [[nodiscard]] FProperty* find_function_field(
     UFunction* function, const wchar_t* name) {
     if (!function || !name) {
@@ -271,6 +291,11 @@ struct GeometryReflectionSchema {
     FStructProperty* absolute_to_local_geometry{};
     FStructProperty* absolute_coordinate{};
     FStructProperty* absolute_to_local_return{};
+};
+
+struct ViewportGeometryReflectionSchema {
+    FObjectPropertyBase* world_context_object{};
+    FStructProperty* return_value{};
 };
 
 [[nodiscard]] bool resolve_geometry_reflection_schema(
@@ -342,11 +367,29 @@ struct GeometryReflectionSchema {
         && vector_struct_is_finite_schema(schema.alignment_return);
 }
 
+[[nodiscard]] bool resolve_viewport_geometry_reflection_schema(
+    UFunction* get_viewport_widget_geometry,
+    FStructProperty* expected_geometry,
+    ViewportGeometryReflectionSchema& schema) {
+    schema = {};
+    schema.world_context_object = CastField<FObjectPropertyBase>(
+        find_function_field(
+            get_viewport_widget_geometry, L"WorldContextObject"));
+    schema.return_value = CastField<FStructProperty>(
+        find_function_field(get_viewport_widget_geometry, L"ReturnValue"));
+    return function_property_fits(
+               get_viewport_widget_geometry, schema.world_context_object)
+        && function_property_fits(
+               get_viewport_widget_geometry, schema.return_value)
+        && expected_geometry && schema.return_value
+        && schema.return_value->GetStruct() == expected_geometry->GetStruct();
+}
+
 // Reads only the supplied layer's current icon array once. The selected widget
 // must still own its reflected CanvasPanelSlot, belong to the current player,
 // and derive from the native map-point widget type. No candidate survives this
 // call as a raw pointer.
-[[nodiscard]] bool find_native_icon_template(
+[[nodiscard]] NativeIconTemplateLookupResult find_native_icon_template(
     UObject* layer,
     UObject* expected_owning_player,
     UClass* map_point_icon_class,
@@ -367,13 +410,19 @@ struct GeometryReflectionSchema {
             ? find_struct_field(info_property->GetStruct(), L"IconWidget")
             : nullptr);
     if (!array_property || !array_value || !info_property || !icon_property) {
-        return false;
+        return NativeIconTemplateLookupResult::InvalidSchema;
     }
 
     FScriptArrayHelper icons(array_property, array_value);
     const std::int32_t count = icons.Num();
-    if (count <= 0 || count > kMaxNativeIconCandidates) {
-        return false;
+    if (count < 0) {
+        return NativeIconTemplateLookupResult::InvalidSchema;
+    }
+    if (count == 0) {
+        return NativeIconTemplateLookupResult::NotReady;
+    }
+    if (count > kMaxNativeIconCandidates) {
+        return NativeIconTemplateLookupResult::InvalidSchema;
     }
     for (std::int32_t index = 0; index < count; ++index) {
         void* info_value = icons.GetRawPtr(index);
@@ -387,15 +436,51 @@ struct GeometryReflectionSchema {
             continue;
         }
 
-        UObject* point_panel = read_object_property(icon, L"Panel_Point");
-        UObject* slot = read_object_property(icon, L"Slot");
-        UObject* parent = read_object_property(slot, L"Parent");
-        UObject* content = read_object_property(slot, L"Content");
-        if (!point_panel || !point_panel->IsA(canvas_panel_class)
-            || !slot || !slot->IsA(canvas_panel_slot_class)
-            || !parent || !parent->IsA(canvas_panel_class)
-            || content != icon) {
+        auto* point_panel_property = CastField<FObjectPropertyBase>(
+            icon->GetPropertyByNameInChain(L"Panel_Point"));
+        auto* slot_property = CastField<FObjectPropertyBase>(
+            icon->GetPropertyByNameInChain(L"Slot"));
+        if (!point_panel_property || !slot_property) {
+            return NativeIconTemplateLookupResult::InvalidSchema;
+        }
+        void* point_panel_value =
+            point_panel_property->ContainerPtrToValuePtr<void>(icon);
+        void* slot_value = slot_property->ContainerPtrToValuePtr<void>(icon);
+        if (!point_panel_value || !slot_value) {
+            return NativeIconTemplateLookupResult::InvalidSchema;
+        }
+        UObject* point_panel =
+            point_panel_property->GetObjectPropertyValue(point_panel_value);
+        UObject* slot = slot_property->GetObjectPropertyValue(slot_value);
+        if (!point_panel || !slot) {
             continue;
+        }
+        if (!point_panel->IsA(canvas_panel_class)
+            || !slot->IsA(canvas_panel_slot_class)) {
+            return NativeIconTemplateLookupResult::InvalidSchema;
+        }
+
+        auto* parent_property = CastField<FObjectPropertyBase>(
+            slot->GetPropertyByNameInChain(L"Parent"));
+        auto* content_property = CastField<FObjectPropertyBase>(
+            slot->GetPropertyByNameInChain(L"Content"));
+        if (!parent_property || !content_property) {
+            return NativeIconTemplateLookupResult::InvalidSchema;
+        }
+        void* parent_value =
+            parent_property->ContainerPtrToValuePtr<void>(slot);
+        void* content_value =
+            content_property->ContainerPtrToValuePtr<void>(slot);
+        if (!parent_value || !content_value) {
+            return NativeIconTemplateLookupResult::InvalidSchema;
+        }
+        UObject* parent = parent_property->GetObjectPropertyValue(parent_value);
+        UObject* content = content_property->GetObjectPropertyValue(content_value);
+        if (!parent || !content) {
+            continue;
+        }
+        if (!parent->IsA(canvas_panel_class) || content != icon) {
+            return NativeIconTemplateLookupResult::InvalidSchema;
         }
 
         ObjectReturnParameters owning_player{};
@@ -409,73 +494,9 @@ struct GeometryReflectionSchema {
             continue;
         }
         result = {icon_class, parent};
-        return true;
+        return NativeIconTemplateLookupResult::Found;
     }
-    return false;
-}
-
-// Event-only proof that a retained Canvas still belongs to the supplied
-// layer's current native icon tree. No array element or widget survives this
-// synchronous validation call as a raw pointer.
-[[nodiscard]] bool current_layer_witnesses_native_parent(
-    UObject* layer,
-    UObject* expected_owning_player,
-    UObject* expected_parent,
-    UClass* map_point_icon_class,
-    UClass* canvas_panel_class,
-    UClass* canvas_panel_slot_class,
-    UFunction* get_owning_player) {
-    if (!layer || !expected_owning_player || !expected_parent) {
-        return false;
-    }
-    auto* array_property = CastField<FArrayProperty>(
-        layer->GetPropertyByNameInChain(L"ArrayIconInfo"));
-    void* array_value = array_property
-        ? array_property->ContainerPtrToValuePtr<void>(layer)
-        : nullptr;
-    auto* info_property = CastField<FStructProperty>(
-        array_property ? array_property->GetInner() : nullptr);
-    auto* icon_property = CastField<FObjectPropertyBase>(
-        info_property
-            ? find_struct_field(info_property->GetStruct(), L"IconWidget")
-            : nullptr);
-    if (!array_property || !array_value || !info_property || !icon_property) {
-        return false;
-    }
-
-    FScriptArrayHelper icons(array_property, array_value);
-    const std::int32_t count = icons.Num();
-    if (count <= 0 || count > kMaxNativeIconCandidates) {
-        return false;
-    }
-    for (std::int32_t index = 0; index < count; ++index) {
-        void* info_value = icons.GetRawPtr(index);
-        void* icon_value = info_value
-            ? icon_property->ContainerPtrToValuePtr<void>(info_value)
-            : nullptr;
-        UObject* icon = icon_value
-            ? icon_property->GetObjectPropertyValue(icon_value)
-            : nullptr;
-        if (!icon || !icon->IsA(map_point_icon_class)) {
-            continue;
-        }
-
-        UObject* point_panel = read_object_property(icon, L"Panel_Point");
-        UObject* slot = read_object_property(icon, L"Slot");
-        if (!point_panel || !point_panel->IsA(canvas_panel_class)
-            || !slot || !slot->IsA(canvas_panel_slot_class)
-            || read_object_property(slot, L"Parent") != expected_parent
-            || read_object_property(slot, L"Content") != icon) {
-            continue;
-        }
-
-        ObjectReturnParameters owning_player{};
-        icon->ProcessEvent(get_owning_player, &owning_player);
-        if (owning_player.return_value == expected_owning_player) {
-            return true;
-        }
-    }
-    return false;
+    return NativeIconTemplateLookupResult::NotReady;
 }
 
 [[nodiscard]] bool read_numeric_value(
@@ -612,6 +633,20 @@ private:
     return true;
 }
 
+[[nodiscard]] bool write_object_property(
+    FObjectPropertyBase* property,
+    void* container,
+    UObject* value) {
+    void* address = property && container
+        ? property->ContainerPtrToValuePtr<void>(container)
+        : nullptr;
+    if (!property || !address || !value) {
+        return false;
+    }
+    property->SetObjectPropertyValue(address, value);
+    return property->GetObjectPropertyValue(address) == value;
+}
+
 [[nodiscard]] bool copy_geometry_property(
     FStructProperty* destination_property,
     void* destination_container,
@@ -683,6 +718,52 @@ private:
     slate_library->ProcessEvent(function, parameters.data());
     return read_vector_property(
         return_property, parameters.data(), output_x, output_y);
+}
+
+[[nodiscard]] bool read_slate_geometry_snapshot(
+    UObject* slate_library,
+    UFunction* get_geometry_local_size,
+    UFunction* local_to_absolute,
+    const GeometryReflectionSchema& schema,
+    FStructProperty* source_geometry_property,
+    void* source_geometry_container,
+    dswros::WorldMapSlateGeometry& snapshot) {
+    snapshot = {};
+    double width{};
+    double height{};
+    double absolute_left{};
+    double absolute_top{};
+    double absolute_right{};
+    double absolute_bottom{};
+    if (!read_geometry_local_size(
+            slate_library, get_geometry_local_size, schema,
+            source_geometry_property, source_geometry_container,
+            width, height)
+        || !transform_geometry_point(
+            slate_library, local_to_absolute,
+            schema.local_to_absolute_geometry, schema.local_coordinate,
+            schema.local_to_absolute_return,
+            source_geometry_property, source_geometry_container,
+            0.0, 0.0, absolute_left, absolute_top)
+        || !transform_geometry_point(
+            slate_library, local_to_absolute,
+            schema.local_to_absolute_geometry, schema.local_coordinate,
+            schema.local_to_absolute_return,
+            source_geometry_property, source_geometry_container,
+            width, height, absolute_right, absolute_bottom)) {
+        return false;
+    }
+    const double scale_x = (absolute_right - absolute_left) / width;
+    const double scale_y = (absolute_bottom - absolute_top) / height;
+    if (!std::isfinite(absolute_left) || !std::isfinite(absolute_top)
+        || !std::isfinite(scale_x) || !std::isfinite(scale_y)
+        || width <= 0.0 || height <= 0.0
+        || scale_x <= 0.0 || scale_y <= 0.0) {
+        return false;
+    }
+    snapshot = {
+        absolute_left, absolute_top, width, height, scale_x, scale_y};
+    return true;
 }
 
 // Converts the player icon's exact Canvas alignment pivot into the selected
@@ -1369,27 +1450,44 @@ void draw_chest_glyph(
     const Vector2D& center,
     WorldMapUmgMarkerTone tone) {
     const std::uint32_t fill = marker_fill(tone);
-    // All dimensions are reference UI pixels. Rasterization converts them to
-    // the rectangular 2048 atlas so the displayed glyph stays 12 pixels wide.
+    // Keep the authored 12-pixel footprint, but use a symmetric lid/body
+    // silhouette and one strong lock instead of several sub-pixel bars. This
+    // remains legible when the event atlas is sampled below one texel per UI
+    // unit on the fully zoomed-out world map.
     draw_atlas_rectangle(
-        pixels, bounds, center.x, center.y + 0.5,
-        kTreasureMarkerSize, 9.6, kOutline);
+        pixels, bounds, center.x + 0.6, center.y + 0.8,
+        10.8, 8.8, kShadow);
+    draw_atlas_polygon_aa(pixels, bounds, std::array{
+        Vector2D{center.x - 5.6, center.y - 0.8},
+        Vector2D{center.x - 4.2, center.y - 4.4},
+        Vector2D{center.x + 4.2, center.y - 4.4},
+        Vector2D{center.x + 5.6, center.y - 0.8},
+    }, kOutline);
+    draw_atlas_polygon_aa(pixels, bounds, std::array{
+        Vector2D{center.x - 4.0, center.y - 1.2},
+        Vector2D{center.x - 3.2, center.y - 3.0},
+        Vector2D{center.x + 3.2, center.y - 3.0},
+        Vector2D{center.x + 4.0, center.y - 1.2},
+    }, fill);
     draw_atlas_rectangle(
-        pixels, bounds, center.x, center.y + 2.4,
-        8.4, 3.8, fill);
+        pixels, bounds, center.x, center.y + 2.2,
+        11.2, 5.8, kOutline);
     draw_atlas_rectangle(
-        pixels, bounds, center.x, center.y - 2.4,
-        8.6, 1.9, fill);
+        pixels, bounds, center.x, center.y + 2.0,
+        8.8, 3.6, fill);
     draw_atlas_rectangle(
         pixels, bounds, center.x, center.y + 1.4,
-        1.9, 3.4, kOutline);
+        2.8, 4.4, kOutline);
+    draw_atlas_rectangle(
+        pixels, bounds, center.x, center.y + 1.1,
+        1.2, 1.8, kOfficialPale);
 }
 
 void draw_boss_glyph(
     std::vector<std::uint32_t>& pixels,
     const AtlasBounds& bounds,
     const Vector2D& center) {
-    constexpr double shadow_offset = 1.2;
+    constexpr double shadow_offset = 0.9;
     const Vector2D shadow_center{
         center.x + shadow_offset, center.y + shadow_offset};
     draw_atlas_diamond(
@@ -1405,17 +1503,17 @@ void draw_boss_glyph(
     draw_boss_silhouette(pixels, bounds, center, kOfficialWhite);
     draw_atlas_rectangle(
         pixels, bounds, center.x - 2.2, center.y - 1.0,
-        1.8, 1.8, kOfficialGreenDark);
+        2.2, 2.2, kOfficialGreenDark);
     draw_atlas_rectangle(
         pixels, bounds, center.x + 2.2, center.y - 1.0,
-        1.8, 1.8, kOfficialGreenDark);
+        2.2, 2.2, kOfficialGreenDark);
 }
 
 void draw_assault_glyph(
     std::vector<std::uint32_t>& pixels,
     const AtlasBounds& bounds,
     const Vector2D& center) {
-    constexpr double shadow_offset = 1.2;
+    constexpr double shadow_offset = 0.9;
     const Vector2D shadow_center{
         center.x + shadow_offset, center.y + shadow_offset};
     draw_atlas_diamond(
@@ -1435,13 +1533,13 @@ void draw_assault_glyph(
         5.2, 13.0, kOfficialWhite);
     draw_atlas_rectangle(
         pixels, bounds, center.x, center.y - 3.2,
-        2.6, 10.4, kOfficialCyan);
+        3.0, 10.4, kOfficialCyan);
     draw_atlas_rectangle(
         pixels, bounds, center.x, center.y + 7.2,
         5.4, 5.4, kOfficialWhite);
     draw_atlas_rectangle(
         pixels, bounds, center.x, center.y + 7.2,
-        2.8, 2.8, kOfficialCyan);
+        3.2, 3.2, kOfficialCyan);
 }
 
 void draw_fly_glyph(
@@ -1450,7 +1548,7 @@ void draw_fly_glyph(
     const Vector2D& center) {
     constexpr double d = kMiniGameMarkerSize;
     constexpr double outline_scale = 1.11;
-    constexpr double shadow_offset = 1.3;
+    constexpr double shadow_offset = 0.9;
     const auto wing = [&](double side) {
         return std::array{
             Vector2D{center.x + side * d * .10, center.y + d * .05},
@@ -1474,19 +1572,25 @@ void draw_fly_glyph(
     };
     const auto left_wing = wing(-1.0);
     const auto right_wing = wing(1.0);
+    // Paint each visual layer as one pass. A later wing must not place its
+    // translucent shadow over an already filled sibling.
     for (const auto& shape : {left_wing, right_wing}) {
         draw_atlas_polygon_aa(pixels, bounds,
             transform_polygon(shape, center, 1.0, shadow_offset, shadow_offset),
             kShadow);
-        draw_atlas_polygon_aa(pixels, bounds,
-            transform_polygon(shape, center, outline_scale), kOutline);
-        draw_atlas_polygon_aa(pixels, bounds, shape, kFlyWing);
     }
     draw_atlas_polygon_aa(pixels, bounds,
         transform_polygon(arrow, center, 1.0, shadow_offset, shadow_offset),
         kShadow);
+    for (const auto& shape : {left_wing, right_wing}) {
+        draw_atlas_polygon_aa(pixels, bounds,
+            transform_polygon(shape, center, outline_scale), kOutline);
+    }
     draw_atlas_polygon_aa(pixels, bounds,
         transform_polygon(arrow, center, outline_scale), kOutline);
+    for (const auto& shape : {left_wing, right_wing}) {
+        draw_atlas_polygon_aa(pixels, bounds, shape, kFlyWing);
+    }
     draw_atlas_polygon_aa(pixels, bounds, arrow, kFlyArrow);
 }
 
@@ -1496,7 +1600,7 @@ void draw_mole_glyph(
     const Vector2D& center) {
     constexpr double d = kMiniGameMarkerSize;
     constexpr double outline_scale = 1.12;
-    constexpr double shadow_offset = 1.3;
+    constexpr double shadow_offset = 0.9;
     // Exact accepted overlay proportions: a broad four-corner head and a
     // separate tapered handle, instead of the former two-block approximation.
     const auto head = std::array{
@@ -1515,10 +1619,16 @@ void draw_mole_glyph(
         draw_atlas_polygon_aa(pixels, bounds,
             transform_polygon(shape, center, 1.0, shadow_offset, shadow_offset),
             kShadow);
+    }
+    for (const auto& shape : {handle, head}) {
         draw_atlas_polygon_aa(pixels, bounds,
             transform_polygon(shape, center, outline_scale), kOutline);
-        draw_atlas_polygon_aa(pixels, bounds, shape, kHammer);
     }
+    draw_atlas_polygon_aa(pixels, bounds, handle, kHammerHandle);
+    draw_atlas_polygon_aa(pixels, bounds, head, kHammer);
+    draw_atlas_polygon_aa(pixels, bounds,
+        transform_polygon(head, center, 0.72, -d * .035, -d * .035),
+        kHammerHighlight);
 }
 
 void draw_wave_glyph(
@@ -1527,12 +1637,12 @@ void draw_wave_glyph(
     const Vector2D& center) {
     constexpr double d = kMiniGameMarkerSize;
     constexpr double outline_scale = 1.10;
-    constexpr double shadow_offset = 1.3;
+    constexpr double shadow_offset = 0.9;
     constexpr std::size_t curve_steps = 5;
+    std::array<std::array<Vector2D, 17>, 4> waves{};
     for (std::size_t strand = 0; strand < 4; ++strand) {
         const double offset =
             (static_cast<double>(strand) - 1.5) * d * .11;
-        const Vector2D strand_center{center.x + offset, center.y};
         const Vector2D p0{center.x - d * .42 + offset,
                           center.y + d * .28};
         const Vector2D p1{center.x - d * .23 + offset,
@@ -1553,7 +1663,7 @@ void draw_wave_glyph(
                           center.y + d * .08};
         const Vector2D p9{center.x - d * .18 + offset,
                           center.y - d * .04};
-        std::array<Vector2D, 17> wave{};
+        auto& wave = waves[strand];
         wave[0] = p0;
         for (std::size_t step = 1; step <= curve_steps; ++step) {
             wave[step] = cubic_bezier(
@@ -1567,12 +1677,24 @@ void draw_wave_glyph(
                 static_cast<double>(step) / curve_steps);
         }
         wave[2 * curve_steps + 1] = p7;
+    }
+    for (std::size_t strand = 0; strand < waves.size(); ++strand) {
+        const double offset =
+            (static_cast<double>(strand) - 1.5) * d * .11;
+        const Vector2D strand_center{center.x + offset, center.y};
         draw_atlas_polygon_aa(pixels, bounds,
-            transform_polygon(
-                wave, strand_center, 1.0, shadow_offset, shadow_offset),
-            kShadow);
+            transform_polygon(waves[strand], strand_center, 1.0,
+                              shadow_offset, shadow_offset), kShadow);
+    }
+    for (std::size_t strand = 0; strand < waves.size(); ++strand) {
+        const double offset =
+            (static_cast<double>(strand) - 1.5) * d * .11;
+        const Vector2D strand_center{center.x + offset, center.y};
         draw_atlas_polygon_aa(pixels, bounds,
-            transform_polygon(wave, strand_center, outline_scale), kOutline);
+            transform_polygon(waves[strand], strand_center, outline_scale),
+            kOutline);
+    }
+    for (const auto& wave : waves) {
         draw_atlas_polygon_aa(pixels, bounds, wave, kWave);
     }
 }
@@ -1603,7 +1725,7 @@ void draw_area_quest_glyph(
     for (const double offset_x : {-3.8, 0.0, 3.8}) {
         draw_atlas_rectangle(
             pixels, bounds, center.x + offset_x, center.y - 0.8,
-            1.8, 1.8, kAreaQuestDark);
+            2.2, 2.2, kAreaQuestDark);
     }
 }
 
@@ -1853,6 +1975,8 @@ void WorldMapUmgRenderer::initialize(
     atlas_build_elapsed_us_ = 0;
     atlas_file_bytes_ = 0;
     attach_elapsed_us_ = 0;
+    reparent_count_ = 0;
+    reproject_count_ = 0;
     atlas_cache_paths_[0] = std::move(atlas_cache_path);
     atlas_cache_paths_[1] = atlas_cache_paths_[0].parent_path()
         / "world-map-encounter-atlas.tga";
@@ -1872,6 +1996,8 @@ void WorldMapUmgRenderer::initialize(
         find<UObject>(L"/Script/Engine.Default__KismetRenderingLibrary");
     slate_blueprint_library_ =
         find<UObject>(L"/Script/UMG.Default__SlateBlueprintLibrary");
+    widget_layout_library_ =
+        find<UObject>(L"/Script/UMG.Default__WidgetLayoutLibrary");
 
     create_widget_ = find<UFunction>(L"/Script/UMG.WidgetBlueprintLibrary:Create");
     get_owning_player_ = find<UFunction>(L"/Script/UMG.Widget:GetOwningPlayer");
@@ -1900,12 +2026,17 @@ void WorldMapUmgRenderer::initialize(
         find<UFunction>(L"/Script/UMG.Image:SetBrushFromTexture");
     import_file_as_texture_ = find<UFunction>(
         L"/Script/Engine.KismetRenderingLibrary:ImportFileAsTexture2D");
-    force_layout_prepass_ =
-        find<UFunction>(L"/Script/UMG.Widget:ForceLayoutPrepass");
     clear_children_ = find<UFunction>(L"/Script/UMG.PanelWidget:ClearChildren");
     remove_from_parent_ = find<UFunction>(L"/Script/UMG.Widget:RemoveFromParent");
-    request_retainer_render_ =
-        find<UFunction>(L"/Script/UMG.RetainerBox:RequestRender");
+    add_to_viewport_ = find<UFunction>(L"/Script/UMG.UserWidget:AddToViewport");
+    get_viewport_widget_geometry_ = find<UFunction>(
+        L"/Script/UMG.WidgetLayoutLibrary:GetViewportWidgetGeometry");
+    set_alignment_in_viewport_ = find<UFunction>(
+        L"/Script/UMG.UserWidget:SetAlignmentInViewport");
+    set_desired_size_in_viewport_ = find<UFunction>(
+        L"/Script/UMG.UserWidget:SetDesiredSizeInViewport");
+    set_position_in_viewport_ = find<UFunction>(
+        L"/Script/UMG.UserWidget:SetPositionInViewport");
 
     abi_failure_mask_ = 0;
     const auto require_parameters =
@@ -1930,10 +2061,12 @@ void WorldMapUmgRenderer::initialize(
     // renderer validates 17 bytes for its 24-byte local buffer.
     require_parameters(1U << 9U, set_brush_from_texture_, 9);
     require_parameters(1U << 10U, import_file_as_texture_, 32);
-    require_parameters(1U << 11U, force_layout_prepass_, 0);
     require_parameters(1U << 12U, clear_children_, 0);
     require_parameters(1U << 13U, remove_from_parent_, 0);
-    require_parameters(1U << 14U, request_retainer_render_, 0);
+    require_parameters(1U << 18U, add_to_viewport_, 4);
+    require_parameters(1U << 19U, set_alignment_in_viewport_, 16);
+    require_parameters(1U << 20U, set_desired_size_in_viewport_, 16);
+    require_parameters(1U << 21U, set_position_in_viewport_, 17);
 
     GeometryReflectionSchema geometry_schema{};
     if (!resolve_geometry_reflection_schema(
@@ -1942,6 +2075,13 @@ void WorldMapUmgRenderer::initialize(
             absolute_to_local_, geometry_schema)) {
         abi_failure_mask_ |= 1U << 17U;
     }
+    ViewportGeometryReflectionSchema viewport_geometry_schema{};
+    if (!resolve_viewport_geometry_reflection_schema(
+            get_viewport_widget_geometry_,
+            geometry_schema.cached_geometry_return,
+            viewport_geometry_schema)) {
+        abi_failure_mask_ |= 1U << 22U;
+    }
 
     if (!world_map_layer_class_ || !world_map_data_class_
         || !overlay_class_ || !retainer_box_class_
@@ -1949,7 +2089,8 @@ void WorldMapUmgRenderer::initialize(
         || !map_point_icon_class_ || !image_class_
         || !widget_blueprint_library_.Get()
         || !kismet_rendering_library_.Get()
-        || !slate_blueprint_library_.Get()) {
+        || !slate_blueprint_library_.Get()
+        || !widget_layout_library_.Get()) {
         abi_failure_mask_ |= 1U << 15U;
     }
     if (atlas_cache_paths_[0].empty() || atlas_cache_paths_[1].empty()) {
@@ -1963,6 +2104,9 @@ void WorldMapUmgRenderer::initialize(
 
 void WorldMapUmgRenderer::begin_activation() noexcept {
     activation_active_ = false;
+    runtime_visibility_allowed_ = false;
+    transform_ready_ = false;
+    last_transform_sync_stage_ = dswros::WorldMapTransformSyncStage::None;
     reset_geometry_stability_sample();
     reset_reparent_geometry_stability_sample();
     if (state_ == WorldMapUmgRendererState::Suspended) {
@@ -1998,8 +2142,11 @@ void WorldMapUmgRenderer::begin_map_session() noexcept {
     if (!activation_active_) {
         return;
     }
+    runtime_visibility_allowed_ = false;
+    transform_ready_ = false;
     reset_geometry_stability_sample();
     reset_reparent_geometry_stability_sample();
+    last_transform_sync_stage_ = dswros::WorldMapTransformSyncStage::None;
     detach_guarded();
     if (state_ != WorldMapUmgRendererState::Ready) {
         activation_active_ = false;
@@ -2052,107 +2199,7 @@ bool WorldMapUmgRenderer::validate_host_unsafe(
         || !current_layer->IsA(world_map_layer_class_)) {
         return false;
     }
-
-    UObject* retainer = retainer_box_.Get();
-    UObject* native_parent = native_parent_.Get();
-    if (!retainer || read_object_property(current_layer, L"RetainerBox") != retainer
-        || !native_parent || !native_parent->IsA(canvas_panel_class_)) {
-        return false;
-    }
-    for (std::size_t layer_index = 0;
-         layer_index < kWorldMapAtlasLayerCount; ++layer_index) {
-        UObject* host = hosts_[layer_index].Get();
-        UObject* tree = widget_trees_[layer_index].Get();
-        UObject* root_panel = root_panels_[layer_index].Get();
-        UObject* native_slot = native_parent_slots_[layer_index].Get();
-        UObject* image = atlas_images_[layer_index].Get();
-        UObject* image_slot = atlas_image_slots_[layer_index].Get();
-        UObject* texture = atlas_textures_[layer_index].Get();
-        if (!host || !host->IsA(map_point_icon_class_)
-            || !tree || read_object_property(host, L"WidgetTree") != tree
-            || !root_panel || !root_panel->IsA(canvas_panel_class_)
-            || read_object_property(host, L"Panel_Point") != root_panel
-            || !native_slot || !native_slot->IsA(canvas_panel_slot_class_)
-            || !image || !image->IsA(image_class_)
-            || !image_slot || !image_slot->IsA(canvas_panel_slot_class_)
-            || !texture) {
-            return false;
-        }
-        ObjectReturnParameters host_owner{};
-        host->ProcessEvent(get_owning_player_, &host_owner);
-        if (!host_owner.return_value
-            || !current_layer_witnesses_native_parent(
-                current_layer, host_owner.return_value, native_parent,
-                map_point_icon_class_, canvas_panel_class_,
-                canvas_panel_slot_class_, get_owning_player_)
-            || read_object_property(host, L"Slot") != native_slot
-            || read_object_property(native_slot, L"Parent") != native_parent
-            || read_object_property(native_slot, L"Content") != host
-            || read_object_property(image, L"Slot") != image_slot
-            || read_object_property(image_slot, L"Parent") != root_panel
-            || read_object_property(image_slot, L"Content") != image
-            || read_struct_object_property(
-                   image, L"Brush", L"ResourceObject") != texture) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool WorldMapUmgRenderer::attached_to(
-    UObject* current_layer, std::int32_t map_id) const noexcept {
-    if (!current_layer || map_id <= 0
-        || state_ != WorldMapUmgRendererState::Attached
-        || map_id_ != map_id) {
-        return false;
-    }
-#if defined(_MSC_VER)
-    __try {
-        return validate_host_unsafe(current_layer);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-#else
-    try {
-        return validate_host_unsafe(current_layer);
-    } catch (...) {
-        return false;
-    }
-#endif
-}
-
-bool WorldMapUmgRenderer::attached_layer_matches(
-    UObject* current_layer) const noexcept {
-    if (!current_layer || state_ != WorldMapUmgRendererState::Attached) {
-        return false;
-    }
-#if defined(_MSC_VER)
-    __try {
-        return layer_.Get() == current_layer;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-#else
-    try {
-        return layer_.Get() == current_layer;
-    } catch (...) {
-        return false;
-    }
-#endif
-}
-
-bool WorldMapUmgRenderer::validate_host_payload_unsafe(
-    UObject* current_layer, UObject*& owning_player) const {
-    owning_player = nullptr;
-    if (!current_layer || current_layer != layer_.Get()
-        || !current_layer->IsA(world_map_layer_class_)) {
-        return false;
-    }
-    UObject* retainer = retainer_box_.Get();
-    if (!retainer
-        || read_object_property(current_layer, L"RetainerBox") != retainer) {
-        return false;
-    }
+    UObject* owning_player{};
     for (std::size_t layer_index = 0;
          layer_index < kWorldMapAtlasLayerCount; ++layer_index) {
         UObject* host = hosts_[layer_index].Get();
@@ -2186,310 +2233,446 @@ bool WorldMapUmgRenderer::validate_host_payload_unsafe(
     return owning_player != nullptr;
 }
 
-WorldMapLayeringRefreshResult WorldMapUmgRenderer::restack_hosts_unsafe(
-    UObject* current_layer,
-    bool allow_tree_mutation) {
-    // A replacement DLayerMap can be published while the renderer still owns
-    // the previous layer and before the replacement exposes a map id. This is
-    // a normal event handoff, not corruption of the retained host payload.
-    if (!current_layer || current_layer != layer_.Get()) {
-        return WorldMapLayeringRefreshResult::RetryLater;
+bool WorldMapUmgRenderer::validate_host_payload_unsafe(
+    UObject* current_layer, UObject*& owning_player) const {
+    owning_player = nullptr;
+    if (!validate_host_unsafe(current_layer)) {
+        return false;
     }
+    for (const auto& host_handle : hosts_) {
+        UObject* host = host_handle.Get();
+        ObjectReturnParameters owner{};
+        host->ProcessEvent(get_owning_player_, &owner);
+        if (!owner.return_value
+            || (owning_player && owning_player != owner.return_value)) {
+            return false;
+        }
+        owning_player = owner.return_value;
+    }
+    return owning_player != nullptr;
+}
+
+bool WorldMapUmgRenderer::validate_host_payload_guarded(
+    UObject* current_layer) const noexcept {
     UObject* owning_player{};
-    NativeIconTemplate native_icon_template{};
+#if defined(_MSC_VER)
+    __try {
+        return validate_host_payload_unsafe(
+            current_layer, owning_player);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+#else
+    try {
+        return validate_host_payload_unsafe(
+            current_layer, owning_player);
+    } catch (...) {
+        return false;
+    }
+#endif
+}
+
+bool WorldMapUmgRenderer::attached_to(
+    UObject* current_layer, std::int32_t map_id) const noexcept {
+    if (!current_layer || map_id <= 0
+        || state_ != WorldMapUmgRendererState::Attached
+        || map_id_ != map_id) {
+        return false;
+    }
+#if defined(_MSC_VER)
+    __try {
+        return layer_.Get() == current_layer;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+#else
+    try {
+        return layer_.Get() == current_layer;
+    } catch (...) {
+        return false;
+    }
+#endif
+}
+
+bool WorldMapUmgRenderer::attached_layer_matches(
+    UObject* current_layer) const noexcept {
+    if (!current_layer || state_ != WorldMapUmgRendererState::Attached) {
+        return false;
+    }
+#if defined(_MSC_VER)
+    __try {
+        return layer_.Get() == current_layer;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+#else
+    try {
+        return layer_.Get() == current_layer;
+    } catch (...) {
+        return false;
+    }
+#endif
+}
+
+bool WorldMapUmgRenderer::apply_host_visibility_unsafe(
+    bool visible,
+    volatile dswros::WorldMapTransformSyncStage& stage) {
+    if (!dswros::world_map_host_visibility_write_required(
+            applied_host_visibility_, visible)) {
+        return true;
+    }
+
+    stage = dswros::WorldMapTransformSyncStage::OwnedHostValidation;
+    std::array<UObject*, kWorldMapAtlasLayerCount> hosts{};
+    for (std::size_t index = 0;
+         index < kWorldMapAtlasLayerCount; ++index) {
+        hosts[index] = hosts_[index].Get();
+        if (!hosts[index]) {
+            applied_host_visibility_.reset();
+            return false;
+        }
+    }
+
+    // A two-host update is published only after both reflected writes
+    // succeed. If either write faults, the enclosing guard observes Unknown
+    // rather than incorrectly deduplicating a split host state later.
+    applied_host_visibility_.reset();
+    stage = dswros::WorldMapTransformSyncStage::OwnedHostApplication;
+    for (UObject* host : hosts) {
+        set_visibility(
+            host, set_visibility_,
+            visible ? kHitTestInvisible : kCollapsed);
+    }
+    applied_host_visibility_ = visible;
+    return true;
+}
+
+bool WorldMapUmgRenderer::reconcile_host_visibility_unsafe(
+    bool force_collapsed,
+    volatile dswros::WorldMapTransformSyncStage& stage) {
+    if (state_ != WorldMapUmgRendererState::Attached
+        && state_ != WorldMapUmgRendererState::Suspended) {
+        return true;
+    }
+    const bool show = dswros::world_map_host_visibility_target({
+        content_visibility_intent_,
+        runtime_visibility_allowed_,
+        state_ == WorldMapUmgRendererState::Attached,
+        transform_ready_,
+    });
+    return apply_host_visibility_unsafe(
+        !force_collapsed && show, stage);
+}
+
+bool WorldMapUmgRenderer::reconcile_host_visibility_guarded(
+    bool force_collapsed,
+    volatile dswros::WorldMapTransformSyncStage& stage) noexcept {
+    bool completed = false;
+#if defined(_MSC_VER)
+    __try {
+        completed = reconcile_host_visibility_unsafe(
+            force_collapsed, stage);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        completed = false;
+    }
+#else
+    try {
+        completed = reconcile_host_visibility_unsafe(
+            force_collapsed, stage);
+    } catch (...) {
+        completed = false;
+    }
+#endif
+    return completed;
+}
+
+void WorldMapUmgRenderer::fault_and_detach(
+    std::uint32_t failure) noexcept {
+    ++fault_count_;
+    last_attach_failure_ = failure;
+    activation_active_ = false;
+    runtime_visibility_allowed_ = false;
+    transform_ready_ = false;
+    applied_host_visibility_.reset();
+    state_ = WorldMapUmgRendererState::Faulted;
+    detach_guarded();
+}
+
+bool WorldMapUmgRenderer::sync_viewport_transform_unsafe(
+    UObject* current_layer,
+    WorldMapLayeringRefreshResult& result,
+    volatile dswros::WorldMapTransformSyncStage& stage) {
+    result = WorldMapLayeringRefreshResult::Faulted;
+    stage = dswros::WorldMapTransformSyncStage::NativeCanvasObservation;
+    UObject* retained_layer = layer_.Get();
+    const auto handle_transient_observation =
+        [this, current_layer, retained_layer, &stage](
+            dswros::WorldMapTransformObservationFailure failure,
+            WorldMapLayeringRefreshResult& transient_result) {
+        const auto action =
+            dswros::classify_world_map_transform_observation_failure(
+                failure, retained_layer == current_layer,
+                viewport_transform_valid_);
+        if (action
+            == dswros::WorldMapTransformObservationFailureAction::Fault) {
+            return false;
+        }
+        const auto visibility_policy =
+            dswros::world_map_transform_visibility_policy(action);
+        const auto observation_stage = stage;
+        transform_ready_ = visibility_policy.transform_ready;
+        if (!reconcile_host_visibility_unsafe(
+                visibility_policy.force_collapsed, stage)) {
+            return false;
+        }
+        // Keep the observation reason for successful RetryLater/Retained
+        // diagnostics. A visibility-write exception leaves the stage at
+        // OwnedHostApplication and is classified as a hard runtime fault.
+        stage = observation_stage;
+        transient_result = visibility_policy.transform_ready
+            ? WorldMapLayeringRefreshResult::Retained
+            : WorldMapLayeringRefreshResult::RetryLater;
+        return true;
+    };
+
+    // A newly created or temporarily absent game layer is not evidence that
+    // the existing Mod-owned viewport payload is corrupt. Let the bounded
+    // candidate lifecycle attach the new layer without mutating either tree.
+    // This check must precede validation, whose exact-layer identity guard is
+    // intentionally a hard ownership invariant once the layer matches.
+    if (!current_layer || current_layer != retained_layer) {
+        return handle_transient_observation(
+            dswros::WorldMapTransformObservationFailure::NativeCanvasUnavailable,
+            result);
+    }
+
+    stage = dswros::WorldMapTransformSyncStage::OwnedHostValidation;
+    UObject* owning_player{};
     if (!validate_host_payload_unsafe(current_layer, owning_player)) {
-        return WorldMapLayeringRefreshResult::Faulted;
+        return false;
     }
-    last_layering_previous_parent_index_ = native_parent_.ObjectIndex;
-    last_layering_previous_parent_serial_ =
-        native_parent_.ObjectSerialNumber;
-    last_layering_previous_parent_width_ = native_parent_width_;
-    last_layering_previous_parent_height_ = native_parent_height_;
-    last_layering_current_parent_index_ = -1;
-    last_layering_current_parent_serial_ = 0;
-    last_layering_current_parent_width_ = 0.0;
-    last_layering_current_parent_height_ = 0.0;
-    last_layering_parent_changed_ = false;
-    last_layering_geometry_changed_ = false;
-    UObject* witnessed_parent = native_parent_.Get();
-    const bool retained_parent_witnessed = witnessed_parent
-        && witnessed_parent->IsA(canvas_panel_class_)
-        && current_layer_witnesses_native_parent(
-            current_layer, owning_player, witnessed_parent,
-            map_point_icon_class_, canvas_panel_class_,
-            canvas_panel_slot_class_, get_owning_player_);
-    if (!retained_parent_witnessed) {
-        if (!find_native_icon_template(
-                current_layer, owning_player, map_point_icon_class_,
-                canvas_panel_class_, canvas_panel_slot_class_,
-                get_owning_player_, native_icon_template)) {
-            return WorldMapLayeringRefreshResult::RetryLater;
-        }
-        witnessed_parent = native_icon_template.parent_canvas;
+
+    stage = dswros::WorldMapTransformSyncStage::AbiValidation;
+    GeometryReflectionSchema geometry_schema{};
+    ViewportGeometryReflectionSchema viewport_schema{};
+    UObject* slate_library = slate_blueprint_library_.Get();
+    UObject* layout_library = widget_layout_library_.Get();
+    if (!slate_library || !layout_library
+        || !resolve_geometry_reflection_schema(
+            get_cached_geometry_, get_slot_alignment_,
+            get_geometry_local_size_, local_to_absolute_,
+            absolute_to_local_, geometry_schema)
+        || !resolve_viewport_geometry_reflection_schema(
+            get_viewport_widget_geometry_,
+            geometry_schema.cached_geometry_return,
+            viewport_schema)) {
+        return false;
     }
-    if (!witnessed_parent || !witnessed_parent->IsA(canvas_panel_class_)) {
-        return WorldMapLayeringRefreshResult::RetryLater;
+    GeometryCallParameters native_parameters(get_cached_geometry_);
+    GeometryCallParameters viewport_parameters(get_viewport_widget_geometry_);
+    if (!native_parameters.valid() || !viewport_parameters.valid()
+        || !write_object_property(
+            viewport_schema.world_context_object,
+            viewport_parameters.data(), current_layer)) {
+        return false;
     }
-    FWeakObjectPtr witnessed_parent_identity{};
-    witnessed_parent_identity = witnessed_parent;
-    last_layering_current_parent_index_ =
-        witnessed_parent_identity.ObjectIndex;
-    last_layering_current_parent_serial_ =
-        witnessed_parent_identity.ObjectSerialNumber;
-    last_layering_parent_changed_ =
-        last_layering_previous_parent_index_
-            != last_layering_current_parent_index_
-        || last_layering_previous_parent_serial_
-            != last_layering_current_parent_serial_;
-    // A 16:9 zoom tier commonly replaces the native icon Canvas, while an
-    // ultrawide tier can keep the same Canvas identity and change only its
-    // completed Slate geometry. Resolve the live anchor on every existing
-    // bounded settle so either transition can rebase the retained atlas.
-    UObject* player_icon = read_object_property(
-        current_layer, L"PlayerIconWidget");
-    double current_anchor_x{};
-    double current_anchor_y{};
-    double current_parent_width{};
-    double current_parent_height{};
-    const bool live_geometry_ready = player_icon
-        && read_live_player_canvas_anchor(
-            player_icon, witnessed_parent,
-            canvas_panel_class_, canvas_panel_slot_class_,
-            slate_blueprint_library_.Get(), get_slot_alignment_,
-            get_cached_geometry_, get_geometry_local_size_,
-            local_to_absolute_, absolute_to_local_, map_ui_size_,
-            current_anchor_x, current_anchor_y,
-            current_parent_width, current_parent_height);
-    if (!live_geometry_ready) {
-        if (last_layering_parent_changed_) {
-            reset_reparent_geometry_stability_sample();
-            reparent_geometry_parent_index_ =
-                last_layering_current_parent_index_;
-            reparent_geometry_parent_serial_ =
-                last_layering_current_parent_serial_;
-            return WorldMapLayeringRefreshResult::ParentChanged;
-        }
-        reset_reparent_geometry_stability_sample();
-        return WorldMapLayeringRefreshResult::RetryLater;
+
+    // The native Canvas selected during attachment is the sole coordinate
+    // witness for this attached layer. Re-scanning ArrayIconInfo while the map
+    // animates can momentarily select an empty or replacement Canvas, causing
+    // A-B-A placement oscillation. Never switch witnesses during a live
+    // attachment; a real layer replacement is handled by the attach lifecycle.
+    stage = dswros::WorldMapTransformSyncStage::NativeCanvasObservation;
+    UObject* observed_native_parent = native_parent_.Get();
+    if (!observed_native_parent
+        || !observed_native_parent->IsA(canvas_panel_class_)) {
+        return handle_transient_observation(
+            dswros::WorldMapTransformObservationFailure::NativeCanvasUnavailable,
+            result);
     }
-    last_layering_current_parent_width_ = current_parent_width;
-    last_layering_current_parent_height_ = current_parent_height;
-    const dswros::WorldMapGeometrySample retained_geometry{
-        player_canvas_anchor_x_, player_canvas_anchor_y_,
-        native_parent_width_, native_parent_height_};
-    const dswros::WorldMapGeometrySample current_geometry{
-        current_anchor_x, current_anchor_y,
-        current_parent_width, current_parent_height};
-    const auto geometry_delta = dswros::world_map_geometry_maximum_delta(
-        retained_geometry, current_geometry);
-    if (!geometry_delta) {
-        reset_reparent_geometry_stability_sample();
-        return WorldMapLayeringRefreshResult::RetryLater;
-    }
-    last_layering_geometry_changed_ =
-        *geometry_delta > dswros::kWorldMapGeometryStabilityTolerance;
-    if (last_layering_parent_changed_ || last_layering_geometry_changed_) {
-        // A replacement parent with the same extent changes only the
-        // parent-local translation. An aspect/DPI extent change requires one
-        // bounded rebuild so marker glyphs keep their authored size.
-        if (!add_child_to_canvas_ || !remove_from_parent_
-            || !set_slot_position_ || !set_slot_size_
-            || !set_slot_alignment_ || !set_slot_z_order_
-            || !force_layout_prepass_) {
-            return WorldMapLayeringRefreshResult::Faulted;
-        }
-        if (reparent_geometry_parent_index_
-                != last_layering_current_parent_index_
-            || reparent_geometry_parent_serial_
-                != last_layering_current_parent_serial_) {
-            reset_reparent_geometry_stability_sample();
-            reparent_geometry_parent_index_ =
-                last_layering_current_parent_index_;
-            reparent_geometry_parent_serial_ =
-                last_layering_current_parent_serial_;
-        }
-        reparent_geometry_stability_result_ =
-            dswros::observe_world_map_geometry_sample(
-                reparent_geometry_sample_valid_,
-                reparent_geometry_sample_,
-                {current_anchor_x, current_anchor_y,
-                 current_parent_width, current_parent_height},
-                reparent_geometry_sample_max_delta_);
-        if (reparent_geometry_stability_result_
-            != dswros::WorldMapGeometryStabilityResult::Stable) {
-            // The zoom hook can fire before the replacement Canvas has a
-            // settled CachedGeometry. Moving the retained hosts on that first
-            // sample permanently bakes a stale anchor into the atlas slot.
-            // Reuse the existing finite settle tail and require the same
-            // numeric two-sample proof as initial attachment before mutation.
-            return WorldMapLayeringRefreshResult::ParentChanged;
-        }
-        if (!allow_tree_mutation) {
-            return WorldMapLayeringRefreshResult::ParentChanged;
-        }
-        const auto rebased = dswros::rebase_world_map_atlas_placement(
+
+    stage = dswros::WorldMapTransformSyncStage::GeometryObservation;
+    observed_native_parent->ProcessEvent(
+        get_cached_geometry_, native_parameters.data());
+    layout_library->ProcessEvent(
+        get_viewport_widget_geometry_, viewport_parameters.data());
+    dswros::WorldMapSlateGeometry native_geometry{};
+    dswros::WorldMapSlateGeometry viewport_geometry{};
+    const bool geometry_ready =
+        read_slate_geometry_snapshot(
+            slate_library, get_geometry_local_size_, local_to_absolute_,
+            geometry_schema, geometry_schema.cached_geometry_return,
+            native_parameters.data(), native_geometry)
+        && read_slate_geometry_snapshot(
+            slate_library, get_geometry_local_size_, local_to_absolute_,
+            geometry_schema, viewport_schema.return_value,
+            viewport_parameters.data(), viewport_geometry);
+    const auto placement = geometry_ready
+        ? dswros::calculate_world_map_viewport_placement(
             {atlas_left_, atlas_top_, atlas_width_, atlas_height_},
-            retained_geometry, current_geometry);
-        if (!rebased) {
-            return WorldMapLayeringRefreshResult::ParentChanged;
-        }
-        for (std::size_t layer_index = 0;
-             layer_index < kWorldMapAtlasLayerCount; ++layer_index) {
-            UObject* host = hosts_[layer_index].Get();
-            if (!host || !host->IsA(map_point_icon_class_)) {
-                return WorldMapLayeringRefreshResult::Faulted;
-            }
-            host->ProcessEvent(remove_from_parent_, nullptr);
-            native_parent_slots_[layer_index] = FWeakObjectPtr{};
-        }
-        for (std::size_t layer_index = 0;
-             layer_index < kWorldMapAtlasLayerCount; ++layer_index) {
-            UObject* host = hosts_[layer_index].Get();
-            AddChildParameters add_host{host};
-            witnessed_parent->ProcessEvent(add_child_to_canvas_, &add_host);
-            UObject* native_slot = add_host.return_value;
-            native_parent_slots_[layer_index] = native_slot;
-            if (!native_slot || !native_slot->IsA(canvas_panel_slot_class_)
-                || read_object_property(host, L"Slot") != native_slot
-                || read_object_property(native_slot, L"Parent")
-                    != witnessed_parent
-                || read_object_property(native_slot, L"Content") != host) {
-                return WorldMapLayeringRefreshResult::Faulted;
-            }
-            set_slot_vector(
-                native_slot, set_slot_position_,
-                rebased->left, rebased->top);
-            set_slot_vector(
-                native_slot, set_slot_size_, rebased->width, rebased->height);
-            set_slot_vector(native_slot, set_slot_alignment_, 0.0, 0.0);
-            ZOrderParameters host_z{kRadarMarkerZ};
-            native_slot->ProcessEvent(set_slot_z_order_, &host_z);
-            host->ProcessEvent(force_layout_prepass_, nullptr);
-        }
-        native_parent_ = witnessed_parent;
-        atlas_left_ = rebased->left;
-        atlas_top_ = rebased->top;
-        last_reparent_anchor_delta_x_ =
-            current_anchor_x - player_canvas_anchor_x_;
-        last_reparent_anchor_delta_y_ =
-            current_anchor_y - player_canvas_anchor_y_;
-        player_canvas_anchor_x_ = current_anchor_x;
-        player_canvas_anchor_y_ = current_anchor_y;
-        native_parent_width_ = current_parent_width;
-        native_parent_height_ = current_parent_height;
-        ++reparent_count_;
-        return WorldMapLayeringRefreshResult::Reparented;
+            native_geometry, viewport_geometry)
+        : std::nullopt;
+    if (!placement) {
+        return handle_transient_observation(
+            dswros::WorldMapTransformObservationFailure::GeometryUnavailable,
+            result);
     }
-    reset_reparent_geometry_stability_sample();
-    if (!allow_tree_mutation) {
+    bool transform_changed = !viewport_transform_valid_;
+    if (viewport_transform_valid_) {
+        const auto changed =
+            dswros::world_map_viewport_transform_changed(
+                viewport_placement_, *placement);
+        if (!changed) {
+            return handle_transient_observation(
+                dswros::WorldMapTransformObservationFailure::GeometryUnavailable,
+                result);
+        }
+        transform_changed = *changed;
+    }
+    if (transform_changed) {
+        stage = dswros::WorldMapTransformSyncStage::OwnedHostApplication;
+        for (auto& host_handle : hosts_) {
+            UObject* host = host_handle.Get();
+            VectorParameters size_parameters{{
+                placement->width, placement->height}};
+            host->ProcessEvent(
+                set_desired_size_in_viewport_, &size_parameters);
+            PositionInViewportParameters position_parameters{};
+            position_parameters.position = {
+                placement->left, placement->top};
+            position_parameters.remove_dpi_scale = false;
+            host->ProcessEvent(
+                set_position_in_viewport_, &position_parameters);
+        }
+    }
+    viewport_placement_ = *placement;
+    viewport_transform_valid_ = true;
+    viewport_geometry_sample_valid_ = true;
+    viewport_geometry_sample_ = {
+        native_geometry.absolute_left, native_geometry.absolute_top,
+        native_geometry.local_width, native_geometry.local_height};
+    transform_ready_ = true;
+    if (!reconcile_host_visibility_unsafe(false, stage)) {
+        return false;
+    }
+    result = transform_changed
+        ? WorldMapLayeringRefreshResult::Updated
+        : WorldMapLayeringRefreshResult::Unchanged;
+    stage = dswros::WorldMapTransformSyncStage::None;
+    return true;
+}
+
+WorldMapLayeringRefreshResult WorldMapUmgRenderer::sync_viewport_transform(
+    UObject* current_layer) noexcept {
+    if (state_ != WorldMapUmgRendererState::Attached) {
         return WorldMapLayeringRefreshResult::RetryLater;
     }
-    UObject* native_parent = native_parent_.Get();
-    if (!native_parent || !native_parent->IsA(canvas_panel_class_)
-        || !add_child_to_canvas_ || !remove_from_parent_ || !set_slot_position_
-        || !set_slot_size_ || !set_slot_alignment_ || !set_slot_z_order_
-        || !std::isfinite(atlas_left_) || !std::isfinite(atlas_top_)
-        || !std::isfinite(atlas_width_) || !std::isfinite(atlas_height_)
-        || atlas_width_ <= 0.0 || atlas_height_ <= 0.0) {
-        return WorldMapLayeringRefreshResult::Faulted;
+    const bool same_layer = attached_layer_matches(current_layer);
+    const bool had_valid_transform = viewport_transform_valid_;
+    WorldMapLayeringRefreshResult result{};
+    volatile dswros::WorldMapTransformSyncStage stage =
+        dswros::WorldMapTransformSyncStage::None;
+    bool completed = false;
+#if defined(_MSC_VER)
+    __try {
+        completed = sync_viewport_transform_unsafe(
+            current_layer, result, stage);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        completed = false;
     }
-    for (std::size_t layer_index = 0;
-         layer_index < kWorldMapAtlasLayerCount; ++layer_index) {
-        UObject* host = hosts_[layer_index].Get();
-        if (!host || !host->IsA(map_point_icon_class_)) {
+#else
+    try {
+        completed = sync_viewport_transform_unsafe(
+            current_layer, result, stage);
+    } catch (...) {
+        completed = false;
+    }
+#endif
+    last_transform_sync_stage_ = stage;
+    if (completed) {
+        return result;
+    }
+
+    const auto failure = dswros::world_map_transform_failure_for_stage(stage);
+    const bool application_hosts_still_valid =
+        stage == dswros::WorldMapTransformSyncStage::OwnedHostApplication
+        && validate_host_payload_guarded(current_layer);
+    const auto action = stage
+            == dswros::WorldMapTransformSyncStage::OwnedHostApplication
+        ? dswros::classify_world_map_owned_host_application_failure(
+            same_layer, had_valid_transform,
+            application_hosts_still_valid)
+        : dswros::classify_world_map_transform_observation_failure(
+            failure, same_layer, had_valid_transform);
+    const auto visibility_policy =
+        dswros::world_map_transform_visibility_policy(action);
+    if (visibility_policy.retain_host) {
+        transform_ready_ = visibility_policy.transform_ready;
+        if (stage
+                == dswros::WorldMapTransformSyncStage::OwnedHostApplication
+            && action
+                == dswros::WorldMapTransformObservationFailureAction::RetainLastValid) {
+            // Do not issue another reflected write from the exception path.
+            // The prior placement remains authoritative and the caller's
+            // finite settle tail will converge both hosts on a later pass.
+            return WorldMapLayeringRefreshResult::Retained;
+        }
+        const auto observation_stage = stage;
+        if (!reconcile_host_visibility_guarded(
+                visibility_policy.force_collapsed, stage)) {
+            last_transform_sync_stage_ = stage;
+            fault_and_detach(103);
             return WorldMapLayeringRefreshResult::Faulted;
         }
-        host->ProcessEvent(remove_from_parent_, nullptr);
-        native_parent_slots_[layer_index] = FWeakObjectPtr{};
+        last_transform_sync_stage_ = observation_stage;
+        return visibility_policy.transform_ready
+            ? WorldMapLayeringRefreshResult::Retained
+            : WorldMapLayeringRefreshResult::RetryLater;
     }
-    for (std::size_t layer_index = 0;
-         layer_index < kWorldMapAtlasLayerCount; ++layer_index) {
-        UObject* host = hosts_[layer_index].Get();
-        AddChildParameters add_host{host};
-        native_parent->ProcessEvent(add_child_to_canvas_, &add_host);
-        UObject* native_slot = add_host.return_value;
-        native_parent_slots_[layer_index] = native_slot;
-        if (!native_slot || !native_slot->IsA(canvas_panel_slot_class_)
-            || read_object_property(host, L"Slot") != native_slot
-            || read_object_property(native_slot, L"Parent") != native_parent
-            || read_object_property(native_slot, L"Content") != host) {
-            return WorldMapLayeringRefreshResult::Faulted;
-        }
-        set_slot_vector(
-            native_slot, set_slot_position_, atlas_left_, atlas_top_);
-        set_slot_vector(
-            native_slot, set_slot_size_, atlas_width_, atlas_height_);
-        set_slot_vector(native_slot, set_slot_alignment_, 0.0, 0.0);
-        ZOrderParameters host_z{kRadarMarkerZ};
-        native_slot->ProcessEvent(set_slot_z_order_, &host_z);
-        host->ProcessEvent(force_layout_prepass_, nullptr);
-    }
-    return WorldMapLayeringRefreshResult::Restacked;
+
+    fault_and_detach(103);
+    return WorldMapLayeringRefreshResult::Faulted;
 }
 
 WorldMapLayeringRefreshResult WorldMapUmgRenderer::refresh_layering(
     UObject* current_layer,
-    bool allow_tree_mutation) noexcept {
-    if (state_ != WorldMapUmgRendererState::Attached) {
-        return WorldMapLayeringRefreshResult::RetryLater;
+    bool allow_tree_mutation,
+    double player_world_x,
+    double player_world_y) noexcept {
+    (void)allow_tree_mutation;
+    (void)player_world_x;
+    (void)player_world_y;
+    return sync_viewport_transform(current_layer);
+}
+
+void WorldMapUmgRenderer::set_content_visibility_intent(
+    bool enabled) noexcept {
+    content_visibility_intent_ = enabled;
+    if (state_ != WorldMapUmgRendererState::Attached
+        && state_ != WorldMapUmgRendererState::Suspended) {
+        return;
     }
-#if defined(_MSC_VER)
-    __try {
-        const auto result = restack_hosts_unsafe(
-            current_layer, allow_tree_mutation);
-        if (result == WorldMapLayeringRefreshResult::RetryLater
-            || result == WorldMapLayeringRefreshResult::ParentChanged) {
-            return result;
-        }
-        if ((result != WorldMapLayeringRefreshResult::Restacked
-                && result != WorldMapLayeringRefreshResult::Reparented)
-            || !validate_host_unsafe(current_layer)) {
-            ++fault_count_;
-            last_attach_failure_ = 103;
-            state_ = WorldMapUmgRendererState::Faulted;
-            activation_active_ = false;
-            detach_unsafe();
-            return WorldMapLayeringRefreshResult::Faulted;
-        }
-        retainer_box_.Get()->ProcessEvent(request_retainer_render_, nullptr);
-        return result;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        ++fault_count_;
-        last_attach_failure_ = 103;
-        state_ = WorldMapUmgRendererState::Faulted;
-        activation_active_ = false;
-        detach_guarded();
-        return WorldMapLayeringRefreshResult::Faulted;
+    volatile dswros::WorldMapTransformSyncStage stage =
+        dswros::WorldMapTransformSyncStage::None;
+    if (!reconcile_host_visibility_guarded(false, stage)) {
+        last_transform_sync_stage_ = stage;
+        fault_and_detach(104);
     }
-#else
-    try {
-        const auto result = restack_hosts_unsafe(
-            current_layer, allow_tree_mutation);
-        if (result == WorldMapLayeringRefreshResult::RetryLater
-            || result == WorldMapLayeringRefreshResult::ParentChanged) {
-            return result;
-        }
-        if ((result != WorldMapLayeringRefreshResult::Restacked
-                && result != WorldMapLayeringRefreshResult::Reparented)
-            || !validate_host_unsafe(current_layer)) {
-            ++fault_count_;
-            last_attach_failure_ = 103;
-            state_ = WorldMapUmgRendererState::Faulted;
-            activation_active_ = false;
-            detach_unsafe();
-            return WorldMapLayeringRefreshResult::Faulted;
-        }
-        retainer_box_.Get()->ProcessEvent(request_retainer_render_, nullptr);
-        return result;
-    } catch (...) {
-        ++fault_count_;
-        last_attach_failure_ = 103;
-        state_ = WorldMapUmgRendererState::Faulted;
-        activation_active_ = false;
-        detach_guarded();
-        return WorldMapLayeringRefreshResult::Faulted;
+}
+
+void WorldMapUmgRenderer::publish_runtime_visibility(
+    bool visible) noexcept {
+    runtime_visibility_allowed_ = visible;
+    if (state_ != WorldMapUmgRendererState::Attached
+        && state_ != WorldMapUmgRendererState::Suspended) {
+        return;
     }
-#endif
+    volatile dswros::WorldMapTransformSyncStage stage =
+        dswros::WorldMapTransformSyncStage::None;
+    if (!reconcile_host_visibility_guarded(false, stage)) {
+        last_transform_sync_stage_ = stage;
+        fault_and_detach(104);
+    }
 }
 
 bool WorldMapUmgRenderer::attach_once(
@@ -2544,11 +2727,7 @@ bool WorldMapUmgRenderer::attach_guarded(
             current_layer, expected_owning_player, markers, marker_count,
             player_world_x, player_world_y, current_map_data);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
-        ++fault_count_;
-        last_attach_failure_ = 100;
-        state_ = WorldMapUmgRendererState::Faulted;
-        activation_active_ = false;
-        detach_guarded();
+        fault_and_detach(100);
         return false;
     }
 #else
@@ -2557,11 +2736,7 @@ bool WorldMapUmgRenderer::attach_guarded(
             current_layer, expected_owning_player, markers, marker_count,
             player_world_x, player_world_y, current_map_data);
     } catch (...) {
-        ++fault_count_;
-        last_attach_failure_ = 100;
-        state_ = WorldMapUmgRendererState::Faulted;
-        activation_active_ = false;
-        detach_guarded();
+        fault_and_detach(100);
         return false;
     }
 #endif
@@ -2581,6 +2756,9 @@ bool WorldMapUmgRenderer::attach_unsafe(
         ? dswros::WorldMapGeometryStabilityResult::Seeded
         : dswros::WorldMapGeometryStabilityResult::None;
     geometry_sample_max_delta_ = 0.0;
+    runtime_visibility_allowed_ = false;
+    transform_ready_ = false;
+    applied_host_visibility_.reset();
     player_canvas_anchor_x_ = 0.0;
     player_canvas_anchor_y_ = 0.0;
     native_parent_width_ = 0.0;
@@ -2628,11 +2806,11 @@ bool WorldMapUmgRenderer::attach_unsafe(
     }
 
     NativeIconTemplate native_icon_template{};
-    if (!find_native_icon_template(
+    if (find_native_icon_template(
             current_layer, expected_owning_player,
             map_point_icon_class_, canvas_panel_class_,
             canvas_panel_slot_class_, get_owning_player_,
-            native_icon_template)) {
+            native_icon_template) != NativeIconTemplateLookupResult::Found) {
         last_attach_failure_ = 7;
         return false;
     }
@@ -2761,7 +2939,6 @@ bool WorldMapUmgRenderer::attach_unsafe(
         last_attach_failure_ = 12;
         return false;
     }
-
     UClass* native_icon_class = native_icon_template.icon_class;
     UObject* native_parent = native_icon_template.parent_canvas;
     UObject* blueprint_library = widget_blueprint_library_.Get();
@@ -2877,7 +3054,8 @@ bool WorldMapUmgRenderer::attach_unsafe(
             return false;
         }
         set_slot_vector(
-            atlas_image_slots[layer_index], set_slot_position_, 0.0, 0.0);
+            atlas_image_slots[layer_index], set_slot_position_,
+            0.0, 0.0);
         set_slot_vector(
             atlas_image_slots[layer_index], set_slot_size_,
             atlas_bounds.width, atlas_bounds.height);
@@ -2887,15 +3065,15 @@ bool WorldMapUmgRenderer::attach_unsafe(
         atlas_image_slots[layer_index]->ProcessEvent(
             set_slot_z_order_, &image_z);
         set_visibility(
-            hosts[layer_index], set_visibility_, kHitTestInvisible);
+            hosts[layer_index], set_visibility_, kCollapsed);
     }
     if (layered_marker_count != visible_marker_count) {
         last_attach_failure_ = 14;
         return false;
     }
 
-    // Publish every weak transaction handle before either live parent-tree
-    // mutation. Guarded rollback can therefore remove both hosts atomically.
+    // Publish handles before the independent viewport hosts become live.
+    // Rollback removes only Mod-owned hosts; the native map tree is read-only.
     layer_ = current_layer;
     retainer_box_ = retainer_box;
     native_parent_ = native_parent;
@@ -2911,45 +3089,44 @@ bool WorldMapUmgRenderer::attach_unsafe(
         atlas_images_[layer_index] = atlas_images[layer_index];
         atlas_image_slots_[layer_index] = atlas_image_slots[layer_index];
         atlas_textures_[layer_index] = atlas_textures[layer_index];
-
-        AddChildParameters add_host{hosts[layer_index]};
-        native_parent->ProcessEvent(add_child_to_canvas_, &add_host);
-        UObject* native_slot = add_host.return_value;
-        native_parent_slots_[layer_index] = native_slot;
-        if (!native_slot || !native_slot->IsA(canvas_panel_slot_class_)
-            || read_object_property(hosts[layer_index], L"Slot")
-                != native_slot
-            || read_object_property(native_slot, L"Parent") != native_parent
-            || read_object_property(native_slot, L"Content")
-                != hosts[layer_index]) {
-            detach_unsafe();
-            last_attach_failure_ = 21;
-            return false;
-        }
-        set_slot_vector(
-            native_slot, set_slot_position_,
-            atlas_bounds.left, atlas_bounds.top);
-        set_slot_vector(
-            native_slot, set_slot_size_,
-            atlas_bounds.width, atlas_bounds.height);
-        set_slot_vector(native_slot, set_slot_alignment_, 0.0, 0.0);
-        ZOrderParameters host_z{kRadarMarkerZ};
-        native_slot->ProcessEvent(set_slot_z_order_, &host_z);
-        hosts[layer_index]->ProcessEvent(force_layout_prepass_, nullptr);
     }
-    retainer_box->ProcessEvent(request_retainer_render_, nullptr);
-
+    applied_host_visibility_.reset();
+    for (std::size_t layer_index = 0;
+         layer_index < kWorldMapAtlasLayerCount; ++layer_index) {
+        AddToViewportParameters viewport_add{kRadarMarkerZ};
+        hosts[layer_index]->ProcessEvent(add_to_viewport_, &viewport_add);
+        VectorParameters alignment_parameters{{0.0, 0.0}};
+        hosts[layer_index]->ProcessEvent(
+            set_alignment_in_viewport_, &alignment_parameters);
+        set_visibility(
+            hosts[layer_index], set_visibility_, kCollapsed);
+    }
+    applied_host_visibility_ = false;
     map_id_ = data_map_id;
     map_dimensions_ = dimensions;
     map_ui_size_ = ui_size;
     map_overlay_left_ = overlay_position.return_value.x;
     map_overlay_top_ = overlay_position.return_value.y;
     map_overlay_zoom_ = overlay_scale_x;
+    active_marker_input_count_ = marker_count;
+    for (std::size_t index = 0; index < marker_count; ++index) {
+        active_markers_[index] = markers[index];
+    }
     active_marker_count_ = layered_marker_count;
-    last_attach_failure_ = 0;
-    attach_attempted_ = true;
-    ++attach_count_;
     state_ = WorldMapUmgRendererState::Attached;
+    WorldMapLayeringRefreshResult sync_result{};
+    volatile dswros::WorldMapTransformSyncStage sync_stage =
+        dswros::WorldMapTransformSyncStage::None;
+    const bool transform_synced = sync_viewport_transform_unsafe(
+        current_layer, sync_result, sync_stage);
+    last_transform_sync_stage_ = sync_stage;
+    if (!transform_synced
+        || sync_result == WorldMapLayeringRefreshResult::Faulted) {
+        fault_and_detach(100);
+        return false;
+    }
+    last_attach_failure_ = 0;
+    ++attach_count_;
     return true;
 }
 
@@ -2961,31 +3138,31 @@ void WorldMapUmgRenderer::suspend() noexcept {
 }
 
 bool WorldMapUmgRenderer::suspend_guarded() noexcept {
+    volatile dswros::WorldMapTransformSyncStage visibility_stage =
+        dswros::WorldMapTransformSyncStage::None;
 #if defined(_MSC_VER)
     __try {
         if (state_ != WorldMapUmgRendererState::Attached) {
             return state_ == WorldMapUmgRendererState::Suspended;
         }
+        runtime_visibility_allowed_ = false;
+        transform_ready_ = false;
         if (!validate_host_unsafe(layer_.Get())) {
             last_attach_failure_ = 22;
             detach_unsafe();
             return false;
         }
-        for (auto& host : hosts_) {
-            set_visibility(host.Get(), set_visibility_, kCollapsed);
-        }
-        if (UObject* retainer = retainer_box_.Get()) {
-            retainer->ProcessEvent(request_retainer_render_, nullptr);
+        state_ = WorldMapUmgRendererState::Suspended;
+        if (!reconcile_host_visibility_unsafe(false, visibility_stage)) {
+            last_transform_sync_stage_ = visibility_stage;
+            fault_and_detach(101);
+            return false;
         }
         ++suspend_count_;
-        state_ = WorldMapUmgRendererState::Suspended;
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
-        ++fault_count_;
-        last_attach_failure_ = 101;
-        state_ = WorldMapUmgRendererState::Faulted;
-        activation_active_ = false;
-        detach_guarded();
+        last_transform_sync_stage_ = visibility_stage;
+        fault_and_detach(101);
         return false;
     }
 #else
@@ -2993,26 +3170,24 @@ bool WorldMapUmgRenderer::suspend_guarded() noexcept {
         if (state_ != WorldMapUmgRendererState::Attached) {
             return state_ == WorldMapUmgRendererState::Suspended;
         }
+        runtime_visibility_allowed_ = false;
+        transform_ready_ = false;
         if (!validate_host_unsafe(layer_.Get())) {
             last_attach_failure_ = 22;
             detach_unsafe();
             return false;
         }
-        for (auto& host : hosts_) {
-            set_visibility(host.Get(), set_visibility_, kCollapsed);
-        }
-        if (UObject* retainer = retainer_box_.Get()) {
-            retainer->ProcessEvent(request_retainer_render_, nullptr);
+        state_ = WorldMapUmgRendererState::Suspended;
+        if (!reconcile_host_visibility_unsafe(false, visibility_stage)) {
+            last_transform_sync_stage_ = visibility_stage;
+            fault_and_detach(101);
+            return false;
         }
         ++suspend_count_;
-        state_ = WorldMapUmgRendererState::Suspended;
         return true;
     } catch (...) {
-        ++fault_count_;
-        last_attach_failure_ = 101;
-        state_ = WorldMapUmgRendererState::Faulted;
-        activation_active_ = false;
-        detach_guarded();
+        last_transform_sync_stage_ = visibility_stage;
+        fault_and_detach(101);
         return false;
     }
 #endif
@@ -3029,82 +3204,62 @@ bool WorldMapUmgRenderer::resume_suspended(
 
 bool WorldMapUmgRenderer::resume_suspended_guarded(
     UObject* current_layer) noexcept {
+    volatile dswros::WorldMapTransformSyncStage sync_stage =
+        dswros::WorldMapTransformSyncStage::None;
 #if defined(_MSC_VER)
     __try {
-        const auto layering_result = restack_hosts_unsafe(
-            current_layer, true);
-        if ((layering_result != WorldMapLayeringRefreshResult::Restacked
-                && layering_result != WorldMapLayeringRefreshResult::Reparented)
-            || !validate_host_unsafe(current_layer)) {
+        if (!validate_host_unsafe(current_layer)) {
             last_attach_failure_ = 23;
             detach_unsafe();
             return false;
         }
-        for (std::size_t layer_index = 0;
-             layer_index < kWorldMapAtlasLayerCount; ++layer_index) {
-            set_visibility(
-                atlas_images_[layer_index].Get(), set_visibility_,
-                kHitTestInvisible);
-            set_visibility(
-                root_panels_[layer_index].Get(), set_visibility_,
-                kHitTestInvisible);
-            set_visibility(
-                hosts_[layer_index].Get(), set_visibility_,
-                kHitTestInvisible);
-            hosts_[layer_index].Get()->ProcessEvent(
-                force_layout_prepass_, nullptr);
+        runtime_visibility_allowed_ = false;
+        transform_ready_ = false;
+        state_ = WorldMapUmgRendererState::Attached;
+        WorldMapLayeringRefreshResult result{};
+        const bool transform_synced = sync_viewport_transform_unsafe(
+            current_layer, result, sync_stage);
+        last_transform_sync_stage_ = sync_stage;
+        if (!transform_synced
+            || result == WorldMapLayeringRefreshResult::Faulted) {
+            fault_and_detach(102);
+            return false;
         }
-        retainer_box_.Get()->ProcessEvent(request_retainer_render_, nullptr);
         attach_attempted_ = true;
         last_attach_failure_ = 0;
         ++resume_count_;
-        state_ = WorldMapUmgRendererState::Attached;
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
-        ++fault_count_;
-        last_attach_failure_ = 102;
-        state_ = WorldMapUmgRendererState::Faulted;
-        activation_active_ = false;
-        detach_guarded();
+        last_transform_sync_stage_ = sync_stage;
+        fault_and_detach(102);
         return false;
     }
 #else
     try {
-        const auto layering_result = restack_hosts_unsafe(
-            current_layer, true);
-        if ((layering_result != WorldMapLayeringRefreshResult::Restacked
-                && layering_result != WorldMapLayeringRefreshResult::Reparented)
-            || !validate_host_unsafe(current_layer)) {
+        if (!validate_host_unsafe(current_layer)) {
             last_attach_failure_ = 23;
             detach_unsafe();
             return false;
         }
-        for (std::size_t layer_index = 0;
-             layer_index < kWorldMapAtlasLayerCount; ++layer_index) {
-            set_visibility(
-                atlas_images_[layer_index].Get(), set_visibility_,
-                kHitTestInvisible);
-            set_visibility(
-                root_panels_[layer_index].Get(), set_visibility_,
-                kHitTestInvisible);
-            set_visibility(
-                hosts_[layer_index].Get(), set_visibility_,
-                kHitTestInvisible);
-            hosts_[layer_index].Get()->ProcessEvent(
-                force_layout_prepass_, nullptr);
+        runtime_visibility_allowed_ = false;
+        transform_ready_ = false;
+        state_ = WorldMapUmgRendererState::Attached;
+        WorldMapLayeringRefreshResult result{};
+        const bool transform_synced = sync_viewport_transform_unsafe(
+            current_layer, result, sync_stage);
+        last_transform_sync_stage_ = sync_stage;
+        if (!transform_synced
+            || result == WorldMapLayeringRefreshResult::Faulted) {
+            fault_and_detach(102);
+            return false;
         }
-        retainer_box_.Get()->ProcessEvent(request_retainer_render_, nullptr);
         attach_attempted_ = true;
         last_attach_failure_ = 0;
         ++resume_count_;
-        state_ = WorldMapUmgRendererState::Attached;
         return true;
     } catch (...) {
-        ++fault_count_;
-        last_attach_failure_ = 102;
-        state_ = WorldMapUmgRendererState::Faulted;
-        activation_active_ = false;
-        detach_guarded();
+        last_transform_sync_stage_ = sync_stage;
+        fault_and_detach(102);
         return false;
     }
 #endif
@@ -3113,6 +3268,17 @@ bool WorldMapUmgRenderer::resume_suspended_guarded(
 void WorldMapUmgRenderer::detach() noexcept {
     activation_active_ = false;
     detach_guarded();
+}
+
+void WorldMapUmgRenderer::abandon_runtime_handles() noexcept {
+    const WorldMapUmgRendererState previous_state = state_;
+    activation_active_ = false;
+    reset_runtime_handles();
+    if (previous_state == WorldMapUmgRendererState::Attached
+        || previous_state == WorldMapUmgRendererState::Suspended
+        || previous_state == WorldMapUmgRendererState::Ready) {
+        state_ = WorldMapUmgRendererState::Ready;
+    }
 }
 
 void WorldMapUmgRenderer::detach_guarded() noexcept {
@@ -3150,10 +3316,6 @@ void WorldMapUmgRenderer::detach_unsafe() {
     }
     if (removed) {
         ++detach_count_;
-        if (UObject* retainer = retainer_box_.Get();
-            retainer && request_retainer_render_) {
-            retainer->ProcessEvent(request_retainer_render_, nullptr);
-        }
     }
     reset_runtime_handles();
     if (previous_state == WorldMapUmgRendererState::Attached
@@ -3164,6 +3326,9 @@ void WorldMapUmgRenderer::detach_unsafe() {
 }
 
 void WorldMapUmgRenderer::reset_runtime_handles() noexcept {
+    runtime_visibility_allowed_ = false;
+    transform_ready_ = false;
+    applied_host_visibility_.reset();
     layer_ = FWeakObjectPtr{};
     retainer_box_ = FWeakObjectPtr{};
     native_parent_ = FWeakObjectPtr{};
@@ -3172,11 +3337,11 @@ void WorldMapUmgRenderer::reset_runtime_handles() noexcept {
         hosts_[layer_index] = FWeakObjectPtr{};
         widget_trees_[layer_index] = FWeakObjectPtr{};
         root_panels_[layer_index] = FWeakObjectPtr{};
-        native_parent_slots_[layer_index] = FWeakObjectPtr{};
         atlas_images_[layer_index] = FWeakObjectPtr{};
         atlas_image_slots_[layer_index] = FWeakObjectPtr{};
         atlas_textures_[layer_index] = FWeakObjectPtr{};
     }
+    active_marker_input_count_ = 0;
     active_marker_count_ = 0;
     map_id_ = 0;
     map_dimensions_ = 0.0;
@@ -3195,12 +3360,20 @@ void WorldMapUmgRenderer::reset_runtime_handles() noexcept {
     atlas_top_ = 0.0;
     atlas_width_ = 0.0;
     atlas_height_ = 0.0;
+    viewport_transform_valid_ = false;
+    viewport_placement_ = {};
+    viewport_geometry_sample_valid_ = false;
+    viewport_geometry_sample_ = {};
     last_layering_parent_changed_ = false;
     last_layering_geometry_changed_ = false;
     last_layering_previous_parent_index_ = -1;
     last_layering_current_parent_index_ = -1;
     last_layering_previous_parent_serial_ = 0;
     last_layering_current_parent_serial_ = 0;
+    last_layering_previous_parent_width_ = 0.0;
+    last_layering_previous_parent_height_ = 0.0;
+    last_layering_current_parent_width_ = 0.0;
+    last_layering_current_parent_height_ = 0.0;
 }
 
 void WorldMapUmgRenderer::reset_geometry_stability_sample() noexcept {
@@ -3219,7 +3392,6 @@ void WorldMapUmgRenderer::reset_reparent_geometry_stability_sample() noexcept {
     reparent_geometry_sample_max_delta_ = 0.0;
     reparent_geometry_parent_index_ = -1;
     reparent_geometry_parent_serial_ = 0;
-    last_reparent_anchor_delta_x_ = 0.0;
-    last_reparent_anchor_delta_y_ = 0.0;
 }
+
 } // namespace dsnwr

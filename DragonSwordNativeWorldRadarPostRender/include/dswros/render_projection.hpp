@@ -35,6 +35,222 @@ struct WorldMapAtlasPlacement {
     double height{};
 };
 
+struct WorldMapSlateGeometry {
+    double absolute_left{};
+    double absolute_top{};
+    double local_width{};
+    double local_height{};
+    double absolute_scale_x{};
+    double absolute_scale_y{};
+};
+
+// Converts an atlas rectangle from the live native-map geometry into the
+// independent viewport-host geometry. This is the arithmetic equivalent of
+// Slate LocalToAbsolute(native) followed by AbsoluteToLocal(viewport). It is
+// intentionally independent of resolution and DPI policy: each geometry owns
+// its exact live transform, so DPI is applied once rather than guessed from
+// viewport dimensions.
+[[nodiscard]] inline std::optional<WorldMapAtlasPlacement>
+calculate_world_map_viewport_placement(
+    WorldMapAtlasPlacement native_local_atlas,
+    WorldMapSlateGeometry native_geometry,
+    WorldMapSlateGeometry viewport_geometry) noexcept {
+    const auto valid_placement = [](const WorldMapAtlasPlacement& value) {
+        return std::isfinite(value.left) && std::isfinite(value.top)
+            && std::isfinite(value.width) && std::isfinite(value.height)
+            && value.width > 0.0 && value.height > 0.0;
+    };
+    const auto valid_geometry = [](const WorldMapSlateGeometry& value) {
+        return std::isfinite(value.absolute_left)
+            && std::isfinite(value.absolute_top)
+            && std::isfinite(value.local_width)
+            && std::isfinite(value.local_height)
+            && std::isfinite(value.absolute_scale_x)
+            && std::isfinite(value.absolute_scale_y)
+            && value.local_width > 0.0 && value.local_height > 0.0
+            && value.absolute_scale_x > 0.0
+            && value.absolute_scale_y > 0.0;
+    };
+    if (!valid_placement(native_local_atlas)
+        || !valid_geometry(native_geometry)
+        || !valid_geometry(viewport_geometry)) {
+        return std::nullopt;
+    }
+
+    const WorldMapAtlasPlacement viewport_local{
+        (native_geometry.absolute_left
+             + native_local_atlas.left * native_geometry.absolute_scale_x
+             - viewport_geometry.absolute_left)
+            / viewport_geometry.absolute_scale_x,
+        (native_geometry.absolute_top
+             + native_local_atlas.top * native_geometry.absolute_scale_y
+             - viewport_geometry.absolute_top)
+            / viewport_geometry.absolute_scale_y,
+        native_local_atlas.width * native_geometry.absolute_scale_x
+            / viewport_geometry.absolute_scale_x,
+        native_local_atlas.height * native_geometry.absolute_scale_y
+            / viewport_geometry.absolute_scale_y,
+    };
+    return valid_placement(viewport_local)
+        ? std::optional<WorldMapAtlasPlacement>{viewport_local}
+        : std::nullopt;
+}
+
+inline constexpr double kWorldMapViewportTransformTolerance = 0.5;
+
+[[nodiscard]] inline std::optional<bool>
+world_map_viewport_transform_changed(
+    const WorldMapAtlasPlacement& retained,
+    const WorldMapAtlasPlacement& current,
+    double tolerance = kWorldMapViewportTransformTolerance) noexcept {
+    const auto valid = [](const WorldMapAtlasPlacement& value) {
+        return std::isfinite(value.left) && std::isfinite(value.top)
+            && std::isfinite(value.width) && std::isfinite(value.height)
+            && value.width > 0.0 && value.height > 0.0;
+    };
+    if (!valid(retained) || !valid(current) || !std::isfinite(tolerance)
+        || tolerance < 0.0) {
+        return std::nullopt;
+    }
+    const double maximum_delta = std::max(
+        std::max(
+            std::abs(current.left - retained.left),
+            std::abs(current.top - retained.top)),
+        std::max(
+            std::abs(current.width - retained.width),
+            std::abs(current.height - retained.height)));
+    return maximum_delta > tolerance;
+}
+
+enum class WorldMapTransformObservationFailure : std::uint8_t {
+    NativeCanvasUnavailable,
+    GeometryUnavailable,
+    OwnedHostInvalid,
+    AbiInvalid,
+    RuntimeFault,
+};
+
+enum class WorldMapTransformObservationFailureAction : std::uint8_t {
+    RetryHidden,
+    RetainLastValid,
+    Fault,
+};
+
+// The guarded runtime records which part of a transform refresh was active
+// when a reflected call failed. Observation stages read only game-owned state
+// and can be transient while the map animates. Validation and application
+// stages prove or mutate only the Mod-owned payload and remain hard failures.
+enum class WorldMapTransformSyncStage : std::uint8_t {
+    None,
+    NativeCanvasObservation,
+    GeometryObservation,
+    OwnedHostValidation,
+    AbiValidation,
+    OwnedHostApplication,
+};
+
+[[nodiscard]] constexpr WorldMapTransformObservationFailure
+world_map_transform_failure_for_stage(
+    WorldMapTransformSyncStage stage) noexcept {
+    switch (stage) {
+    case WorldMapTransformSyncStage::NativeCanvasObservation:
+        return WorldMapTransformObservationFailure::NativeCanvasUnavailable;
+    case WorldMapTransformSyncStage::GeometryObservation:
+        return WorldMapTransformObservationFailure::GeometryUnavailable;
+    case WorldMapTransformSyncStage::OwnedHostValidation:
+        return WorldMapTransformObservationFailure::OwnedHostInvalid;
+    case WorldMapTransformSyncStage::AbiValidation:
+        return WorldMapTransformObservationFailure::AbiInvalid;
+    case WorldMapTransformSyncStage::OwnedHostApplication:
+    case WorldMapTransformSyncStage::None:
+    default:
+        return WorldMapTransformObservationFailure::RuntimeFault;
+    }
+}
+
+// A live world-map layer can briefly replace its native icon Canvas while its
+// opening or zoom animation settles. That is an observation gap, not evidence
+// that the independent Mod-owned viewport hosts are corrupt. Preserve a last
+// verified transform only for the same layer; ownership and ABI failures remain
+// terminal so native game widgets are never used as a recovery target.
+[[nodiscard]] constexpr WorldMapTransformObservationFailureAction
+classify_world_map_transform_observation_failure(
+    WorldMapTransformObservationFailure failure,
+    bool same_layer,
+    bool has_valid_transform) noexcept {
+    switch (failure) {
+    case WorldMapTransformObservationFailure::NativeCanvasUnavailable:
+    case WorldMapTransformObservationFailure::GeometryUnavailable:
+        return same_layer && has_valid_transform
+            ? WorldMapTransformObservationFailureAction::RetainLastValid
+            : WorldMapTransformObservationFailureAction::RetryHidden;
+    case WorldMapTransformObservationFailure::OwnedHostInvalid:
+    case WorldMapTransformObservationFailure::AbiInvalid:
+    case WorldMapTransformObservationFailure::RuntimeFault:
+    default:
+        return WorldMapTransformObservationFailureAction::Fault;
+    }
+}
+
+struct WorldMapHostVisibilityInputs {
+    bool content_intent{};
+    bool runtime_allowed{};
+    bool attached{};
+    bool transform_ready{};
+};
+
+// Content policy, current-world visibility, host ownership, and a verified
+// transform are independent gates. No one gate may make a viewport host live.
+[[nodiscard]] constexpr bool world_map_host_visibility_target(
+    WorldMapHostVisibilityInputs inputs) noexcept {
+    return inputs.content_intent && inputs.runtime_allowed
+        && inputs.attached && inputs.transform_ready;
+}
+
+// A disengaged value belongs to a new, detached, or partially written host
+// generation. Once both hosts publish a value, identical requests are pure
+// no-ops and perform no UObject access.
+[[nodiscard]] constexpr bool world_map_host_visibility_write_required(
+    std::optional<bool> applied_visible,
+    bool target_visible) noexcept {
+    return !applied_visible || *applied_visible != target_visible;
+}
+
+struct WorldMapTransformVisibilityPolicy {
+    bool retain_host{};
+    bool transform_ready{};
+    bool force_collapsed{};
+};
+
+[[nodiscard]] constexpr WorldMapTransformVisibilityPolicy
+world_map_transform_visibility_policy(
+    WorldMapTransformObservationFailureAction action) noexcept {
+    switch (action) {
+    case WorldMapTransformObservationFailureAction::RetryHidden:
+        return {true, false, true};
+    case WorldMapTransformObservationFailureAction::RetainLastValid:
+        return {true, true, false};
+    case WorldMapTransformObservationFailureAction::Fault:
+    default:
+        return {false, false, true};
+    }
+}
+
+// A reflected write to a Mod-owned viewport host can fail transiently while
+// Slate is replacing its viewport wrapper.  If the exact layer, the last
+// verified placement, and both independently owned hosts are still valid,
+// retain that placement and let the existing bounded settle tail retry.  A
+// stale layer, missing placement, or invalid host remains terminal.
+[[nodiscard]] constexpr WorldMapTransformObservationFailureAction
+classify_world_map_owned_host_application_failure(
+    bool same_layer,
+    bool has_valid_transform,
+    bool owned_hosts_still_valid) noexcept {
+    return same_layer && has_valid_transform && owned_hosts_still_valid
+        ? WorldMapTransformObservationFailureAction::RetainLastValid
+        : WorldMapTransformObservationFailureAction::Fault;
+}
+
 struct WorldMapGeometrySample {
     double player_canvas_x{};
     double player_canvas_y{};
@@ -65,6 +281,23 @@ world_map_geometry_maximum_delta(
         std::max(
             std::abs(current.parent_width - retained.parent_width),
             std::abs(current.parent_height - retained.parent_height)));
+}
+
+[[nodiscard]] inline std::optional<double>
+world_map_parent_extent_maximum_delta(
+    const WorldMapGeometrySample& retained,
+    const WorldMapGeometrySample& current) noexcept {
+    if (!std::isfinite(retained.parent_width)
+        || !std::isfinite(retained.parent_height)
+        || !std::isfinite(current.parent_width)
+        || !std::isfinite(current.parent_height)
+        || retained.parent_width <= 0.0 || retained.parent_height <= 0.0
+        || current.parent_width <= 0.0 || current.parent_height <= 0.0) {
+        return std::nullopt;
+    }
+    return std::max(
+        std::abs(current.parent_width - retained.parent_width),
+        std::abs(current.parent_height - retained.parent_height));
 }
 
 enum class WorldMapGeometryStabilityResult : std::uint8_t {
@@ -174,45 +407,6 @@ validate_world_map_canvas_anchor(
         return std::nullopt;
     }
     return WorldMapPoint{player_canvas_x, player_canvas_y};
-}
-
-// A zoom tier may replace only the native icon Canvas while keeping the same
-// parent-local extent and atlas pixels. Rebase the retained bounds by the exact
-// live player-anchor delta only when both coordinate spaces have the same
-// extent. An aspect/DPI reflow needs a fresh atlas so marker glyphs are not
-// scaled together with their positions.
-[[nodiscard]] inline std::optional<WorldMapAtlasPlacement>
-rebase_world_map_atlas_placement(
-    WorldMapAtlasPlacement retained,
-    WorldMapGeometrySample retained_geometry,
-    WorldMapGeometrySample current_geometry) noexcept {
-    if (!std::isfinite(retained.left) || !std::isfinite(retained.top)
-        || !std::isfinite(retained.width) || !std::isfinite(retained.height)
-        || retained.width <= 0.0 || retained.height <= 0.0
-        || !world_map_geometry_maximum_delta(
-            retained_geometry, current_geometry)
-        || std::abs(
-            retained_geometry.parent_width - current_geometry.parent_width)
-            > kWorldMapGeometryStabilityTolerance
-        || std::abs(
-            retained_geometry.parent_height - current_geometry.parent_height)
-            > kWorldMapGeometryStabilityTolerance) {
-        return std::nullopt;
-    }
-    const WorldMapAtlasPlacement rebased{
-        retained.left
-            + (current_geometry.player_canvas_x
-               - retained_geometry.player_canvas_x),
-        retained.top
-            + (current_geometry.player_canvas_y
-               - retained_geometry.player_canvas_y),
-        retained.width,
-        retained.height,
-    };
-    if (!std::isfinite(rebased.left) || !std::isfinite(rebased.top)) {
-        return std::nullopt;
-    }
-    return rebased;
 }
 
 // Calculates both raw viewport placement and the render-only correction needed

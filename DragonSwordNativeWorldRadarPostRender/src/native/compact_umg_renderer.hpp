@@ -2,6 +2,8 @@
 
 #include <Unreal/FWeakObjectPtr.hpp>
 
+#include <dswros/compact_render_model.hpp>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -20,7 +22,7 @@ namespace dsnwr {
 inline constexpr std::size_t kCompactUmgMarkerCapacity = 80;
 inline constexpr std::size_t kCompactUmgMarkerPieceCount = 4;
 inline constexpr std::size_t kCompactUmgHeightPieceCount = 6;
-inline constexpr std::size_t kCompactUmgHeightChannelCount = 2;
+inline constexpr std::size_t kCompactUmgHeightChannelCount = 3;
 inline constexpr std::size_t kCompactClockDigitCount = 4;
 inline constexpr std::size_t kCompactClockSegmentCount = 7;
 inline constexpr std::size_t kCompactClockColonPieceCount = 2;
@@ -43,6 +45,7 @@ enum class CompactUmgMarkerKind : std::uint8_t {
 enum class CompactUmgHeightChannel : std::uint8_t {
     Treasure,
     AreaQuest,
+    Mole,
 };
 
 struct CompactUmgMarker {
@@ -52,6 +55,14 @@ struct CompactUmgMarker {
     CompactUmgMarkerKind kind{CompactUmgMarkerKind::TreasureOther};
     bool show_height{};
     double height_angle_degrees{};
+    // Area Quest only: the fixed marker pieces own their height presentation.
+    // Up to two offline-derived candidate bands are retained so a multi-stage
+    // task can prove up/down direction without inventing one exact target Z.
+    // When the category is enabled but no source band exists, the normal frame
+    // stays visible without dots and no direction is fabricated.
+    bool height_source_unavailable{};
+    dswros::AreaQuestHeightProfile area_quest_height_profile{};
+    double area_quest_comparable_player_z{};
 };
 
 using CompactUmgMarkerArray =
@@ -108,12 +119,17 @@ public:
     // proven single-host movement tree. No marker child is touched.
     void translate(double normalized_dx, double normalized_dy) noexcept;
 
-    // Scalar-only height motion step. Each category owns six fixed pointer
-    // pieces in one of two preallocated Canvases, allowing the nearest treasure
-    // and nearest area quest to retain independent simultaneous pointers.
+    // Scalar-only height motion step for the fixed Treasure pointer and the
+    // shared Fly/Mole/Wave below-marker triangle.
     void update_height_pointer(
         CompactUmgHeightChannel channel,
         double height_angle_degrees) noexcept;
+
+    // Updates every retained trusted Area Quest marker from one copied player-Z
+    // scalar. The fixed-slot scan performs no UObject work unless a marker
+    // crosses the task-specific vertical boundary.
+    void update_area_quest_height_indicators(
+        double comparable_player_z) noexcept;
 
     // Uses the already captured numeric world-time baseline. The hot call is
     // scalar-only unless the displayed game minute changes; no UObject is read.
@@ -122,6 +138,10 @@ public:
     // Used by F8 and travel. The host is removed once and every weak handle is
     // reset; child widgets are released through the host's reflected ownership.
     void detach() noexcept;
+
+    // UObject-array shutdown path. Clears only locally retained identities and
+    // scalar state; it must not call FWeakObjectPtr::Get or ProcessEvent.
+    void abandon_runtime_handles() noexcept;
 
     [[nodiscard]] CompactUmgRendererState state() const noexcept { return state_; }
     [[nodiscard]] std::uint64_t attach_attempt_count() const noexcept {
@@ -192,6 +212,10 @@ private:
     [[nodiscard]] bool update_height_pointer_unsafe(
         CompactUmgHeightChannel channel,
         double height_angle_degrees);
+    [[nodiscard]] bool update_area_quest_height_indicators_guarded(
+        double comparable_player_z) noexcept;
+    [[nodiscard]] bool update_area_quest_height_indicators_unsafe(
+        double comparable_player_z);
     [[nodiscard]] bool update_world_clock_guarded(
         bool available, std::uint32_t seconds) noexcept;
     [[nodiscard]] bool update_world_clock_unsafe(
@@ -200,6 +224,17 @@ private:
         std::size_t channel,
         double height_angle_degrees,
         bool force);
+    [[nodiscard]] bool configure_mini_game_height_indicator_unsafe(
+        std::size_t channel,
+        CompactUmgMarkerKind kind,
+        double height_angle_degrees,
+        bool force);
+    [[nodiscard]] bool configure_area_quest_marker_shape_unsafe(
+        std::size_t marker_index,
+        std::uint8_t shape_code,
+        double center_x,
+        double center_y,
+        double scaled_size);
     [[nodiscard]] bool set_menu_suppressed_guarded(bool suppressed) noexcept;
     [[nodiscard]] bool set_menu_suppressed_unsafe(bool suppressed);
     [[nodiscard]] bool read_minimap_scale_guarded(double& scale) noexcept;
@@ -281,6 +316,18 @@ private:
     std::array<bool, kCompactUmgMarkerCapacity> marker_visible_{};
     std::array<double, kCompactUmgMarkerCapacity> marker_reference_sizes_{};
     std::array<std::uint8_t, kCompactUmgMarkerCapacity> marker_kind_codes_{};
+    std::array<std::uint8_t, kCompactUmgMarkerCapacity>
+        area_quest_marker_shape_codes_{};
+    std::array<double, kCompactUmgMarkerCapacity>
+        area_quest_marker_center_x_{};
+    std::array<double, kCompactUmgMarkerCapacity>
+        area_quest_marker_center_y_{};
+    std::array<double, kCompactUmgMarkerCapacity>
+        area_quest_marker_scaled_size_{};
+    std::array<dswros::AreaQuestHeightProfile, kCompactUmgMarkerCapacity>
+        area_quest_height_profiles_{};
+    std::array<bool, kCompactUmgMarkerCapacity>
+        area_quest_height_active_{};
     static constexpr std::size_t kSlateBrushBytes = 208;
     std::array<std::byte, kSlateBrushBytes> solid_brush_template_{};
     std::array<std::byte, kSlateBrushBytes> fly_outline_brush_template_{};
@@ -299,7 +346,9 @@ private:
     std::array<bool, kCompactUmgHeightChannelCount>
         height_transform_valid_{};
     std::array<std::uint8_t, kCompactUmgHeightChannelCount>
-        height_kind_codes_{{0xFFU, 0xFFU}};
+        height_kind_codes_{{0xFFU, 0xFFU, 0xFFU}};
+    std::array<std::uint8_t, kCompactUmgHeightChannelCount>
+        mini_game_height_shape_codes_{{0xFFU, 0xFFU, 0xFFU}};
     std::array<double, kCompactUmgHeightChannelCount>
         height_marker_half_widths_{};
     std::array<double, kCompactUmgHeightChannelCount>

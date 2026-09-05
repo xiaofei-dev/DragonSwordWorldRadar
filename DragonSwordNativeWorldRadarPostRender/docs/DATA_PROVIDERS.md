@@ -26,14 +26,34 @@ polling, UObject enumeration, save query, or SQL schedule.
 
 Projection is attach-only. Each bounded sample reads the live player-icon
 alignment pivot, converts through the player widget's current cached Slate
-geometry with `LocalToAbsolute`, then converts through the selected native icon
-Canvas's current cached geometry with `AbsoluteToLocal`. The first valid numeric
+geometry with `LocalToAbsolute`, reads the selected native icon Canvas's cached
+geometry only as a witness with `LocalToAbsolute`, and converts both absolute
+results into game-viewport local space with `AbsoluteToLocal`. The first valid numeric
 result only seeds stability state. A sample at least 150 ms later is accepted
 when stable; if it changed, one third sample may establish stability, for three
 samples maximum. Only numeric coordinates and timing cross samples--no sampled
 UObject wrapper or `FGeometry`. Missing, implausible, or still-unstable geometry
 fails into the existing bounded attach budget. No centered fallback, new timer,
 polling service, or per-frame projection path is added.
+
+The 2.2.1 placement contract keeps the native icon Canvas read-only. Radar does
+not add children to it, alter its desired size, participate in its prepass, or
+affect its hit-test layout. Each `Panel_Point` Image lives inside an independent,
+hit-test-invisible viewport-owned host. Accepted geometry changes update only
+those host transforms in game-viewport local space; they do not rerasterize,
+rebuild, reproject, re-add, or reparent an atlas. Missing, mismatched, or final-
+unstable geometry collapses only the Mod-owned hosts and follows the existing
+bounded fail-closed/defer path. The cached-Slate player anchor, independent X/Y
+scale, DPI, zoom, and aspect-ratio inputs are unchanged. No `3000`/`8000`
+constant replaces live geometry, and no new timer, poll, or per-frame projection
+route is added.
+
+Historical exact 2.2.0 logs recorded one atlas attach and no repeated
+detach/rebuild sequence. Their 1,632 total markers, including 1,501 Treasures,
+were below the old 1,785 limit, proving capacity was not that dense-map flicker
+root. Those logs do not validate the 2.2.1 ownership fix; exact-artifact
+alignment, dense-Treasure stability, native icon/click behavior, and gameplay
+acceptance remain pending.
 
 ## Installed catalogs
 
@@ -106,7 +126,9 @@ window already accepted by that event. Each applied or deduplicated bit clears
 independently; an apply exception retains its bit without dropping unrelated or
 new bits. F7, disable, travel, and activity-suppression boundaries may settle
 pending numeric cooldown/eligibility without renderer mutation before reset.
-Only process shutdown and UObject-array shutdown hard-clear the fixed mask. The
+Only safe live-GameThread finalization and the TitleMap owner boundary may
+hard-clear the fixed mask. True process teardown closes ingress and returns;
+UObject-array shutdown does not clear it. The
 ordinary disappearance and strict `Destroyed` fallbacks continue to check their
 current time/cooldown gates. This handoff adds no poll, timer, scan, SQL query,
 dynamic queue, or steady work.
@@ -132,6 +154,22 @@ The legacy extractor identified 34 Fly source rows, but ID 11024 is excluded
 from the native render contract. Deployment explicitly validates the 33/40/10
 shape. Coordinates and save mask identities are immutable installed data; no
 runtime coordinate scan or Lua completion provider exists in this mod.
+
+#### 2.2.0 shared mini-game height contract
+
+Each of the 83 map-100 Fly/Mole/Wave records has one trusted compact-arrow height
+derived offline from the exact actor `MiniGame_<kind>_<id>_NPC_Start`. The generator joins
+the pinned mini-game rows to the pinned ActorPositionData table, requires exact
+one-to-one identity and finite numeric coordinates, and emits immutable numeric
+rows. The two input hashes and generator boundary are recorded in
+`DEPENDENCY_SOURCES.md`.
+
+The runtime never extracts PAKs, parses XML, scans the global UObject array, or
+reads the filesystem for mini-game height. The target is compared with
+`playerZ - 150`; the inclusive +/-500 interval hides the triangle, while values
+above or below it point up or down. A missing, duplicate, or invalid trusted
+height fails closed by hiding only the shared mini-game triangle; the ordinary
+marker remains governed by its existing catalog and visibility rules.
 
 ### Runtime-only bird eggs
 
@@ -166,6 +204,46 @@ lineage is the previously validated MnMRadar table. Availability is not encoded
 in the TSV: F7 copies current numeric Main/Group definitions from the loaded
 game database, reads the one-shot save completion snapshot, and performs
 bounded reflected runtime-state queries.
+
+#### 2.2.0 height-band contract
+
+The compact Area Quest height presentation uses five additional columns in
+`area-quests.tsv`: `Height1MinZ`, `Height1MaxZ`, `Height2MinZ`, `Height2MaxZ`,
+and `HeightBandCount`. The original `Id`, `X`, `Y`, and `Z` columns remain the
+validated MnMRadar catalog and retain their existing ordering and marker-position
+meaning. The height-band profile is generated offline from:
+
+`../DragonSwordWorldDataProbe/reference/assault-support/xml/017_ActorPositionData.xml`
+
+The pinned ActorPositionData SHA-256 is
+`11CA916050AFA25F856DF0AFF46CAE0D23F928E8490617FBD3B524DC183E3ACF`.
+`tools/Build-AreaQuestHeightCatalog.ps1` rejects any other source hash. It
+considers only map-group 100 Actors whose `Name` contains the exact catalog ID
+with numeric boundaries and whose position is within 1,000 planar Unreal units
+of the MnMRadar X/Y anchor. Candidates are ordered deterministically and grouped
+by Z; a gap greater than 250 Unreal units begins a second band. A
+Move_Check-only band is an activation/traversal trigger rather than a task-actor
+destination and is excluded when a real task-actor band exists. Each retained
+band publishes its minimum and maximum Z, and the fixed format accepts at most
+two bands. A no-source row stores zeroes with `HeightBandCount=0`.
+
+Run this reproducibility check from the project root before packaging:
+
+```powershell
+& .\tools\Build-AreaQuestHeightCatalog.ps1 -VerifyOnly
+```
+
+The 2.2.0 contract is exactly 147 rows: 144 rows have height profiles, task
+`1103061` has the sole genuine two-band profile, and three rows have no source
+profile. Task `1110037` is a single band at `24702`; its discarded Move_Check
+trigger is not a second destination band. No-source markers remain eligible for
+ordinary compact and world-map display, but their compact height presentation
+is neutral. A single-band profile is used directly. For task `1103061`, authored
+marker Z selects the uniquely nearest existing source band; it is selection
+evidence only and never replaces source height. An exact-distance tie fails
+closed neutral. The shared `-150` comparison offset calibrates the player's root
+position for Treasure, Area Quest, and mini-game guidance only; it is not an
+Area Quest height source and is never applied while generating a profile.
 
 `/Script/DS.DETUtil:ETSendQuestEventTrigger` may arm one exact catalog task when
 the event is dynamic and its numeric ID is one of the 147 catalog entries. No
@@ -235,11 +313,19 @@ once in the current session; a hidden retained layer defers until its next exact
 `save_owner_pointer.cfg` records a schema version, source executable
 fingerprint, executable length, owner-pointer RVA, and provenance. It contains
 neither the SQLCipher key nor an absolute process address. Matching executable
-length and a valid live key make the packaged RVA the fast path. When a game
-update invalidates it, the same below-normal save worker performs at most one
-process-lifetime scan of executable PE sections, requires exactly one bounded
-pattern target, caches only the numeric RVA, and validates the live key. It
-adds no watcher, periodic scanner, game-thread work, or UObject retention.
+length and a valid live key make the packaged RVA the fast path. The pointer
+RVA and the key member offset inside its owner are separate bindings. The game
+build identified by Steam build `25076183` uses RVA `0x94F4FA8` and moved the
+key `FString` from owner offset `0x120` to `0x128`. When the RVA is stale, the
+same below-normal save worker performs at most one process-lifetime scan of
+executable PE sections and requires exactly one bounded pattern target. It then
+tries the cached member offset, legacy `0x120`, verified current `0x128`, and a
+bounded aligned fallback with at most 24 structurally valid candidates per
+explicit F7. A candidate must decrypt the active `.db` and read
+`sqlite_master`; `.bak` alone is never sufficient. Only numeric RVA/member
+offsets are cached. No key bytes or absolute process address are logged or
+persisted, and the path adds no watcher, periodic scanner, game-thread work, or
+UObject retention.
 SQLCipher work includes one full below-normal
 attempt per F7 activation and may include a coalesced event-driven completion
 confirmation after an exact area-quest witness remains inconclusive for ten
@@ -274,15 +360,65 @@ bounded edge service recomputes the fixed encounter visibility mask and linked
 control edge; the 16 ms position path performs no hourly task or encounter
 catalog scan. Weather is unavailable and unqueried.
 
-## F6 visibility Hub
+## F6 responsive settings page
 
-F6 opens one transient native UMG panel backed by two fixed numeric visibility
-masks. The compact mask controls clock, treasure, Boss, Assault, mini-games,
+F6 opens one transient native UMG page backed by two fixed numeric visibility
+masks, three height switches, two filter modes, and one language preference.
+The compact mask controls clock, treasure, Boss, Assault, mini-games,
 area quests, and bird eggs. The expanded-map mask controls treasure, Boss,
 Assault, mini-games, and area quests; clock and bird eggs have no expanded-map
 renderer. Mini-games are one display category covering Fly, Mole, and Wave.
 These masks filter presentation only; they do not mutate catalogs, save data,
 cooldowns, quest states, completion latches, or provider scheduling.
+
+The startup-only `[height_arrows]` section stores independent Treasure, Area
+Quest, and Mole `true|false` values. All three default ON on a clean install; a
+valid existing configuration keeps its values. These switches control compact-
+radar height guidance only and never hide a marker. Every visible Area Quest
+uses its generated height-band profile. For a multi-band profile, authored
+marker Z first chooses the uniquely nearest existing source band. Within that
+selected band expanded by the inclusive +/-500 vertical-unit margin, its normal
+black frame shows three white dots. A player below the selected band gets an up
+triangle and a player above it gets a down triangle. An exact-distance tie or
+missing source profile gets neutral presentation with no dots or direction.
+The shared mini-game channel also uses an inclusive +/-500 interval. All three
+height channels compare against `playerZ - 150`, while Treasure retains its
+existing dead-zone behavior.
+
+The `[interface]` section stores one of the 11 explicit language choices. A
+legacy AUTO value is accepted only as migration input: the next actual F6
+opening or F7 activation resolves `DGameUserSettings.LanguageText`, then Kismet
+and English, and persists the matching explicit language. AUTO/Use Game
+Language is not displayed. F6 selects already-loaded game Font objects by
+script: `DsCompositFont_CommonSystem` for Korean and Latin/Cyrillic languages,
+`DsCompositFont_TCSystem` for both Chinese choices,
+`DsCompositFont_JPSystem` for Japanese, and `DsCompositFont_THSystem` for Thai.
+Missing loaded-font evidence falls back safely without changing the language,
+guessing an asset path, or replacing FontMaterial. If the constructed widget reports exactly `Font.Size == 0`,
+one bounded reference size is seeded. A game-widget construction, target-size,
+or font-commit failure retries that text once as base UMG `TextBlock` during
+the same open. The real reflected
+`Font.Size` participates in layout under a slot-safe
+line-height bound. After `AddToViewport` and layout prepass, font size is
+reapplied and read back; a missing core Font/SetFont ABI or failed size
+verification remains fail closed. Font evidence never changes the language.
+Korean and Traditional Chinese fixed labels also use generated 2x overlays from
+pinned DroidSansFallback at base size 32, with a one-pixel translucent stroke
+and role-specific optical baselines. Static generation verifies that no overlay
+slot clips; live visual acceptance remains required. The provider does no
+recurring language query.
+
+The expanded-map renderer reserves 4,096 fixed marker slots. The accepted input
+ceiling is 2,500 Treasure rows plus 279 fixed non-Treasure rows, or 2,779 total,
+leaving 1,317 spare slots. Its two event-built 3072-by-3072 atlases use style
+revision 50 and approximately 72 MiB raw decoded BGRA memory versus about 32 MiB
+at 2048. The larger raster changes neither marker coordinates nor projection,
+zoom, parent ownership, or outer/inner container geometry.
+
+F6 may open while Radar is Off, On, or Faulted. Its status/action transaction
+exposes Enable, Disable, or Retry without changing the playable-world guard for
+activation. Bug Report launches the fixed Nexus Posts URL. These are explicit
+user actions and add no steady provider schedule.
 
 The startup-only `[modes]` section stores `area_quests=available|all`. Available
 mode consumes the existing strict prerequisite proof. All mode is an explicit
@@ -301,20 +437,23 @@ restores those live filters. Boss availability and area-quest availability remai
 strict paths. This presentation branch reuses the fixed 49-entry selection pass
 and neither changes encounter-state authority nor adds a provider request.
 
-The Hub retains only weak widget identities while open and never retains a
+The page retains only weak widget identities while open and never retains a
 player controller. Its open panel services check boxes at a fixed 50 ms
 interval. When closed it performs no UObject access, reflection, allocation,
 polling, or file I/O. A changed selection publishes both masks in one
-game-thread transaction together with both display modes and performs one atomic replacement of
+game-thread transaction together with both display modes, height choices, and
+language preference and performs one atomic replacement of
 `config/visibility.ini`; unchanged samples perform no write. The open-only
 service conditionally restores the cursor if gameplay hides it. The file is
 read once during native startup, is never hot-polled, and
 is preserved by deployment. F8, travel, shutdown, and an explicit second F6
 close remove the transient panel and clear its weak runtime handles.
 
-The current 4 KiB-bounded document requires complete `[radar]`, `[map]`, and
-`[modes]` sections. Radar and map categories use named `true|false` keys; modes
-use `available|all`. Duplicate, mixed-format, unknown, incomplete, malformed,
+The current 4 KiB-bounded document requires complete `[radar]`, `[map]`,
+`[modes]`, `[height_arrows]`, and `[interface]` sections. Radar, map, and height
+categories use named `true|false` keys; modes use `available|all`; interface
+stores one supported language token. Duplicate, mixed-format, unknown,
+incomplete, malformed,
 or inconsistent-line-ending input falls back to safe defaults. A real F6
 change upgrades an accepted legacy document by atomically writing the current
 readable format.

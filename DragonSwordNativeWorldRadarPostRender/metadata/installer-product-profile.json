@@ -3,8 +3,8 @@
   "product": {
     "mod_name": "DragonSwordNativeWorldRadarPostRender",
     "display_name": "DragonSword Native World Radar",
-    "public_version": "2.1.0",
-    "runtime_label": "DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_1_0"
+    "public_version": "2.2.1",
+    "runtime_label": "DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1"
   },
   "game": {
     "steam_app_id": 4570720,
@@ -21,7 +21,8 @@
     },
     "transaction_identity_inputs": [
       "current_executable_sha256"
-    ]
+    ],
+    "runtime_binding_policy": "For the observed game 1.0.11 executable, owner RVA 0x94F4FA8 and key member offset +0x128 are a zero-scan fast path only. If validation against the active .db fails during FullActivation, runtime permits at most one current-EXE structural scan. It scans only executable section bytes bounded by min(SizeOfRawData, VirtualSize), counts only valid unique targets inside SizeOfImage, and shares one total budget of at most 24 active-database key validations across packaged and structural owner routes. Structural incompatibility fails closed, and this is not a compatibility promise for every future game version."
   },
   "ue4ss": {
     "missing_policy": "bootstrap_pinned_experimental_nested_transactionally",
@@ -107,9 +108,17 @@
       "modes": {
         "area_quests": "available",
         "assault": "available"
+      },
+      "height_arrows": {
+        "treasure": true,
+        "area_quests": false,
+        "mole": false
+      },
+      "interface": {
+        "language": "auto"
       }
     },
-    "visibility_config": "startup-only config/visibility.ini with complete readable [radar], [map], and [modes] sections; named category Booleans and available or all modes; no hot polling",
+    "visibility_config": "startup-only config/visibility.ini; legacy complete [radar], [map], and [modes] files migrate with Treasure-only height and AUTO language defaults, while current files require complete [radar], [map], [modes], [height_arrows], and [interface] sections; no hot polling",
     "diagnostics_config": "startup-only config/diagnostics.ini; public default debug_logging=false; enabled log schema 2 records seq, utc_ms, and elapsed_ms; disabled path returns before formatting, mutex acquisition, directory creation, rotation, or file I/O",
     "user_owned_paths": [
       "config/visibility.ini",
@@ -150,7 +159,7 @@
     "publication_blockers": [
       "Unreal Engine and UEPseudo authorization, redistribution, and GPL-compatibility review",
       "Exact e_sqlcipher.dll source revisions, patches, build recipe, toolchain, and reproducible source-to-binary chain",
-      "Redistribution rights, attribution, and provenance for PAK-derived catalogs and the MnMRadar-derived coordinate table"
+      "Redistribution rights, attribution, and provenance for PAK-derived catalogs, the MnMRadar-derived coordinate table, and ActorPositionData-derived Area Quest height-band profiles"
     ]
   },
   "installation": {
@@ -187,16 +196,16 @@
   "release": {
     "installer_first": true,
     "installer_unsigned": true,
-    "archive_name": "DragonSwordNativeWorldRadarPostRender-v2.1.0-Installer.zip",
+    "archive_name": "DragonSwordNativeWorldRadarPostRender-v2.2.1-Installer.zip",
     "manual_package": true,
     "manual_archives": [
       {
-        "name": "DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-No-UE4SS.zip",
+        "name": "DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-No-UE4SS.zip",
         "layout": "experimental_nested",
         "includes_ue4ss": false
       },
       {
-        "name": "DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip",
+        "name": "DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip",
         "layout": "experimental_nested",
         "includes_ue4ss": true,
         "runtime_policy": "pinned_integrity_verified_experimental_nested_only"
@@ -214,29 +223,37 @@
       "failed": 0,
       "skipped": 0
     },
-    "final_output_directory": "dist/final-2.1.0",
+    "final_output_directory": "dist/final-2.2.1",
     "expected_final_files": [
-      "DragonSwordNativeWorldRadarPostRender-v2.1.0-Installer.zip",
-      "DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-No-UE4SS.zip",
-      "DragonSwordNativeWorldRadarPostRender-v2.1.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip",
+      "DragonSwordNativeWorldRadarPostRender-v2.2.1-Installer.zip",
+      "DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-No-UE4SS.zip",
+      "DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip",
       "release-manifest.json",
       "SHA256SUMS.txt"
     ],
     "expected_public_files": [
-      "DragonSwordNativeWorldRadarPostRender-Setup-2.1.0.exe",
-      "DragonSwordNativeWorldRadarPostRender-Setup-2.1.0.exe.sha256",
+      "DragonSwordNativeWorldRadarPostRender-Setup-2.2.1.exe",
+      "DragonSwordNativeWorldRadarPostRender-Setup-2.2.1.exe.sha256",
       "INSTALL.md",
       "THIRD_PARTY_NOTICES.txt"
     ]
   },
   "acceptance": {
-    "source": "PASSED_CURRENT_CORE_AND_4_STATIC_GATES",
-    "build": "PASSED_CURRENT_NATIVE_WX",
-    "native_main_dll_sha256": "B35F0A6D7564085C48F21ADF954E1ACD1279BD00047E3A4032CEB13EBD5A8AEA",
-    "package": "PASSED_CURRENT_THREE_ARCHIVES_PAYLOAD_EQUIVALENCE_COPY_LAYOUT_CLEAN_TARGET",
-    "installer_matrix": "PASSED_CURRENT_20_SETUP_AND_2_MANUAL",
-    "deployment": "NOT_PERFORMED",
+    "source": "PASSED_2_2_1_FIX_ONLY_GATES",
+    "build": "PASSED_2_2_1_NATIVE_444_OF_444_AND_CORE_2_OF_2",
+    "compiled_source_sha256": "DE0100B2D4DE894FA94C6911AD328F7699C55D50EC21193C688B44F7F2588BA2",
+    "native_main_dll_sha256": "C21823088E38D2BD1635651981187AB4C01C2FFD0DCD4804CB9FFDB1899FABB9",
+    "package": "PASSED_2_2_1_THREE_ARCHIVE_BYTE_IDENTICAL_REEXTRACTION",
+    "installer_matrix": "PASSED_SETUP_20_OF_20_MANUAL_2_OF_2_AND_PAYLOAD_GATES",
+    "deployment": "PASSED_DEVELOPER_LOCAL_DIAGNOSTICS_ENABLED_C2182308",
     "gameplay": "NOT_VALIDATED",
+    "f6_visual": "NOT_VALIDATED",
+    "controller": "NOT_VALIDATED",
+    "localization": "NOT_VALIDATED",
+    "exit": "NOT_VALIDATED",
+    "performance": "NOT_VALIDATED",
+    "f6_text_lifecycle": "Source lifecycle centering covers initial open, language changes, status changes, and popup visibility changes. Exact-font text accepts GetDesiredSize only when ReturnValue matches the known Vector2D struct identity, then centers the measured line height within the authored vertical slot. Render-scale fallback preserves authored slot geometry. Invalid desired-size evidence preserves authored text-slot geometry. The work is edge-only and changes no per-frame path, radar or world-map geometry, or button hit region; live visual behavior remains NOT_VALIDATED.",
+    "evidence_boundary": "Historical 2.2.0 source, build, package, installer, and local-deployment evidence remains bound to DLL 6AEFDACC1A44EF6F387456CB31FE1A6828259EF7ACDEE1D1FE13BAE10BDFA4D5 and compiled source A98660932CC5DA1BC3E2B9D262DBFC13E0FED3935A6174B5C92E8622BBA2A1EC; it is not 2.2.1 evidence. Exact-artifact 2.2.1 source validation, native build, package, Setup 20/20, Manual 2/2, payload equivalence, layout, clean-target, archive re-extraction, and developer-local deployment passed for DLL C21823088E38D2BD1635651981187AB4C01C2FFD0DCD4804CB9FFDB1899FABB9 and compiled source DE0100B2D4DE894FA94C6911AD328F7699C55D50EC21193C688B44F7F2588BA2. Gameplay, native-icon stability, click-target alignment, F6 visual behavior, controller behavior, localization, exit, and performance remain NOT_VALIDATED.",
     "publication": "BLOCKED"
   }
 }

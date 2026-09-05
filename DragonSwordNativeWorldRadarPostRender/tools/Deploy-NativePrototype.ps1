@@ -137,6 +137,60 @@ function Assert-PlainDirectoryIfPresent {
     }
 }
 
+function Assert-ValidTreasureOverrides {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Description
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "$Description must be a regular file: $Path"
+    }
+    $item = Get-Item -LiteralPath $Path -Force
+    if (($item.Attributes -band `
+            [System.IO.FileAttributes]::ReparsePoint) -ne 0 `
+        -or $item.Length -le 0 -or $item.Length -gt 64KB) {
+        throw "$Description is unsafe, empty, or exceeds 64 KiB: $Path"
+    }
+
+    $bytes = [System.IO.File]::ReadAllBytes($item.FullName)
+    $offset = if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF `
+        -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { 3 } else { 0 }
+    try {
+        $text = [System.Text.UTF8Encoding]::new($false, $true).GetString(
+            $bytes, $offset, $bytes.Length - $offset)
+    } catch [System.Text.DecoderFallbackException] {
+        throw "$Description is not strict UTF-8: $Path"
+    }
+    if ($text.Replace("`r`n", '').Contains("`r")) {
+        throw "$Description contains a bare carriage return: $Path"
+    }
+    $withoutCrLf = $text.Replace("`r`n", '')
+    if ($text.Contains("`r`n") -and $withoutCrLf.Contains("`n")) {
+        throw "$Description mixes CRLF and LF line endings: $Path"
+    }
+
+    $ignored = [System.Collections.Generic.HashSet[long]]::new()
+    foreach ($original in @($text -split "`r`n|`n")) {
+        $line = $original.Trim()
+        if ($line.Length -eq 0 -or $line.StartsWith('#') `
+            -or $line.StartsWith(';')) {
+            continue
+        }
+        $fields = @($line -split '\s+')
+        [long]$id = 0
+        if ($fields.Count -ne 2 -or $fields[0] -cne 'ignore' `
+            -or -not [long]::TryParse(
+                $fields[1],
+                [System.Globalization.NumberStyles]::None,
+                [System.Globalization.CultureInfo]::InvariantCulture,
+                [ref]$id) `
+            -or $id -le 0 -or -not $ignored.Add($id)) {
+            throw "$Description must contain unique 'ignore <positive save ID>' rows: $Path"
+        }
+    }
+}
+
 function Read-ModsTextDocument {
     param([string]$Path)
 
@@ -270,6 +324,8 @@ foreach ($required in @(
         throw "Required deployment input is missing: $required"
     }
 }
+Assert-ValidTreasureOverrides -Path $sourceOverrides `
+    -Description 'Source treasure overrides'
 . (Join-Path $PSScriptRoot 'NativeBuildReceipt.ps1')
 Test-DsnwrNativeBuildReceipt -ProjectRoot $projectRoot `
     -DllPath $sourceDll -ReceiptPath $sourceBuildReceipt | Out-Null
@@ -331,7 +387,7 @@ $catalogRules = @(
     [pscustomobject]@{ Name = 'treasure-actors.tsv'; Header = "SaveId`tClassName`tX`tY`tZ"; Minimum = 1600; Maximum = 2500 },
     [pscustomobject]@{ Name = 'boss-actors.tsv'; Header = "Id`tClassName`tX`tY`tZ"; Minimum = 9; Maximum = 9 },
     [pscustomobject]@{ Name = 'assault-actors.tsv'; Header = "Id`tClassName`tX`tY`tZ"; Minimum = 40; Maximum = 40 },
-    [pscustomobject]@{ Name = 'area-quests.tsv'; Header = "Id`tX`tY`tZ"; Minimum = 147; Maximum = 147 }
+    [pscustomobject]@{ Name = 'area-quests.tsv'; Header = "Id`tX`tY`tZ`tHeight1MinZ`tHeight1MaxZ`tHeight2MinZ`tHeight2MaxZ`tHeightBandCount"; Minimum = 147; Maximum = 147 }
 )
 foreach ($rule in $catalogRules) {
     $catalogPath = Join-Path $sourceData $rule.Name
@@ -481,6 +537,12 @@ $backupStableMarkers = Join-Path $backup 'stable-markers'
 $installStage = Join-Path $backup 'install-stage'
 $preservedVisibility = Join-Path $backup 'preserved\visibility.ini'
 $preservedDiagnostics = Join-Path $backup 'preserved\diagnostics.ini'
+$preservedTreasureOverrides = Join-Path $backup `
+    'preserved\treasure_overrides.txt'
+$currentTreasureOverrides = Join-Path $target `
+    'data\defaults\treasure_overrides.txt'
+$treasureOverridesExisted = $false
+$preservedTreasureOverridesHash = $null
 if (Test-Path -LiteralPath $backup) {
     throw "Refusing to reuse an existing deployment backup: $backup"
 }
@@ -503,6 +565,19 @@ if ($targetExisted) {
             (Split-Path -Parent $preservedDiagnostics) -Force | Out-Null
         Copy-Item -LiteralPath $currentDiagnostics `
             -Destination $preservedDiagnostics -Force
+    }
+    if (Test-Path -LiteralPath $currentTreasureOverrides) {
+        Assert-ValidTreasureOverrides -Path $currentTreasureOverrides `
+            -Description 'Installed treasure overrides'
+        New-Item -ItemType Directory -Path `
+            (Split-Path -Parent $preservedTreasureOverrides) -Force | Out-Null
+        Copy-Item -LiteralPath $currentTreasureOverrides `
+            -Destination $preservedTreasureOverrides -Force
+        Assert-ValidTreasureOverrides -Path $preservedTreasureOverrides `
+            -Description 'Preserved treasure overrides'
+        $treasureOverridesExisted = $true
+        $preservedTreasureOverridesHash = (Get-FileHash -LiteralPath `
+                $preservedTreasureOverrides -Algorithm SHA256).Hash
     }
 }
 foreach ($markerName in @('enabled.txt', 'enabled.disabled.txt')) {
@@ -527,10 +602,33 @@ Test-DsnwrNativeBuildReceipt -ProjectRoot $projectRoot `
     -DllPath $stagedDll -ReceiptPath $stagedReceipt | Out-Null
 
 Assert-InstalledDeploymentInputsSafe
+$currentTargetExists = Test-Path -LiteralPath $target -PathType Container
+if ($currentTargetExists -ne $targetExisted) {
+    throw 'Installed native target changed while deployment was staged.'
+}
+if ($currentTargetExists) {
+    $currentTreasureOverridesExists =
+        Test-Path -LiteralPath $currentTreasureOverrides -PathType Leaf
+    if ($currentTreasureOverridesExists -ne $treasureOverridesExisted) {
+        throw 'Installed treasure overrides changed while deployment was staged.'
+    }
+    if ($currentTreasureOverridesExists) {
+        Assert-ValidTreasureOverrides -Path $currentTreasureOverrides `
+            -Description 'Installed treasure overrides before mutation'
+        $currentTreasureOverridesHash = (Get-FileHash -LiteralPath `
+                $currentTreasureOverrides -Algorithm SHA256).Hash
+        if ($currentTreasureOverridesHash -ne `
+                $preservedTreasureOverridesHash) {
+            throw 'Installed treasure overrides changed while deployment was staged.'
+        }
+    } elseif (Test-Path -LiteralPath $currentTreasureOverrides) {
+        throw 'Installed treasure overrides became a non-file while deployment was staged.'
+    }
+}
 $mutationStarted = $false
 try {
 $prohibited = @(
-    'host', 'installer', 'scripts', 'src', 'tools', 'assets',
+    'host', 'installer', 'scripts', 'src', 'tools',
     'Install.cmd',
     'runtime\bridge', 'runtime\diagnostics', 'runtime\launch.request'
 )
@@ -662,6 +760,14 @@ foreach ($name in $prohibited) {
 Test-DsnwrRuntimePayload -ProjectRoot $projectRoot -DllPath $sourceDll `
     -PayloadRoot $target -AllowUserVisibility -AllowUserDiagnostics `
     -InstalledConfiguration | Out-Null
+$installedTreasureOverrides = Join-Path $target `
+    'data\defaults\treasure_overrides.txt'
+if ($treasureOverridesExisted) {
+    Copy-Item -LiteralPath $preservedTreasureOverrides `
+        -Destination $installedTreasureOverrides -Force
+}
+Assert-ValidTreasureOverrides -Path $installedTreasureOverrides `
+    -Description 'Installed treasure overrides after deployment'
 $installedDll = Join-Path $target 'dlls\main.dll'
 $installedReceipt = Join-Path $target `
     'metadata\native-build-receipt.json'
@@ -683,10 +789,15 @@ $installedSqlCipherHash = (Get-FileHash -LiteralPath (Join-Path $target 'vendor\
 if ($sourceSqlCipherHash -ne $installedSqlCipherHash) {
     throw 'Installed SQLCipher DLL hash does not match the source asset.'
 }
-$sourceOverrideHash = (Get-FileHash -LiteralPath $sourceOverrides -Algorithm SHA256).Hash
-$installedOverrideHash = (Get-FileHash -LiteralPath (Join-Path $target 'data\defaults\treasure_overrides.txt') -Algorithm SHA256).Hash
-if ($sourceOverrideHash -ne $installedOverrideHash) {
-    throw 'Installed treasure override hash does not match the source default.'
+$expectedOverrideHash = if ($treasureOverridesExisted) {
+    $preservedTreasureOverridesHash
+} else {
+    (Get-FileHash -LiteralPath $sourceOverrides -Algorithm SHA256).Hash
+}
+$installedOverrideHash = (Get-FileHash -LiteralPath `
+        $installedTreasureOverrides -Algorithm SHA256).Hash
+if ($expectedOverrideHash -ne $installedOverrideHash) {
+    throw 'Installed treasure overrides were not preserved byte-for-byte.'
 }
 $installedRenderCatalog = Join-Path $target 'data\generated\treasures.lua'
 $sourceRenderCatalogHash = (Get-FileHash -LiteralPath $renderCatalogPath -Algorithm SHA256).Hash
@@ -708,6 +819,7 @@ if ($sourceAreaQuestCatalogHash -ne $installedAreaQuestCatalogHash) {
     InstalledSqlCipherSha256 = $installedSqlCipherHash
     InstalledRenderCatalogSha256 = $installedRenderCatalogHash
     InstalledAreaQuestCatalogSha256 = $installedAreaQuestCatalogHash
+    InstalledTreasureOverridesSha256 = $installedOverrideHash
     PredecessorEntryPresent = $false
     NativeEnabled = 1
     Backup = $backup

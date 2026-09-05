@@ -147,6 +147,14 @@ constexpr double kReferenceHeightOutlineWidth = 7.5;
 constexpr double kReferenceHeightInnerWidth = 3.25;
 constexpr double kReferenceHeightEndCapInset = 2.0;
 constexpr double kReferenceHeightTailInset = 3.0;
+constexpr double kReferenceMiniGameTriangleHalfWidth = 7.25;
+constexpr double kReferenceMiniGameTriangleHalfHeight = 6.0;
+constexpr double kReferenceMiniGameTriangleFillBarHeight = 3.25;
+constexpr double kReferenceMiniGameTriangleOutlineWidth = 2.4;
+constexpr double kReferenceMiniGameTriangleClearance = 1.5;
+constexpr double kAreaQuestMarkerTriangleHalfWidth = 0.48;
+constexpr double kAreaQuestMarkerTriangleHalfHeight = 0.52;
+constexpr double kAreaQuestMarkerTriangleStroke = 0.16;
 constexpr double kReferenceHeightGroupHalfSize =
     kReferenceHeightLength + kReferenceHeightHeadHalfWidth
         + kReferenceHeightOutlineWidth * 0.5;
@@ -181,8 +189,12 @@ constexpr LinearColor kFlyOutline{18.0F / 255.0F, 51.0F / 255.0F,
                                    84.0F / 255.0F, 1.0F};
 constexpr LinearColor kHammer{210.0F / 255.0F, 145.0F / 255.0F,
                               82.0F / 255.0F, 1.0F};
+constexpr LinearColor kMoleHeightOutline{76.0F / 255.0F, 45.0F / 255.0F,
+                                         26.0F / 255.0F, 1.0F};
 constexpr LinearColor kWave{50.0F / 255.0F, 91.0F / 255.0F,
                             224.0F / 255.0F, 1.0F};
+constexpr LinearColor kWaveOutline{17.0F / 255.0F, 31.0F / 255.0F,
+                                   92.0F / 255.0F, 1.0F};
 constexpr LinearColor kOfficialWhite{247.0F / 255.0F, 1.0F,
                                      253.0F / 255.0F, 1.0F};
 constexpr LinearColor kOfficialPale{216.0F / 255.0F, 246.0F / 255.0F,
@@ -234,8 +246,30 @@ struct MarkerPieceStyle {
 
 [[nodiscard]] LinearColor height_pointer_fill_color(
     CompactUmgMarkerKind kind) noexcept {
-    return kind == CompactUmgMarkerKind::AreaQuest
-        ? kOfficialCyan : treasure_color(kind);
+    switch (kind) {
+    case CompactUmgMarkerKind::Fly:
+        return kFlyWing;
+    case CompactUmgMarkerKind::Mole:
+        return kHammer;
+    case CompactUmgMarkerKind::Wave:
+        return kWave;
+    default:
+        return treasure_color(kind);
+    }
+}
+
+[[nodiscard]] LinearColor height_pointer_outline_color(
+    CompactUmgMarkerKind kind) noexcept {
+    switch (kind) {
+    case CompactUmgMarkerKind::Fly:
+        return kFlyOutline;
+    case CompactUmgMarkerKind::Mole:
+        return kMoleHeightOutline;
+    case CompactUmgMarkerKind::Wave:
+        return kWaveOutline;
+    default:
+        return kOutline;
+    }
 }
 
 [[nodiscard]] MarkerPieceStyle marker_piece_style(
@@ -483,13 +517,17 @@ void set_line_geometry(
 }
 
 [[nodiscard]] double height_arrow_right_extent(
-    double height_angle_degrees, double unit_scale) noexcept {
+    double height_angle_degrees, double unit_scale,
+    bool include_shaft) noexcept {
     const double radians = height_angle_degrees * kDegreesToRadians;
     const double cosine = std::cos(radians);
     const double sine = std::sin(radians);
     const double radius = kReferenceHeightOutlineWidth * unit_scale * 0.5;
     double right_extent{};
-    for (const LineSegment& segment : height_outline_segments(unit_scale)) {
+    const auto segments = height_outline_segments(unit_scale);
+    const std::size_t first_segment = include_shaft ? 0U : 1U;
+    for (std::size_t index = first_segment; index < segments.size(); ++index) {
+        const LineSegment& segment = segments[index];
         const double dx = segment.end.x - segment.start.x;
         const double dy = segment.end.y - segment.start.y;
         const double segment_length = std::hypot(dx, dy);
@@ -940,6 +978,12 @@ bool CompactUmgRenderer::attach_unsafe(
                kCompactUmgHeightChannelCount> height_slots{};
     for (std::size_t channel = 0;
          channel < kCompactUmgHeightChannelCount; ++channel) {
+        const bool mole_channel = channel
+            == static_cast<std::size_t>(CompactUmgHeightChannel::Mole);
+        const LinearColor initial_outline = mole_channel
+            ? kMoleHeightOutline : kOutline;
+        const LinearColor initial_fill = mole_channel
+            ? kHammer : kTreasureOther;
         UObject* height_group =
             UObjectGlobals::NewObject<UObject>(tree, canvas_panel_class_);
         if (!height_group) {
@@ -981,7 +1025,8 @@ bool CompactUmgRenderer::attach_unsafe(
             }
             set_brush_color(
                 border, set_brush_color_,
-                height_outline_order[piece] ? kOutline : kTreasureOther);
+                height_outline_order[piece]
+                    ? initial_outline : initial_fill);
             AddChildToCanvasParameters add_piece{border};
             height_group->ProcessEvent(add_child_to_canvas_, &add_piece);
             UObject* slot = add_piece.return_value;
@@ -1004,7 +1049,17 @@ bool CompactUmgRenderer::attach_unsafe(
                 std::atan2(
                     segment[3] - segment[1],
                     segment[2] - segment[0]) * kRadiansToDegrees);
-            set_visibility(border, set_visibility_, kVisible);
+            // Treasure keeps this complete six-piece shaft and sharp head. The
+            // same six fixed Mole-channel pieces are reshaped into a discrete
+            // below-marker mini-game triangle before that group is revealed.
+            // Area Quest owns no separate pointer: its task marker body is
+            // reshaped in place, so this channel stays collapsed.
+            const bool area_quest_channel = channel
+                == static_cast<std::size_t>(
+                    CompactUmgHeightChannel::AreaQuest);
+            set_visibility(
+                border, set_visibility_,
+                area_quest_channel ? kCollapsed : kVisible);
             height_pieces[channel][piece] = border;
             height_slots[channel][piece] = slot;
         }
@@ -1202,9 +1257,16 @@ bool CompactUmgRenderer::attach_unsafe(
         clock_phase_piece_slots_[piece] = clock_phase_slots[piece];
     }
     marker_kind_codes_.fill(0xFFU);
+    area_quest_marker_shape_codes_.fill(0xFFU);
+    area_quest_marker_center_x_.fill(0.0);
+    area_quest_marker_center_y_.fill(0.0);
+    area_quest_marker_scaled_size_.fill(0.0);
+    area_quest_height_profiles_.fill(dswros::AreaQuestHeightProfile{});
+    area_quest_height_active_.fill(false);
     height_visible_.fill(false);
     height_transform_valid_.fill(false);
     height_kind_codes_.fill(0xFFU);
+    mini_game_height_shape_codes_.fill(0xFFU);
     height_marker_half_widths_.fill(0.0);
     height_angle_degrees_.fill(0.0);
     height_translation_x_.fill(0.0);
@@ -1234,6 +1296,12 @@ bool CompactUmgRenderer::attach_unsafe(
         host_origin_x_,
         host_origin_y_}, true};
     host->ProcessEvent(set_position_in_viewport_, &viewport_position);
+    // AddToViewport runs the cloned PlayerIcon Blueprint's Construct path,
+    // which may restore the class-default hidden visibility after the
+    // pre-attach write above. Publish the authoritative visible state once
+    // more after construction so the compact radar never needs a later menu
+    // suppression edge (such as opening/closing the world map) to appear.
+    set_visibility(host, set_visibility_, kHitTestInvisible);
     host->ProcessEvent(force_layout_prepass_, nullptr);
 
     last_attach_failure_ = 0;
@@ -1525,8 +1593,8 @@ bool CompactUmgRenderer::rebind_unsafe(
         height_kind{{
             CompactUmgMarkerKind::TreasureOther,
             CompactUmgMarkerKind::AreaQuest,
+            CompactUmgMarkerKind::Mole,
         }};
-
     for (std::size_t index = 0; index < kCompactUmgMarkerCapacity; ++index) {
         std::array<UObject*, kCompactUmgMarkerPieceCount> pieces{};
         std::array<UObject*, kCompactUmgMarkerPieceCount> slots{};
@@ -1544,13 +1612,24 @@ bool CompactUmgRenderer::rebind_unsafe(
         const auto kind_code = static_cast<std::uint8_t>(marker.kind);
         const bool kind_valid = kind_code
             <= static_cast<std::uint8_t>(CompactUmgMarkerKind::BirdEgg);
+        const bool area_quest_marker = marker.kind
+            == CompactUmgMarkerKind::AreaQuest;
+        const bool height_input_valid = !marker.show_height
+            || (area_quest_marker
+                ? dswros::area_quest_height_profile_valid(
+                    marker.area_quest_height_profile)
+                    && std::isfinite(
+                        marker.area_quest_comparable_player_z)
+                : std::isfinite(marker.height_angle_degrees));
+        const bool unavailable_state_valid =
+            !marker.height_source_unavailable
+            || (area_quest_marker && !marker.show_height);
         const bool valid = requested && kind_valid
             && std::isfinite(marker.normalized_x)
             && std::isfinite(marker.normalized_y)
             && std::isfinite(marker.reference_size)
             && marker.reference_size > 0.0
-            && (!marker.show_height
-                || std::isfinite(marker.height_angle_degrees));
+            && height_input_valid && unavailable_state_valid;
         if (!valid) {
             if (marker_visible_[index]) {
                 for (UObject* piece : pieces) {
@@ -1560,6 +1639,12 @@ bool CompactUmgRenderer::rebind_unsafe(
             }
             marker_reference_sizes_[index] = 0.0;
             marker_kind_codes_[index] = 0xFFU;
+            area_quest_marker_shape_codes_[index] = 0xFFU;
+            area_quest_marker_center_x_[index] = 0.0;
+            area_quest_marker_center_y_[index] = 0.0;
+            area_quest_marker_scaled_size_[index] = 0.0;
+            area_quest_height_profiles_[index] = {};
+            area_quest_height_active_[index] = false;
             continue;
         }
 
@@ -1602,20 +1687,57 @@ bool CompactUmgRenderer::rebind_unsafe(
         }
         marker_reference_sizes_[index] = reference_size;
         marker_kind_codes_[index] = kind_code;
-        if (!marker_visible_[index]) {
+        if (!marker_visible_[index] || style_changed) {
             for (UObject* piece : pieces) {
                 set_visibility(piece, set_visibility_, kVisible);
             }
             marker_visible_[index] = true;
         }
+        if (marker.kind == CompactUmgMarkerKind::AreaQuest) {
+            const auto shape = marker.show_height
+                ? dswros::area_quest_height_indicator_shape(
+                    marker.area_quest_height_profile,
+                    marker.area_quest_comparable_player_z)
+                : marker.height_source_unavailable
+                    ? dswros::AreaQuestHeightIndicatorShape::Unavailable
+                    : dswros::AreaQuestHeightIndicatorShape::Aligned;
+            const auto shape_code = static_cast<std::uint8_t>(shape);
+            const bool directional = shape
+                    == dswros::AreaQuestHeightIndicatorShape::Above
+                || shape == dswros::AreaQuestHeightIndicatorShape::Below;
+            if ((directional
+                    || area_quest_marker_shape_codes_[index] != shape_code)
+                && !configure_area_quest_marker_shape_unsafe(
+                    index, shape_code, x, y, scaled_size)) {
+                return false;
+            }
+            area_quest_marker_shape_codes_[index] = shape_code;
+            area_quest_marker_center_x_[index] = x;
+            area_quest_marker_center_y_[index] = y;
+            area_quest_marker_scaled_size_[index] = scaled_size;
+            area_quest_height_profiles_[index] = marker.show_height
+                ? marker.area_quest_height_profile
+                : dswros::AreaQuestHeightProfile{};
+            area_quest_height_active_[index] = marker.show_height;
+        } else {
+            area_quest_marker_shape_codes_[index] = 0xFFU;
+            area_quest_marker_center_x_[index] = 0.0;
+            area_quest_marker_center_y_[index] = 0.0;
+            area_quest_marker_scaled_size_[index] = 0.0;
+            area_quest_height_profiles_[index] = {};
+            area_quest_height_active_[index] = false;
+        }
         const bool treasure_height = marker.kind
             <= CompactUmgMarkerKind::TreasurePuzzle;
-        const bool area_quest_height = marker.kind
-            == CompactUmgMarkerKind::AreaQuest;
-        if (marker.show_height && (treasure_height || area_quest_height)) {
-            const std::size_t channel = area_quest_height
+        const bool mini_game_height = marker.kind
+                == CompactUmgMarkerKind::Fly
+            || marker.kind == CompactUmgMarkerKind::Mole
+            || marker.kind == CompactUmgMarkerKind::Wave;
+        if (marker.show_height
+            && (treasure_height || mini_game_height)) {
+            const std::size_t channel = mini_game_height
                 ? static_cast<std::size_t>(
-                    CompactUmgHeightChannel::AreaQuest)
+                    CompactUmgHeightChannel::Mole)
                 : static_cast<std::size_t>(
                     CompactUmgHeightChannel::Treasure);
             if (!height_requested[channel]) {
@@ -1653,6 +1775,7 @@ bool CompactUmgRenderer::rebind_unsafe(
             }
             height_transform_valid_[channel] = false;
             height_kind_codes_[channel] = 0xFFU;
+            mini_game_height_shape_codes_[channel] = 0xFFU;
             height_marker_half_widths_[channel] = 0.0;
         } else {
             set_slot_vector(
@@ -1660,25 +1783,36 @@ bool CompactUmgRenderer::rebind_unsafe(
                 height_anchor_x[channel], height_anchor_y[channel]);
             height_marker_half_widths_[channel] =
                 height_marker_size[channel] * kReferenceTreasureHalfWidth;
-            if (!apply_height_pointer_transform_unsafe(
-                    channel, height_angle[channel], true)) {
-                return false;
-            }
-
-            constexpr std::array<bool, kCompactUmgHeightPieceCount>
-                outline_order{{true, false, true, true, false, false}};
-            const auto next_kind_code =
-                static_cast<std::uint8_t>(height_kind[channel]);
-            if (height_kind_codes_[channel] != next_kind_code) {
-                const LinearColor fill =
-                    height_pointer_fill_color(height_kind[channel]);
-                for (std::size_t piece = 0;
-                     piece < kCompactUmgHeightPieceCount; ++piece) {
-                    set_brush_color(
-                        height_pieces[piece], set_brush_color_,
-                        outline_order[piece] ? kOutline : fill);
+            const bool mini_game_channel = channel
+                == static_cast<std::size_t>(CompactUmgHeightChannel::Mole);
+            if (mini_game_channel) {
+                if (!configure_mini_game_height_indicator_unsafe(
+                        channel, height_kind[channel], height_angle[channel],
+                        true)) {
+                    return false;
                 }
-                height_kind_codes_[channel] = next_kind_code;
+            } else {
+                if (!apply_height_pointer_transform_unsafe(
+                        channel, height_angle[channel], true)) {
+                    return false;
+                }
+                constexpr std::array<bool, kCompactUmgHeightPieceCount>
+                    outline_order{{true, false, true, true, false, false}};
+                const auto next_kind_code =
+                    static_cast<std::uint8_t>(height_kind[channel]);
+                if (height_kind_codes_[channel] != next_kind_code) {
+                    const LinearColor fill =
+                        height_pointer_fill_color(height_kind[channel]);
+                    const LinearColor outline =
+                        height_pointer_outline_color(height_kind[channel]);
+                    for (std::size_t piece = 0;
+                         piece < kCompactUmgHeightPieceCount; ++piece) {
+                        set_brush_color(
+                            height_pieces[piece], set_brush_color_,
+                            outline_order[piece] ? outline : fill);
+                    }
+                    height_kind_codes_[channel] = next_kind_code;
+                }
             }
             if (!height_visible_[channel]) {
                 set_visibility(height_group, set_visibility_, kVisible);
@@ -1751,6 +1885,7 @@ void CompactUmgRenderer::update_height_pointer(
     const std::size_t channel_index = static_cast<std::size_t>(channel);
     if (!activation_active_ || menu_suppressed_
         || channel_index >= kCompactUmgHeightChannelCount
+        || channel == CompactUmgHeightChannel::AreaQuest
         || !height_visible_[channel_index]
         || state_ != CompactUmgRendererState::Attached
         || !std::isfinite(height_angle_degrees)) {
@@ -1785,8 +1920,91 @@ bool CompactUmgRenderer::update_height_pointer_guarded(
 bool CompactUmgRenderer::update_height_pointer_unsafe(
     CompactUmgHeightChannel channel,
     double height_angle_degrees) {
+    if (channel == CompactUmgHeightChannel::Mole) {
+        const std::size_t channel_index = static_cast<std::size_t>(channel);
+        const auto kind = static_cast<CompactUmgMarkerKind>(
+            height_kind_codes_[channel_index]);
+        return configure_mini_game_height_indicator_unsafe(
+            channel_index, kind, height_angle_degrees, false);
+    }
     return apply_height_pointer_transform_unsafe(
         static_cast<std::size_t>(channel), height_angle_degrees, false);
+}
+
+void CompactUmgRenderer::update_area_quest_height_indicators(
+    double comparable_player_z) noexcept {
+    if (!activation_active_ || menu_suppressed_
+        || state_ != CompactUmgRendererState::Attached
+        || !std::isfinite(comparable_player_z)) {
+        return;
+    }
+    if (!update_area_quest_height_indicators_guarded(comparable_player_z)) {
+        ++fault_count_;
+        state_ = CompactUmgRendererState::Faulted;
+        activation_active_ = false;
+        detach_guarded();
+    }
+}
+
+bool CompactUmgRenderer::update_area_quest_height_indicators_guarded(
+    double comparable_player_z) noexcept {
+#if defined(_MSC_VER)
+    __try {
+        return update_area_quest_height_indicators_unsafe(
+            comparable_player_z);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+#else
+    try {
+        return update_area_quest_height_indicators_unsafe(
+            comparable_player_z);
+    } catch (...) {
+        return false;
+    }
+#endif
+}
+
+bool CompactUmgRenderer::update_area_quest_height_indicators_unsafe(
+    double comparable_player_z) {
+    if (!std::isfinite(comparable_player_z)) {
+        return false;
+    }
+    const auto area_quest_kind = static_cast<std::uint8_t>(
+        CompactUmgMarkerKind::AreaQuest);
+    const std::size_t count = std::min(
+        active_marker_count_, kCompactUmgMarkerCapacity);
+    for (std::size_t index = 0; index < count; ++index) {
+        if (!area_quest_height_active_[index]
+            || marker_kind_codes_[index] != area_quest_kind) {
+            continue;
+        }
+        const dswros::AreaQuestHeightProfile& height_profile =
+            area_quest_height_profiles_[index];
+        const double center_x = area_quest_marker_center_x_[index];
+        const double center_y = area_quest_marker_center_y_[index];
+        const double scaled_size = area_quest_marker_scaled_size_[index];
+        if (!dswros::area_quest_height_profile_valid(height_profile)
+            || !std::isfinite(center_x)
+            || !std::isfinite(center_y) || !std::isfinite(scaled_size)
+            || scaled_size <= 0.0) {
+            return false;
+        }
+        const auto shape = dswros::area_quest_height_indicator_shape(
+            height_profile, comparable_player_z);
+        const auto shape_code = static_cast<std::uint8_t>(shape);
+        if (shape_code == area_quest_marker_shape_codes_[index]) {
+            ++height_transform_skip_count_;
+            continue;
+        }
+        if (!configure_area_quest_marker_shape_unsafe(
+                index, shape_code, center_x, center_y, scaled_size)) {
+            return false;
+        }
+        area_quest_marker_shape_codes_[index] = shape_code;
+        ++height_transform_count_;
+    }
+    return true;
 }
 
 void CompactUmgRenderer::update_world_clock(
@@ -2025,7 +2243,9 @@ bool CompactUmgRenderer::update_world_clock_unsafe(
 bool CompactUmgRenderer::apply_height_pointer_transform_unsafe(
     std::size_t channel,
     double height_angle_degrees, bool force) {
-    if (channel >= kCompactUmgHeightChannelCount) {
+    if (channel >= kCompactUmgHeightChannelCount
+        || channel == static_cast<std::size_t>(
+            CompactUmgHeightChannel::AreaQuest)) {
         return false;
     }
     UObject* height_group = height_groups_[channel].Get();
@@ -2045,7 +2265,7 @@ bool CompactUmgRenderer::apply_height_pointer_transform_unsafe(
     }
 
     const double arrow_right_extent = height_arrow_right_extent(
-        clamped_angle, umg_unit_scale_);
+        clamped_angle, umg_unit_scale_, true);
     const double translation_x = -height_marker_half_widths_[channel]
         - kReferenceHeightClearance * umg_unit_scale_
         - arrow_right_extent;
@@ -2063,9 +2283,248 @@ bool CompactUmgRenderer::apply_height_pointer_transform_unsafe(
     return true;
 }
 
+bool CompactUmgRenderer::configure_mini_game_height_indicator_unsafe(
+    std::size_t channel,
+    CompactUmgMarkerKind kind,
+    double height_angle_degrees,
+    bool force) {
+    const std::size_t mini_game_channel = static_cast<std::size_t>(
+        CompactUmgHeightChannel::Mole);
+    const bool kind_valid = kind == CompactUmgMarkerKind::Fly
+        || kind == CompactUmgMarkerKind::Mole
+        || kind == CompactUmgMarkerKind::Wave;
+    if (channel != mini_game_channel || !kind_valid
+        || !std::isfinite(height_angle_degrees)
+        || !std::isfinite(height_marker_half_widths_[channel])
+        || height_marker_half_widths_[channel] <= 0.0
+        || !std::isfinite(umg_unit_scale_) || umg_unit_scale_ <= 0.0) {
+        return false;
+    }
+
+    UObject* height_group = height_groups_[channel].Get();
+    if (!height_group) {
+        return false;
+    }
+    std::array<UObject*, kCompactUmgHeightPieceCount> pieces{};
+    std::array<UObject*, kCompactUmgHeightPieceCount> slots{};
+    for (std::size_t piece = 0; piece < kCompactUmgHeightPieceCount;
+         ++piece) {
+        pieces[piece] = height_pieces_[channel][piece].Get();
+        slots[piece] = height_piece_slots_[channel][piece].Get();
+        if (!pieces[piece] || !slots[piece]) {
+            return false;
+        }
+    }
+
+    const auto shape = dswros::mini_game_height_indicator_shape(
+        height_angle_degrees);
+    const auto shape_code = static_cast<std::uint8_t>(shape);
+    const auto kind_code = static_cast<std::uint8_t>(kind);
+    if (!force && height_transform_valid_[channel]
+        && mini_game_height_shape_codes_[channel] == shape_code
+        && height_kind_codes_[channel] == kind_code) {
+        ++height_transform_skip_count_;
+        return true;
+    }
+
+    if (shape == dswros::MiniGameHeightIndicatorShape::Hidden) {
+        for (UObject* piece : pieces) {
+            set_visibility(piece, set_visibility_, kCollapsed);
+        }
+        mini_game_height_shape_codes_[channel] = shape_code;
+        height_kind_codes_[channel] = kind_code;
+        height_angle_degrees_[channel] = 0.0;
+        height_transform_valid_[channel] = true;
+        ++height_transform_count_;
+        return true;
+    }
+
+    const double center = kReferenceHeightGroupHalfSize * umg_unit_scale_;
+    const double half_width =
+        kReferenceMiniGameTriangleHalfWidth * umg_unit_scale_;
+    const double half_height =
+        kReferenceMiniGameTriangleHalfHeight * umg_unit_scale_;
+    const double fill_bar_height =
+        kReferenceMiniGameTriangleFillBarHeight * umg_unit_scale_;
+    const double outline_width =
+        kReferenceMiniGameTriangleOutlineWidth * umg_unit_scale_;
+    const LinearColor fill = height_pointer_fill_color(kind);
+    const double apex_y = center + (shape
+            == dswros::MiniGameHeightIndicatorShape::Above
+        ? -half_height : half_height);
+    const double base_y = center + (shape
+            == dswros::MiniGameHeightIndicatorShape::Above
+        ? half_height : -half_height);
+    const std::array<LineSegment, 3> outline{{
+        {{center - half_width, base_y}, {center, apex_y}},
+        {{center, apex_y}, {center + half_width, base_y}},
+        {{center + half_width, base_y}, {center - half_width, base_y}},
+    }};
+    for (std::size_t edge = 0; edge < outline.size(); ++edge) {
+        const LineSegment& segment = outline[edge];
+        set_line_geometry(
+            slots[edge], set_slot_position_, set_slot_size_,
+            segment.start.x, segment.start.y,
+            segment.end.x, segment.end.y, outline_width);
+        set_render_angle(
+            pieces[edge], set_render_angle_,
+            std::atan2(
+                segment.end.y - segment.start.y,
+                segment.end.x - segment.start.x) * kRadiansToDegrees);
+        set_brush_color(pieces[edge], set_brush_color_, kOutline);
+        set_visibility(pieces[edge], set_visibility_, kVisible);
+    }
+    constexpr std::size_t kFillPieceOffset = 3U;
+    constexpr std::size_t kFillPieceCount =
+        kCompactUmgHeightPieceCount - kFillPieceOffset;
+    for (std::size_t fill_piece = 0; fill_piece < kFillPieceCount;
+         ++fill_piece) {
+        const std::size_t piece = kFillPieceOffset + fill_piece;
+        const double vertical_fraction =
+            (static_cast<double>(fill_piece) + 1.0)
+            / static_cast<double>(kFillPieceCount + 1U);
+        const double bar_width = std::max(
+            fill_bar_height * 0.75,
+            half_width * 2.0 * vertical_fraction
+                - outline_width * 1.15);
+        const double bar_y = apex_y
+            + (base_y - apex_y) * vertical_fraction;
+        set_slot_vector(
+            slots[piece], set_slot_position_, center, bar_y);
+        set_slot_vector(
+            slots[piece], set_slot_size_, bar_width, fill_bar_height);
+        set_render_angle(pieces[piece], set_render_angle_, 0.0);
+        set_brush_color(pieces[piece], set_brush_color_, fill);
+        set_visibility(pieces[piece], set_visibility_, kVisible);
+    }
+
+    VectorParameters translation{{
+        0.0,
+        height_marker_half_widths_[channel]
+            + kReferenceMiniGameTriangleClearance * umg_unit_scale_
+            + half_height}};
+    height_group->ProcessEvent(set_render_translation_, &translation);
+    set_render_angle(height_group, set_render_angle_, 0.0);
+    mini_game_height_shape_codes_[channel] = shape_code;
+    height_kind_codes_[channel] = kind_code;
+    height_angle_degrees_[channel] = height_angle_degrees;
+    height_translation_x_[channel] = 0.0;
+    height_transform_valid_[channel] = true;
+    ++height_transform_count_;
+    return true;
+}
+
+bool CompactUmgRenderer::configure_area_quest_marker_shape_unsafe(
+    std::size_t marker_index,
+    std::uint8_t shape_code,
+    double center_x,
+    double center_y,
+    double scaled_size) {
+    if (shape_code > static_cast<std::uint8_t>(
+            dswros::AreaQuestHeightIndicatorShape::Unavailable)
+        || marker_index >= kCompactUmgMarkerCapacity
+        || !std::isfinite(center_x) || !std::isfinite(center_y)
+        || !std::isfinite(scaled_size) || scaled_size <= 0.0) {
+        return false;
+    }
+    const auto shape = static_cast<
+        dswros::AreaQuestHeightIndicatorShape>(shape_code);
+    if (!brush_templates_ready_ || !set_brush_
+        || !set_brush_color_ || !set_visibility_
+        || !set_slot_position_ || !set_slot_size_ || !set_render_angle_) {
+        return false;
+    }
+    std::array<UObject*, kCompactUmgMarkerPieceCount> pieces{};
+    std::array<UObject*, kCompactUmgMarkerPieceCount> slots{};
+    for (std::size_t piece = 0;
+         piece < kCompactUmgMarkerPieceCount; ++piece) {
+        pieces[piece] = marker_pieces_[marker_index][piece].Get();
+        slots[piece] = marker_piece_slots_[marker_index][piece].Get();
+        if (!pieces[piece] || !slots[piece]) {
+            return false;
+        }
+    }
+
+    if (shape == dswros::AreaQuestHeightIndicatorShape::Aligned
+        || shape == dswros::AreaQuestHeightIndicatorShape::Unavailable) {
+        const bool show_alignment_dots = shape
+            == dswros::AreaQuestHeightIndicatorShape::Aligned;
+        for (std::size_t piece = 0;
+             piece < kCompactUmgMarkerPieceCount; ++piece) {
+            const MarkerPieceStyle style = marker_piece_style(
+                CompactUmgMarkerKind::AreaQuest, piece);
+            set_marker_piece_geometry(
+                slots[piece], set_slot_position_, set_slot_size_, style,
+                center_x, center_y, scaled_size);
+            set_brush(
+                pieces[piece], set_brush_, piece == 0U
+                    ? area_quest_brush_template_ : solid_brush_template_);
+            set_brush_color(
+                pieces[piece], set_brush_color_, style.color);
+            set_render_angle(
+                pieces[piece], set_render_angle_, style.angle_degrees);
+            set_visibility(
+                pieces[piece], set_visibility_,
+                piece == 0U || show_alignment_dots
+                    ? kVisible : kCollapsed);
+        }
+        return true;
+    }
+
+    const bool above = shape
+        == dswros::AreaQuestHeightIndicatorShape::Above;
+    const double half_width = scaled_size
+        * kAreaQuestMarkerTriangleHalfWidth;
+    const double half_height = scaled_size
+        * kAreaQuestMarkerTriangleHalfHeight;
+    // Reuse the task marker itself. Directional states replace the original
+    // black frame and three dots in place; they must not create or imitate a
+    // separate Treasure-style pointer beside the task marker.
+    const double apex_y = center_y + (above ? -half_height : half_height);
+    const double base_y = center_y + (above ? half_height : -half_height);
+    const std::array<LineSegment, 3> triangle{{
+        {{center_x - half_width, base_y},
+         {center_x, apex_y}},
+        {{center_x, apex_y},
+         {center_x + half_width, base_y}},
+        {{center_x + half_width, base_y},
+         {center_x - half_width, base_y}},
+    }};
+    const double stroke = std::max(
+        2.0 * umg_unit_scale_,
+        scaled_size * kAreaQuestMarkerTriangleStroke);
+    for (std::size_t edge = 0; edge < triangle.size(); ++edge) {
+        const LineSegment& segment = triangle[edge];
+        set_brush(pieces[edge], set_brush_, solid_brush_template_);
+        set_brush_color(pieces[edge], set_brush_color_, kOutline);
+        set_line_geometry(
+            slots[edge], set_slot_position_, set_slot_size_,
+            segment.start.x, segment.start.y,
+            segment.end.x, segment.end.y, stroke);
+        set_render_angle(
+            pieces[edge], set_render_angle_,
+            std::atan2(
+                segment.end.y - segment.start.y,
+                segment.end.x - segment.start.x)
+                * kRadiansToDegrees);
+        set_visibility(pieces[edge], set_visibility_, kVisible);
+    }
+    set_visibility(pieces[3], set_visibility_, kCollapsed);
+    return true;
+}
+
 void CompactUmgRenderer::detach() noexcept {
     activation_active_ = false;
     detach_guarded();
+}
+
+void CompactUmgRenderer::abandon_runtime_handles() noexcept {
+    activation_active_ = false;
+    reset_runtime_handles();
+    if (state_ == CompactUmgRendererState::Attached
+        || state_ == CompactUmgRendererState::Suppressed) {
+        state_ = CompactUmgRendererState::Ready;
+    }
 }
 
 void CompactUmgRenderer::detach_guarded() noexcept {
@@ -2157,9 +2616,16 @@ void CompactUmgRenderer::reset_runtime_handles() noexcept {
     marker_visible_.fill(false);
     marker_reference_sizes_.fill(0.0);
     marker_kind_codes_.fill(0xFFU);
+    area_quest_marker_shape_codes_.fill(0xFFU);
+    area_quest_marker_center_x_.fill(0.0);
+    area_quest_marker_center_y_.fill(0.0);
+    area_quest_marker_scaled_size_.fill(0.0);
+    area_quest_height_profiles_.fill(dswros::AreaQuestHeightProfile{});
+    area_quest_height_active_.fill(false);
     height_visible_.fill(false);
     height_transform_valid_.fill(false);
     height_kind_codes_.fill(0xFFU);
+    mini_game_height_shape_codes_.fill(0xFFU);
     height_marker_half_widths_.fill(0.0);
     height_angle_degrees_.fill(0.0);
     height_translation_x_.fill(0.0);
