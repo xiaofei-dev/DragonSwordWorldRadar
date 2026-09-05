@@ -5035,7 +5035,7 @@ private:
                     activation_, epoch_, kAreaQuestTaskClassMapMaxAttempts,
                     source));
             }
-            if (!rearm_world_map_from_f7()) {
+            if (!rearm_world_map_from_f7(engine)) {
                 append_log("F7_COALESCED", std::format(
                     "activation={} epoch={} compact_state={} compact_attach_gate={} world_map_state={} world_map_failure={} world_map_attempts={} world_map_pending={} world_map_candidate={} candidate_serial={} serviced_serial={} reason=already_active request_source={}",
                     activation_, epoch_,
@@ -5830,7 +5830,7 @@ private:
                 engine, &activation_world_key, &activation_world));
             world_map_activation_catch_up(activation_world);
             world_map_resumed =
-                resume_suspended_world_map_after_f7();
+                resume_suspended_world_map_after_f7(activation_world);
         }
         append_log("F7_ACTIVATED", std::format(
             "activation={} epoch={} save_sync=native_one_shot_pending context_baseline={} world_baseline={} compact_paint_suppressed={} compact_state={} compact_attach_gate={} compact_catalog={} compact_capacity={} world_map_resumed={} world_map_state={} world_map_markers={} world_map_suspends={} world_map_resumes={}",
@@ -5868,8 +5868,14 @@ private:
             current_world_map_layer_guarded();
         const bool exact_candidate_live = world_map_candidate_available_
             && retained_world_map_layer;
+        std::string retained_world_key{};
         const bool candidate_in_current_world = exact_candidate_live
-            && object_world_guarded(retained_world_map_layer) != nullptr;
+            && world_identity_key_guarded(
+                reinterpret_cast<UObject*>(
+                    object_world_guarded(retained_world_map_layer)),
+                &retained_world_key)
+            && !current_world_key_.empty()
+            && retained_world_key == current_world_key_;
         const bool preserve_world_map_candidate =
             dswros::preserve_world_map_evidence_on_f8(
                 world_map_candidate_available_, exact_candidate_live,
@@ -7555,12 +7561,14 @@ private:
 #endif
     }
 
-    [[nodiscard]] bool resume_suspended_world_map_after_f7() noexcept {
+    [[nodiscard]] bool resume_suspended_world_map_after_f7(
+        UWorld* current_world) noexcept {
         UObject* current_layer = current_world_map_layer_guarded();
         const bool exact_candidate_live = world_map_candidate_available_
             && current_layer;
         const bool candidate_in_current_world = exact_candidate_live
-            && object_world_guarded(current_layer) != nullptr;
+            && current_world
+            && object_world_guarded(current_layer) == current_world;
         const auto visibility_sample =
             world_map_candidate_confirmed_visible()
                 && world_map_compact_suppressed_
@@ -7659,12 +7667,18 @@ private:
             && world_map_content_visibility_intent();
     }
 
-    [[nodiscard]] bool rearm_world_map_from_f7() noexcept {
+    [[nodiscard]] bool rearm_world_map_from_f7(UEngine* engine) noexcept {
         UObject* current_layer = current_world_map_layer_guarded();
         const bool exact_candidate_live = world_map_candidate_available_
             && current_layer;
+        std::string current_world_key{};
+        UWorld* current_world{};
+        const bool current_world_available =
+            capture_current_world_identity_guarded(
+                engine, &current_world_key, &current_world);
         const bool candidate_in_current_world = exact_candidate_live
-            && object_world_guarded(current_layer) != nullptr;
+            && current_world_available
+            && object_world_guarded(current_layer) == current_world;
         const auto visibility_sample =
             world_map_candidate_confirmed_visible()
                 && world_map_compact_suppressed_
@@ -7892,8 +7906,14 @@ private:
         UObject* current_layer = current_world_map_layer_guarded();
         const bool exact_candidate_live = world_map_candidate_available_
             && current_layer;
+        std::string current_world_key{};
+        UWorld* current_world{};
+        const bool current_world_available =
+            capture_current_world_identity_guarded(
+                engine, &current_world_key, &current_world);
         const bool candidate_in_current_world = exact_candidate_live
-            && object_world_guarded(current_layer) != nullptr;
+            && current_world_available
+            && object_world_guarded(current_layer) == current_world;
         const auto visibility_sample =
             world_map_candidate_confirmed_visible()
             ? (world_map_compact_suppressed_
