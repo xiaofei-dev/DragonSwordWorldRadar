@@ -88,6 +88,9 @@ $model = Get-Content (Join-Path $projectRoot 'include\dswros\compact_render_mode
 $objectState = Get-Content (Join-Path $projectRoot 'include\dswros\object_state.hpp') -Raw
 $renderProjection = Get-Content `
     (Join-Path $projectRoot 'include\dswros\render_projection.hpp') -Raw
+$worldMapSessionPolicy = Get-Content `
+    (Join-Path $projectRoot `
+        'include\dswros\world_map_session_policy.hpp') -Raw
 $nativeTests = Get-Content (Join-Path $projectRoot 'tests\native_state_tests.cpp') -Raw
 $cmake = Get-Content (Join-Path $projectRoot 'CMakeLists.txt') -Raw
 $deploy = Get-Content (Join-Path $projectRoot 'tools\Deploy-NativePrototype.ps1') -Raw
@@ -1876,7 +1879,7 @@ $initializeWidgetIsVisible = Get-MainFunction `
 $readWorldMapLayerVisibility = Get-MainFunction `
     $mainCode 'read_world_map_layer_visibility_guarded'
 $worldMapLayerVisible = Get-MainFunction `
-    $mainCode 'world_map_layer_visible_guarded'
+    $mainCode 'world_map_layer_open_and_visible_guarded'
 $worldMapAtlasVisibilityAllowed = Get-MainFunction `
     $mainCode 'world_map_atlas_visibility_allowed_guarded'
 $initializeGamePauseSchema = Get-MainFunction `
@@ -2024,26 +2027,28 @@ Assert-True ($mainCode -match `
     -and $readWorldMapLayerVisibility -match `
         'std::array<std::byte,[\s\S]*?kWidgetIsVisibleParameterCapacity>[\s\S]*?ProcessEvent\([\s\S]*?widget_is_visible_function_[\s\S]*?\*visible\s*=\s*widget_is_visible_return_property_->GetPropertyValue\([\s\S]*?return\s+true' `
     -and $worldMapLayerVisible -match `
-        'read_world_map_layer_visibility_guarded\([\s\S]*?&visible\)\s*&&\s*visible' `
+        'world_map_candidate_has_open_evidence\s*\(\s*\)[\s\S]*?object_world_guarded\s*\([\s\S]*?read_world_map_layer_visibility_guarded\([\s\S]*?&native_layer_visible\)[\s\S]*?&&\s*native_layer_visible' `
     -and $worldMapAtlasVisibilityAllowed -match `
-        'world_map_compact_suppressed_[\s\S]*?read_world_map_layer_visibility_guarded\([\s\S]*?&native_layer_visible\)[\s\S]*?&&\s*native_layer_visible' `
+        'world_map_layer_open_and_visible_guarded\s*\([\s\S]*?WorldMapUmgRendererState::Attached[\s\S]*?attached_layer_matches\s*\(' `
     -and $refreshCompactMenuState -match `
-        'widget_is_visible_schema_ready_[\s\S]*?&&\s*world_map_compact_suppressed_' `
+        'dswros::decide_world_map_visibility\s*\(' `
     -and $refreshCompactMenuState -notmatch `
         'world_map_catch_up' `
     -and $refreshCompactMenuState -match `
-        'world_map_compact_suppressed_[\s\S]*?world_map_candidate_available_[\s\S]*?!current_layer[\s\S]*?world_map_compact_suppressed_\s*=\s*false' `
+        'authoritative_world_map_close\s*=\s*world_map_candidate_available_\s*&&\s*!exact_candidate_live' `
     -and $refreshCompactMenuState -match `
-        'exact_current_world_layer\s*=\s*current_layer[\s\S]*?object_world_guarded\(current_layer\)\s*==\s*current_world[\s\S]*?bool\s+visible\{\}[\s\S]*?read_world_map_layer_visibility_guarded\([\s\S]*?current_layer,\s*&visible\)\)\s*\{\s*world_map_compact_suppressed_\s*=\s*visible' `
+        'WorldMapVisibilityAction::ConfirmVisible[\s\S]*?world_map_compact_suppressed_\s*=\s*true[\s\S]*?WorldMapVisibilityAction::CloseSession[\s\S]*?world_map_compact_suppressed_\s*=\s*false' `
     -and [regex]::Matches(
         $refreshCompactMenuState,
         'world_map_compact_suppressed_\s*=').Count -eq 2 `
     -and [regex]::Matches(
         $mainCode,
-        'read_world_map_layer_visibility_guarded\(').Count -eq 4 `
+        'read_world_map_layer_visibility_guarded\(').Count -eq 3 `
     -and [regex]::Matches(
         $mainCode,
-        'world_map_layer_visible_guarded\(').Count -eq 2) `
+        'world_map_layer_open_and_visible_guarded\(').Count -eq 4 `
+    -and $worldMapSessionPolicy -match `
+        'WorldMapVisibilitySample::Unknown[\s\S]*?WorldMapVisibilityAction::Preserve[\s\S]*?WorldMapVisibilityAction::ConfirmVisible[\s\S]*?WorldMapVisibilityAction::CloseSession') `
     'World-map visibility must preserve an explicit unknown state, clear only a dead weak layer, and sample IsVisible only after the authoritative map-open latch.'
 
 $menuRequiredRuntimeExpression = [regex]::Match(
@@ -2144,13 +2149,13 @@ Assert-True ($mainCode -match `
 Assert-True ($refreshAtlasForRuntimeDelta -match `
         'world_map_marker_snapshot_built_\s*=\s*false' `
     -and $refreshAtlasForRuntimeDelta -match `
-        'current_layer\s*=\s*attached\s*&&\s*candidate_available[\s\S]*?current_world_map_layer_guarded\(\)' `
+        'current_layer\s*=\s*candidate_available[\s\S]*?current_world_map_layer_guarded\(\)' `
     -and $refreshAtlasForRuntimeDelta -match `
         'exact_attachment\s*=\s*current_layer[\s\S]*?attached_to\([\s\S]*?current_layer,[\s\S]*?map_id\(\)' `
     -and $refreshAtlasForRuntimeDelta -match `
-        'visibly_open\s*=\s*exact_attachment[\s\S]*?world_map_layer_visible_guarded\(current_layer\)' `
+        'visibly_open\s*=[\s\S]*?world_map_layer_open_and_visible_guarded\([\s\S]*?candidate_world,\s*current_layer\)' `
     -and $refreshAtlasForRuntimeDelta -match `
-        'if\s*\(attached\s*&&\s*visibly_open\)[\s\S]*?begin_activation\(\);[\s\S]*?reset_world_map_runtime\(true\)' `
+        'else\s+if\s*\(visibly_open\)[\s\S]*?begin_activation\(\);[\s\S]*?reset_world_map_runtime\(true\)' `
     -and $refreshAtlasForRuntimeDelta -match `
         'else\s+if\s*\(attached\)[\s\S]*?begin_activation\(\);[\s\S]*?reset_world_map_runtime\(true\);[\s\S]*?world_map_session_pending_\s*=\s*false[\s\S]*?deferred_until_set_world_map_image' `
     -and $refreshAtlasForRuntimeDelta -match `
@@ -2169,7 +2174,7 @@ Assert-True ($worldMapImagePost -match `
     -and $captureWorldMapCandidate -match `
         'renderer_ready_for_candidate_rearm\s*=[\s\S]*?WorldMapUmgRendererState::Ready[\s\S]*?\|\|[\s\S]*?WorldMapUmgRendererState::Attached[\s\S]*?!world_map_umg_renderer_\.attached_layer_matches\s*\(\s*current_layer\s*\)' `
     -and $captureWorldMapCandidate -match `
-        'same_layer[\s\S]*?set_world_map_image_event[\s\S]*?enabled_[\s\S]*?!transition_active_[\s\S]*?!activity_suppressed_[\s\S]*?!world_map_set_image_rearm_consumed_[\s\S]*?world_map_serviced_serial_\s*==\s*world_map_candidate_serial_[\s\S]*?world_map_service_attempts_\s*>\s*0[\s\S]*?renderer_ready_for_candidate_rearm[\s\S]*?world_map_session_pending_[\s\S]*?retryable_not_ready' `
+        'set_image_rearm_allowed\s*=\s*same_layer[\s\S]*?set_world_map_image_event[\s\S]*?enabled_[\s\S]*?!transition_active_[\s\S]*?!activity_suppressed_[\s\S]*?!world_map_set_image_rearm_consumed_[\s\S]*?world_map_serviced_serial_\s*==\s*world_map_candidate_serial_[\s\S]*?world_map_readiness_attempts_\s*>\s*0[\s\S]*?world_map_service_attempts_\s*>\s*0[\s\S]*?renderer_ready_for_candidate_rearm[\s\S]*?world_map_session_pending_[\s\S]*?retryable_not_ready' `
     -and $captureWorldMapCandidate -match `
         'retryable_not_ready\(\)[\s\S]*?world_map_service_attempts_[\s\S]*?>=\s*kWorldMapMaxServiceAttempts' `
     -and $captureWorldMapCandidate -match `
@@ -2177,9 +2182,9 @@ Assert-True ($worldMapImagePost -match `
     -and $captureWorldMapCandidate -match `
         'if\s*\(same_layer[\s\S]*?world_map_session_pending_[\s\S]*?WorldMapUmgRendererState::Attached[\s\S]*?retry_budget_consumed[\s\S]*?return' `
     -and $captureWorldMapCandidate -match `
-        'world_map_set_image_rearm_consumed_\s*=\s*false[\s\S]*?world_map_layer_candidate_\s*=\s*current_layer[\s\S]*?world_map_candidate_available_\s*=\s*true[\s\S]*?\+\+world_map_candidate_serial_[\s\S]*?world_map_service_retry_after_\s*=\s*\{\}[\s\S]*?world_map_session_pending_\s*=\s*true' `
+        'reset_world_map_runtime\s*\(\s*false\s*\)[\s\S]*?world_map_layer_candidate_\s*=\s*current_layer[\s\S]*?world_map_candidate_available_\s*=\s*true[\s\S]*?world_map_set_image_rearm_consumed_\s*=\s*false[\s\S]*?world_map_session_pending_\s*=\s*content_visible\s*&&\s*set_world_map_image_event' `
     -and $resetWorldMapRuntime -match `
-        'if\s*\(!preserve_candidate\)[\s\S]*?world_map_set_image_rearm_consumed_\s*=\s*false[\s\S]*?\+\+world_map_candidate_serial_' `
+        'if\s*\(!preserve_candidate\)[\s\S]*?world_map_set_image_rearm_consumed_\s*=\s*false[\s\S]*?world_map_candidate_serial_\s*=\s*dswros::next_world_map_candidate_serial' `
     -and $serviceWorldMapAtlas -match `
         'world_map_serviced_serial_\s*!=\s*world_map_candidate_serial_[\s\S]*?world_map_serviced_serial_\s*=\s*world_map_candidate_serial_[\s\S]*?world_map_service_attempts_\s*=\s*0' `
     -and $mainCode -match `

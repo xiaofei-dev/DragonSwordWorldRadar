@@ -103,6 +103,8 @@ $renderer = Read-RequiredFile 'src\native\world_map_umg_renderer.cpp'
 $rendererHeader = Read-RequiredFile 'src\native\world_map_umg_renderer.hpp'
 $main = Read-RequiredFile 'src\native\main.cpp'
 $renderProjection = Read-RequiredFile 'include\dswros\render_projection.hpp'
+$worldMapSessionPolicy = Read-RequiredFile `
+    'include\dswros\world_map_session_policy.hpp'
 $nativeTests = Remove-CppComments `
     (Read-RequiredFile 'tests\native_state_tests.cpp')
 $metadata = Read-RequiredFile 'metadata\release.json' | ConvertFrom-Json
@@ -111,6 +113,7 @@ $rendererCode = Remove-CppComments $renderer
 $headerCode = Remove-CppComments $rendererHeader
 $mainCode = Remove-CppComments $main
 $projectionCode = Remove-CppComments $renderProjection
+$sessionPolicyCode = Remove-CppComments $worldMapSessionPolicy
 $viewportProjection = Get-ProjectionFunction `
     $projectionCode 'calculate_world_map_viewport_placement'
 
@@ -640,7 +643,9 @@ $clearOpenEvidence = Get-MainMethod `
 Assert-True ($mainCode -match `
         'std::uint64_t\s+world_map_candidate_serial_\s*\{\s*\}\s*;\s*std::uint64_t\s+world_map_open_serial_\s*\{\s*\}\s*;' `
     -and $candidateOpenEvidence -match `
-        'return\s+world_map_candidate_available_\s*&&\s*world_map_candidate_serial_\s*!=\s*0\s*&&\s*world_map_open_serial_\s*==\s*world_map_candidate_serial_\s*;' `
+        'return\s+dswros::world_map_serial_matches\s*\([\s\S]*?world_map_candidate_available_[\s\S]*?world_map_candidate_serial_[\s\S]*?world_map_open_serial_' `
+    -and $sessionPolicyCode -match `
+        'return\s+candidate_available\s*&&\s*candidate_serial\s*!=\s*0U[\s\S]*?open_serial\s*==\s*candidate_serial' `
     -and $candidateConfirmedVisible -match `
         'return\s+world_map_candidate_has_open_evidence\s*\(\s*\)\s*&&\s*world_map_visible_serial_\s*==\s*world_map_candidate_serial_\s*;') `
     'Open and confirmed-visible evidence must each remain bound to the same nonzero candidate serial.'
@@ -762,7 +767,7 @@ Assert-True ($captureWorldMapCandidate -match `
     'A map-open event may collapse hosts only for a new or mismatched layer; an exact attached layer must enter the transform-only settle path without hiding.'
 $sameLayerOpenSession = [regex]::Match(
     $captureWorldMapCandidate,
-    '(?ms)const\s+bool\s+new_open_edge\s*=\s*!world_map_candidate_has_open_evidence\s*\(\s*\)\s*;\s*world_map_open_serial_\s*=\s*world_map_candidate_serial_\s*;\s*if\s*\(\s*new_open_edge\s*\)\s*\{(?<body>.*?)\}\s*if\s*\(\s*content_visible\s*&&\s*!exact_attached_layer\s*\)')
+    '(?ms)const\s+bool\s+new_open_edge\s*=\s*dswros::world_map_open_session_started\s*\(\s*candidate_transition\s*\)\s*;\s*world_map_open_serial_\s*=\s*world_map_candidate_serial_\s*;\s*if\s*\(\s*new_open_edge\s*\)\s*\{(?<body>.*?)\}\s*if\s*\(\s*content_visible\s*&&\s*!exact_attached_layer\s*\)')
 Assert-True ($sameLayerOpenSession.Success `
     -and $sameLayerOpenSession.Groups['body'].Value -match `
         '^\s*world_map_visible_serial_\s*=\s*0\s*;\s*world_map_open_evidence_at_\s*=\s*Clock::now\s*\(\s*\)\s*;\s*$') `
@@ -783,23 +788,18 @@ $candidateBudgetReadIndex = Get-RequiredPatternIndex `
     $captureWorldMapCandidate `
     'const\s+bool\s+retry_budget_consumed\b' `
     'candidate retry-budget observation'
-$candidateSerialPublishIndex = Get-RequiredPatternIndex `
-    $captureWorldMapCandidate `
-    '\+\+world_map_candidate_serial_\s*;' `
-    'new candidate serial publication'
 Assert-True ($sameLayerEvidenceIndex -ge 0 `
     -and $contentDisabledCandidateIndex -gt $sameLayerEvidenceIndex `
     -and $candidateBudgetReadIndex -gt $contentDisabledCandidateIndex `
     -and $passiveSameLayerIndex -gt $contentDisabledCandidateIndex `
     -and $candidateBudgetReadIndex -gt $passiveSameLayerIndex `
-    -and $candidateSerialPublishIndex -gt $contentDisabledCandidateIndex `
     -and $captureWorldMapCandidate -match `
         'if\s*\(\s*same_layer\s*&&\s*!content_visible\s*\)\s*\{\s*return\s*;\s*\}' `
     -and $captureWorldMapCandidate -match `
         'if\s*\(\s*same_layer\s*&&\s*!set_world_map_image_event\s*\)\s*\{\s*return\s*;\s*\}') `
     'Same-layer SetWorldMapImage must bind evidence before content exits; listener-only callbacks must return before budgets, rearm, or serial publication.'
 Assert-True ($captureWorldMapCandidate -match `
-        'world_map_layer_candidate_\s*=\s*current_layer\s*;\s*world_map_candidate_available_\s*=\s*true\s*;\s*\+\+world_map_candidate_serial_\s*;\s*world_map_open_serial_\s*=\s*set_world_map_image_event\s*\?\s*world_map_candidate_serial_\s*:\s*0\s*;\s*world_map_visible_serial_\s*=\s*0\s*;\s*world_map_open_evidence_at_\s*=\s*set_world_map_image_event\s*\?\s*Clock::now\s*\(\s*\)\s*:\s*Clock::time_point\s*\{\s*\}\s*;' `
+        'reset_world_map_runtime\s*\(\s*false\s*\)[\s\S]*?world_map_layer_candidate_\s*=\s*current_layer\s*;\s*world_map_candidate_available_\s*=\s*true[\s\S]*?world_map_open_serial_\s*=\s*set_world_map_image_event\s*\?\s*world_map_candidate_serial_\s*:\s*0\s*;\s*world_map_visible_serial_\s*=\s*0\s*;\s*world_map_open_evidence_at_\s*=\s*set_world_map_image_event\s*\?\s*Clock::now\s*\(\s*\)\s*:\s*Clock::time_point\s*\{\s*\}\s*;' `
     -and $captureWorldMapCandidate -match `
         'world_map_session_pending_\s*=\s*content_visible\s*&&\s*set_world_map_image_event\s*;' `
     -and [regex]::Matches(
@@ -814,7 +814,9 @@ Assert-True ($captureWorldMapCandidate -match `
         'world_map_(?:open_serial_|session_pending_|readiness_attempts_|service_attempts_)|latch_world_map_compact_suppression|service_world_map_atlas' `
     -and $worldMapImagePost -match `
         'capture_world_map_candidate_unsafe\s*\(\s*context\.Context\s*,\s*true\s*\)' `
-    -and $worldMapImagePost -notmatch '\benabled_\b') `
+    -and $worldMapImagePost -notmatch '\benabled_\b' `
+    -and $sessionPolicyCode -match `
+        'next_world_map_candidate_serial[\s\S]*?numeric_limits<std::uint64_t>::max\s*\(\s*\)[\s\S]*?current_serial\s*\+\s*1U') `
     'Passive discovery may publish identity only; candidate replacement must invalidate inherited evidence, while SetWorldMapImage remains recordable during F8-disabled state.'
 Assert-True ([regex]::Matches(
         $mainCode,
@@ -835,13 +837,6 @@ Assert-True $contentDisabledService.Success `
     'The service-level disabled-content gate was not found.'
 $contentDisabledServiceBody = `
     $contentDisabledService.Groups['body'].Value
-$confirmedVisibleService = [regex]::Match(
-    $serviceWorldMapAtlas,
-    '(?ms)if\s*\(\s*!world_map_candidate_confirmed_visible\s*\(\s*\)\s*\)\s*\{(?<body>.*?)\}\s*const\s+auto\s+now\s*=\s*Clock::now\s*\(\s*\)\s*;')
-Assert-True ($confirmedVisibleService.Success `
-    -and $confirmedVisibleService.Groups['body'].Value -match `
-        '^\s*return\s*;\s*$') `
-    'SetWorldMapImage alone must not start atlas work; the request must remain held until the same candidate has one confirmed native-visible sample.'
 $contentDisabledServiceIndex = Get-RequiredPatternIndex `
     $serviceWorldMapAtlas `
     'if\s*\(\s*!world_map_content_visibility_intent\s*\(\s*\)\s*\)' `
@@ -850,18 +845,10 @@ $serviceClockIndex = Get-RequiredPatternIndex `
     $serviceWorldMapAtlas `
     'const\s+auto\s+now\s*=\s*Clock::now\s*\(\s*\)' `
     'service clock sample'
-$mapOpenServiceIndex = Get-RequiredPatternIndex `
+$workGateIndex = Get-RequiredPatternIndex `
     $serviceWorldMapAtlas `
-    'if\s*\(\s*!world_map_candidate_has_open_evidence\s*\(\s*\)\s*\)' `
-    'serial-bound map-open service gate'
-$mapVisibleServiceIndex = Get-RequiredPatternIndex `
-    $serviceWorldMapAtlas `
-    'if\s*\(\s*!world_map_compact_suppressed_\s*\)' `
-    'opening-transition service hold'
-$confirmedVisibleServiceIndex = Get-RequiredPatternIndex `
-    $serviceWorldMapAtlas `
-    'if\s*\(\s*!world_map_candidate_confirmed_visible\s*\(\s*\)\s*\)' `
-    'confirmed native-visible service gate'
+    'dswros::world_map_work_gate\s*\(' `
+    'world-map pure work gate'
 $firstReadinessAttemptIndex = Get-RequiredPatternIndex `
     $serviceWorldMapAtlas `
     '\+\+world_map_readiness_attempts_\s*;' `
@@ -882,18 +869,22 @@ Assert-True ($contentDisabledServiceBody -match `
     -and $firstReadinessAttemptIndex -gt $contentDisabledServiceIndex `
     -and $firstServiceAttemptIndex -gt $contentDisabledServiceIndex) `
     'Disabled world-map content must retire pending service before time, retry-budget, session, or attachment work.'
-Assert-True ($mapOpenServiceIndex -gt $contentDisabledServiceIndex `
-    -and $mapOpenServiceIndex -lt $serviceClockIndex `
-    -and $mapVisibleServiceIndex -gt $mapOpenServiceIndex `
-    -and $mapVisibleServiceIndex -lt $serviceClockIndex `
-    -and $confirmedVisibleServiceIndex -gt $mapVisibleServiceIndex `
-    -and $confirmedVisibleServiceIndex -lt $serviceClockIndex `
-    -and $firstReadinessAttemptIndex -gt $confirmedVisibleServiceIndex `
-    -and $firstServiceAttemptIndex -gt $confirmedVisibleServiceIndex `
+Assert-True ($workGateIndex -gt $contentDisabledServiceIndex `
+    -and $workGateIndex -lt $serviceClockIndex `
+    -and $firstReadinessAttemptIndex -gt $workGateIndex `
+    -and $firstServiceAttemptIndex -gt $workGateIndex `
     -and $serviceWorldMapAtlas -match `
-        'if\s*\(\s*!world_map_candidate_has_open_evidence\s*\(\s*\)\s*\)\s*\{(?:(?!world_map_(?:readiness|service)_attempts_|attach_once|begin_map_session)[\s\S])*?world_map_session_pending_\s*=\s*false(?:(?!world_map_(?:readiness|service)_attempts_|attach_once|begin_map_session)[\s\S])*?\breturn\s*;\s*\}' `
-    -and $serviceWorldMapAtlas -match `
-        'if\s*\(\s*!world_map_compact_suppressed_\s*\)\s*\{(?:(?!world_map_session_pending_\s*=\s*false|world_map_(?:readiness|service)_attempts_|attach_once|begin_map_session)[\s\S])*?\breturn\s*;\s*\}') `
+        'WorldMapWorkGate::Ignore[\s\S]*?world_map_session_pending_\s*=\s*false[\s\S]*?WorldMapWorkGate::Hold[\s\S]*?return\s*;[\s\S]*?WorldMapWorkGate::CloseSession[\s\S]*?clear_world_map_open_evidence\s*\(' `
+    -and $sessionPolicyCode -match `
+        'if\s*\(\s*!context\.content_intent[\s\S]*?!context\.candidate_available[\s\S]*?!context\.has_serial_bound_open_evidence[\s\S]*?WorldMapWorkGate::Ignore' `
+    -and $sessionPolicyCode -match `
+        'visibility\s*==\s*WorldMapVisibilitySample::Unknown[\s\S]*?WorldMapWorkGate::Hold' `
+    -and $sessionPolicyCode -match `
+        'visibility\s*==\s*WorldMapVisibilitySample::Hidden[\s\S]*?WorldMapWorkGate::CloseSession' `
+    -and $sessionPolicyCode -match `
+        'attempts\s*>=\s*context\.maximum_attempts[\s\S]*?WorldMapWorkGate::Exhausted' `
+    -and $sessionPolicyCode -match `
+        'return\s+WorldMapWorkGate::ConsumeAttempt') `
     'A listener-only, replacement-mismatched, or closed candidate must retire before time sampling; an opening transition and an unconfirmed-visible candidate must preserve the request without consuming either budget.'
 
 $candidateServiceReset = [regex]::Match(
@@ -903,10 +894,6 @@ $readinessLimitIndex = Get-RequiredPatternIndex `
     $serviceWorldMapAtlas `
     'if\s*\(\s*world_map_readiness_attempts_\s*>=' `
     'readiness-budget exhaustion gate'
-$attachLimitIndex = Get-RequiredPatternIndex `
-    $serviceWorldMapAtlas `
-    'if\s*\(\s*world_map_service_attempts_\s*>=' `
-    'attachment-budget exhaustion gate'
 Assert-True ($candidateServiceReset.Success `
     -and $candidateServiceReset.Groups['body'].Value -match `
         'world_map_serviced_serial_\s*=\s*world_map_candidate_serial_' `
@@ -915,7 +902,7 @@ Assert-True ($candidateServiceReset.Success `
     -and $candidateServiceReset.Groups['body'].Value -match `
         'world_map_service_attempts_\s*=\s*0' `
     -and $readinessLimitIndex -gt $candidateServiceReset.Index `
-    -and $attachLimitIndex -gt $candidateServiceReset.Index) `
+    -and $workGateIndex -gt $candidateServiceReset.Index) `
     'A new evidence-bound candidate must start with both budgets reset before either exhaustion check is evaluated.'
 
 $mapIdReadinessBranch = [regex]::Match(
@@ -985,38 +972,24 @@ Assert-True ($sameLayerReuseBody -match `
     'The same attached layer must synchronize its live transform before reapplying gated visibility and must never hide first.'
 
 $menuVisibility = Get-MainMethod $mainCode 'refresh_compact_menu_state'
-$visibilitySampleBranches = [regex]::Match(
-    $menuVisibility,
-    '(?ms)if\s*\(\s*visible\s*\)\s*\{(?<visible>.*?)\}\s*else\s*\{(?<hidden>.*?)\}\s*\}\s*if\s*\(\s*authoritative_world_map_close\s*\)')
-Assert-True $visibilitySampleBranches.Success `
-    'The scoped native world-map visibility branches were not found.'
-$visibleSampleBody = $visibilitySampleBranches.Groups['visible'].Value
-$hiddenSampleBody = $visibilitySampleBranches.Groups['hidden'].Value
-Assert-True ($visibleSampleBody -match `
-        '(?ms)const\s+bool\s+first_visible_confirmation\s*=\s*world_map_visible_serial_\s*!=\s*world_map_candidate_serial_\s*;\s*world_map_visible_serial_\s*=\s*world_map_candidate_serial_\s*;\s*world_map_compact_suppressed_\s*=\s*true\s*;\s*if\s*\(\s*first_visible_confirmation\s*&&\s*world_map_content_visibility_intent\s*\(\s*\)\s*&&\s*\(\s*world_map_umg_renderer_\.state\s*\(\s*\)\s*!=\s*dsnwr::WorldMapUmgRendererState::Attached\s*\|\|\s*!world_map_umg_renderer_\s*\.\s*attached_layer_matches\s*\(\s*current_layer\s*\)\s*\)\s*\)\s*\{[\s\S]*?world_map_session_pending_\s*=\s*true\s*;\s*world_map_service_retry_after_\s*=\s*\{\s*\}\s*;' `
-    -and $visibleSampleBody -notmatch `
-        'clear_world_map_open_evidence|world_map_(?:readiness|service)_attempts_\s*=') `
+Assert-True ($menuVisibility -match `
+        'WorldMapVisibilitySample::Unknown[\s\S]*?read_world_map_layer_visibility_guarded[\s\S]*?WorldMapVisibilitySample::Visible[\s\S]*?WorldMapVisibilitySample::Hidden' `
+    -and $menuVisibility -match `
+        'dswros::decide_world_map_visibility\s*\([\s\S]*?world_map_candidate_available_[\s\S]*?exact_candidate_live[\s\S]*?exact_current_world_layer[\s\S]*?world_map_candidate_has_open_evidence\s*\(\s*\)[\s\S]*?world_map_candidate_confirmed_visible\s*\(\s*\)[\s\S]*?milliseconds_since_open[\s\S]*?kWorldMapOpenVisibilityGrace\.count' `
+    -and $menuVisibility -match `
+        'WorldMapVisibilityAction::ConfirmVisible[\s\S]*?world_map_visible_serial_\s*=\s*world_map_candidate_serial_[\s\S]*?world_map_compact_suppressed_\s*=\s*true[\s\S]*?visibility_decision\.recovery_edge[\s\S]*?world_map_session_pending_\s*=\s*true[\s\S]*?world_map_service_retry_after_\s*=\s*\{\s*\}') `
     'The first confirmed-visible sample must restore one held request for the same unattached layer without resetting either finite budget.'
-Assert-True ($hiddenSampleBody -match `
-        'const\s+bool\s+confirmed_visible_this_session\s*=\s*world_map_visible_serial_\s*==\s*world_map_candidate_serial_\s*;' `
-    -and $hiddenSampleBody -match `
-        'const\s+bool\s+opening_grace_expired\s*=\s*world_map_open_evidence_at_\s*!=\s*Clock::time_point\s*\{\s*\}\s*&&\s*Clock::now\s*\(\s*\)\s*-\s*world_map_open_evidence_at_\s*>=\s*kWorldMapOpenVisibilityGrace\s*;' `
-    -and $hiddenSampleBody -match `
-        'if\s*\(\s*confirmed_visible_this_session\s*\|\|\s*opening_grace_expired\s*\)\s*\{\s*world_map_compact_suppressed_\s*=\s*false\s*;\s*authoritative_world_map_close\s*=\s*true\s*;' `
-    -and $hiddenSampleBody -notmatch `
-        'world_map_(?:open|visible)_serial_\s*=(?!=)|world_map_(?:readiness|service)_attempts_\s*=(?!=)') `
+Assert-True ($sessionPolicyCode -match `
+        'sample\s*==\s*WorldMapVisibilitySample::Unknown[\s\S]*?WorldMapVisibilityAction::Preserve' `
+    -and $sessionPolicyCode -match `
+        'sample\s*==\s*WorldMapVisibilitySample::Visible[\s\S]*?WorldMapVisibilityAction::ConfirmVisible' `
+    -and $sessionPolicyCode -match `
+        'previously_confirmed_visible[\s\S]*?milliseconds_since_open[\s\S]*?>=\s*context\.open_visibility_grace_milliseconds[\s\S]*?WorldMapVisibilityAction::CloseSession') `
     'A false native visibility sample must preserve a fresh opening edge until the 1,000 ms grace expires, then close immediately after grace or any prior visible confirmation.'
 Assert-True ($menuVisibility -match `
-        'bool\s+authoritative_world_map_close\s*\{\s*\}' `
+        'authoritative_world_map_close\s*=\s*world_map_candidate_available_\s*&&\s*!exact_candidate_live' `
     -and $menuVisibility -match `
-        'widget_is_visible_schema_ready_\s*&&\s*world_map_candidate_has_open_evidence\s*\(\s*\)' `
-    -and $menuVisibility -match `
-        'if\s*\(\s*world_map_candidate_available_\s*&&\s*!current_layer\s*\)\s*\{[\s\S]*?world_map_compact_suppressed_\s*=\s*false\s*;\s*authoritative_world_map_close\s*=\s*true\s*;' `
-    -and $menuVisibility -match `
-        'if\s*\(\s*authoritative_world_map_close\s*\)\s*\{\s*clear_world_map_open_evidence\s*\(\s*\)' `
-    -and [regex]::Matches(
-        $menuVisibility,
-        'authoritative_world_map_close\s*=\s*true\s*;').Count -eq 2 `
+        'WorldMapVisibilityAction::CloseSession[\s\S]*?authoritative_world_map_close\s*=\s*true[\s\S]*?if\s*\(\s*authoritative_world_map_close\s*\)\s*\{[\s\S]*?clear_world_map_open_evidence\s*\(\s*\)' `
     -and [regex]::Matches(
         $menuVisibility,
         '\bclear_world_map_open_evidence\s*\(').Count -eq 1 `
@@ -1060,8 +1033,10 @@ Assert-True ($layeringService -notmatch `
 
 $disable = Get-MainMethod $mainCode 'disable'
 Assert-True ($disable -match `
-        'world_map_umg_renderer_\.suspend\s*\(\s*\)') `
-    'F8 disable must synchronously collapse the independent atlas hosts.'
+        'preserve_world_map_evidence_on_f8\s*\([\s\S]*?world_map_candidate_available_[\s\S]*?exact_candidate_live[\s\S]*?candidate_in_current_world[\s\S]*?world_map_candidate_has_open_evidence\s*\(\s*\)' `
+    -and $disable -match `
+        'world_map_umg_renderer_\.suspend\s*\(\s*\)[\s\S]*?reset_world_map_runtime\s*\(\s*preserve_world_map_candidate\s*\)') `
+    'F8 disable must synchronously collapse the independent atlas hosts while preserving exact live session evidence independently of renderer suspension success.'
 
 $transitionBegin = Get-MainMethod $mainCode 'transition_begin'
 Assert-True ($transitionBegin -match `
@@ -1075,7 +1050,7 @@ $resetWorldMapRuntime = Get-MainMethod `
 $rearmWorldMapFromF7 = Get-MainMethod `
     $mainCode 'rearm_world_map_from_f7'
 Assert-True ($activationCatchUp -match `
-        'if\s*\(\s*world_map_candidate_has_open_evidence\s*\(\s*\)\s*\)\s*\{[\s\S]*?read_world_map_layer_visibility_guarded\s*\([\s\S]*?if\s*\(\s*native_layer_visible\s*\)\s*\{[\s\S]*?world_map_visible_serial_\s*=\s*world_map_candidate_serial_[\s\S]*?latch_world_map_compact_suppression\s*\([\s\S]*?\}\s*else\s+if\s*\([\s\S]*?world_map_visible_serial_[\s\S]*?kWorldMapOpenVisibilityGrace[\s\S]*?\)\s*\{[\s\S]*?clear_world_map_open_evidence\s*\(' `
+        'refresh_compact_menu_state\s*\([\s\S]*?expected_world[\s\S]*?world_map_activation_catch_up_retained' `
     -and $activationCatchUp -match `
         'world_map_session_pending_\s*=\s*world_map_content_visibility_intent\s*\(\s*\)\s*&&\s*world_map_candidate_has_open_evidence\s*\(\s*\)\s*&&\s*world_map_compact_suppressed_' `
     -and $activationCatchUp -match `
@@ -1089,13 +1064,15 @@ Assert-True ($activationCatchUp -match `
     -and $rearmWorldMapFromF7 -match `
         'attach_budget_exhausted\s*=\s*world_map_service_attempts_\s*>=\s*kWorldMapMaxServiceAttempts[\s\S]*?WorldMapUmgRendererState::Ready[\s\S]*?retryable_not_ready\s*\(\s*\)' `
     -and $rearmWorldMapFromF7 -match `
-        'enabled_\s*&&\s*!transition_active_[\s\S]*?&&\s*world_map_content_visibility_intent\s*\(\s*\)[\s\S]*?&&\s*world_map_candidate_has_open_evidence\s*\(\s*\)[\s\S]*?&&\s*world_map_compact_suppressed_[\s\S]*?&&\s*\(\s*readiness_budget_exhausted\s*\|\|\s*attach_budget_exhausted\s*\)') `
+        'world_map_f7_rearm_action\s*\([\s\S]*?world_map_candidate_available_[\s\S]*?exact_candidate_live[\s\S]*?candidate_in_current_world[\s\S]*?world_map_candidate_has_open_evidence\s*\(\s*\)[\s\S]*?visibility_sample[\s\S]*?WorldMapF7RearmAction::Rearm' `
+    -and $rearmWorldMapFromF7 -match `
+        'enabled_\s*&&\s*!transition_active_[\s\S]*?&&\s*world_map_content_visibility_intent\s*\(\s*\)[\s\S]*?&&\s*f7_rearm_allowed[\s\S]*?&&\s*\(\s*readiness_budget_exhausted\s*\|\|\s*attach_budget_exhausted\s*\)') `
     'F7 catch-up must revalidate retained evidence against native visibility without erasing a fresh SetWorldMapImage edge during the bounded opening grace; reset/rearm may proceed only for that same visible evidence candidate.'
 
 $resumeWorldMap = Get-MainMethod `
     $mainCode 'resume_suspended_world_map_after_f7'
 Assert-True ($resumeWorldMap -match `
-        'activity_suppressed_[\s\S]*?\|\|\s*!world_map_content_visibility_intent\s*\(\s*\)[\s\S]*?\|\|\s*!world_map_candidate_has_open_evidence\s*\(\s*\)[\s\S]*?\|\|\s*!world_map_compact_suppressed_[\s\S]*?\|\|\s*world_map_umg_renderer_\.active_marker_count\s*\(\s*\)\s*==\s*0' `
+        'world_map_f7_rearm_action\s*\([\s\S]*?WorldMapF7RearmAction::Rearm[\s\S]*?activity_suppressed_[\s\S]*?\|\|\s*!world_map_content_visibility_intent\s*\(\s*\)[\s\S]*?\|\|\s*!f7_rearm_allowed[\s\S]*?\|\|\s*world_map_umg_renderer_\.active_marker_count\s*\(\s*\)\s*==\s*0' `
     -and $resumeWorldMap -match `
         'if\s*\(\s*resumed\s*\)\s*\{[\s\S]*?world_map_readiness_attempts_\s*=\s*0[\s\S]*?world_map_service_attempts_\s*=\s*0' `
     -and $resumeWorldMap -match `

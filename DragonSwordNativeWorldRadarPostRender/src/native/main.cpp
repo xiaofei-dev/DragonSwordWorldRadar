@@ -3869,9 +3869,9 @@ private:
     }
 
     [[nodiscard]] bool world_map_candidate_has_open_evidence() const noexcept {
-        return world_map_candidate_available_
-            && world_map_candidate_serial_ != 0
-            && world_map_open_serial_ == world_map_candidate_serial_;
+        return dswros::world_map_serial_matches(
+            world_map_candidate_available_, world_map_candidate_serial_,
+            world_map_open_serial_);
     }
 
     [[nodiscard]] bool world_map_candidate_confirmed_visible() const noexcept {
@@ -4029,62 +4029,67 @@ private:
         // IsVisible is authoritative only after SetWorldMapImage has supplied
         // the exact map-open edge. A constructed DLayerMap can report visible
         // before the player has ever opened it, so activation/travel catch-up
-        // must never create this latch from IsVisible alone.
-        bool authoritative_world_map_close{};
-        if (widget_is_visible_schema_ready_
-            && world_map_candidate_has_open_evidence()) {
-            UObject* current_layer = world_map_candidate_available_
-                ? world_map_layer_candidate_.Get() : nullptr;
-            if (world_map_candidate_available_ && !current_layer) {
-                // The weak layer was destroyed, so it can no longer prove an
-                // open map. An IsVisible call that faults on a still-live
-                // layer remains fail-closed without deleting open evidence.
-                world_map_compact_suppressed_ = false;
-                authoritative_world_map_close = true;
+        // must never create this latch from IsVisible alone. Route all
+        // visible/hidden/unknown observations through the allocation-free
+        // session policy used by the native state tests.
+        UObject* current_layer = world_map_candidate_available_
+            ? world_map_layer_candidate_.Get() : nullptr;
+        const bool exact_candidate_live = current_layer != nullptr;
+        const bool exact_current_world_layer = exact_candidate_live
+            && current_world
+            && object_world_guarded(current_layer) == current_world;
+        dswros::WorldMapVisibilitySample visibility_sample =
+            dswros::WorldMapVisibilitySample::Unknown;
+        bool native_layer_visible{};
+        if (widget_is_visible_schema_ready_ && exact_current_world_layer
+            && read_world_map_layer_visibility_guarded(
+                current_layer, &native_layer_visible)) {
+            visibility_sample = native_layer_visible
+                ? dswros::WorldMapVisibilitySample::Visible
+                : dswros::WorldMapVisibilitySample::Hidden;
+        }
+        const auto now = Clock::now();
+        const std::uint64_t milliseconds_since_open =
+            world_map_open_evidence_at_ == Clock::time_point{}
+                || now < world_map_open_evidence_at_
+            ? 0U
+            : static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - world_map_open_evidence_at_).count());
+        const auto visibility_decision =
+            dswros::decide_world_map_visibility({
+                world_map_candidate_available_,
+                exact_candidate_live,
+                exact_current_world_layer,
+                world_map_candidate_has_open_evidence(),
+                world_map_candidate_confirmed_visible(),
+                world_map_compact_suppressed_,
+                milliseconds_since_open,
+                static_cast<std::uint64_t>(
+                    kWorldMapOpenVisibilityGrace.count()),
+            }, visibility_sample);
+        bool authoritative_world_map_close =
+            world_map_candidate_available_ && !exact_candidate_live;
+        if (visibility_decision.action
+            == dswros::WorldMapVisibilityAction::ConfirmVisible) {
+            world_map_visible_serial_ = world_map_candidate_serial_;
+            world_map_compact_suppressed_ = true;
+            if (visibility_decision.recovery_edge
+                && world_map_content_visibility_intent()
+                && (world_map_umg_renderer_.state()
+                        != dsnwr::WorldMapUmgRendererState::Attached
+                    || !world_map_umg_renderer_
+                            .attached_layer_matches(current_layer))) {
+                // SetWorldMapImage can precede the widget's first true sample.
+                // Restore exactly one current-session request without
+                // resetting either finite budget.
+                world_map_session_pending_ = true;
+                world_map_service_retry_after_ = {};
             }
-            const bool exact_current_world_layer = current_layer
-                && current_world
-                && object_world_guarded(current_layer) == current_world;
-            bool visible{};
-            if (exact_current_world_layer
-                && read_world_map_layer_visibility_guarded(
-                    current_layer, &visible)) {
-                if (visible) {
-                    const bool first_visible_confirmation =
-                        world_map_visible_serial_
-                            != world_map_candidate_serial_;
-                    world_map_visible_serial_ = world_map_candidate_serial_;
-                    world_map_compact_suppressed_ = true;
-                    if (first_visible_confirmation
-                        && world_map_content_visibility_intent()
-                        && (world_map_umg_renderer_.state()
-                                != dsnwr::WorldMapUmgRendererState::Attached
-                            || !world_map_umg_renderer_
-                                    .attached_layer_matches(current_layer))) {
-                        // SetWorldMapImage can precede the widget's first true
-                        // IsVisible sample. F7/reset may run in that transition
-                        // and intentionally discard the premature request. The
-                        // first authoritative visible edge restores exactly one
-                        // current-session request without resetting either
-                        // finite budget.
-                        world_map_session_pending_ = true;
-                        world_map_service_retry_after_ = {};
-                    }
-                } else {
-                    const bool confirmed_visible_this_session =
-                        world_map_visible_serial_
-                            == world_map_candidate_serial_;
-                    const bool opening_grace_expired =
-                        world_map_open_evidence_at_ != Clock::time_point{}
-                        && Clock::now() - world_map_open_evidence_at_
-                            >= kWorldMapOpenVisibilityGrace;
-                    if (confirmed_visible_this_session
-                        || opening_grace_expired) {
-                        world_map_compact_suppressed_ = false;
-                        authoritative_world_map_close = true;
-                    }
-                }
-            }
+        } else if (visibility_decision.action
+            == dswros::WorldMapVisibilityAction::CloseSession) {
+            world_map_compact_suppressed_ = false;
+            authoritative_world_map_close = true;
         }
 
         if (authoritative_world_map_close) {
@@ -4098,8 +4103,6 @@ private:
         // Unknown visibility is fail-closed for the independent atlas hosts,
         // while the compact-suppression latch remains conservative until an
         // authoritative IsVisible result or destroyed weak layer closes it.
-        UObject* current_layer = world_map_candidate_available_
-            ? world_map_layer_candidate_.Get() : nullptr;
         apply_world_map_atlas_visibility_guarded(
             current_world, current_layer);
 
@@ -5861,15 +5864,22 @@ private:
         }
         compact_umg_renderer_.detach();
         reset_compact_pool_runtime();
+        UObject* retained_world_map_layer =
+            current_world_map_layer_guarded();
+        const bool exact_candidate_live = world_map_candidate_available_
+            && retained_world_map_layer;
+        const bool candidate_in_current_world = exact_candidate_live
+            && object_world_guarded(retained_world_map_layer) != nullptr;
+        const bool preserve_world_map_candidate =
+            dswros::preserve_world_map_evidence_on_f8(
+                world_map_candidate_available_, exact_candidate_live,
+                candidate_in_current_world,
+                world_map_candidate_has_open_evidence());
         if (world_map_content_visibility_intent()) {
             world_map_umg_renderer_.suspend();
         } else {
             world_map_umg_renderer_.detach();
         }
-        const bool preserve_world_map_candidate =
-            world_map_umg_renderer_.state()
-                == dsnwr::WorldMapUmgRendererState::Suspended
-            && world_map_candidate_available_;
         reset_world_map_runtime(preserve_world_map_candidate);
         enabled_ = false;
         position_valid_ = false;
@@ -6262,7 +6272,8 @@ private:
             latch_world_map_compact_suppression("set_world_map_image");
             if (same_layer) {
                 const bool new_open_edge =
-                    !world_map_candidate_has_open_evidence();
+                    dswros::world_map_open_session_started(
+                        candidate_transition);
                 world_map_open_serial_ = world_map_candidate_serial_;
                 if (new_open_edge) {
                     world_map_visible_serial_ = 0;
@@ -7464,27 +7475,6 @@ private:
                 && retained->IsA(world_map_layer_class_)
                 && (!expected_world
                     || object_world_guarded(retained) == expected_world)) {
-                if (world_map_candidate_has_open_evidence()) {
-                    bool native_layer_visible{};
-                    if (read_world_map_layer_visibility_guarded(
-                            retained, &native_layer_visible)) {
-                        if (native_layer_visible) {
-                            world_map_visible_serial_ =
-                                world_map_candidate_serial_;
-                            latch_world_map_compact_suppression(
-                                "world_map_activation_catch_up_open_evidence");
-                        } else if (world_map_visible_serial_
-                                == world_map_candidate_serial_
-                            || (world_map_open_evidence_at_
-                                    != Clock::time_point{}
-                                && Clock::now()
-                                        - world_map_open_evidence_at_
-                                    >= kWorldMapOpenVisibilityGrace)) {
-                            world_map_compact_suppressed_ = false;
-                            clear_world_map_open_evidence();
-                        }
-                    }
-                }
                 if (expected_world) {
                     refresh_compact_menu_state(
                         expected_world,
@@ -7566,18 +7556,31 @@ private:
     }
 
     [[nodiscard]] bool resume_suspended_world_map_after_f7() noexcept {
+        UObject* current_layer = current_world_map_layer_guarded();
+        const bool exact_candidate_live = world_map_candidate_available_
+            && current_layer;
+        const bool candidate_in_current_world = exact_candidate_live
+            && object_world_guarded(current_layer) != nullptr;
+        const auto visibility_sample =
+            world_map_candidate_confirmed_visible()
+                && world_map_compact_suppressed_
+            ? dswros::WorldMapVisibilitySample::Visible
+            : dswros::WorldMapVisibilitySample::Unknown;
+        const bool f7_rearm_allowed =
+            dswros::world_map_f7_rearm_action(
+                world_map_candidate_available_, exact_candidate_live,
+                candidate_in_current_world,
+                world_map_candidate_has_open_evidence(), visibility_sample)
+            == dswros::WorldMapF7RearmAction::Rearm;
         if (activity_suppressed_
             || !world_map_content_visibility_intent()
-            || !world_map_candidate_has_open_evidence()
-            || !world_map_compact_suppressed_
+            || !f7_rearm_allowed
             || world_map_umg_renderer_.state()
                 != dsnwr::WorldMapUmgRendererState::Suspended
-            || !world_map_candidate_available_
             || world_map_umg_renderer_.active_marker_count() == 0) {
             return false;
         }
 
-        UObject* current_layer = current_world_map_layer_guarded();
         const bool resumed = current_layer
             && world_map_umg_renderer_.resume_suspended(current_layer);
         if (resumed) {
@@ -7657,6 +7660,22 @@ private:
     }
 
     [[nodiscard]] bool rearm_world_map_from_f7() noexcept {
+        UObject* current_layer = current_world_map_layer_guarded();
+        const bool exact_candidate_live = world_map_candidate_available_
+            && current_layer;
+        const bool candidate_in_current_world = exact_candidate_live
+            && object_world_guarded(current_layer) != nullptr;
+        const auto visibility_sample =
+            world_map_candidate_confirmed_visible()
+                && world_map_compact_suppressed_
+            ? dswros::WorldMapVisibilitySample::Visible
+            : dswros::WorldMapVisibilitySample::Unknown;
+        const bool f7_rearm_allowed =
+            dswros::world_map_f7_rearm_action(
+                world_map_candidate_available_, exact_candidate_live,
+                candidate_in_current_world,
+                world_map_candidate_has_open_evidence(), visibility_sample)
+            == dswros::WorldMapF7RearmAction::Rearm;
         const bool readiness_budget_exhausted =
             world_map_readiness_attempts_
                 >= kWorldMapMaxReadinessAttempts;
@@ -7668,9 +7687,7 @@ private:
         const bool bounded_retry_ready =
             enabled_ && !transition_active_
             && world_map_content_visibility_intent()
-            && world_map_candidate_available_
-            && world_map_candidate_has_open_evidence()
-            && world_map_compact_suppressed_
+            && f7_rearm_allowed
             && !world_map_session_pending_
             && world_map_candidate_serial_ != 0
             && world_map_serviced_serial_ == world_map_candidate_serial_
@@ -7863,27 +7880,58 @@ private:
             world_map_service_retry_after_ = {};
             return;
         }
-        if (!world_map_candidate_has_open_evidence()) {
-            // Activation catch-up can retain a DLayerMap while gameplay is
-            // active. A stale request without candidate-serial-bound
-            // SetWorldMapImage evidence belongs to no open session and must be
-            // cancelled without consuming readiness or attach budget.
+        if (world_map_serviced_serial_ != world_map_candidate_serial_) {
+            world_map_serviced_serial_ = world_map_candidate_serial_;
+            world_map_readiness_attempts_ = 0;
+            world_map_service_attempts_ = 0;
+            world_map_service_retry_after_ = {};
+            world_map_renderer_session_started_ = false;
+            world_map_marker_snapshot_built_ = false;
+            world_map_marker_count_ = 0;
+        }
+        UObject* current_layer = current_world_map_layer_guarded();
+        const bool exact_candidate_live = world_map_candidate_available_
+            && current_layer;
+        const bool candidate_in_current_world = exact_candidate_live
+            && object_world_guarded(current_layer) != nullptr;
+        const auto visibility_sample =
+            world_map_candidate_confirmed_visible()
+            ? (world_map_compact_suppressed_
+                ? dswros::WorldMapVisibilitySample::Visible
+                : dswros::WorldMapVisibilitySample::Hidden)
+            : dswros::WorldMapVisibilitySample::Unknown;
+        const auto work_gate = dswros::world_map_work_gate({
+            world_map_content_visibility_intent(),
+            world_map_candidate_available_,
+            exact_candidate_live,
+            candidate_in_current_world,
+            world_map_candidate_has_open_evidence(),
+            visibility_sample,
+            world_map_service_attempts_,
+            kWorldMapMaxServiceAttempts,
+        });
+        if (work_gate == dswros::WorldMapWorkGate::Ignore) {
+            // Passive listener identity is not an open session. Retire the
+            // stale request without consuming readiness or attachment budget.
             world_map_session_pending_ = false;
             world_map_service_retry_after_ = {};
             return;
         }
-        if (!world_map_compact_suppressed_) {
-            // SetWorldMapImage may precede the first native visible sample.
-            // Preserve the exact session request during that bounded opening
-            // transition; visibility observation will either latch it open or
-            // retire it after the grace window.
+        if (work_gate == dswros::WorldMapWorkGate::Hold) {
+            // SetWorldMapImage may precede the first true IsVisible sample, or
+            // a live candidate may be temporarily unobservable. Preserve the
+            // request and both finite budgets until visibility is known.
             return;
         }
-        if (!world_map_candidate_confirmed_visible()) {
-            // SetWorldMapImage is an opening edge, not proof that the native
-            // map widget has finished becoming visible. Do not inspect map ID,
-            // collect markers, start a renderer session, or consume either
-            // finite budget until the first authoritative true sample arrives.
+        if (work_gate == dswros::WorldMapWorkGate::CloseSession) {
+            clear_world_map_open_evidence();
+            return;
+        }
+        if (work_gate == dswros::WorldMapWorkGate::Exhausted) {
+            world_map_session_pending_ = false;
+            append_log("WORLD_MAP_ATLAS_ATTACH_FAILED", std::format(
+                "activation={} epoch={} reason=bounded_attempt_limit attempts={} retry=next_map_session_or_f7",
+                activation_, epoch_, world_map_service_attempts_));
             return;
         }
         const auto now = Clock::now();
@@ -7904,17 +7952,6 @@ private:
             || !position_valid_) {
             return;
         }
-        if (world_map_serviced_serial_ != world_map_candidate_serial_) {
-            world_map_serviced_serial_ = world_map_candidate_serial_;
-            world_map_readiness_attempts_ = 0;
-            world_map_service_attempts_ = 0;
-            world_map_service_retry_after_ = {};
-            world_map_renderer_session_started_ = false;
-            world_map_marker_snapshot_built_ = false;
-            world_map_marker_count_ = 0;
-        }
-
-        UObject* current_layer = world_map_layer_candidate_.Get();
         if (!current_layer) {
             world_map_candidate_available_ = false;
             clear_world_map_open_evidence();
@@ -7932,15 +7969,6 @@ private:
                 "activation={} epoch={} reason=bounded_readiness_limit readiness_attempts={} attach_attempts={} retry=next_map_session_or_f7",
                 activation_, epoch_, world_map_readiness_attempts_,
                 world_map_service_attempts_));
-            return;
-        }
-
-        if (world_map_service_attempts_
-            >= kWorldMapMaxServiceAttempts) {
-            world_map_session_pending_ = false;
-            append_log("WORLD_MAP_ATLAS_ATTACH_FAILED", std::format(
-                "activation={} epoch={} reason=bounded_attempt_limit attempts={} retry=next_map_session",
-                activation_, epoch_, world_map_service_attempts_));
             return;
         }
 

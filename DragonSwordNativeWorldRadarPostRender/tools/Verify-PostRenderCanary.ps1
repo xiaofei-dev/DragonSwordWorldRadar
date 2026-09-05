@@ -1377,7 +1377,7 @@ Assert-True ($evaluateAreaQuestCondition.Length -gt 0 `
 Assert-True ($retireAtlasForRuntimeDelta -match `
         'world_map_marker_snapshot_built_\s*=\s*false' `
     -and $retireAtlasForRuntimeDelta -match `
-        'if\s*\(attached\s*&&\s*visibly_open\)[\s\S]*?world_map_umg_renderer_\.begin_activation\(\);[\s\S]*?reset_world_map_runtime\(true\)' `
+        'else\s+if\s*\(visibly_open\)[\s\S]*?world_map_umg_renderer_\.begin_activation\(\);[\s\S]*?reset_world_map_runtime\(true\)' `
     -and $retireAtlasForRuntimeDelta -match `
         'else\s+if\s*\(attached\)[\s\S]*?world_map_session_pending_\s*=\s*false[\s\S]*?deferred_until_set_world_map_image' `
     -and $mainCode -match 'Clock::time_point\s+next_runtime_visibility_edge_probe_' `
