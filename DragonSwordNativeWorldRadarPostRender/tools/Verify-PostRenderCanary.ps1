@@ -106,7 +106,7 @@ Assert-True ($config -match '(?m)^late_present_relative_marker_enabled=false\r?$
     'The late Present relative marker must be disabled by default.'
 Assert-True ($metadata.name -eq 'DragonSwordNativeWorldRadarPostRender') `
     'Release metadata names the wrong mod.'
-Assert-True ($metadata.version -eq '2.2.1') `
+Assert-True ($metadata.version -eq '2.3.0') `
     'Release metadata version is stale for the current native milestone.'
 Assert-True ($cmake -notmatch 'src/native/late_present_canary\.cpp') `
     'The runtime-rejected late Present source must not be compiled.'
@@ -670,7 +670,7 @@ $hubGuardedServiceIndex = $hubOpenService.IndexOf(
     [StringComparison]::Ordinal)
 Assert-True ([regex]::Matches(
         $mainCode,
-        'register_keydown_event\(Input::Key::F6').Count -eq 1 `
+        'register_keydown_event\(static_cast<Input::Key>\(hotkey_settings_\.settings\)').Count -eq 1 `
     -and $mainCode -match `
         'kVisibilityHubServiceInterval\s*=\s*std::chrono::milliseconds\{50\}' `
     -and $mainCode -match `
@@ -754,7 +754,7 @@ Assert-True ($applyVisibilityHubResult -match `
         'language_preference_\s*=\s*result\.language[\s\S]*?active_ui_language_\s*=\s*dswros::resolve_radar_ui_language' `
     -and [regex]::Matches(
         $mainCode,
-        'persist_visibility_settings\(').Count -eq 3 `
+        'persist_visibility_settings\(').Count -eq 2 `
     -and [regex]::Matches(
         $mainCode,
         'load_visibility_settings\(').Count -eq 2 `
@@ -765,27 +765,27 @@ Assert-True ($applyVisibilityHubResult -match `
     -and $visibilityParser -match 'VisibilityConfigFormat::LegacySchema4' `
     -and $visibilityParser -match `
         'old_sectioned\s*=\s*seen_sections\s*==\s*0x07U' `
-    -and $mainCode -match `
-        'migrate_legacy_auto_language_preference[\s\S]*?RadarLanguagePreference::Auto[\s\S]*?resolve_explicit_radar_language_preference[\s\S]*?persist_visibility_settings' `
+    -and $mainCode -notmatch `
+        'migrate_legacy_auto_language_preference|resolve_explicit_radar_language_preference' `
     -and $mainCode -match `
         'assault_mode=[\s\S]*?AssaultDisplayMode::All[\s\S]*?"current"') `
-    'Visibility settings must load once, migrate legacy schema 1-4 and complete old three-section files, persist legacy AUTO once as the detected explicit language, and otherwise persist 2.2 selections only after a real Hub change.'
+    'Visibility settings must load once, accept legacy schema 1-4 and complete old three-section files, preserve persistent AUTO, and write preferences only after a real Hub change.'
 $detectCurrentLanguage = [regex]::Match(
     $mainCode,
     '(?ms)^\s{4}\[\[nodiscard\]\]\s+dswros::RadarUiLanguage\s+detect_current_game_language\s*\([^;]*?\)[^{]*\{(?:(?!^\s{4}\}).)*^\s{4}\}').Value
 Assert-True ($detectCurrentLanguage.Length -gt 0 `
     -and $mainCode -match `
-        'detect_current_game_language_guarded\s*\([\s\S]*?__try[\s\S]*?detect_current_game_language\(engine\)[\s\S]*?seh_fault_fallback_en' `
+        'detect_current_game_language_guarded\s*\([\s\S]*?__try[\s\S]*?detect_current_game_language\(engine\)[\s\S]*?seh_fault_preserve_last' `
     -and $mainCode -match `
         'current_player_controller_for_visibility_hub\s*\([\s\S]*?__try[\s\S]*?current_player_controller\(engine\)[\s\S]*?return\s+nullptr' `
     -and [regex]::Matches(
         $mainCode, 'ProcessEvent\(current_language_function_').Count -eq 1 `
     -and $activateOwner -match `
-        'detected_game_language_\s*=\s*detect_current_game_language_guarded\(engine\)[\s\S]*?resolve_radar_ui_language' `
+        'detected_game_language_\s*=\s*dswros::retain_detected_radar_language\([\s\S]*?detect_current_game_language_guarded\(engine\)\)[\s\S]*?resolve_radar_ui_language' `
     -and $detectCurrentLanguage -match `
         'game_user_settings_language_schema_ready_[\s\S]*?engine_game_user_settings_property_[\s\S]*?game_language_text_property_[\s\S]*?game_language_text_numeric_property_[\s\S]*?radar_ui_language_from_game_setting' `
     -and $detectCurrentLanguage -match `
-        'internationalization_language_schema_ready_[\s\S]*?ProcessEvent\(current_language_function_[\s\S]*?RadarUiLanguage::English' `
+        'internationalization_language_schema_ready_[\s\S]*?ProcessEvent\(current_language_function_[\s\S]*?RadarUiLanguage::Count' `
     -and $openVisibilityHubWhenReady -match `
         'detect_current_game_language_guarded\(engine\)[\s\S]*?visibility_hub_\.toggle' `
     -and $openVisibilityHubWhenReady -match `
@@ -803,7 +803,7 @@ Assert-True ($detectCurrentLanguage.Length -gt 0 `
     -and ($probeActivityContext + $runtimeVisibilityService + `
         $updateCompactPool) -notmatch `
         'current_language|detect_current_game_language|internationalization') `
-    'LanguageText must be sampled once per F7 and real F6 open through bounded fault guards, fall back through UE culture then English, and never enter the 16 ms or 250 ms paths.'
+    'LanguageText must be sampled once per F7 and real F6 open through bounded fault guards, retain last valid detection after failed providers, and never enter the 16 ms or 250 ms paths.'
 $hubCompactChange = [regex]::Match(
     $applyVisibilityHubResult,
     '(?s)const bool compact_changed\s*=.*?;\s*const bool world_changed').Value

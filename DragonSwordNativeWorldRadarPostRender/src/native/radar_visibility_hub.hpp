@@ -231,7 +231,7 @@ private:
     static constexpr std::size_t kHeightIndicatorCount =
         static_cast<std::size_t>(dswros::HeightIndicatorCategory::Count);
     static constexpr std::size_t kLanguageChoiceCount =
-        dswros::kRadarUiLanguageCount;
+        dswros::kRadarLanguagePreferenceCount;
     static constexpr std::size_t kLanguagePopupDecorationCount =
         kLanguageChoiceCount + 3U;
     static constexpr std::size_t kLanguageFontCount =

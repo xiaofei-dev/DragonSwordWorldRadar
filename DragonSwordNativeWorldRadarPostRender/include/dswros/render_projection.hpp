@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <optional>
@@ -507,6 +508,105 @@ calculate_compact_viewport_layout(
         return std::nullopt;
     }
     return WorldMapPoint{x, y};
+}
+
+// Attach-only readiness. Raw player-anchor motion is expected while flying;
+// compare the world-to-Canvas origin instead. Do not use this to reposition a
+// retained atlas or change the separate parent-extent rebuild sampler.
+struct WorldMapProjectionIdentity {
+    std::int32_t index{-1};
+    std::int32_t serial{};
+    bool operator==(const WorldMapProjectionIdentity&) const = default;
+};
+
+struct WorldMapProjectionSample {
+    WorldMapGeometrySample geometry{};
+    Position player_world{};
+    double map_dimensions{};
+    double map_ui_size{};
+    std::int32_t map_id{};
+    // Layer, native parent, player icon, owning player. Numeric weak identities
+    // only: no UObject or cached FGeometry survives a service attempt.
+    std::array<WorldMapProjectionIdentity, 4> identities{};
+};
+
+struct WorldMapProjectionDelta {
+    bool comparable{};
+    double anchor{};
+    double player_world{};
+    double extent{};
+    double origin{};
+    double maximum{};
+};
+
+[[nodiscard]] inline std::optional<WorldMapPoint> world_map_projection_origin(
+    const WorldMapProjectionSample& sample) noexcept {
+    if (sample.map_id <= 0
+        || !validate_world_map_canvas_anchor(
+            sample.geometry.player_canvas_x, sample.geometry.player_canvas_y,
+            sample.geometry.parent_width, sample.geometry.parent_height,
+            sample.map_ui_size)) {
+        return std::nullopt;
+    }
+    for (const auto& identity : sample.identities) {
+        if (identity.index < 0 || identity.serial <= 0) {
+            return std::nullopt;
+        }
+    }
+    return project_world_map_point(
+        sample.geometry.player_canvas_x, sample.geometry.player_canvas_y,
+        sample.player_world, {0.0, 0.0, 0.0}, sample.map_dimensions,
+        sample.geometry.parent_width, sample.geometry.parent_height);
+}
+
+[[nodiscard]] inline WorldMapGeometryStabilityResult
+observe_world_map_projection_sample(
+    bool& retained_valid,
+    WorldMapProjectionSample& retained,
+    const WorldMapProjectionSample& current,
+    WorldMapProjectionDelta& delta) noexcept {
+    delta = {};
+    const auto current_origin = world_map_projection_origin(current);
+    if (!current_origin) {
+        retained_valid = false;
+        retained = {};
+        return WorldMapGeometryStabilityResult::None;
+    }
+    const auto previous_origin = retained_valid
+        ? world_map_projection_origin(retained) : std::nullopt;
+    if (!previous_origin || retained.identities != current.identities
+        || retained.map_id != current.map_id
+        || retained.map_dimensions != current.map_dimensions
+        || retained.map_ui_size != current.map_ui_size) {
+        retained = current;
+        retained_valid = true;
+        return WorldMapGeometryStabilityResult::Seeded;
+    }
+
+    delta.anchor = std::max(
+        std::abs(current.geometry.player_canvas_x - retained.geometry.player_canvas_x),
+        std::abs(current.geometry.player_canvas_y - retained.geometry.player_canvas_y));
+    delta.player_world = std::max(
+        std::abs(current.player_world.x - retained.player_world.x),
+        std::abs(current.player_world.y - retained.player_world.y));
+    delta.extent = *world_map_parent_extent_maximum_delta(
+        retained.geometry, current.geometry);
+    delta.origin = std::max(
+        std::abs(current_origin->x - previous_origin->x),
+        std::abs(current_origin->y - previous_origin->y));
+    delta.maximum = std::max(delta.extent, delta.origin);
+    if (!std::isfinite(delta.anchor) || !std::isfinite(delta.player_world)
+        || !std::isfinite(delta.maximum)) {
+        retained_valid = false;
+        retained = {};
+        delta = {};
+        return WorldMapGeometryStabilityResult::None;
+    }
+    delta.comparable = true;
+    retained = current;
+    return delta.maximum <= kWorldMapGeometryStabilityTolerance
+        ? WorldMapGeometryStabilityResult::Stable
+        : WorldMapGeometryStabilityResult::Replaced;
 }
 
 [[nodiscard]] inline std::optional<ScreenPoint> project_compact_radar_point(

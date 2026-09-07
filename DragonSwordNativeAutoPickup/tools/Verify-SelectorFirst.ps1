@@ -484,11 +484,14 @@ $observerRequiredIndex = $adapter.IndexOf(
     'if (!register_server_run_interact_observer())', [StringComparison]::Ordinal)
 $engineTickRegistrationIndex = $adapter.IndexOf(
     'Hook::RegisterEngineTickPostCallback(', [StringComparison]::Ordinal)
+$runtimeReadyIndex = $adapter.IndexOf(
+    'runtime_initialization_state_ = RuntimeInitializationState::Ready;',
+    [StringComparison]::Ordinal)
 if ($selectorResolutionIndex -lt 0 -or $observerRequiredIndex -lt 0 -or
-    $engineTickRegistrationIndex -lt 0 -or
+    $engineTickRegistrationIndex -lt 0 -or $runtimeReadyIndex -lt 0 -or
     $selectorResolutionIndex -ge $observerRequiredIndex -or
-    $observerRequiredIndex -ge $engineTickRegistrationIndex) {
-    throw 'The required dispatch observer must register after selector resolution and before EngineTickPost.'
+    $observerRequiredIndex -ge $runtimeReadyIndex) {
+    throw 'The required dispatch observer must register after selector resolution and before runtime readiness.'
 }
 $observerRequiredBlock = Get-BracedBlock $adapter `
     'if (!register_server_run_interact_observer())' `
@@ -496,6 +499,52 @@ $observerRequiredBlock = Get-BracedBlock $adapter `
 foreach ($value in @('"DISABLED"', 'return;')) {
     Assert-ContainsOrdinal $observerRequiredBlock $value `
         'Dispatch-observer registration fail-closed gate'
+}
+
+$engineTickBlock = Get-BracedBlock $adapter `
+    'void engine_tick_post(UEngine* engine) noexcept' `
+    'EngineTickPost runtime initialization boundary'
+foreach ($value in @(
+    'runtime_initialization_state_ == RuntimeInitializationState::Pending',
+    'now >= next_runtime_initialization_attempt_',
+    'runtime_initialization_retry_in_progress_ = true;',
+    'on_unreal_init();',
+    'runtime_initialization_retry_in_progress_ = false;',
+    'if (runtime_initialization_state_ != RuntimeInitializationState::Ready) return;')) {
+    Assert-ContainsOrdinal $engineTickBlock $value `
+        'Fail-closed deferred runtime initialization gate'
+}
+$runtimeReadyGuardIndex = $engineTickBlock.IndexOf(
+    'if (runtime_initialization_state_ != RuntimeInitializationState::Ready) return;',
+    [StringComparison]::Ordinal)
+$operationalTickIndex = $engineTickBlock.IndexOf(
+    'const auto tick_started = Clock::now();', [StringComparison]::Ordinal)
+if ($runtimeReadyGuardIndex -lt 0 -or $operationalTickIndex -lt 0 -or
+    $runtimeReadyGuardIndex -ge $operationalTickIndex) {
+    throw 'EngineTickPost must reject non-Ready startup state before any operational pickup work.'
+}
+foreach ($value in @(
+    'kRuntimeInitializationRetryInterval = std::chrono::milliseconds{250}',
+    'kRuntimeInitializationTimeout = std::chrono::seconds{30}',
+    'const bool only_interactable_cdo_pending =',
+    'interactable_cdo == nullptr',
+    'INITIALIZATION_DEFERRED',
+    'fail_closed_until_ready=1',
+    'INITIALIZATION_RETRY',
+    'INITIALIZATION_RECOVERED',
+    'full_contract_revalidated=1')) {
+    Assert-ContainsOrdinal $adapter $value `
+        'Bounded interactable-CDO startup retry contract'
+}
+foreach ($value in @(
+    "retryable_dependency = 'interactable_class_present_cdo_not_ready_all_other_required_reflection_present'",
+    'retry_interval_ms = 250',
+    'timeout_ms = 30000',
+    "pending_behavior = 'fail_closed_no_F9_no_scan_no_injection'",
+    "recovery = 'rerun_complete_reflection_contract_and_dual_anchor_selector_resolution_before_READY'",
+    "all_other_failures = 'terminal_no_retry'")) {
+    Assert-ContainsOrdinal $releaseBuilder $value `
+        'Release startup-initialization manifest contract'
 }
 
 $dispatchObserver = Get-BracedBlock $adapter `
@@ -1313,7 +1362,7 @@ foreach ($value in @(
 foreach ($value in @(
     '_installationState.CanRepair',
     '? "Repair"',
-    '? "Upgrade"',
+    '? "Update"',
     ': "Install"')) {
     Assert-ContainsOrdinal $installerForm $value 'Installer Repair UI contract'
 }
@@ -1321,9 +1370,15 @@ foreach ($value in @(
     "Assert ([bool](Prop `$State 'CanRepair'))",
     "Assert (-not [bool](Prop `$State 'CanUpgrade'))",
     "Assert (-not [bool](Prop `$State 'CanRepair'))",
-    'Owned repair preserves config and is backup-free')) {
+    'Owned repair applies confirmed keys, preserves other settings, and rejects stale plans')) {
     Assert-ContainsOrdinal $installerTest $value 'Installer Repair test contract'
 }
+
+Assert-ContainsOrdinal $installerEngine 'ApplyConfiguredKeys(preservedConfig, hotkey, fallback)' 'Confirmed key edit transaction'
+Assert-DoesNotContain $installerEngine 'hotkey = state.ToggleHotkey;' 'No silent installed-key override'
+Assert-DoesNotContain $installerEngine 'hotkey = installationState.ToggleHotkey;' 'No silent mutation-key override'
+Assert-ContainsOrdinal $installerForm 'plan.ToggleHotkey,' 'Execute confirmed key values'
+Assert-ContainsOrdinal $installerForm 'RefreshInstallationState(completed);' 'Retain cancelled key selections'
 
 $enabledGuardIndex = $adapter.IndexOf(
     'if (!automation_enabled_.load(std::memory_order_acquire)) return;',

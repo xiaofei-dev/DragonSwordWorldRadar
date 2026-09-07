@@ -103,6 +103,8 @@ constexpr auto kFaultBackoff = std::chrono::milliseconds{1000};
 constexpr auto kPostPickupCooldown = std::chrono::milliseconds{25};
 constexpr auto kWorldSettleDelay = std::chrono::milliseconds{1500};
 constexpr auto kReadinessProbeInterval = std::chrono::milliseconds{250};
+constexpr auto kRuntimeInitializationRetryInterval = std::chrono::milliseconds{250};
+constexpr auto kRuntimeInitializationTimeout = std::chrono::seconds{30};
 constexpr auto kSelectorAttemptBudget = std::chrono::milliseconds{250};
 constexpr auto kSlowTickThreshold = std::chrono::microseconds{2000};
 constexpr auto kSlowTickLogInterval = std::chrono::seconds{1};
@@ -120,6 +122,12 @@ struct NativeSelectorPair {
     UObject* component{};
 };
 static_assert(sizeof(NativeSelectorPair) == 16);
+
+enum class RuntimeInitializationState : std::uint8_t {
+    Pending,
+    Ready,
+    Failed,
+};
 
 struct TimingSnapshot {
     std::uint64_t count{};
@@ -794,10 +802,12 @@ public:
 
     void on_unreal_init() override {
         if (!configuration_result_.valid()) {
+            runtime_initialization_state_ = RuntimeInitializationState::Failed;
             logger_.write(dsnap::LogAudience::User, "DISABLED", "invalid configuration");
             return;
         }
         if (!apply_build_fingerprint_once()) {
+            runtime_initialization_state_ = RuntimeInitializationState::Failed;
             logger_.write(dsnap::LogAudience::User, "PASSIVE_ONLY",
                           std::format("unknown or incompatible UE4SS fingerprint error={} "
                                       "reflection_not_attempted=1",
@@ -805,6 +815,25 @@ public:
             static_cast<void>(logger_.flush_all());
             return;
         }
+
+        const auto initialization_now = Clock::now();
+        if (runtime_initialization_attempts_ == 0) {
+            runtime_initialization_started_at_ = initialization_now;
+            runtime_initialization_deadline_ = initialization_now + kRuntimeInitializationTimeout;
+            const auto generation = callback_gate_.generation();
+            engine_tick_callback_id_ = Hook::RegisterEngineTickPostCallback(
+                [generation](Hook::TCallbackIterationData<void>&, UEngine* engine, float, bool) {
+                    if (auto* self = current_instance(generation)) self->engine_tick_post(engine);
+                },
+                {false, false, STR("DragonSwordNativeAutoPickup"), STR("BoundedSelectorWindowCanary")});
+            if (engine_tick_callback_id_ == Hook::ERROR_ID) {
+                runtime_initialization_state_ = RuntimeInitializationState::Failed;
+                logger_.write(dsnap::LogAudience::User, "DISABLED",
+                              "required bootstrap EngineTickPost callback registration failed");
+                return;
+            }
+        }
+        ++runtime_initialization_attempts_;
 
         drop_item_class_ = UObjectGlobals::StaticFindObject<UClass*>(nullptr, nullptr, kDropItemClassPath);
         interactable_class_ = UObjectGlobals::StaticFindObject<UClass*>(nullptr, nullptr, kInteractableClassPath);
@@ -848,6 +877,40 @@ public:
         if (!validate_reflection_contract(server_run_interact_function_, set_interact_ui_function,
                                           interactable_cdo, target_object_property,
                                           target_component_property, &reflection_report)) {
+            const bool only_interactable_cdo_pending =
+                interactable_cdo == nullptr && drop_item_class_ != nullptr &&
+                interactable_class_ != nullptr && enhanced_player_input_class_ != nullptr &&
+                input_action_class_ != nullptr && enhanced_action_mapping_struct_ != nullptr &&
+                key_struct_ != nullptr && enhanced_input_subsystem_class_ != nullptr &&
+                subsystem_library_class_ != nullptr && subsystem_library_cdo_ != nullptr &&
+                get_local_player_subsystem_function_ != nullptr &&
+                inject_input_vector_function_ != nullptr &&
+                server_run_interact_function_ != nullptr && set_interact_ui_function != nullptr &&
+                target_object_property != nullptr && target_component_property != nullptr;
+            if (only_interactable_cdo_pending && initialization_now < runtime_initialization_deadline_) {
+                runtime_initialization_state_ = RuntimeInitializationState::Pending;
+                next_runtime_initialization_attempt_ =
+                    initialization_now + kRuntimeInitializationRetryInterval;
+                if (runtime_initialization_attempts_ == 1) {
+                    logger_.write(dsnap::LogAudience::User, "INITIALIZATION_DEFERRED",
+                                  std::format("reason=interactable_cdo_not_ready retry_interval_ms={} "
+                                              "timeout_ms={} fail_closed_until_ready=1",
+                                              kRuntimeInitializationRetryInterval.count(),
+                                              std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                  kRuntimeInitializationTimeout).count()));
+                    log_reflection_contract_detail(reflection_report, set_interact_ui_function);
+                } else if (configuration_result_.value.debug_logging &&
+                           runtime_initialization_attempts_ % 8 == 0) {
+                    logger_.write(dsnap::LogAudience::Debug, "INITIALIZATION_RETRY",
+                                  std::format("reason=interactable_cdo_not_ready attempt={} "
+                                              "elapsed_ms={}",
+                                              runtime_initialization_attempts_,
+                                              std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                  initialization_now - runtime_initialization_started_at_).count()));
+                }
+                return;
+            }
+            runtime_initialization_state_ = RuntimeInitializationState::Failed;
             logger_.write(dsnap::LogAudience::User, "DISABLED",
                           std::format("reflection contract missing or changed drop_item={} interactable={} "
                                       "enhanced_player_input={} input_action={} mapping_struct={} key_struct={} "
@@ -875,6 +938,7 @@ public:
                                          interactable_cdo,
                                          target_object_property->GetOffset_Internal(),
                                          target_component_property->GetOffset_Internal())) {
+            runtime_initialization_state_ = RuntimeInitializationState::Failed;
             logger_.write(dsnap::LogAudience::User, "SELECTOR_UNAVAILABLE",
                            std::format("policy={} status={} anchor_source={} "
                                        "server_virtual_dispatch_candidates={} "
@@ -912,6 +976,7 @@ public:
                                    selector_capability_.ui_selector_candidates));
 
         if (!register_server_run_interact_observer()) {
+            runtime_initialization_state_ = RuntimeInitializationState::Failed;
             logger_.write(dsnap::LogAudience::User, "DISABLED",
                           "required Server_RunInteractV2 post observer registration failed");
             return;
@@ -927,11 +992,6 @@ public:
         }
 
         const auto generation = callback_gate_.generation();
-        engine_tick_callback_id_ = Hook::RegisterEngineTickPostCallback(
-            [generation](Hook::TCallbackIterationData<void>&, UEngine* engine, float, bool) {
-                if (auto* self = current_instance(generation)) self->engine_tick_post(engine);
-            },
-            {false, false, STR("DragonSwordNativeAutoPickup"), STR("BoundedSelectorWindowCanary")});
         world_reset_callback_id_ = Hook::RegisterInitGameStatePreCallback(
             [generation](Hook::TCallbackIterationData<void>&, AGameModeBase*) {
                 if (auto* self = current_instance(generation)) self->reset_world("InitGameStatePre");
@@ -953,6 +1013,7 @@ public:
         }
 
         if (engine_tick_callback_id_ == Hook::ERROR_ID || world_reset_callback_id_ == Hook::ERROR_ID) {
+            runtime_initialization_state_ = RuntimeInitializationState::Failed;
             unregister_callbacks();
             logger_.write(dsnap::LogAudience::User, "DISABLED", "required native callback registration failed");
             return;
@@ -960,6 +1021,7 @@ public:
 
         const auto toggle_key = dsnap::parse_toggle_hotkey(configuration_result_.value.toggle_hotkey);
         if (!toggle_key) {
+            runtime_initialization_state_ = RuntimeInitializationState::Failed;
             unregister_callbacks();
             logger_.write(dsnap::LogAudience::User, "DISABLED", "configured toggle hotkey is unsupported");
             return;
@@ -996,6 +1058,16 @@ public:
                           std::format("reason=abi_validation_failed mask=0x{:08X} "
                                       "pickup_unaffected=1",
                                       status_toast_renderer_.abi_failure_mask()));
+        }
+
+        runtime_initialization_state_ = RuntimeInitializationState::Ready;
+        if (runtime_initialization_attempts_ > 1) {
+            logger_.write(dsnap::LogAudience::User, "INITIALIZATION_RECOVERED",
+                          std::format("reason=interactable_cdo_ready attempts={} elapsed_ms={} "
+                                      "full_contract_revalidated=1",
+                                      runtime_initialization_attempts_,
+                                      std::chrono::duration_cast<std::chrono::milliseconds>(
+                                          Clock::now() - runtime_initialization_started_at_).count()));
         }
 
         logger_.write(dsnap::LogAudience::User, "READY",
@@ -1051,7 +1123,8 @@ public:
         }
         if (shutting_down_.load(std::memory_order_acquire)) return;
 
-        if (!fingerprint_applied_ || !build_trusted_.load(std::memory_order_acquire)) return;
+        if (!fingerprint_applied_ || !build_trusted_.load(std::memory_order_acquire) ||
+            runtime_initialization_state_ != RuntimeInitializationState::Ready) return;
 
         const auto key_events = session_events_.drain_key_events();
         const auto key_event_count = key_events.count;
@@ -2351,6 +2424,16 @@ private:
         if (shutting_down_.load(std::memory_order_acquire)) return;
         const auto tick_sequence = next_tick_sequence_.fetch_add(1, std::memory_order_relaxed) + 1;
         logger_.set_tick_sequence(tick_sequence);
+        if (runtime_initialization_state_ == RuntimeInitializationState::Pending) {
+            const auto now = Clock::now();
+            if (now >= next_runtime_initialization_attempt_) {
+                runtime_initialization_retry_in_progress_ = true;
+                on_unreal_init();
+                runtime_initialization_retry_in_progress_ = false;
+            }
+            return;
+        }
+        if (runtime_initialization_state_ != RuntimeInitializationState::Ready) return;
         const auto tick_started = Clock::now();
         StageTimings tick_stage_timings{};
         ScopeExit status_toast_tick{[this, engine]() noexcept {
@@ -3444,7 +3527,12 @@ private:
     }
 
     void unregister_callbacks() noexcept {
-        if (engine_tick_callback_id_ != Hook::ERROR_ID) {
+        // A deferred startup attempt runs inside this callback. If a later
+        // registration gate fails, quiesce every partially registered runtime
+        // callback but leave the current EngineTickPost callback as a permanent
+        // fail-closed no-op until ordinary Mod shutdown unregisters it.
+        if (!runtime_initialization_retry_in_progress_ &&
+            engine_tick_callback_id_ != Hook::ERROR_ID) {
             Hook::UnregisterCallback(engine_tick_callback_id_);
             engine_tick_callback_id_ = Hook::ERROR_ID;
         }
@@ -3491,6 +3579,9 @@ private:
     std::atomic<std::uint64_t> next_request_id_{};
     std::atomic<std::uint64_t> next_action_id_{};
     bool fingerprint_applied_{};
+    RuntimeInitializationState runtime_initialization_state_{RuntimeInitializationState::Pending};
+    std::uint32_t runtime_initialization_attempts_{};
+    bool runtime_initialization_retry_in_progress_{};
     std::atomic<bool> pending_action_visible_{};
     dsnap::AtomicPhysicalKeyEdge toggle_key_edge_{};
     std::atomic<std::size_t> action_record_size_visible_{};
@@ -3559,6 +3650,9 @@ private:
     std::uint32_t deferred_debug_events_this_activation_{};
 
     Clock::time_point last_pulse_at_{};
+    Clock::time_point runtime_initialization_started_at_{};
+    Clock::time_point runtime_initialization_deadline_{};
+    Clock::time_point next_runtime_initialization_attempt_{};
     Clock::time_point next_pulse_due_{};
     Clock::time_point next_perf_log_{};
     Clock::time_point last_slow_tick_log_{};

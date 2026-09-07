@@ -71,8 +71,8 @@ EXPECTED_MAIN_LAYOUT = (
 )
 
 EXPECTED_POPUP_LAYOUT = (
-    ("ko", 448, 145, 180, 24, 0.42, True),
-    ("zh-hant", 246, 185, 180, 24, 0.42, True),
+    ("ko", 44, 185, 180, 24, 0.42, True),
+    ("zh-hant", 448, 185, 180, 24, 0.42, True),
 )
 
 MAIN_OVERLAY_SLOTS: tuple[Slot, ...] = tuple(
@@ -958,11 +958,9 @@ def verify_runtime_geometry_and_scope(
             "two-language packaged-overlay scope",
         ),
         (
-            "const bool packaged_choice = index == "
-            "static_cast<std::size_t>( "
-            "dswros::RadarUiLanguage::Korean) || index == "
-            "static_cast<std::size_t>( "
-            "dswros::RadarUiLanguage::TraditionalChinese);",
+            "const bool packaged_choice = choice == "
+            "dswros::RadarLanguagePreference::Korean || choice == "
+            "dswros::RadarLanguagePreference::TraditionalChinese;",
             "two-language popup-overlay scope",
         ),
     )

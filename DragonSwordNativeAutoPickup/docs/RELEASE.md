@@ -1,5 +1,8 @@
 # Release Procedure
 
+Current complete 1.3.1 package identities and gate results are in
+[Release status](RELEASE_STATUS.md). Older receipt hashes below are historical.
+
 ## Public release
 
 - Version: `1.3.1`
@@ -11,10 +14,15 @@
 - Primary interaction mode: saved semantic `INTERACT` binding
 - Fallback interaction key: F
 - Public Debug: Off
-- Installer actions: Install, Upgrade, Repair, Uninstall
+- Installer actions: Install, Update, Repair, Uninstall; Install / Update /
+  Repair load existing keys and apply the explicitly confirmed selections
 - Optional range: Original, 3x, 5x, 10x, 15x, or 20x; Original by default
 - StableRoot payload: not included
 - Game executable hash: diagnostic only, never a release gate
+- Startup readiness: if and only if the interactable class exists before its
+  CDO, retry every 250 ms for at most 30 seconds while all pickup behavior
+  remains unavailable; recovery reruns the complete reflection and selector
+  contracts, while every other mismatch fails immediately
 - Selector resolution policy:
   `runtime_reflection_dual_caller_rel32_consensus_fail_closed`
 - Selector compatibility: loaded PE32+ plus x64 `.pdata`/`CHAININFO` bounds;
@@ -39,9 +47,10 @@
   another F9 transition
 - Feature status: corrective and compatibility-repair source implemented after
   deployed 1.2.0 action-storm evidence
-- Exact-package status: native pickup behavior is unchanged from the accepted
-  1.3.0 baseline. The complete 1.3.1 offline package build and static release
-  gates passed; deployment and the owner gameplay smoke test remain separate
+- Exact-package status: the current source includes dispatch-observer,
+  bounded-recovery, and startup-readiness corrections. Do not describe it as
+  unchanged from 1.3.0. Current offline results belong to the release manifest;
+  deployment and exact-artifact gameplay smoke testing remain separate
 
 ## Release artifacts
 
@@ -63,6 +72,28 @@ approved range PAKs remain owned by the range-expansion project. Each contains
 50 reviewed gather/animal packages and 19 structured type-7 monster-drop
 packages; treasure assets are excluded. The 15x and 20x variants keep their
 full gather/animal multiplier while the short-lived drop targets remain 10x.
+
+### Historical startup-readiness package receipt (before the key-selector refresh)
+
+The preceding unpublished 1.3.1 startup-readiness package completed the full
+offline release gate. These hashes do not identify the latest full refresh:
+
+- native DLL: 944,640 bytes / SHA-256
+  `44FFCECD0CCC4CB1BA30502F147E1E439F919D229A4B9DD5D72B66C1155D1B64`;
+- unsigned Setup: 13,027,328 bytes / SHA-256
+  `8B3B883EFB8BF1E269643D98A0B0E5270682E17157FF92321D8110335BAF4B8D`;
+- installer ZIP: 8,573,775 bytes / SHA-256
+  `B9243CFD00AE87574923CFD986EC01CD9E06A6228C15DEDCE319D968C7E0553A`;
+- manual without UE4SS: 373,757 bytes / SHA-256
+  `0955697D4F83B91CDBF103188CEEB1958114C5959148E7FB22BC8E6222E5F3B8`;
+- manual with UE4SS: 8,458,357 bytes / SHA-256
+  `630ECBA521836A2F4F3C216E809068D328EF21D51BA582B642DB95A643DADEC0`;
+- unchanged standalone range ZIP: 3,920,172 bytes / SHA-256
+  `A346C4F20CF85C60FD2965FCC583129AFD8EB2B805CF4E20A80C1B20B79B49FE`.
+
+Static/source/core/native-artifact, installer 11/11, deterministic archive,
+exact-entry, checksum, and range-owner gates passed. Deployment and exact-
+artifact gameplay acceptance remain pending.
 
 The preceding action-lifecycle artifact identities with the 750 ms fallback
 window and 200 ms retry delay are listed below. They do not contain the dispatch-
@@ -136,13 +167,15 @@ embedded in the installer ZIP.
    wrapper bounds, unique terminal `E8 rel32` UI implementation call,
    implementation-level selector structural contracts, final address consensus,
    no fixed RVA, and fail-closed ambiguity/disagreement/fault paths.
-5. Verify Install, Upgrade, Repair, and Uninstall state inspection against isolated
+5. Verify Install, Update, Repair, and Uninstall state inspection against isolated
    absent, owned, and unknown same-name fixtures; the current release matrix
    must return exactly 11 passed, 0 failed, and 0 skipped, including the recorded
-   schema-2 1.3.0 to 1.3.1 Upgrade fixture.
-6. Confirm exact-runtime Upgrade preserves `config.ini`, does not create a
-   persistent conversion backup, and restores temporary transactional changes
-   on failure.
+   schema-2 1.3.0 to 1.3.1 Update fixture.
+6. Confirm Update and Repair apply explicitly selected keys while preserving
+   other `config.ini` content; unchanged choices preserve exact bytes. Reject
+   invalid/stale plans, preserve cancelled form edits, create no persistent
+   exact-runtime conversion backup, and roll back configuration/range/control
+   files on failure.
 7. Confirm Uninstall removes only owned Auto Pickup files, the authoritative
    `mods.txt` entry, and owned approved range PAKs while preserving UE4SS and
    unrelated Mods.

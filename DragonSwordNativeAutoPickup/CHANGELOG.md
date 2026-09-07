@@ -1,9 +1,31 @@
 # Changelog
 
+## 1.3.1 full package refresh - 2026-09-07
+
+- Fixed Update and Repair silently ignoring the selected toggle and fallback keys.
+- Aligned key selectors, explicit confirmation, and reload/cancel behavior with
+  Native World Radar Setup. Other user settings and unchanged file formatting
+  are preserved; selected edits use the existing rollback transaction.
+- Added invalid/stale selection, update/repair, form-state, and rollback tests.
+- Rebuilds the complete four-archive release with the corrected Setup and
+  updated installation documentation. See `docs/RELEASE_STATUS.md` and the
+  current release manifest; the earlier installer-only receipt is historical.
+- This installer/documentation refresh introduces no native source, gameplay,
+  default configuration, range PAK, or UE4SS payload changes.
+
 ## 1.3.1 - High-range drop-list stability
 
-- Preserves the accepted 1.3.0 native pickup selector, Enhanced Input,
-  scheduling, confirmation, retry, target policy, and F9 behavior unchanged.
+- Fixes a startup race observed on game build `25076183`: when the reflected
+  `DInteractableComponent` class exists before its class default object, Auto
+  Pickup now retries that readiness dependency every 250 ms for at most 30
+  seconds instead of disabling permanently after one early probe.
+- Keeps automation fail-closed throughout startup retry and reruns the complete
+  reflection contract plus dual-anchor selector resolution before publishing
+  `READY`. Any other missing, malformed, ambiguous, or inconsistent contract
+  still fails immediately.
+- Retains the game-owned pickup selector and Enhanced Input route. The
+  dispatch observer, bounded retry/backoff, and startup-readiness corrections
+  are documented separately; this is not byte-identical to 1.3.0.
 - Keeps the full selected 15x or 20x range for all 50 reviewed gather and
   interactable-animal targets.
 - Caps the 19 short-lived item-drop overlap targets at the stable 10x range in

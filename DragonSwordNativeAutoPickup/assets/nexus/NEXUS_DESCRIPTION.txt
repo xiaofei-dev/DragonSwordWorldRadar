@@ -1,6 +1,6 @@
-[size=6][b]DragonSword Auto Pickup v1.3.1[/b][/size]
+[size=6][b]DragonSword Auto Pickup[/b][/size]
 
-Automatically collects nearby plants, materials, item drops, supported animals, and fish through the game's native interaction system. It works on foot and while mounted, excludes treasure chests, and is fully compatible with [url=https://www.nexusmods.com/dragonswordawakening/mods/254]DragonSword Native Map and Radar Enhancer[/url].
+Automatically collects nearby plants, materials, item drops, supported animals, and fish through the game's native interaction system. It works on foot and while mounted, excludes treasure chests, and can be used alongside [url=https://www.nexusmods.com/dragonswordawakening/mods/254]DragonSword Native Map and Radar Enhancer[/url].
 
 [quote][b]WARNING - INCOMPATIBLE MOD[/b]
 Do not use Auto Pickup with the older [b]Treasure Radar Overlay[/b]. Disable or remove Treasure Radar Overlay before installing Auto Pickup.
@@ -25,16 +25,16 @@ Do not delete UE4SS if it is required by other Mods.[/quote]
 [size=4][b]How it works[/b][/size]
 
 Auto Pickup starts disabled whenever the game launches.
-Load a playable World and press [b]F9[/b] to enable it. Press F9 again to disable it.
+Load your save, wait until you can control your character, and press the toggle key ([b]F9[/b] by default) to enable it. Press the same key again to disable it.
 The status card shows STARTING while the current gameplay context is checked, followed by ENABLED or NOT READY. It automatically fades away and does not change gameplay input.
-Returning to the main menu or loading another save or World disables Auto Pickup. Press F9 again after loading finishes.
+Returning to the main menu or loading another save or World disables Auto Pickup. Press the configured toggle key again after loading finishes.
 Only one automatic interaction can be pending at a time. If one target does not respond, the Mod retries once and temporarily backs off from that exact target instead of stopping pickup permanently.
 Animals must be defeated first. Auto Pickup collects the resulting loot but does not kill them.
 
 [size=4][b]Available downloads[/b][/size]
 
 [list]
-[*][b]One Click Installer (Recommended)[/b] - Installs, upgrades, repairs, converts, or removes Auto Pickup. It also offers Original, 3x, 5x, 10x, 15x, and 20x range choices.[/*]
+[*][b]One Click Installer (Recommended)[/b] - Installs, updates, repairs, or removes Auto Pickup. Change toggle/fallback keys during Install, Update, or Repair, and choose Original, 3x, 5x, 10x, 15x, or 20x range.[/*]
 [*][b]Manual - Existing UE4SS[/b] - Auto Pickup only, for users with the exact compatible UE4SS installation. No range PAK is included.[/*]
 [*][b]Manual - Includes UE4SS[/b] - Complete clean-install package containing Auto Pickup and the tested UE4SS runtime. No range PAK is included.[/*]
 [*][b]Optional Interaction Range PAKs[/b] - Standalone 3x, 5x, 10x, 15x, and 20x choices. Original range means no expanded PAK is installed.[/*]
@@ -51,24 +51,24 @@ All packages are available in the [url=https://www.nexusmods.com/dragonswordawak
 [*]Select
 [code]DSClient-Win64-Shipping.exe[/code]
 [/*]
-[*]Review the detected Install, Upgrade, Repair, or Uninstall action.[/*]
+[*]Review the detected Install, Update, Repair, or Uninstall action. Edit the loaded toggle/fallback keys if needed.[/*]
 [*]Choose Original range or exactly one expanded range option.[/*]
-[*]Start the game, load a playable World, and press F9.[/*]
+[*]Confirm the selected keys and range. Start the game, load your save, and press the configured toggle key (F9 by default).[/*]
 [/list]
 
 The game EXE hash is recorded for diagnostics only and is not used as a game-version restriction or selector address table.
-The installer preserves config.ini during supported upgrades, preserves unrelated Mods, and creates a verified backup when UE4SS conversion is required.
+Update and Repair apply the keys you confirm while preserving other config.ini settings and unrelated Mods. Unchanged keys retain their original formatting. Setup creates a verified backup when UE4SS conversion is required.
 
 [size=4][b]UE4SS requirement[/b][/size]
 
-Auto Pickup v1.3.1 supports the tested UE4SS v3.0.1 Beta #0 commit 1c1a1497 ExperimentalNested runtime.
-The one-click installer and Manual - Includes UE4SS package handle UE4SS automatically.
+Auto Pickup requires the tested UE4SS v3.0.1 Beta #0 commit 1c1a1497 ExperimentalNested runtime.
+The one-click installer can set up the supported runtime. Manual - Includes UE4SS bundles it for a clean installation.
 Do not manually mix files from different UE4SS packages.
 
 [size=4][b]Game-update compatibility[/b][/size]
 
-Auto Pickup no longer uses a fixed selector address or a game-hash-to-address table. It resolves the required selector from two independent game-code paths and enables automation only when both identify the same valid function.
-This can tolerate address relocation when the required game-code structure remains compatible. It is not a guarantee for every future update. An incompatible update keeps Auto Pickup Off and normally shows NOT READY.
+Auto Pickup checks compatibility before enabling automation. If required game objects are still loading, it waits briefly and retries initialization while remaining disabled.
+Compatible game updates may continue to work, but support for every future update is not guaranteed. If compatibility checks fail, Auto Pickup stays Off and normally shows NOT READY.
 
 [size=4][b]Manual installation[/b][/size]
 
@@ -79,15 +79,22 @@ Do not overwrite an existing:
 Keep all entries for other Mods and add or replace only:
 [code]DragonSwordNativeAutoPickup : 1[/code]
 Use Manual - Includes UE4SS only for a clean installation. Use the one-click installer if the existing setup is uncertain.
+Manual copying can overwrite config.ini. Back it up before updating or use Setup to preserve existing preferences.
 
 [size=4][b]Settings[/b][/size]
 
-F9 is the default Auto Pickup toggle key. The game's INTERACT key is detected automatically when available.
+F9 is the default Auto Pickup toggle key. Change it with Setup Update / Repair, or close the game and edit:
+[code]DS\Binaries\Win64\ue4ss\Mods\DragonSwordNativeAutoPickup\config.ini[/code]
+[code]toggle_hotkey=INSERT
+interaction_key=AUTO
+interaction_key_fallback=F[/code]
+Restart to apply file changes. The toggle supports F1-F24, A-Z, 0-9, NUM0-NUM9, HOME, END, PAGEUP, PAGEDOWN, INSERT, DELETE, and SPACE. Modifier combinations are unsupported. The fallback must be a concrete interaction key, not AUTO. Avoid conflicting game or Mod bindings.
+The game's INTERACT key is detected automatically when available.
 After changing the INTERACT binding, toggle Auto Pickup Off and On to reload it.
 
 Install no more than one expanded range PAK in:
 [code]DS\Content\Paks\~mods[/code]
-Range PAKs work independently and remain active while Auto Pickup is Off. Every v1.3.1 range PAK includes ordinary meat, aged meat, and the other reviewed F-pickable monster drops. The 15x and 20x options keep their full gather/animal range while short-lived item drops use the stable 10x range to reduce stuck prompt lists during fast travel.
+Range PAKs work independently and remain active while Auto Pickup is Off. They cover reviewed gatherables, interactable animals, and F-pickable drops, including ordinary and aged meat. The 15x and 20x options keep their full gather/animal range while short-lived item drops are capped at 10x to help reduce stuck interaction prompts during fast movement.
 
 Keep [code]debug_logging=false[/code] during normal play. Enable it only when collecting a diagnostic log, then turn it Off again.
 
@@ -105,7 +112,7 @@ Keep UE4SS, unrelated Mods, game saves, and every other mods.txt or PAK entry.
 [size=4][b]Reporting a problem[/b][/size]
 
 Post the package installed, clean install or upgrade, other UE4SS Mods, selected range, reproduction steps, expected and actual behavior, exact error or status-card message, and relevant Auto Pickup logs.
-For crashes, mention whether they occur immediately after pressing F9, on foot, while mounted, or after loading another save.
+For crashes, mention whether they occur immediately after enabling Auto Pickup, on foot, while mounted, or after loading another save.
 For missed pickups, repeated attempts, recovery delays, binding problems, or unexpected NOT READY results, temporarily set debug_logging=true, reproduce the problem once, and include:
 [code]Win64\ue4ss\Mods\DragonSwordNativeAutoPickup\runtime\logs\DragonSwordNativeAutoPickup.Debug.log[/code]
 Return debug_logging to false after collecting the log.

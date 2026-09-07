@@ -22,7 +22,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$version = '2.2.1'
+$version = '2.3.0'
 if (-not $UE4SSRoot) { $UE4SSRoot = Join-Path $projectRoot '.sdk\RE-UE4SS' }
 if (-not $SdkRoot) { $SdkRoot = Join-Path $projectRoot '.sdk' }
 if (-not $ImGuiColorTextEditRoot) {

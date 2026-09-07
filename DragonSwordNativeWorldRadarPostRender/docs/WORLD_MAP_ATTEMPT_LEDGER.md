@@ -315,3 +315,192 @@ Status vocabulary:
   memory, attach-time, and performance acceptance remain `NOT_VALIDATED`.
   Binary and derived-data publication remains `BLOCKED` pending the recorded
   rights and provenance reviews.
+
+### 2026-09-06 - WM-07 motion-compensated initial attachment
+
+- **Initial state:** `PENDING_BUILD_NOT_GAMEPLAY_VALIDATED`. User authorized
+  implementation after a read-only risk review. This supersedes only WM-06's
+  initial raw-anchor stability criterion, not its retained layout architecture.
+- **Reported evidence:** The supplied 2.2.1 plaintext log (79,112 bytes,
+  SHA-256 `EB5B750FB8498958FB03BE8976D3137DEBEF7180C08D3C646767C8449A066044`)
+  has three attempts with 1,283 selected markers and a constant `3000x3000`
+  parent. Anchor XY is `(1326.105,2072.274)`, `(1326.453,2071.404)`, then
+  `(1326.788,2070.560)`. Raw maximum deltas `0.871` and `0.844` exceed the
+  `0.5` tolerance and exhaust attachment with failure 24. The owner reproduced
+  missing map markers while flying. The log lacks same-attempt player world
+  XY, so paired-motion fixtures are synthetic, not a full runtime replay.
+- **Change:** Use the existing point-projection formula to project world
+  `(0,0)` and compare that origin plus parent width/height. Actual player
+  movement may change the raw anchor while leaving the origin stable.
+  Preserve the two-sample requirement, 150 ms retry spacing, three-attempt
+  budget, validity/bounds checks, and fail-closed behavior. Bind samples to
+  numeric layer, parent, PlayerIcon, and owning-controller weak identities and
+  map metadata; replacement or invalid geometry requires a fresh seed.
+- **Regression boundaries:** No retained Image rebase, no outer-slot resize,
+  no visibility-policy change, no extra polling or budget tokens, and no
+  generic geometry-helper change. Main still samples player XY before the
+  service call. `WORLD_MAP_ATTACH_PROJECTION` logs same-attempt inputs and
+  separate deltas; no recurring geometry diagnostics are introduced.
+- **Automated checks:** Paired flight and direction reversal; fixed-target
+  coordinate invariance; stationary opening; UI-only drift with constant
+  extents; stale-anchor/world mismatch; tolerance boundaries; same-size object
+  replacement; metadata changes; invalid/overflow geometry; non-square,
+  ultrawide, and historical inflated-parent extents. Retain WM-05/WM-06
+  immutable-placement and CD41 rebuild-loop fixtures and source gates.
+- **Required live checks:** Standing and flying initial open, continuous flight
+  and turns while opening, immediate zoom/pan during opening, both zoom-tier
+  directions, repeated close/open, F8/F7, controller map open, dense treasures,
+  16:9/16:10/21:9, and travel/reopen. Check native icon alignment and click
+  targets as well as Mod markers. No attach storm, same-parent writes, or
+  unexplained persistent origin offset is acceptable. Cached Slate geometry
+  may lag the current player sample; mathematical stability alone does not
+  prove zero runtime offset.
+- **Artifacts:** Keep public `dist/final-2.2.1` unchanged. Append new DLL/source
+  identities and exact deployment/test results below when available.
+
+#### WM-07 build and offline verification - 2026-09-06
+
+- **Status:** `BUILT_OFFLINE_VERIFIED_NOT_GAMEPLAY_VALIDATED`.
+- **Candidate identity:** ExperimentalNested DLL SHA-256
+  `B1952BA6A5C80A3127498346452E42B0F74EB273FE3B4732A204650AA2D3037C`,
+  1,114,624 bytes; compiled-source SHA-256
+  `7982DD313239B33853209444A8DF711999F15046B1B5516AC5E859B2122F2FAC`.
+  Build receipt UTC `2026-09-07T03:04:37.1516139Z`; internal candidate only,
+  retaining version 2.2.1. Distinguish it from the public WM-06 DLL by hash and
+  the new `WORLD_MAP_ATTACH_PROJECTION` event.
+- **Checks passed:** Core CTest `2/2`; native-state executable
+  `NATIVE_STATE_TESTS_OK assertions=866`; world-map, compact-renderer,
+  PostRender, F6 localized-overlay, and release-hygiene source gates; native
+  DLL build; exact source-bound build receipt; `git diff --check`.
+- **Verification environment:** Run the existing PowerShell build/release
+  scripts explicitly under Windows PowerShell 5.1. Direct PowerShell 7 checks
+  rejected the existing tab-catalog parsing and release-tools digest; the
+  same unmodified helpers pass under the build's Windows PowerShell 5.1 host.
+  No catalog, receipt, or deployment guard was weakened to bypass these checks.
+- **Acceptance boundary:** These are code/build checks, not proof of flying,
+  zoom-tier, controller, alignment, or performance behavior in the game.
+
+#### WM-07 local test deployment - 2026-09-06
+
+- **Status:** `DEPLOYED_NOT_GAMEPLAY_VALIDATED`. The existing transactional
+  `Deploy-NativePrototype.ps1 -Diagnostics Preserve` completed after repeating
+  Core `2/2`, compact/world-map/PostRender, F6, and release-hygiene gates.
+  The game was stopped; no game launch or gameplay automation was performed.
+- **Installed identity:** `dlls/main.dll` exactly matches candidate
+  `B1952BA6A5C80A3127498346452E42B0F74EB273FE3B4732A204650AA2D3037C`;
+  the installed source-bound receipt also passes against the current source.
+  `mods.txt` has exactly one enabled native entry and no predecessor entry.
+- **Recovery:** Full prior Radar tree and `mods.txt` retained under
+  `dist/work/deployment/deploy-backups/20260906-200806-332-native-only-deploy`.
+  Backed-up DLL remains accepted WM-06
+  `6435E10031D90840BF0499664CF57347D7991C9C192BD3B2239ADE2324C723A1`.
+- **Preserved settings:** Installed visibility SHA-256
+  `89B856ED295F72E1EA104141112A905FEF2BDCFA12FBC9B41CDDD4CBD4B17A40`
+  and diagnostics SHA-256
+  `E888884C590B6F97EE061DF9EDB85CD83738BD1BED171D8713DCEF1A55DAF10D`
+  exactly match their pre-deployment backups. Local `debug_logging=true`;
+  public default remains `false`. Treasure overrides also passed preservation
+  checks. AutoPickup source, runtime, and settings are outside this fix.
+- **Public artifacts unchanged:** Rechecked all three `dist/final-2.2.1` ZIP
+  hashes against the recorded WM-06 identities above; all match. No release,
+  commit, or push was performed for WM-07.
+- **Next acceptance:** Perform the live matrix above, starting with sustained
+  mounted flight during map opening, standing open, zoom-tier crossing,
+  dragging, and close/reopen. Inspect `WORLD_MAP_ATTACH_PROJECTION` if the
+  three-attempt limit still expires or alignment changes. Do not expand retry
+  budgets or restore retained anchor rebasing to make this candidate pass.
+
+#### WM-07 preliminary owner feedback and 2.2.2 assignment - 2026-09-06
+
+- **Status:** `OWNER_PRELIMINARY_PASS_MOVING_ATTACH_OBSERVED`. The owner said
+  testing seems to show no issue and requested the next step. This is positive
+  preliminary feedback, not a claim that every regression-matrix row ran.
+- **Runtime evidence:** Local 94,460-byte Radar log, SHA-256
+  `4CC3D71B28BAC505EB10FE0B994C5D1B94264D20491F2458E6A23F87C91DB44E`,
+  records `WORLD_MAP_ATLAS_ATTACHED` sequence 71: attempt 2/3, failure 0,
+  295 markers, parent `3000x3000`. Sequence 72 reports raw anchor delta
+  `1.683838`, player-world delta `329.912770`, extent delta `0`, and
+  compensated-origin delta `0.052545`. This directly exercises the motion
+  compensation that the old raw-anchor gate would have rejected.
+- **Version assignment:** All unpublished follow-up work belongs to upcoming
+  2.2.2. The installed WM-07 binary still carries its original 2.2.1 identity;
+  no receipt or published artifact was relabelled. See `RELEASE_PLAN_2_2_2.md`.
+- **Next issue:** Investigate controller start-menu/submenu compact-overlay
+  suppression separately. The owner currently has mouse/keyboard only;
+  controller reproduction remains pending. Existing world-map rendering and
+  language behavior were not changed during this follow-up investigation.
+
+### WM-08 - city activation / unavailable map metadata (2026-09-07)
+
+- **Request/status:** Owner asks why enabling Radar in Orbis city leaves the
+  world map empty. `READ_ONLY_DIAGNOSIS_NO_MAP_CODE_CHANGE`; city-specific
+  reproduction/cause is not yet proven. Preserve WM-06 and WM-07.
+- **Evidence:** CM-03 retained log at repository-relative
+  `.tmp/virtual-gamepad-0.1.2/controller-menu-cm03-20260907-0925/sampled.Native.log`,
+  SHA-256 `B52DE8D606836896186F84557ECB1FAE6B89958C28EAF3F8CE85114DDFEC54D4`.
+  Activation seq 47 uses `world_01_main_WP`, activity suppression false.
+  Two initial openings (seq 71/75/76 and 98/101/103) select 1,632 markers for
+  map 100 but exhaust attempt 3/3 with failure 8, map_data_source 0 and zero
+  dimensions/UI size. A later opening (seq 128) finds data through static
+  lookup (source 2), then attaches at seq 132, attempt 2/3, failure 0,
+  dimensions 570,000 / UI size 3,000 / the same 1,632 markers.
+- **Code meaning:** `WorldMapUmgRenderer::attach_unsafe` (metadata section)
+  fails with code 8 when the found map object has the wrong class or neither
+  a current valid map-data object nor a matching validated metadata cache is
+  available. Production supplies no explicit map-data object, so it relies
+  on `StaticFindObject` at the exact WorldMapData_100/200 path or that cache.
+  This is a loaded-object lookup, not an asset-load request. Failure 9 is
+  separate malformed map-data contents; failure 24 is geometry readiness.
+- **Conclusion boundary:** The recorded empty-map episode is a metadata
+  availability failure, not an empty marker catalog or proven controller-menu
+  problem. Its location was not tagged as Orbis in this trace; do not claim
+  Orbis is unsupported or that every city report has this cause. Activation
+  eligibility checks the World identity, not a named city or player position.
+- **Next bounded reproduction:** Fresh load inside Orbis, F7, open map and
+  record exact attach/candidate/data events; close/reopen while staying still,
+  then leave the city and repeat without restarting. Compare the same save,
+  input device and resolution. A prospective fix should provide validated
+  map metadata from a proven native owner or exact asset readiness event;
+  do not hardcode projection offsets, uncap retries, poll global objects or
+  reintroduce retained-PlayerIcon rebasing to mask metadata absence.
+
+### WM-09 - map-close latency A/B observation (2026-09-07)
+
+- **Request/status:** Owner reports slower world-map closing while requesting
+  controller testing. `READ_ONLY_AB_TEST_NO_ADDITIONAL_CLOSE_STALL_REPRODUCED`.
+  No map or controller code changes were made for this observation.
+- **Control:** Same running game, stationary mounted character and location;
+  virtual Xbox View opens the map and B closes it. Two closes with Radar on,
+  two with Radar disabled via F8. Seq 639 confirms game_tick_object_work=stopped
+  and the disabled screenshots have no Radar markers/clock. The DLL remains
+  loaded and other Mods are unchanged: this is a Radar-feature-disabled
+  control, not a clean no-mod process. F7 re-enabled Radar afterward.
+
+| Trial | B press (UTC) | Observed close evidence |
+| --- | --- | --- |
+| On 1 | 10:11:34.473 | Capture at +402..549 ms still shows map; seq 624 confirms world_map_visible=false at +749 ms; seq 628 restores 35 compact markers at +767 ms |
+| Off 1 | 10:13:06.077 | Capture at +407..590 ms still shows map; later settled capture shows gameplay |
+| Off 2 | 10:13:49.687 | Captures show map at +392..558 ms, fading labels/icons at +558..673 ms, and gameplay/map gone at +673..834 ms |
+| On 2 | 10:14:39.610 | Captures show map at +403..565 ms, fading labels/native UI at +565..685 ms, and gameplay/map gone at +685..804 ms; seq 708 detects close at +751 ms; seq 712 restores 35 compact markers at +779 ms |
+
+- **Timing interpretation:** The repeated on/off close transitions occupy
+  similar approximately 0.7-0.8 s windows. This does not reproduce an added
+  Radar close stall at this location and is consistent with a native closing
+  transition plus bounded visibility sampling. Capture start/end timestamps
+  are coarse observation windows, not frame-exact render/input measurements.
+  Do not dismiss the owner's report or extrapolate to all menus/locations.
+- **Mod CPU evidence:** Close-interval ENGINE_TICK_PROFILE seq 631 and 715
+  report max total tick 518 us and 506 us, respectively; world_map_layering
+  time is zero and slow_ticks=0 in both intervals. This covers the instrumented
+  Mod work, not all native UI, GPU, input latency or uninstrumented work.
+  Cumulative logger_dropped counters are 24 and 26; the trace is not lossless.
+- **Separate opening observation:** On 1's attach records about 106 ms total
+  with about 59 ms atlas build; On 2's opening profile has about 54 ms max
+  tick work. These are opening costs, not evidence of a closing stall; no
+  speculative optimization was performed.
+- **Evidence / boundaries:** Same 405,104-byte log snapshot and SHA-256 as
+  the CM-04 runtime replay in `CONTROLLER_MENU_ATTEMPT_LEDGER.md`; screenshots
+  and exact verified inputs are in the task history. Debug remained on. No
+  city-startup, flight, zoom, travel, clean-process, debug-off or long-session
+  acceptance is established. Game was left in gameplay with Radar enabled
+  and the virtual controller safely detached.

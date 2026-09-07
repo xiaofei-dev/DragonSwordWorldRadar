@@ -402,6 +402,10 @@ public:
     [[nodiscard]] double geometry_sample_max_delta() const noexcept {
         return geometry_sample_max_delta_;
     }
+    [[nodiscard]] const dswros::WorldMapProjectionSample&
+    projection_sample() const noexcept { return geometry_sample_; }
+    [[nodiscard]] const dswros::WorldMapProjectionDelta&
+    projection_delta() const noexcept { return projection_delta_; }
     [[nodiscard]] dswros::WorldMapGeometryStabilityResult
     reparent_geometry_stability_result() const noexcept {
         return reparent_geometry_stability_result_;
@@ -579,7 +583,8 @@ private:
     double native_parent_height_{};
     std::uint32_t player_anchor_source_{};
     bool geometry_sample_valid_{};
-    dswros::WorldMapGeometrySample geometry_sample_{};
+    dswros::WorldMapProjectionSample geometry_sample_{};
+    dswros::WorldMapProjectionDelta projection_delta_{};
     dswros::WorldMapGeometryStabilityResult geometry_stability_result_{
         dswros::WorldMapGeometryStabilityResult::None};
     double geometry_sample_max_delta_{};

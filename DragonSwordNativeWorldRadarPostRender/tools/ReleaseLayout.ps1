@@ -88,6 +88,7 @@ function Test-DsnwrInstallerOnlyDefaultPath {
     param([Parameter(Mandatory = $true)][string]$RelativePath)
     $normalized = $RelativePath.Replace('\', '/').ToLowerInvariant()
     return $normalized -eq 'config/visibility.example.ini' `
+        -or $normalized -eq 'config/hotkeys.example.ini' `
         -or $normalized -eq 'config/diagnostics.example.ini'
 }
 
@@ -154,6 +155,8 @@ function Get-DsnwrRuntimePayloadSpecification {
         'config/visibility.example.ini'
     Add-PayloadFile (Join-Path $ProjectRoot 'config\diagnostics.ini') `
         'config/diagnostics.example.ini'
+    Add-PayloadFile (Join-Path $ProjectRoot 'config\hotkeys.ini') `
+        'config/hotkeys.example.ini'
 
     foreach ($name in @(
             'area-quests.tsv', 'assault-actors.tsv', 'assaults.lua',
@@ -314,6 +317,7 @@ function Test-DsnwrRuntimePayload {
         (-not $AllowUserVisibility -or -not $AllowUserDiagnostics)) {
         throw 'InstalledConfiguration requires both live user configuration files.'
     }
+    if ($InstalledConfiguration) { [void]$expected.Add('config/hotkeys.ini') }
 
     $expectedDirectories = [System.Collections.Generic.HashSet[string]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
@@ -401,6 +405,7 @@ function Test-DsnwrRuntimePayload {
         if ($relative -ne 'metadata/package-manifest.json' `
             -and $relative -ne 'config/visibility.ini' `
             -and $relative -ne 'config/diagnostics.ini' `
+            -and $relative -ne 'config/hotkeys.ini' `
             -and -not (Test-DsnwrInstallerOnlyDefaultPath `
                 -RelativePath $relative)) {
             [void]$manifestExpected.Add($relative)

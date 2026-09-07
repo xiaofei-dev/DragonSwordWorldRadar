@@ -14,6 +14,17 @@ using Microsoft.Win32;
 
 namespace DragonSwordNativeWorldRadarPostRender.Installer
 {
+    internal sealed class InstallerHotkeys
+    {
+        internal string Settings { get; set; }
+        internal string Enable { get; set; }
+        internal string Disable { get; set; }
+        internal string Description
+        {
+            get { return "Settings: " + Settings + " / Enable: " + Enable + " / Disable: " + Disable; }
+        }
+    }
+
     internal sealed class InstallerResult
     {
         internal string LayoutDescription { get; set; }
@@ -21,6 +32,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
         internal string ModDirectory { get; set; }
         internal string ModsTxtPath { get; set; }
         internal bool UpdatedExistingRadar { get; set; }
+        internal InstallerHotkeys Hotkeys { get; set; }
     }
 
     internal sealed class InstallerPlan
@@ -37,6 +49,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
         internal bool BootstrapsUE4SS { get; set; }
         internal bool ConvertsUE4SS { get; set; }
         internal bool UpdatesExistingRadar { get; set; }
+        internal InstallerHotkeys Hotkeys { get; set; }
     }
 
     internal sealed class InstallerInstallationState
@@ -49,6 +62,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
         internal string InstalledVersion { get; set; }
         internal string StatusDescription { get; set; }
         internal string ModDirectory { get; set; }
+        internal InstallerHotkeys Hotkeys { get; set; }
     }
 
     internal sealed class UninstallerPlan
@@ -67,8 +81,8 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
 
     internal static class InstallerEngine
     {
-        private const string ProductVersion = "2.2.1";
-        private const string RuntimeLabel = "DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1";
+        private const string ProductVersion = "2.3.0";
+        private const string RuntimeLabel = "DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0";
         private const string GameFileName = "DSClient-Win64-Shipping.exe";
         private const string ModName = "DragonSwordNativeWorldRadarPostRender";
         private const string LegacyRadarName = "DragonSwordWorldRadarObjectState";
@@ -187,6 +201,18 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
 
         internal static InstallerPlan Inspect(string selectedGameExecutable)
         {
+            return InspectCore(selectedGameExecutable, null);
+        }
+
+        internal static InstallerPlan InspectWithHotkeys(
+            string selectedGameExecutable, string settings, string enable, string disable)
+        {
+            return InspectCore(selectedGameExecutable, NormalizeRequestedHotkeys(settings, enable, disable));
+        }
+
+        private static InstallerPlan InspectCore(
+            string selectedGameExecutable, InstallerHotkeys requestedHotkeys)
+        {
             EnsureGameIsClosed();
             var gameExecutable = ValidateGameExecutableLocation(selectedGameExecutable);
             var gameHash = HashFile(gameExecutable);
@@ -206,7 +232,12 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             var modDirectory = Path.Combine(context.ModsDirectory, ModName);
             ValidateMigrationConflicts(context, modDirectory);
 
-            return BuildInstallerPlan(gameExecutable, gameHash, context, modDirectory);
+            byte[] visibilityBytes, diagnosticsBytes, hotkeyBytes, treasureOverrideBytes;
+            var configurationSource = FindExistingRadarDirectory(context, modDirectory);
+            PrepareUserConfiguration(configurationSource, experimentalPayload,
+                out visibilityBytes, out diagnosticsBytes, out hotkeyBytes, out treasureOverrideBytes);
+            return BuildInstallerPlan(gameExecutable, gameHash, context, modDirectory,
+                configurationSource, hotkeyBytes, ApplyRequestedHotkeys(hotkeyBytes, requestedHotkeys));
         }
 
         internal static InstallerInstallationState InspectInstallationState(
@@ -220,7 +251,8 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             {
                 InstalledVersion = string.Empty,
                 StatusDescription = "Native World Radar installation state is unavailable.",
-                ModDirectory = Path.Combine(context.ModsDirectory, ModName)
+                ModDirectory = Path.Combine(context.ModsDirectory, ModName),
+                Hotkeys = NormalizeRequestedHotkeys("F6", "F7", "F8")
             };
             try
             {
@@ -300,8 +332,9 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                     return state;
                 }
 
+                // Hotkey validation controls Update / Repair, not ownership or
+                // safe Uninstall availability for an otherwise owned target.
                 state.IsOwned = true;
-                state.CanUpdate = true;
                 state.InstalledVersion = installedVersion;
                 state.CanUninstall = !context.BootstrappedUE4SS &&
                     !context.ConvertsUE4SS &&
@@ -310,6 +343,18 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                         Path.GetFullPath(target),
                         StringComparison.OrdinalIgnoreCase) &&
                     context.UpdatesExistingRadar;
+                var installedHotkeyPath = Path.Combine(installedDirectory, "config", "hotkeys.ini");
+                InstallerPathSafety.Validate(context.GameRootDirectory, installedHotkeyPath,
+                    "installed Radar hotkeys");
+                if (Directory.Exists(installedHotkeyPath))
+                    throw new InvalidDataException("hotkeys.ini is a directory.");
+                if (File.Exists(installedHotkeyPath))
+                {
+                    if (new FileInfo(installedHotkeyPath).Length > 4096)
+                        throw new InvalidDataException("hotkeys.ini exceeds the strict 4 KiB size limit.");
+                    state.Hotkeys = ReadHotkeys(File.ReadAllBytes(installedHotkeyPath));
+                }
+                state.CanUpdate = true;
                 state.StatusDescription = string.Equals(
                         installedVersion,
                         ProductVersion,
@@ -343,12 +388,22 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                 throw new InvalidOperationException(
                     "The installation plan was not confirmed. Run the compatibility check again.");
             }
-            return InstallCore(selectedGameExecutable, confirmedPlanIdentity);
+            return InstallCore(selectedGameExecutable, confirmedPlanIdentity, null);
+        }
+
+        internal static InstallerResult InstallConfirmedWithHotkeys(
+            string selectedGameExecutable, string settings, string enable, string disable,
+            string confirmedPlanIdentity)
+        {
+            if (string.IsNullOrWhiteSpace(confirmedPlanIdentity))
+                throw new InvalidOperationException("The installation plan was not confirmed.");
+            return InstallCore(selectedGameExecutable, confirmedPlanIdentity,
+                NormalizeRequestedHotkeys(settings, enable, disable));
         }
 
         internal static InstallerResult Install(string selectedGameExecutable)
         {
-            return InstallCore(selectedGameExecutable, null);
+            return InstallCore(selectedGameExecutable, null, null);
         }
 
         internal static UninstallerPlan InspectUninstall(
@@ -475,7 +530,8 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
 
         private static InstallerResult InstallCore(
             string selectedGameExecutable,
-            string confirmedPlanIdentity)
+            string confirmedPlanIdentity,
+            InstallerHotkeys requestedHotkeys)
         {
             EnsureGameIsClosed();
             var gameExecutable = ValidateGameExecutableLocation(selectedGameExecutable);
@@ -499,6 +555,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             ValidateMigrationConflicts(context, modDirectory);
             byte[] visibilityBytes = null;
             byte[] diagnosticsBytes = null;
+            byte[] hotkeyBytes = null;
             byte[] treasureOverrideBytes = null;
             var configurationSource = FindExistingRadarDirectory(context, modDirectory);
             PrepareUserConfiguration(
@@ -506,7 +563,10 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                 payload,
                 out visibilityBytes,
                 out diagnosticsBytes,
+                out hotkeyBytes,
                 out treasureOverrideBytes);
+            var originalHotkeyBytes = hotkeyBytes;
+            hotkeyBytes = ApplyRequestedHotkeys(originalHotkeyBytes, requestedHotkeys);
             var modsTxtBytes = BuildControlledModsTxt(
                 string.IsNullOrEmpty(context.MigrationModsTxtPath)
                     ? context.ModsTxtPath
@@ -519,14 +579,14 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                     gameExecutable,
                     gameHash,
                     context,
-                    modDirectory).IdentityToken;
+                    modDirectory, configurationSource, originalHotkeyBytes, hotkeyBytes).IdentityToken;
                 if (!string.Equals(
                         currentIdentity,
                         confirmedPlanIdentity,
                         StringComparison.Ordinal))
                 {
                     throw new InvalidOperationException(
-                        "The game or UE4SS layout changed after the compatibility prompt. " +
+                        "The game, UE4SS layout, or hotkey configuration changed after the compatibility prompt. " +
                         "Setup stopped without changing files. Review the new plan and confirm it again.");
                 }
             }
@@ -594,6 +654,10 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                         diagnosticsBytes,
                         "Install or preserve user diagnostics configuration");
                     transaction.WriteBytes(
+                        Path.Combine(modDirectory, "config", "hotkeys.ini"),
+                        hotkeyBytes,
+                        "Install or preserve user hotkey configuration");
+                    transaction.WriteBytes(
                         Path.Combine(
                             modDirectory,
                             TreasureOverridesPath.Replace('/', Path.DirectorySeparatorChar)),
@@ -616,6 +680,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                         retainBackup ? backupRoot : null,
                         visibilityBytes,
                         diagnosticsBytes,
+                        hotkeyBytes,
                         treasureOverrideBytes);
                     transaction.WriteBytes(
                         Path.Combine(modDirectory, "INSTALL-RECORD.txt"),
@@ -630,6 +695,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                         payload,
                         visibilityBytes,
                         diagnosticsBytes,
+                        hotkeyBytes,
                         treasureOverrideBytes);
                     VerifyExperimentalLoader(context);
                     var layoutDescription = "structurally complete ExperimentalNested UE4SS";
@@ -658,7 +724,8 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                         BackupDirectory = retainBackup ? backupRoot : string.Empty,
                         ModDirectory = modDirectory,
                         ModsTxtPath = context.ModsTxtPath,
-                        UpdatedExistingRadar = context.UpdatesExistingRadar
+                        UpdatedExistingRadar = context.UpdatesExistingRadar,
+                        Hotkeys = ReadHotkeys(hotkeyBytes)
                     };
                 }
                 catch (Exception installError)
@@ -687,7 +754,10 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             string gameExecutable,
             string gameHash,
             InstallContext context,
-            string modDirectory)
+            string modDirectory,
+            string configurationSource,
+            byte[] originalHotkeyBytes,
+            byte[] selectedHotkeyBytes)
         {
             var layoutDescription = context.ExistingLayoutDescription;
             var pluginDescription = "ExperimentalNested-compatible Radar DLL";
@@ -698,7 +768,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                 : context.BootstrappedUE4SS
                     ? "Install the embedded, hash-verified pinned ExperimentalNested UE4SS build, then install Radar."
                     : context.UpdatesExistingRadar
-                        ? "Update or repair Radar by replacing installer-owned binaries and generated catalogs while preserving visibility, diagnostics, and treasure-ignore settings. Keep the structurally complete ExperimentalNested UE4SS loader and proxy unchanged. The temporary rollback journal is removed after success."
+                        ? "Update or repair Radar by replacing installer-owned binaries and generated catalogs, applying the confirmed hotkeys, and preserving visibility, diagnostics, and treasure-ignore settings. Unchanged hotkeys are preserved byte-for-byte. Keep the structurally complete ExperimentalNested UE4SS loader and proxy unchanged. The temporary rollback journal is removed after success."
                         : "Keep the structurally complete ExperimentalNested UE4SS loader and proxy unchanged, then install Radar. The temporary rollback journal is removed after success.";
             var identityText = string.Join("\n", new[]
             {
@@ -714,7 +784,11 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                 context.UE4SSDirectory,
                 context.ModsDirectory,
                 context.ModsTxtPath,
-                modDirectory
+                modDirectory,
+                configurationSource,
+                File.Exists(Path.Combine(configurationSource, "config", "hotkeys.ini")) ? "hotkeys-present" : "hotkeys-missing",
+                HashBytes(originalHotkeyBytes),
+                HashBytes(selectedHotkeyBytes)
             });
 
             return new InstallerPlan
@@ -730,7 +804,8 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                 ModsTxtPath = context.ModsTxtPath,
                 BootstrapsUE4SS = context.BootstrappedUE4SS,
                 ConvertsUE4SS = context.ConvertsUE4SS,
-                UpdatesExistingRadar = context.UpdatesExistingRadar
+                UpdatesExistingRadar = context.UpdatesExistingRadar,
+                Hotkeys = ReadHotkeys(selectedHotkeyBytes)
             };
         }
 
@@ -1746,6 +1821,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             {
                 "dlls/main.dll",
                 "config/visibility.example.ini",
+                "config/hotkeys.example.ini",
                 "config/diagnostics.example.ini",
                 "metadata/release.json",
                 "metadata/native-build-lock.json",
@@ -1767,6 +1843,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                 if (lower.EndsWith("/enabled.txt", StringComparison.Ordinal) ||
                     string.Equals(lower, "enabled.txt", StringComparison.Ordinal) ||
                     string.Equals(lower, "config/visibility.ini", StringComparison.Ordinal) ||
+                    string.Equals(lower, "config/hotkeys.ini", StringComparison.Ordinal) ||
                     string.Equals(lower, "config/diagnostics.ini", StringComparison.Ordinal) ||
                     lower.StartsWith("runtime/logs/", StringComparison.Ordinal) ||
                     lower.StartsWith("runtime/backups/", StringComparison.Ordinal) ||
@@ -1815,6 +1892,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             }
             ValidateVisibilityConfig(payload["config/visibility.example.ini"].Bytes, true);
             ValidateDiagnosticsConfig(payload["config/diagnostics.example.ini"].Bytes, true);
+            ValidateHotkeyConfig(payload["config/hotkeys.example.ini"].Bytes, true);
         }
 
         private static bool IsInstallerOnlyDefault(string path)
@@ -1826,6 +1904,10 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                 string.Equals(
                     path,
                     "config/diagnostics.example.ini",
+                    StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(
+                    path,
+                    "config/hotkeys.example.ini",
                     StringComparison.OrdinalIgnoreCase);
         }
 
@@ -1861,7 +1943,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             if ((!ascii.Contains(ProductVersion) && !unicode.Contains(ProductVersion)) ||
                 (!ascii.Contains(RuntimeLabel) && !unicode.Contains(RuntimeLabel)))
             {
-                throw new InvalidDataException("The embedded native radar plugin lacks the 2.2.1 release identity marker.");
+                throw new InvalidDataException("The embedded native radar plugin lacks the 2.3.0 release identity marker.");
             }
         }
 
@@ -2356,10 +2438,12 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                 {
                     packageManifestRelative,
                     "config/visibility.ini",
+                    "config/hotkeys.ini",
                     "config/diagnostics.ini",
                     "INSTALL-RECORD.txt",
                     "enabled.txt",
                     "config/visibility.example.ini",
+                    "config/hotkeys.example.ini",
                     "config/diagnostics.example.ini",
                     "runtime/cache/world-map-treasure-atlas.tga",
                     "runtime/cache/world-map-encounter-atlas.tga",
@@ -2409,6 +2493,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                 {
                     "enabled.txt",
                     "config/visibility.example.ini",
+                    "config/hotkeys.example.ini",
                     "config/diagnostics.example.ini"
                 })
                 {
@@ -2701,21 +2786,25 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             IDictionary<string, PayloadEntry> payload,
             out byte[] visibilityBytes,
             out byte[] diagnosticsBytes,
+            out byte[] hotkeyBytes,
             out byte[] treasureOverrideBytes)
         {
             var visibilityDefault = payload["config/visibility.example.ini"].Bytes;
             var diagnosticsDefault = payload["config/diagnostics.example.ini"].Bytes;
+            var hotkeyDefault = payload["config/hotkeys.example.ini"].Bytes;
             var treasureOverrideDefault = payload[TreasureOverridesPath].Bytes;
             ValidateVisibilityConfig(visibilityDefault, true);
             ValidateDiagnosticsConfig(diagnosticsDefault, true);
+            ValidateHotkeyConfig(hotkeyDefault, true);
             ValidateTreasureOverrides(treasureOverrideDefault, true);
 
             var visibilityPath = Path.Combine(modDirectory, "config", "visibility.ini");
             var diagnosticsPath = Path.Combine(modDirectory, "config", "diagnostics.ini");
+            var hotkeyPath = Path.Combine(modDirectory, "config", "hotkeys.ini");
             var treasureOverridePath = Path.Combine(
                 modDirectory,
                 TreasureOverridesPath.Replace('/', Path.DirectorySeparatorChar));
-            if (Directory.Exists(visibilityPath) || Directory.Exists(diagnosticsPath) ||
+            if (Directory.Exists(visibilityPath) || Directory.Exists(diagnosticsPath) || Directory.Exists(hotkeyPath) ||
                 Directory.Exists(treasureOverridePath))
             {
                 throw new InvalidOperationException(
@@ -2727,12 +2816,125 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             diagnosticsBytes = File.Exists(diagnosticsPath)
                 ? File.ReadAllBytes(diagnosticsPath)
                 : (byte[])diagnosticsDefault.Clone();
+            if (File.Exists(hotkeyPath) && new FileInfo(hotkeyPath).Length > 4096)
+                throw new InvalidDataException("hotkeys.ini exceeds the strict 4 KiB size limit.");
+            hotkeyBytes = File.Exists(hotkeyPath)
+                ? File.ReadAllBytes(hotkeyPath)
+                : (byte[])hotkeyDefault.Clone();
             treasureOverrideBytes = File.Exists(treasureOverridePath)
                 ? File.ReadAllBytes(treasureOverridePath)
                 : (byte[])treasureOverrideDefault.Clone();
             ValidateVisibilityConfig(visibilityBytes, false);
             ValidateDiagnosticsConfig(diagnosticsBytes, false);
+            ValidateHotkeyConfig(hotkeyBytes, false);
             ValidateTreasureOverrides(treasureOverrideBytes, false);
+        }
+
+        private static InstallerHotkeys NormalizeRequestedHotkeys(string settings, string enable, string disable)
+        {
+            var names = new[] { settings, enable, disable };
+            if (names.Any(name => string.IsNullOrEmpty(name) || name.Length > 32 ||
+                    name.Any(c => c < ' ' && c != '\t') || ParseHotkeyName(name) < 0))
+                throw new InvalidDataException("Choose valid Settings, Enable and Disable keys. Examples: F6, INSERT, HOME, PAGEUP. Modifier combinations are not supported.");
+            if (names.Select(ParseHotkeyName).Distinct().Count() != 3)
+                throw new InvalidDataException("Settings, Enable and Disable must use three different keys.");
+            return new InstallerHotkeys
+            {
+                Settings = settings.Trim(' ', '\t').ToUpperInvariant(),
+                Enable = enable.Trim(' ', '\t').ToUpperInvariant(),
+                Disable = disable.Trim(' ', '\t').ToUpperInvariant()
+            };
+        }
+
+        private static InstallerHotkeys ReadHotkeys(byte[] bytes)
+        {
+            ValidateHotkeyConfig(bytes, false);
+            var text = new UTF8Encoding(false, true).GetString(bytes).TrimStart('\uFEFF');
+            var values = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var raw in text.Split('\n'))
+            {
+                var line = raw.TrimEnd('\r').Trim(' ', '\t');
+                if (line.Length == 0 || line[0] == '#' || line[0] == ';' || line[0] == '[') continue;
+                int equal = line.IndexOf('=');
+                values.Add(line.Substring(0, equal).Trim(' ', '\t'), line.Substring(equal + 1).Trim(' ', '\t'));
+            }
+            return NormalizeRequestedHotkeys(values["settings_hotkey"], values["enable_hotkey"], values["disable_hotkey"]);
+        }
+
+        private static byte[] ApplyRequestedHotkeys(byte[] original, InstallerHotkeys requested)
+        {
+            var current = ReadHotkeys(original);
+            if (requested == null || (current.Settings == requested.Settings &&
+                    current.Enable == requested.Enable && current.Disable == requested.Disable))
+                return original;
+
+            // Keep comments, BOM, spacing and line endings. Only changed key values
+            // enter the existing transaction; no write occurs during inspection.
+            bool bom = original.Length >= 3 && original[0] == 0xEF && original[1] == 0xBB && original[2] == 0xBF;
+            var text = new UTF8Encoding(false, true).GetString(original, bom ? 3 : 0, original.Length - (bom ? 3 : 0));
+            var names = new[] { "settings_hotkey", "enable_hotkey", "disable_hotkey" };
+            var before = new[] { current.Settings, current.Enable, current.Disable };
+            var after = new[] { requested.Settings, requested.Enable, requested.Disable };
+            for (int i = 0; i < names.Length; ++i)
+            {
+                if (before[i] == after[i]) continue;
+                var pattern = "(?m)^([ \\t]*" + names[i] + "[ \\t]*=[ \\t]*)([^ \\t\\r\\n]+)([ \\t]*)(\\r?)$";
+                var matches = Regex.Matches(text, pattern, RegexOptions.CultureInvariant);
+                if (matches.Count != 1) throw new InvalidDataException("hotkeys.ini cannot be updated unambiguously.");
+                var replacement = after[i];
+                text = Regex.Replace(text, pattern,
+                    match => match.Groups[1].Value + replacement + match.Groups[3].Value + match.Groups[4].Value,
+                    RegexOptions.CultureInvariant);
+            }
+            var result = new UTF8Encoding(false).GetBytes((bom ? "\uFEFF" : string.Empty) + text);
+            ValidateHotkeyConfig(result, false);
+            return result;
+        }
+
+        private static int ParseHotkeyName(string value)
+        {
+            if (value.Any(c => c > 127)) return -1;
+            var key = value.Trim(' ', '\t').ToUpperInvariant();
+            if (key.Length == 1 && ((key[0] >= 'A' && key[0] <= 'Z') || (key[0] >= '0' && key[0] <= '9')))
+                return key[0];
+            int number;
+            if (Regex.IsMatch(key, "^F[1-9][0-9]?$") && int.TryParse(key.Substring(1), out number) && number <= 24)
+                return 0x6F + number;
+            if (Regex.IsMatch(key, "^NUM[0-9]$")) return 0x60 + key[3] - '0';
+            var names = new[] { "HOME", "END", "PAGEUP", "PAGEDOWN", "INSERT", "DELETE", "SPACE" };
+            var codes = new[] { 0x24, 0x23, 0x21, 0x22, 0x2D, 0x2E, 0x20 };
+            var index = Array.IndexOf(names, key);
+            return index >= 0 ? codes[index] : -1;
+        }
+
+        private static void ValidateHotkeyConfig(byte[] bytes, bool requirePublicDefault)
+        {
+            if (bytes == null || bytes.Length == 0 || bytes.Length > 4096)
+                throw new InvalidDataException("hotkeys.ini is empty or exceeds the strict 4 KiB size limit.");
+            int offset = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? 3 : 0;
+            var text = new UTF8Encoding(false, true).GetString(bytes, offset, bytes.Length - offset);
+            if (text.IndexOf('\0') >= 0 || text.Replace("\r\n", "\n").IndexOf('\r') >= 0)
+                throw new InvalidDataException("hotkeys.ini contains invalid text or line endings.");
+            bool sectionSeen = false;
+            var values = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var raw in text.Split('\n'))
+            {
+                var line = raw.TrimEnd('\r').Trim(' ', '\t');
+                if (line.Length == 0 || line.StartsWith("#") || line.StartsWith(";")) continue;
+                if (line == "[hotkeys]" && !sectionSeen) { sectionSeen = true; continue; }
+                int equal = line.IndexOf('=');
+                if (!sectionSeen || equal < 0) throw new InvalidDataException("hotkeys.ini has an invalid section or line.");
+                var name = line.Substring(0, equal).Trim(' ', '\t');
+                int key = ParseHotkeyName(line.Substring(equal + 1));
+                if ((name != "settings_hotkey" && name != "enable_hotkey" && name != "disable_hotkey") ||
+                    key < 0 || values.ContainsKey(name))
+                    throw new InvalidDataException("hotkeys.ini has an unknown, duplicate, or invalid setting.");
+                values.Add(name, key);
+            }
+            if (values.Count != 3 || values.Values.Distinct().Count() != 3)
+                throw new InvalidDataException("hotkeys.ini requires three different valid keys.");
+            if (requirePublicDefault && (values["settings_hotkey"] != 0x75 || values["enable_hotkey"] != 0x76 || values["disable_hotkey"] != 0x77))
+                throw new InvalidDataException("Public hotkey defaults must be F6/F7/F8.");
         }
 
         private static void ValidateTreasureOverrides(byte[] bytes, bool requirePublicDefault)
@@ -3345,6 +3547,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             string backupRoot,
             byte[] visibilityBytes,
             byte[] diagnosticsBytes,
+            byte[] hotkeyBytes,
             byte[] treasureOverrideBytes)
         {
             var builder = new StringBuilder();
@@ -3365,6 +3568,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             builder.AppendLine("Plugin SHA-256: " + pluginHash);
             builder.AppendLine("Visibility config SHA-256: " + HashBytes(visibilityBytes));
             builder.AppendLine("Diagnostics config SHA-256: " + HashBytes(diagnosticsBytes));
+            builder.AppendLine("Hotkey config SHA-256: " + HashBytes(hotkeyBytes));
             builder.AppendLine("Treasure overrides SHA-256: " + HashBytes(treasureOverrideBytes));
             builder.AppendLine("Public diagnostics default: false");
             builder.AppendLine("Load authority: " + context.ModsTxtPath);
@@ -3382,6 +3586,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             IDictionary<string, PayloadEntry> payload,
             byte[] visibilityBytes,
             byte[] diagnosticsBytes,
+            byte[] hotkeyBytes,
             byte[] treasureOverrideBytes)
         {
             InstallerPathSafety.ValidateTree(
@@ -3393,6 +3598,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                 StringComparer.OrdinalIgnoreCase)
             {
                 "config/visibility.ini",
+                "config/hotkeys.ini",
                 "config/diagnostics.ini",
                 "INSTALL-RECORD.txt"
             };
@@ -3430,6 +3636,10 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                 !string.Equals(
                     HashFile(Path.Combine(modDirectory, "config", "diagnostics.ini")),
                     HashBytes(diagnosticsBytes),
+                    StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(
+                    HashFile(Path.Combine(modDirectory, "config", "hotkeys.ini")),
+                    HashBytes(hotkeyBytes),
                     StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(
                     HashFile(Path.Combine(

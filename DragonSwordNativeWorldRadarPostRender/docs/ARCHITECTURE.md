@@ -14,10 +14,20 @@ bounded native event log.
 
 ## Lifecycle
 
+2.3.0 adds a bounded constructor-only read of `config/hotkeys.ini`. A complete
+valid document replaces all three default virtual keys; otherwise all remain
+F6/F7/F8. Existing generation-guarded UE4SS keydown callbacks use those selected
+codes and publish the same atomic Settings/Enable/Disable requests. F6/F7/F8 in
+the lifecycle and logs below are logical default-action names, not hardcoded
+physical keys. There is no key polling, watcher, runtime rebinding, or extra
+input interception. F6 writes only visibility/language preferences, never the
+standalone hotkey file. See `RELEASE_PLAN_2_3_0.md` for the grammar and tests.
+
 - Construction loads and validates immutable catalogs into bounded native
   containers.
 - `on_unreal_init` resolves reflected metadata, initializes both renderers,
-  registers engine/actor/travel callbacks, registers F6/F7/F8, installs interaction
+  registers engine/actor/travel callbacks, registers the configured keys (default
+  F6/F7/F8), installs interaction
   and area-task hooks, and registers one UObject creation listener.
 - A fresh F7 activation starts a new activation/epoch, clears activation-local
   numeric state, captures task definitions, schedules a bounded task-class
@@ -150,6 +160,22 @@ layer and an optional ABI-validated `GameplayStatics.IsGamePaused` provider;
 unknown pause samples preserve the previous known state and diagnostics report
 only edges. No new timer or polling schedule is introduced. The 16 ms position
 path reads only the resulting Boolean suppression state.
+
+CM-04 also reads the current weak minimap candidate's native paint ancestry on
+that existing 250 ms edge, independently of debug logging. Bound owner lookup
+to eight nodes and require the main panel's `DLayerMiniMap` to equal the exact
+current-world/class candidate. Follow at most 24 cycle-checked paint nodes:
+`Slot.Content == child` proves a Slot.Parent link; a nested UserWidget bridge
+requires both `WidgetTree.RootWidget == child` and `owner.WidgetTree == tree`.
+Hidden/Collapsed or finite zero opacity is sufficient to suppress the owned
+Radar host. Fully known visible ancestry up to the proven panel releases it.
+Broken links, unsupported fields, cycles, stale identities or exceptions yield
+Unknown, which does not latch previous hiding and does not bypass existing
+cursor/map/pause/activity guards. Candidate/pool reset clears this additional
+state. No input-route inference, native visibility write, scan, extra timer,
+world-map transform change or pool destruction occurs on this new edge.
+Positive fade opacity is not arbitrarily thresholded; reaction is bounded by
+the existing activity sample cadence, not claimed to be frame-exact.
 
 ### Treasure and encounter state
 
@@ -546,13 +572,17 @@ justification-aware horizontal pivot with vertical pivot `0.5`. This open-time
 presentation pass changes neither the
 separate button hit boxes nor compact-radar or expanded-map geometry, and it
 adds no closed-panel or per-frame work. Aspect ratio never distorts the panel.
-The centered language dropdown contains only the 11 explicit game languages;
-AUTO/Use Game Language is not displayed. A legacy AUTO preference is migration
-input only: the next actual F6 opening or F7 activation reads
-`DGameUserSettings.LanguageText`, falls back to the Kismet provider and English,
-and persists the matching explicit language. Cycling an explicit preference
-adds no game-language read and the persisted explicit choice remains
-authoritative. On a real F6 open, missing or expired weak identities are retried
+In 2.3.0 (including the unpublished 2.2.2 work), the language popup contains
+`AUTO (Game Language)` first, followed by 11 explicit languages. Popup labels,
+click mapping and highlights use the same preference order; Korean/Traditional
+Chinese raster labels are regenerated into cells 3 and 5 (zero-based). AUTO
+stays persisted: each actual F6 opening or F7 activation samples
+`DGameUserSettings.LanguageText`, with the bounded Kismet fallback. An invalid
+sample retains the last valid detection; English is used only before the first
+valid sample. Detection does not write preferences. Choosing a manual language
+adds no game-language read and remains authoritative. The selector face shows
+the resolved language; the popup highlights AUTO when following is selected.
+On a real F6 open, missing or expired weak identities are retried
 for the already-loaded game Font objects by script:
 `DsCompositFont_CommonSystem` for Korean and Latin/Cyrillic
 languages, `DsCompositFont_TCSystem` for both Chinese choices,
@@ -786,6 +816,20 @@ Initial attachment retains only numeric observations and uses a separate bounded
 three-attempt readiness service; no sampled UObject wrapper or `FGeometry`
 crosses calls. Missing or implausible geometry fails into that bounded budget.
 There is no centered fallback, desktop-resolution substitution, or new poll.
+
+WM-07 changes only initial-attachment readiness. Each numeric sample binds the
+layer, direct FogAbove parent, PlayerIcon, and owning-controller index/serial,
+map ID/dimensions/authored UI size, current-tick player XY, anchor XY, and live
+parent extent. It projects world `(0,0)` with the existing projection function
+to obtain an origin. Only matching identities/metadata and two origins/extents
+within the existing 0.5 Slate-unit tolerance may attach. Real paired player
+motion cancels; UI-only drift does not. Invalid observations clear the attach
+seed. Raw anchors remain validated and are used with the same attempt's player
+XY for the actual atlas. The separate generic extent sampler is unchanged.
+`WORLD_MAP_ATTACH_PROJECTION` reports raw-anchor, world-position, extent, and
+origin deltas during bounded attempts only. Cached Slate geometry can still
+lag live player data; same-tick reads do not prove same-render-frame alignment,
+so flying/accelerating and opening-while-zooming require live acceptance.
 
 Attach, same-layer `SetWorldMapImage`, F7 resume, and exact wheel zoom events arm
 one finite five-deadline retained-host tail at 100, 250, 500, 1,000, and

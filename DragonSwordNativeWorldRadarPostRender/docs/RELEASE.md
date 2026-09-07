@@ -1,4 +1,14 @@
-# DragonSword Native World Radar 2.2.1 Release Contract
+# Release Routing and Historical 2.2.1 Contract
+
+Current 2.3.0 packages: [Release status](RELEASE_STATUS.md).
+Current validation plan: [2.3.0 Development and Validation](RELEASE_PLAN_2_3_0.md).
+All 2.2.1 contracts, commands, hashes, and acceptance rows below are historical;
+do not use them to build or validate 2.3.0.
+
+This document's version-specific receipts are historical. For the current
+2.3.0 CM-04 three-package delivery and remaining acceptance boundaries, use
+`RELEASE_PLAN_2_3_0.md` and `dist/final-2.3.0/release-manifest.json` (the latter
+relative to the project root). Do not relabel the 2.2.1 evidence below.
 
 ## Release identity
 

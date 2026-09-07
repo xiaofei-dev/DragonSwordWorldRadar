@@ -1,5 +1,10 @@
 # Project Context
 
+Current local packages and evidence: `docs/RELEASE_STATUS.md`.
+The 2026-09-07 complete release supersedes the installer-only checkpoint, not
+the separate runtime-acceptance boundary. No deployment or publication is
+implied by packaging. Nexus copy is indexed in `assets/nexus/README.md`.
+
 ## Role
 
 `DragonSwordNativeAutoPickup` owns automatic pickup only. The current release
@@ -19,9 +24,12 @@ pending action keyed to the exact returned Component, exact
 invalidation/state-transition confirmation, one selector-represented bounded
 retry before exact-Component quarantine, and a
 true physical F9 edge.
-Version 1.3.1 preserves that native pickup behavior and changes only release
-identity plus the separate high-range PAK policy: 15x/20x gather and animal
-targets retain their selected range, while short-lived drops are capped at 10x.
+Version 1.3.1 preserves that native pickup behavior. It changes the separate
+high-range PAK policy so 15x/20x gather and animal targets retain their selected
+range while short-lived drops are capped at 10x. It also corrects one startup
+readiness race: if the reflected interactable class exists before its CDO, the
+Mod remains fail-closed and retries that dependency every 250 ms for at most 30
+seconds before running the unchanged full reflection and selector contracts.
 The latest corrective source includes the strict owner-settle and preflight
 ordering audit and passed a fresh exact static, core, native-artifact,
 installer 11/11, and deterministic four-package audit. A local 1.3.0
@@ -46,6 +54,11 @@ DLL hash was not independently recorded in this repository.
   `Server_RunInteractV2` virtual-slot/CDO path and reflected `SetInteractUIV2`
   direct-wrapper path reach the same selector target inside validated PE32+
   runtime-function bounds. One due scan then calls that resolved selector once.
+- If only the interactable CDO is temporarily unavailable during startup, a
+  bootstrap EngineTick retries initialization every 250 ms for at most 30
+  seconds. It cannot scan, accept F9, or inject until the full contract reaches
+  `Ready`; every other reflection or selector failure remains immediately
+  fail-closed.
 - Only one automatic action may be pending globally. No later candidate is
   invoked while it remains pending.
 - Exact Actor/Component weak-identity invalidation or the exact pending
@@ -82,11 +95,13 @@ installer installs that runtime. If another or mixed UE4SS layout is present,
 the installer asks for confirmation, creates a verified Win64-relative backup,
 converts the active runtime, and migrates existing Mods and configuration.
 
-The installer distinguishes three owned product actions:
+The installer distinguishes these product actions:
 
 - Install for an absent Auto Pickup Mod;
-- Upgrade for one recognized owned installation, preserving `config.ini` and
-  using only temporary rollback data when no runtime conversion is required;
+- Update for one recognized older owned installation and Repair for the current
+  owned version; both apply confirmed toggle/fallback key edits, preserve all
+  other configuration, and use only temporary rollback data when no runtime
+  conversion is required;
 - Uninstall for one recognized owned installation, removing only Auto Pickup,
   its authoritative `mods.txt` entry, and approved owned range PAKs.
 

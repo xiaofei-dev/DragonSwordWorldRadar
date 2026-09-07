@@ -594,11 +594,15 @@ Close the game and run the Setup executable. It detects
 
 Setup supports the tested ExperimentalNested UE4SS v3.0.1 Beta #0 commit
 `1c1a1497`. A different or mixed UE4SS layout requires confirmation and a
-verified conversion backup. An exact-runtime Upgrade preserves `config.ini`
-without a persistent conversion backup. Uninstall removes only owned Auto
+verified conversion backup. Install, Update, and Repair let you choose the toggle
+and fallback keys. Existing keys load automatically. Confirm the selected keys
+and range before applying; unchanged keys and other settings are preserved.
+An exact-runtime Update or Repair retains no persistent conversion backup.
+Uninstall removes only owned Auto
 Pickup content and approved owned range PAKs.
 
-Auto Pickup starts disabled. Press F9 after a playable World loads. Returning
+Auto Pickup starts disabled. After loading your save and returning to gameplay,
+press the configured toggle key (F9 by default). Returning
 to the main menu or loading another save disables it again. Optional range
 choices are Original, 3x, 5x, 10x, 15x, and 20x.
 The 15x and 20x choices keep their full gather/animal range while short-lived
@@ -639,7 +643,17 @@ choice, use the separately published `DragonSwordPickupRangeExpansion-v1.3.1.zip
      DragonSwordNativeAutoPickup : 1
      ```
 
-6. Launch the game, load a playable World, and press F9 to enable Auto Pickup.
+6. Launch the game, wait until you can control your character, and press the
+   configured toggle key (F9 by default) to enable Auto Pickup.
+
+## Custom keys and updates
+
+Close the game and edit `ue4ss\Mods\DragonSwordNativeAutoPickup\config.ini`.
+`toggle_hotkey=F9` controls the Mod; `interaction_key_fallback=F` is used only
+if the saved INTERACT binding cannot be detected. Keep `interaction_key=AUTO`
+unless deliberately configuring a manual override. Restart after editing.
+Use Setup Update/Repair to change keys while preserving other settings.
+Manual copying can overwrite your config; back it up before an update.
 
 Never replace an existing `mods.txt` with the one-line file from this ZIP. That
 would remove the enablement entries for other installed Mods.
@@ -698,7 +712,8 @@ range choice, use the separately published
    `DSClient-Win64-Shipping.exe`.
 3. Extract every file and folder from this ZIP directly into that `Win64`
    folder.
-4. Launch the game, load a playable World, and press F9 to enable Auto Pickup.
+4. Launch the game, wait until you can control your character, and press the
+   configured toggle key (F9 by default) to enable Auto Pickup.
 
 ## Existing UE4SS or other installed Mods
 
@@ -715,11 +730,18 @@ range choice, use the separately published
    DragonSwordNativeAutoPickup : 1
    ```
 
-4. Launch the game, load a playable World, and press F9 to enable Auto Pickup.
+4. Launch the game, wait until you can control your character, and press the
+   configured toggle key (F9 by default) to enable Auto Pickup.
 
 If the installed UE4SS version or layout is different or uncertain, use the
 one-click installer instead. It performs the compatibility check, backup, and
 Mod migration.
+
+For custom keys, close the game and edit
+`ue4ss\Mods\DragonSwordNativeAutoPickup\config.ini`: `toggle_hotkey` controls
+the Mod and `interaction_key_fallback` is the concrete fallback for AUTO
+interaction detection. Restart to apply. Manual copying can overwrite this
+file; back it up first or use Setup Update/Repair to preserve other settings.
 
 ## Remove Auto Pickup
 
@@ -847,6 +869,14 @@ $manifest = [ordered]@{
         consensus = 'server_and_ui_selector_addresses_must_match_exactly'
         failure = 'automation_off_for_process_no_historical_address_fallback'
     }
+    startup_initialization = [ordered]@{
+        retryable_dependency = 'interactable_class_present_cdo_not_ready_all_other_required_reflection_present'
+        retry_interval_ms = 250
+        timeout_ms = 30000
+        pending_behavior = 'fail_closed_no_F9_no_scan_no_injection'
+        recovery = 'rerun_complete_reflection_contract_and_dual_anchor_selector_resolution_before_READY'
+        all_other_failures = 'terminal_no_retry'
+    }
     action_lifecycle = [ordered]@{
         pending_identity = 'exact_returned_interaction_component_weak_identity_plus_raw_receiver_and_action_token'
         pending_policy = 'one_global_in_flight_armed_before_injection_persists_after_return_until_matching_dispatch_existing_exact_confirmation_timeout_or_reset'
@@ -894,7 +924,8 @@ $manifest = [ordered]@{
         signed = $false
     }
     installer_ownership = [ordered]@{
-        recognized_owned_installation = 'in_place_upgrade_or_repair_preserving_config'
+        recognized_owned_installation = 'in_place_update_or_repair_confirmed_keys_preserve_other_config'
+        key_edit_confirmation = 'source_and_selected_keys_bound_to_plan_transactional_value_edit'
         current_embedded_payload = 'owned_by_exact_embedded_resource_hashes'
         historical_payloads = 'owned_only_by_exact_evidenced_version_plugin_and_lua_hash_contracts'
         unknown_same_name_payload = 'fail_closed_zero_mutation'

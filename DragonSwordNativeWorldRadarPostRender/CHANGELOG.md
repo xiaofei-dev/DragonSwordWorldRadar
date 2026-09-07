@@ -1,5 +1,42 @@
 # Changelog
 
+## 2.3.0 (Unreleased)
+
+- Add configurable Settings, Enable, and Disable keys in `config/hotkeys.ini`,
+  with the same supported key families as AutoPickup and unchanged F6/F7/F8 defaults.
+- Read custom keys once at startup; use a complete default set if validation fails.
+- Add Settings, Enable, and Disable key selectors to Setup. Configure keys on
+  first Install or change them through Update / Repair; existing keys load automatically.
+- Preserve unchanged key-file bytes, comments, formatting, and other user settings.
+  Reject duplicate or invalid keys before writing, bind keys to the confirmation,
+  and roll back key changes if installation fails. Manual packages keep defaults.
+- Include the unpublished 2.2.2 changes below; no separate 2.2.2 release exists.
+
+- Correct initial world-map readiness so matching player/world-icon motion
+  does not exhaust the three attachment attempts during flight. Compare the
+  compensated projection origin and parent extent across two valid samples.
+- Reseed on layer, parent, icon, owning-player, or map-metadata replacement;
+  retain bounds validation and rejection of unexplained layout movement.
+- Preserve the existing immutable atlas placement and bounded extent rebuild
+  behavior. Add attach-only projection diagnostics. Preliminary owner testing
+  found no issue; a live moving-player attachment also passed on attempt 2/3.
+  The full controller/resolution/travel regression matrix remains pending.
+- Add persistent `AUTO (Game Language)` to the F6 language dropdown. Refresh
+  detection on each actual F6 opening and F7 activation without frame polling.
+- Preserve manual language choices and retain the last valid detected language
+  when detection fails. Do not convert AUTO to a saved explicit language.
+- Put AUTO first, followed by the eleven manual choices. Keep the popup grid;
+  update matching hit targets, highlights and Korean/Traditional Chinese raster cells.
+- Align runtime, metadata, installer, package tools, and verifier version owners
+  to 2.3.0. Existing 2.2.1 public archives remain unchanged. Exact new build and
+  runtime acceptance are tracked in `docs/RELEASE_PLAN_2_3_0.md`.
+- Add CM-04 controller-menu suppression from the exact native minimap's verified
+  paint ancestors. Hide only Radar's owned host when an ancestor is Hidden,
+  Collapsed, or fully transparent; restore when native gameplay HUD returns.
+  Keep cursor/map/pause guards and fixed pools. Two virtual-controller
+  Start/Hero return cycles, including Hero Skill, passed without settled-menu
+  residue; broader runtime acceptance remains pending.
+
 ## 2.2.1 (Unreleased)
 
 Version 2.2.1 is a fixes-only world-map stability candidate. It adds no marker,

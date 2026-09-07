@@ -2,6 +2,7 @@
 #include <dswros/compact_menu_state.hpp>
 #include <dswros/compact_render_model.hpp>
 #include <dswros/object_state.hpp>
+#include <dswros/hotkey_config.hpp>
 #include <dswros/visibility_config.hpp>
 #include <dswros/world_map_session_policy.hpp>
 #include "compact_umg_renderer.hpp"
@@ -85,9 +86,19 @@ using namespace RC::Unreal;
 using Clock = std::chrono::steady_clock;
 using SystemClock = std::chrono::system_clock;
 
-constexpr auto kVersion = STR("2.2.1");
+// Fail the build if the pinned input API ever stops using these virtual-key codes.
+static_assert(Input::Key::F6 == dswros::HotkeySettings{}.settings
+    && Input::Key::F7 == dswros::HotkeySettings{}.enable
+    && Input::Key::F8 == dswros::HotkeySettings{}.disable
+    && Input::Key::INS == *dswros::parse_radar_hotkey("INSERT")
+    && Input::Key::HOME == *dswros::parse_radar_hotkey("HOME")
+    && Input::Key::PAGE_UP == *dswros::parse_radar_hotkey("PAGEUP")
+    && Input::Key::F24 == *dswros::parse_radar_hotkey("F24")
+    && Input::Key::NUM_NINE == *dswros::parse_radar_hotkey("NUM9"));
+
+constexpr auto kVersion = STR("2.3.0");
 constexpr std::string_view kRuntimeLabel =
-    "DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1";
+    "DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0";
 constexpr auto kLocationFunction = STR("/Script/Engine.Actor:K2_GetActorLocation");
 constexpr auto kIsHiddenFunction = STR("/Script/Engine.Actor:IsHidden");
 constexpr auto kTreasureInteractFunction =
@@ -344,6 +355,23 @@ struct EngineTickProfileMetric {
     std::uint64_t total_us{};
     std::uint64_t maximum_us{};
 };
+
+[[nodiscard]] dswros::HotkeyConfigResult load_hotkey_settings(
+    const std::filesystem::path& path) noexcept {
+    try {
+        if (!std::filesystem::exists(path)) return {{}, dswros::HotkeyConfigStatus::Missing};
+        const auto size = std::filesystem::file_size(path);
+        if (size > dswros::kMaximumHotkeyConfigBytes) return {{}, dswros::HotkeyConfigStatus::TooLarge};
+        std::array<char, dswros::kMaximumHotkeyConfigBytes> buffer{};
+        std::ifstream input{path, std::ios::binary};
+        input.read(buffer.data(), static_cast<std::streamsize>(size));
+        if (!input || input.gcount() != static_cast<std::streamsize>(size) || input.peek() != std::char_traits<char>::eof())
+            return {{}, dswros::HotkeyConfigStatus::Unreadable};
+        return dswros::parse_hotkey_config({buffer.data(), static_cast<std::size_t>(size)});
+    } catch (...) {
+        return {{}, dswros::HotkeyConfigStatus::Unreadable};
+    }
+}
 
 [[nodiscard]] RadarVisibilitySettings load_visibility_settings(
     const std::filesystem::path& path) noexcept {
@@ -1210,6 +1238,12 @@ public:
         ModAuthors = STR("DragonSword mod workspace");
         ModIntendedSDKVersion = STR("3.0.1");
         instance_.store(this, std::memory_order_release);
+        const auto hotkeys = load_hotkey_settings(directory / "config" / "hotkeys.ini");
+        hotkey_settings_ = hotkeys.settings;
+        append_log("HOTKEY_CONFIG", std::format(
+            "status={} settings_vk={} enable_vk={} disable_vk={} read=startup_once restart_required=true",
+            dswros::hotkey_config_status_name(hotkeys.status), hotkey_settings_.settings,
+            hotkey_settings_.enable, hotkey_settings_.disable));
         const RadarVisibilitySettings visibility = load_visibility_settings(
             mod_directory() / "config" / "visibility.ini");
         visibility_masks_ = visibility.masks;
@@ -1285,7 +1319,7 @@ public:
             append_log("SAVE_RECONCILE_DISABLED", "worker_initialization_failed");
         }
         append_log("START", std::format(
-            "version=2.2.1 runtime_label={} treasure_catalog={} compact_catalog={} world_map_capacity={} encounter_catalog={} mini_game_catalog={} area_quest_catalog={} area_quest_height_catalog=actor_position_data_144_profiles_1_multiband_3_missing_move_check_trigger_filtered mini_game_height_catalog=actor_position_data_exact_npc_start_83_trusted ignored_treasures={} bird_egg_classes=2 bird_egg_candidate_capacity={} bird_egg_active_capacity={} bird_egg_position_budget={} bird_egg_active_interval_ms=250 bird_egg_active_schedule=shared_discovery_edge bird_egg_missing_debounce_ms=400 bird_egg_availability=owned_interact_component_exact_state bird_egg_world_map=false save_reconciler={} main_menu_owner_boundary=exact_title_map_requires_explicit_open_world_f7 compact_menu_suppression=cursor_or_world_map_visible_or_game_paused shared_probe_ms=250 edge_logging_only runtime_diagnostics=startup_config_once config_debug_logging={} log_schema=2 visibility_config_status={} visibility_config_format={} visibility_config_read=startup_once compact_visibility_mask={} world_visibility_mask={} area_quest_mode={} assault_mode={} height_mask={} language_preference={}",
+            "version=2.3.0 runtime_label={} treasure_catalog={} compact_catalog={} world_map_capacity={} encounter_catalog={} mini_game_catalog={} area_quest_catalog={} area_quest_height_catalog=actor_position_data_144_profiles_1_multiband_3_missing_move_check_trigger_filtered mini_game_height_catalog=actor_position_data_exact_npc_start_83_trusted ignored_treasures={} bird_egg_classes=2 bird_egg_candidate_capacity={} bird_egg_active_capacity={} bird_egg_position_budget={} bird_egg_active_interval_ms=250 bird_egg_active_schedule=shared_discovery_edge bird_egg_missing_debounce_ms=400 bird_egg_availability=owned_interact_component_exact_state bird_egg_world_map=false save_reconciler={} main_menu_owner_boundary=exact_title_map_requires_explicit_open_world_f7 compact_menu_suppression=cursor_or_world_map_visible_or_game_paused shared_probe_ms=250 edge_logging_only runtime_diagnostics=startup_config_once config_debug_logging={} log_schema=2 visibility_config_status={} visibility_config_format={} visibility_config_read=startup_once compact_visibility_mask={} world_visibility_mask={} area_quest_mode={} assault_mode={} height_mask={} language_preference={}",
             kRuntimeLabel, tracker_.catalog_count(), render_catalog_size_,
             dsnwr::kWorldMapUmgMarkerCapacity, encounter_catalog_.size(),
             mini_game_catalog_.size(), area_quest_catalog_.size(),
@@ -1797,13 +1831,13 @@ public:
                 if (auto* self = current(generation)) self->transition_end(game_mode);
             }, {false, false, STR("DragonSwordNativeWorldRadarPostRender"), STR("Transition")});
 #endif
-        UE4SSProgram::get_program().register_keydown_event(Input::Key::F7, [generation] {
+        UE4SSProgram::get_program().register_keydown_event(static_cast<Input::Key>(hotkey_settings_.enable), [generation] {
             if (auto* self = current(generation)) self->f7_requests_.fetch_add(1, std::memory_order_release);
         });
-        UE4SSProgram::get_program().register_keydown_event(Input::Key::F8, [generation] {
+        UE4SSProgram::get_program().register_keydown_event(static_cast<Input::Key>(hotkey_settings_.disable), [generation] {
             if (auto* self = current(generation)) self->f8_requests_.fetch_add(1, std::memory_order_release);
         });
-        UE4SSProgram::get_program().register_keydown_event(Input::Key::F6, [generation] {
+        UE4SSProgram::get_program().register_keydown_event(static_cast<Input::Key>(hotkey_settings_.settings), [generation] {
             if (auto* self = current(generation)) self->f6_requests_.fetch_add(1, std::memory_order_release);
         });
         const bool required_runtime_ready = catalog_ready_
@@ -1831,7 +1865,7 @@ public:
             append_log("DISABLED", "required native metadata or callback is unavailable");
             return;
         }
-        append_log("READY", std::format("hotkeys=F6,F7,F8 coordinate_ms=16 required_runtime_ready=true treasure_actor_hooks={}_{} encounter_death_hooks={}_{} treasure_interact_schema={} treasure_completion=local_interactor_or_exact_current_mount_rider_exact_receiver_or_nearby_nonpawn_exact_id_delayed_positive_save_confirmation_or_set_death_process world_map_hook={} world_map_zoom_hook={} world_map_visibility_provider={} object_create_listener={} compact_layer_class={} area_quest_provider={} area_quest_hooks={}_{} area_quest_end_schemas={}_{} area_quest_completion_hook={} area_quest_event_hook={} area_quest_scan=one_id_per_frame_event_driven area_quest_refresh=one_second_debounced_transactional_preserve_last_complete area_quest_completion=exact_catalog_dynamic_event_or_exact_task_actor_then_ten_second_exact_id_end_probe_then_three_bounded_positive_only_save_attempts area_quest_store=dynamic area_quest_definition_snapshot=f7_game_db_main_group_numeric_only area_quest_monster_alive=unique_bounded_assault_numeric_link area_quest_time_refresh=first_valid_and_world_hour_edge_transactional_runtime_rescan area_quest_compact=nearby_prerequisite_proven_plus_runtime_marker_z_nearest_height_band area_quest_world_map=one_shot_main_group_prerequisite_proof_plus_runtime area_quest_triggerability=fail_closed_main_group_conditions discovery=event_driven_fixed_49_weak_slots_no_enumeration_8_position_queries_per_control_tick bird_egg_discovery=exact_Bird_Egg01_C_or_Bird_Egg02_C_event_driven_fixed_512_weak_slots_no_enumeration_8_interact_component_position_queries_per_250ms bird_egg_active=nearest_16_250ms_shared_discovery_edge_exact_interact_component_or_weak_missing_400ms_debounce_minimap_only encounter_identity=exact_unique_class_player_to_current_actor_within_100m encounter_completion=exact_observed_notify_death_or_death_process_end_plus_strict_nearby_ten_second_missing_fallback encounter_end_recovery=exact_destroyed_class_player_to_current_actor world_map_runtime_delta=current_session_only_if_exact_visible_else_set_world_map_image_deferred world_map_readiness=set_world_map_image_one_shot_serial_matched_budget_rearm encounter_edges=250ms_control_1hz_scalar_49_only_at_hour_or_cooldown_edge sql=native_one_shot_per_activation_plus_event_driven_encounter_dynamic_and_exact_treasure_confirmation visibility_hub=f6_transient_native_umg_auto_apply_change_only_titlebar_bug_report_status_signal_action_keeps_open_x_close_cursor_reassert_open_only markers=treasure_boss_assault_fly_mole_wave_area_quest_bird_egg marker_capacity=80 nearest_treasure_size=22 normal_treasure_size=14 compact_encounter_sizes=30_27 compact_encounter_style=four_piece_official_reference compact_area_quest_style=translucent_charcoal_rounded_brush_thick_dark_frame_three_white_dots nearest_height=sharp_tangent_six_piece_pointer_larger_tighter clock=native_scalar_transparent_thick_seven_segment_lower_crescent_star_minute_edge render_motion=one_single_host_canvas_translation umg_projection=dpi_logical_units minimap_projection=live_scale_1hz compact_layering=single_proven_viewport_host compact_attach=event_candidate_plus_one_bounded_startup_catchup_distinct_replacement_rearm compact_transition_hide=first_invalid_position_sample world_map=map100_full_global_task_minigame_dual_atlas_capacity4096_texture2048 world_map_selection=explicit_session_linear_no_heap_no_radius world_map_encounter_sizes=44_34 world_map_encounter_style=official_reference_simplified_contrast world_map_minigame_size=32 world_map_edge_coverage=4x4_all_formal_glyphs_atlas_revision51 world_map_minigames=33_fly_40_mole_10_wave_save_filtered world_map_layering=native_children_full_stretch_hosts_inner_atlas_layout_image_zero_translation_inherited_pan_zoom_clip world_map_replacement=event_driven_exact_set_image_rearm_nonfatal_layer_mismatch world_map_f8=suspend_collapsed world_map_f7=exact_retained_layer_resume_outside_activity world_map_travel=detach activity_suppression=edge_detach_recreate_both_renderers main_menu=exact_title_map_owner_boundary_hard_stop_explicit_open_world_f7 world_map_metrics=category_counts_first_last_ids_atlas_us_bytes_cache_hits_suspend_resume_counts",
+        append_log("READY", std::format("hotkeys=config/hotkeys.ini default_keys=F6,F7,F8 logical_actions=settings_enable_disable coordinate_ms=16 required_runtime_ready=true treasure_actor_hooks={}_{} encounter_death_hooks={}_{} treasure_interact_schema={} treasure_completion=local_interactor_or_exact_current_mount_rider_exact_receiver_or_nearby_nonpawn_exact_id_delayed_positive_save_confirmation_or_set_death_process world_map_hook={} world_map_zoom_hook={} world_map_visibility_provider={} object_create_listener={} compact_layer_class={} area_quest_provider={} area_quest_hooks={}_{} area_quest_end_schemas={}_{} area_quest_completion_hook={} area_quest_event_hook={} area_quest_scan=one_id_per_frame_event_driven area_quest_refresh=one_second_debounced_transactional_preserve_last_complete area_quest_completion=exact_catalog_dynamic_event_or_exact_task_actor_then_ten_second_exact_id_end_probe_then_three_bounded_positive_only_save_attempts area_quest_store=dynamic area_quest_definition_snapshot=f7_game_db_main_group_numeric_only area_quest_monster_alive=unique_bounded_assault_numeric_link area_quest_time_refresh=first_valid_and_world_hour_edge_transactional_runtime_rescan area_quest_compact=nearby_prerequisite_proven_plus_runtime_marker_z_nearest_height_band area_quest_world_map=one_shot_main_group_prerequisite_proof_plus_runtime area_quest_triggerability=fail_closed_main_group_conditions discovery=event_driven_fixed_49_weak_slots_no_enumeration_8_position_queries_per_control_tick bird_egg_discovery=exact_Bird_Egg01_C_or_Bird_Egg02_C_event_driven_fixed_512_weak_slots_no_enumeration_8_interact_component_position_queries_per_250ms bird_egg_active=nearest_16_250ms_shared_discovery_edge_exact_interact_component_or_weak_missing_400ms_debounce_minimap_only encounter_identity=exact_unique_class_player_to_current_actor_within_100m encounter_completion=exact_observed_notify_death_or_death_process_end_plus_strict_nearby_ten_second_missing_fallback encounter_end_recovery=exact_destroyed_class_player_to_current_actor world_map_runtime_delta=current_session_only_if_exact_visible_else_set_world_map_image_deferred world_map_readiness=set_world_map_image_one_shot_serial_matched_budget_rearm encounter_edges=250ms_control_1hz_scalar_49_only_at_hour_or_cooldown_edge sql=native_one_shot_per_activation_plus_event_driven_encounter_dynamic_and_exact_treasure_confirmation visibility_hub=f6_transient_native_umg_auto_apply_change_only_titlebar_bug_report_status_signal_action_keeps_open_x_close_cursor_reassert_open_only markers=treasure_boss_assault_fly_mole_wave_area_quest_bird_egg marker_capacity=80 nearest_treasure_size=22 normal_treasure_size=14 compact_encounter_sizes=30_27 compact_encounter_style=four_piece_official_reference compact_area_quest_style=translucent_charcoal_rounded_brush_thick_dark_frame_three_white_dots nearest_height=sharp_tangent_six_piece_pointer_larger_tighter clock=native_scalar_transparent_thick_seven_segment_lower_crescent_star_minute_edge render_motion=one_single_host_canvas_translation umg_projection=dpi_logical_units minimap_projection=live_scale_1hz compact_layering=single_proven_viewport_host compact_attach=event_candidate_plus_one_bounded_startup_catchup_distinct_replacement_rearm compact_transition_hide=first_invalid_position_sample world_map=map100_full_global_task_minigame_dual_atlas_capacity4096_texture2048 world_map_selection=explicit_session_linear_no_heap_no_radius world_map_encounter_sizes=44_34 world_map_encounter_style=official_reference_simplified_contrast world_map_minigame_size=32 world_map_edge_coverage=4x4_all_formal_glyphs_atlas_revision51 world_map_minigames=33_fly_40_mole_10_wave_save_filtered world_map_layering=native_children_full_stretch_hosts_inner_atlas_layout_image_zero_translation_inherited_pan_zoom_clip world_map_replacement=event_driven_exact_set_image_rearm_nonfatal_layer_mismatch world_map_f8=suspend_collapsed world_map_f7=exact_retained_layer_resume_outside_activity world_map_travel=detach activity_suppression=edge_detach_recreate_both_renderers main_menu=exact_title_map_owner_boundary_hard_stop_explicit_open_world_f7 world_map_metrics=category_counts_first_last_ids_atlas_us_bytes_cache_hits_suspend_resume_counts",
             treasure_interact_hook_registered_, treasure_death_hook_registered_,
             encounter_death_hook_registered_,
             encounter_death_process_hook_registered_,
@@ -1850,7 +1884,7 @@ public:
             task_complete_hook_registered_,
             quest_event_trigger_hook_registered_));
         append_log(
-            "READY_2_2_1",
+            "READY_2_3_0",
             "area_quest_height=actor_position_data_144_profiles_1_multiband_3_missing_marker_z_selects_unique_nearest_band_move_check_trigger_filtered "
             "area_quest_pointer=black_outline_white_fill_shaftless_chevron "
             "compact_menu_suppression=set_world_map_image_latch_plus_"
@@ -2943,7 +2977,7 @@ private:
 
     [[nodiscard]] dswros::RadarUiLanguage
     detect_current_game_language(UEngine* engine) noexcept {
-        current_language_detection_source_ = "fallback_en";
+        current_language_detection_source_ = "unavailable_preserve_last";
         if (game_user_settings_language_schema_ready_ && engine) {
             try {
                 void* settings_value = engine_game_user_settings_property_
@@ -2977,7 +3011,7 @@ private:
         UObject* library = internationalization_library_default_.Get();
         if (!internationalization_language_schema_ready_ || !library
             || !current_language_function_) {
-            return dswros::RadarUiLanguage::English;
+            return dswros::RadarUiLanguage::Count;
         }
         struct CurrentLanguageParameters {
             FString return_value{};
@@ -2989,16 +3023,16 @@ private:
             library->ProcessEvent(current_language_function_, &parameters);
             const int32 length = parameters.return_value.Len();
             if (length <= 0 || length > 63) {
-                return dswros::RadarUiLanguage::English;
+                return dswros::RadarUiLanguage::Count;
             }
             current_language_detection_source_ =
                 "kismet_current_language";
-            return dswros::radar_ui_language_from_culture(
+            return dswros::sample_radar_ui_language_from_culture(
                 std::wstring_view{
                     *parameters.return_value,
                     static_cast<std::size_t>(length)});
         } catch (...) {
-            return dswros::RadarUiLanguage::English;
+            return dswros::RadarUiLanguage::Count;
         }
     }
 
@@ -3009,40 +3043,12 @@ private:
             return detect_current_game_language(engine);
         } __except (EXCEPTION_EXECUTE_HANDLER) {
             current_language_detection_source_ =
-                "seh_fault_fallback_en";
-            return dswros::RadarUiLanguage::English;
+                "seh_fault_preserve_last";
+            return dswros::RadarUiLanguage::Count;
         }
 #else
         return detect_current_game_language(engine);
 #endif
-    }
-
-    void migrate_legacy_auto_language_preference(
-        std::string_view schedule) noexcept {
-        if (language_preference_
-            != dswros::RadarLanguagePreference::Auto) {
-            return;
-        }
-        language_preference_ =
-            dswros::resolve_explicit_radar_language_preference(
-                language_preference_, detected_game_language_);
-        active_ui_language_ = dswros::resolve_radar_ui_language(
-            language_preference_, detected_game_language_);
-        const bool persisted = persist_visibility_settings(
-            mod_directory() / "config" / "visibility.ini",
-            visibility_masks_, area_quest_display_mode_,
-            assault_display_mode_, height_indicator_mask_,
-            language_preference_);
-        try {
-            append_log("RADAR_LANGUAGE_AUTO_MIGRATED", std::format(
-                "schedule={} detected={} explicit={} persisted={}",
-                schedule,
-                dswros::radar_ui_language_id(detected_game_language_),
-                dswros::radar_language_preference_id(
-                    language_preference_),
-                persisted));
-        } catch (...) {
-        }
     }
 
     [[nodiscard]] UObject*
@@ -5173,9 +5179,8 @@ private:
             return;
         }
 
-        detected_game_language_ =
-            detect_current_game_language_guarded(engine);
-        migrate_legacy_auto_language_preference("f6_real_open");
+        detected_game_language_ = dswros::retain_detected_radar_language(
+            detected_game_language_, detect_current_game_language_guarded(engine));
         active_ui_language_ = dswros::resolve_radar_ui_language(
             language_preference_, detected_game_language_);
         append_log("RADAR_LANGUAGE_SELECTED", std::format(
@@ -5694,9 +5699,8 @@ private:
                 "reason=required_runtime_unavailable action=remain_disabled");
             return;
         }
-        detected_game_language_ =
-            detect_current_game_language_guarded(engine);
-        migrate_legacy_auto_language_preference("once_per_f7");
+        detected_game_language_ = dswros::retain_detected_radar_language(
+            detected_game_language_, detect_current_game_language_guarded(engine));
         active_ui_language_ = dswros::resolve_radar_ui_language(
             language_preference_, detected_game_language_);
         append_log("RADAR_LANGUAGE_SELECTED", std::format(
@@ -7030,6 +7034,7 @@ private:
         }
         compact_layer_candidate_ = FWeakObjectPtr{};
         compact_candidate_available_ = false;
+        native_minimap_paint_ = dswros::NativeMinimapPaint::Unknown;
     }
 
     void consume_compact_listener_candidate(
@@ -8653,6 +8658,27 @@ private:
                 world_map_umg_renderer_.suspend_count(),
                 world_map_umg_renderer_.resume_count(),
                 world_map_umg_renderer_.detach_count()));
+        // Separate bounded attach-only event keeps the existing event below
+        // the logger's line limit and exposes the actual projection inputs.
+        if (world_map_umg_renderer_.player_anchor_source() == 1U) {
+            const auto& sample = world_map_umg_renderer_.projection_sample();
+            const auto& delta = world_map_umg_renderer_.projection_delta();
+            const auto origin = dswros::world_map_projection_origin(sample);
+            append_log("WORLD_MAP_ATTACH_PROJECTION", std::format(
+                "activation={} epoch={} attempt={} policy=motion_compensated_origin valid={} comparable={} player_x={:.6f} player_y={:.6f} anchor_x={:.6f} anchor_y={:.6f} dimensions={:.3f} parent_width={:.3f} parent_height={:.3f} origin_x={:.6f} origin_y={:.6f} anchor_delta={:.6f} player_world_delta={:.6f} extent_delta={:.6f} origin_delta={:.6f} layer={}:{} parent={}:{} icon={}:{} owner={}:{}",
+                activation_, epoch_, world_map_service_attempts_,
+                origin.has_value(), delta.comparable, player_.x, player_.y,
+                world_map_umg_renderer_.player_canvas_anchor_x(),
+                world_map_umg_renderer_.player_canvas_anchor_y(),
+                sample.map_dimensions, sample.geometry.parent_width,
+                sample.geometry.parent_height, origin ? origin->x : 0.0,
+                origin ? origin->y : 0.0, delta.anchor, delta.player_world,
+                delta.extent, delta.origin,
+                sample.identities[0].index, sample.identities[0].serial,
+                sample.identities[1].index, sample.identities[1].serial,
+                sample.identities[2].index, sample.identities[2].serial,
+                sample.identities[3].index, sample.identities[3].serial));
+        }
     }
     [[nodiscard]] bool compact_render_suppressed() const noexcept {
         return dswros::compact_render_suppressed({
@@ -8662,6 +8688,7 @@ private:
             world_map_compact_suppressed_,
             game_paused_,
             activity_suppressed_,
+            native_minimap_paint_ == dswros::NativeMinimapPaint::Hidden,
         });
     }
 
@@ -8672,6 +8699,7 @@ private:
     }
 
     void reset_compact_pool_runtime() noexcept {
+        native_minimap_paint_ = dswros::NativeMinimapPaint::Unknown;
         compact_attach_requested_ = false;
         compact_attach_attempt_count_ = 0;
         compact_attach_retry_after_ = {};
@@ -10483,6 +10511,291 @@ private:
             current_world_key_.empty() ? "unavailable" : current_world_key_, activity_suppressed_));
     }
 
+    // Development evidence only: bounded current-owner UI state, no widget scan,
+    // no input hooks and no changes to the existing suppression decision.
+    void probe_native_menu_diagnostics_unsafe(UEngine* engine) {
+        if (!dsnwr::native_event_log_enabled()) return;
+        auto* instance = current_game_instance(engine);
+        auto* players_property = instance ? CastField<FArrayProperty>(
+            instance->GetPropertyByNameInChain(STR("LocalPlayers"))) : nullptr;
+        auto* player_property = players_property ? CastField<FObjectPropertyBase>(
+            players_property->GetInner()) : nullptr;
+        if (!player_property || player_property->GetSize() != sizeof(void*)) return;
+        FScriptArrayHelper_InContainer players{players_property, instance};
+        if (players.Num() < 1 || players.Num() > 4) return;
+        UObject* player = player_property->GetObjectPropertyValue(players.GetRawPtr(0));
+        const auto read_object = [](UObject* owner, const wchar_t* name) -> UObject* {
+            auto* property = owner ? CastField<FObjectPropertyBase>(
+                owner->GetPropertyByNameInChain(name)) : nullptr;
+            return property ? property->GetObjectPropertyValue(
+                property->ContainerPtrToValuePtr<void>(owner)) : nullptr;
+        };
+        UObject* manager = read_object(player, L"UIManager");
+        UObject* root = read_object(manager, L"CurrentRootPanelInstance");
+        if (!manager || !root) return;
+        // String construction is bounded to 4 arrays x 64 one-byte enums and
+        // happens only with explicitly enabled local debug logging.
+        std::string snapshot;
+        snapshot.reserve(1024);
+        for (const wchar_t* name : {L"PanelUI", L"PanelStack", L"PanelUIDefault", L"PopupUI"}) {
+            snapshot += to_string(StringType{name});
+            snapshot += "=";
+            auto* property = CastField<FArrayProperty>(
+                manager->GetPropertyByNameInChain(name));
+            auto* enumeration = property ? CastField<FEnumProperty>(property->GetInner()) : nullptr;
+            auto* number = enumeration ? enumeration->GetUnderlyingProperty() : nullptr;
+            if (!number && property) number = CastField<FNumericProperty>(property->GetInner());
+            if (!number || !number->IsInteger() || number->GetSize() != 1) {
+                snapshot += "unknown ";
+                continue;
+            }
+            FScriptArrayHelper_InContainer rows{property, manager};
+            if (rows.Num() < 0 || rows.Num() > 64) {
+                snapshot += "over_budget ";
+                continue;
+            }
+            snapshot += "[";
+            for (int32 index = 0; index < rows.Num(); ++index) {
+                if (index) snapshot += ",";
+                snapshot += std::to_string(number->GetUnsignedIntPropertyValue(rows.GetRawPtr(index)));
+            }
+            snapshot += "] ";
+        }
+        std::uint64_t visibility{};
+        const bool visibility_known = read_unsigned_struct_field(
+            root->GetClassPrivate(), root, L"Visibility", visibility);
+        snapshot += std::format("root_class={} root_visibility={} root_visibility_known={} cursor={} paused={} pause_known={} compact_suppressed={}",
+            to_string(root->GetClassPrivate()->GetName()), visibility, visibility_known,
+            mouse_cursor_visible_, game_paused_, game_pause_sample_known_, compact_render_suppressed());
+        if (snapshot != native_menu_diagnostic_last_) {
+            native_menu_diagnostic_last_ = snapshot;
+            append_log("NATIVE_MENU_PROBE", std::format("activation={} epoch={} {}",
+                activation_, epoch_, snapshot));
+        }
+    }
+
+    void probe_native_menu_diagnostics_guarded(UEngine* engine) noexcept {
+#if defined(_MSC_VER)
+        __try { probe_native_menu_diagnostics_unsafe(engine); }
+        __except (EXCEPTION_EXECUTE_HANDLER) { return; }
+#else
+        try { probe_native_menu_diagnostics_unsafe(engine); } catch (...) {}
+#endif
+    }
+
+    // CM-04: CM-03 proved that Start/Hero hide a paint ancestor while the
+    // minimap itself remains Visible. Read only this exact current-world HUD;
+    // never scan widgets, mutate native UI, or depend on the input device.
+    [[nodiscard]] dswros::NativeMinimapPaint
+    read_native_minimap_paint_unsafe(UWorld* expected_world) {
+        using Paint = dswros::NativeMinimapPaint;
+        const auto read_object = [](UObject* owner, const wchar_t* name) -> UObject* {
+            auto* property = owner ? CastField<FObjectPropertyBase>(
+                owner->GetPropertyByNameInChain(name)) : nullptr;
+            return property && property->GetSize() == sizeof(void*)
+                ? property->GetObjectPropertyValue(
+                    property->ContainerPtrToValuePtr<void>(owner)) : nullptr;
+        };
+        UObject* layer = compact_layer_candidate_.Get();
+        if (!expected_world || !layer || layer->GetWorld() != expected_world
+            || !compact_layer_class_ || !layer->IsA(compact_layer_class_)) {
+            return Paint::Unknown;
+        }
+
+        // Outer ownership locates the panel, but never substitutes for paint
+        // ancestry. It must explicitly reference this exact minimap instance.
+        UObject* main_panel{};
+        UObject* owner = layer;
+        for (std::size_t depth = 0; owner && depth < 8; ++depth) {
+            if (read_object(owner, L"DLayerMiniMap") == layer) {
+                main_panel = owner;
+                break;
+            }
+            owner = owner->GetOuterPrivate();
+        }
+        if (!main_panel || main_panel->GetWorld() != expected_world) {
+            return Paint::Unknown;
+        }
+
+        std::array<UObject*, 24> visited{};
+        UObject* node = layer;
+        bool all_known = true;
+        for (std::size_t depth = 0; node && depth < visited.size(); ++depth) {
+            if (node->GetWorld() != expected_world
+                || std::find(visited.begin(), visited.begin() + depth, node)
+                    != visited.begin() + depth) {
+                return Paint::Unknown;
+            }
+            visited[depth] = node;
+            std::uint64_t visibility{};
+            const bool visibility_known = read_unsigned_struct_field(
+                node->GetClassPrivate(), node, L"Visibility", visibility);
+            auto* opacity_property = CastField<FNumericProperty>(
+                node->GetPropertyByNameInChain(STR("RenderOpacity")));
+            const bool opacity_known = opacity_property
+                && !opacity_property->IsInteger()
+                && opacity_property->GetSize() == sizeof(float);
+            const double opacity = opacity_known
+                ? opacity_property->GetFloatingPointPropertyValue(
+                    opacity_property->ContainerPtrToValuePtr<void>(node)) : -1.0;
+            const auto paint = dswros::native_widget_paint(
+                visibility_known, visibility, opacity_known, opacity);
+            if (paint == Paint::Hidden) return Paint::Hidden;
+            all_known = all_known && paint == Paint::Visible;
+            if (node == main_panel) {
+                return all_known ? Paint::Visible : Paint::Unknown;
+            }
+
+            UObject* slot = read_object(node, L"Slot");
+            UObject* parent = read_object(slot, L"Parent");
+            if (parent && read_object(slot, L"Content") == node) {
+                node = parent;
+                continue;
+            }
+            UObject* tree = node->GetOuterPrivate();
+            UObject* tree_owner = tree ? tree->GetOuterPrivate() : nullptr;
+            if (tree && tree_owner && read_object(tree, L"RootWidget") == node
+                && read_object(tree_owner, L"WidgetTree") == tree) {
+                node = tree_owner;
+                continue;
+            }
+            return Paint::Unknown; // Unproven edge is not a hidden-menu latch.
+        }
+        return Paint::Unknown; // Cycle/depth budget or absent chain.
+    }
+
+    [[nodiscard]] dswros::NativeMinimapPaint
+    read_native_minimap_paint_guarded(UWorld* expected_world) noexcept {
+#if defined(_MSC_VER)
+        __try { return read_native_minimap_paint_unsafe(expected_world); }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            return dswros::NativeMinimapPaint::Unknown;
+        }
+#else
+        try { return read_native_minimap_paint_unsafe(expected_world); }
+        catch (...) { return dswros::NativeMinimapPaint::Unknown; }
+#endif
+    }
+
+    void refresh_native_minimap_paint(UWorld* expected_world) {
+        const auto next = read_native_minimap_paint_guarded(expected_world);
+        if (next == native_minimap_paint_) return;
+        native_minimap_paint_ = next;
+        apply_compact_suppression(); // Owned host visibility only; retain pool.
+        append_log("NATIVE_MINIMAP_PAINT_STATE", std::format(
+            "activation={} epoch={} serial={} state={} compact_suppressed={} source=validated_paint_ancestry",
+            activation_, epoch_, compact_candidate_serial_,
+            static_cast<unsigned>(next), compact_render_suppressed()));
+    }
+
+    // CM-03 diagnostic only. The native Start menu does not change PanelUI.
+    // Follow the exact current minimap's ownership/paint chain instead; never
+    // enumerate widgets or infer visibility from the controller input route.
+    void probe_native_minimap_widgets_unsafe(UWorld* expected_world) {
+        if (!dsnwr::native_event_log_enabled()) return;
+        const auto read_object = [](UObject* owner, const wchar_t* name) -> UObject* {
+            auto* property = owner ? CastField<FObjectPropertyBase>(
+                owner->GetPropertyByNameInChain(name)) : nullptr;
+            return property && property->GetSize() == sizeof(void*)
+                ? property->GetObjectPropertyValue(
+                    property->ContainerPtrToValuePtr<void>(owner)) : nullptr;
+        };
+        UObject* layer = compact_layer_candidate_.Get();
+        if (!layer || !expected_world || layer->GetWorld() != expected_world
+            || !compact_layer_class_ || !layer->IsA(compact_layer_class_)) return;
+
+        std::string snapshot;
+        snapshot.reserve(4096);
+        const auto describe = [&snapshot](std::string_view role, UObject* widget) {
+            snapshot += std::format(" {}=", role);
+            if (!widget) { snapshot += "missing"; return; }
+            std::uint64_t visibility{};
+            const bool known = read_unsigned_struct_field(
+                widget->GetClassPrivate(), widget, L"Visibility", visibility);
+            auto* opacity_property = CastField<FNumericProperty>(
+                widget->GetPropertyByNameInChain(STR("RenderOpacity")));
+            const bool opacity_known = opacity_property
+                && !opacity_property->IsInteger()
+                && opacity_property->GetSize() == sizeof(float);
+            const double opacity = opacity_known
+                ? opacity_property->GetFloatingPointPropertyValue(
+                    opacity_property->ContainerPtrToValuePtr<void>(widget)) : -1.0;
+            auto class_name = to_string(widget->GetClassPrivate()->GetName());
+            class_name.resize(std::min<std::size_t>(class_name.size(), 64));
+            snapshot += std::format("{}:v{}:known{}:opacity{:.3f}:known{}",
+                class_name, visibility, known, opacity,
+                opacity_known && std::isfinite(opacity));
+        };
+
+        // Ownership alone is not paint ancestry. Use it only to locate the
+        // main panel that explicitly points back to this exact minimap.
+        UObject* main_panel{};
+        UObject* owner = layer;
+        for (std::size_t depth = 0; owner && depth < 8; ++depth) {
+            if (read_object(owner, L"DLayerMiniMap") == layer) {
+                main_panel = owner;
+                break;
+            }
+            owner = owner->GetOuterPrivate();
+        }
+        describe("main", main_panel);
+        for (const wchar_t* name : {L"DLayerMainMenu", L"Overlay_Minimap",
+                L"Overlay_Minimap_Inv", L"Right", L"OthersPanel"}) {
+            describe(to_string(StringType{name}), read_object(main_panel, name));
+        }
+        UObject* map = read_object(layer, L"LayerMap");
+        describe("map", map);
+        describe("overlay", read_object(map, L"MapOverlay"));
+
+        std::array<UObject*, 24> visited{};
+        UObject* node = layer;
+        std::size_t depth{};
+        for (; node && depth < visited.size(); ++depth) {
+            if (std::find(visited.begin(), visited.begin() + depth, node)
+                != visited.begin() + depth) {
+                snapshot += " chain_cycle=true";
+                break;
+            }
+            visited[depth] = node;
+            describe(std::format("p{}", depth), node);
+            UObject* slot = read_object(node, L"Slot");
+            UObject* parent = read_object(slot, L"Parent");
+            if (parent && read_object(slot, L"Content") == node) {
+                snapshot += ":edge=slot";
+                node = parent;
+                continue;
+            }
+            // GetParent alone stops at the root of each nested UserWidget.
+            // Bridge a WidgetTree only after proving both reflected links.
+            UObject* tree = node->GetOuterPrivate();
+            UObject* tree_owner = tree ? tree->GetOuterPrivate() : nullptr;
+            if (tree && tree_owner && read_object(tree, L"RootWidget") == node
+                && read_object(tree_owner, L"WidgetTree") == tree) {
+                snapshot += ":edge=tree";
+                node = tree_owner;
+                continue;
+            }
+            snapshot += ":edge=end_or_unknown";
+            node = nullptr;
+        }
+        snapshot += std::format(" chain_budget_hit={}", node && depth == visited.size());
+        if (snapshot != native_minimap_widget_diagnostic_last_) {
+            native_minimap_widget_diagnostic_last_ = snapshot;
+            append_log("NATIVE_MINIMAP_WIDGET_PROBE", std::format(
+                "activation={} epoch={} serial={}{}", activation_, epoch_,
+                compact_candidate_serial_, snapshot));
+        }
+    }
+
+    void probe_native_minimap_widgets_guarded(UWorld* expected_world) noexcept {
+#if defined(_MSC_VER)
+        __try { probe_native_minimap_widgets_unsafe(expected_world); }
+        __except (EXCEPTION_EXECUTE_HANDLER) { return; }
+#else
+        try { probe_native_minimap_widgets_unsafe(expected_world); } catch (...) {}
+#endif
+    }
+
     void probe_activity_context_guarded(UEngine* engine) noexcept {
 #if defined(_MSC_VER)
         __try { probe_activity_context_unsafe(engine); }
@@ -10519,6 +10832,9 @@ private:
         refresh_compact_menu_state(
             reinterpret_cast<UWorld*>(world),
             "shared_250ms_activity_probe");
+        refresh_native_minimap_paint(reinterpret_cast<UWorld*>(world));
+        probe_native_menu_diagnostics_guarded(engine);
+        probe_native_minimap_widgets_guarded(reinterpret_cast<UWorld*>(world));
         if (identity_changed || suppression_changed) {
             append_log("ACTIVITY_WORLD", std::format(
                 "activation={} epoch={} world_baseline={} world_current={} context_baseline={} context_current={} compact_paint_suppressed={}",
@@ -12037,6 +12353,7 @@ private:
     inline static std::atomic<NativeObjectState*> instance_{};
     inline static std::atomic<std::uint64_t> next_instance_generation_{};
     const std::uint64_t instance_generation_{};
+    dswros::HotkeySettings hotkey_settings_{};
     dswros::ObjectStateTracker tracker_{};
     dswros::CompactRenderModel compact_render_model_{};
     std::array<std::uint8_t, kMaximumTreasureCatalogEntries>
@@ -12185,6 +12502,10 @@ private:
     std::size_t encounter_candidate_probe_cursor_{};
     std::size_t bird_egg_candidate_probe_cursor_{};
     std::size_t bird_egg_unresolved_count_{};
+    std::string native_menu_diagnostic_last_{};
+    std::string native_minimap_widget_diagnostic_last_{};
+    dswros::NativeMinimapPaint native_minimap_paint_{
+        dswros::NativeMinimapPaint::Unknown};
     UFunction* location_function_{};
     UFunction* is_hidden_function_{};
     FObjectPropertyBase* bird_egg_interact_component_property_{};

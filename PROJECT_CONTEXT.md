@@ -40,10 +40,22 @@ diff before making product-level changes.
 - There is no repository-root `tools/` directory. Each product owns its own
   build and verification tooling.
 
-## Accepted product state
+## Current local release handoff
+
+See `docs/RELEASE_CLOSEOUT_2026_09_07.md` and each product's
+`docs/RELEASE_STATUS.md` for AutoPickup 1.3.1 and Radar 2.3.0. These are
+complete local package sets, not authorization to publish or deploy them.
+Use current manifests for byte identities; dated receipts below are history.
+
+The owner subsequently published AutoPickup 1.3.1 and Radar 2.3.0 on Nexus
+and authorized the source/documentation main sync on 2026-09-07. See
+`docs/GITHUB_CLOSEOUT_2026_09_07.md` for the final source handoff and evidence
+boundary. This does not clear the separately recorded third-party rights gate.
+
+## Historical accepted product state
 
 The owner reported completed gameplay testing and acceptance on 2026-08-31 for
-the current installed `DragonSwordNativeWorldRadarPostRender` 2.1.0 and
+the then-installed `DragonSwordNativeWorldRadarPostRender` 2.1.0 and
 `DragonSwordNativeAutoPickup` 1.3.0 builds.
 
 One diagnostic session observed a temporary native `F` prompt loss and missing

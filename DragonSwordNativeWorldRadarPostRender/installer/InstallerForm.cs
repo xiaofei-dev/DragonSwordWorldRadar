@@ -8,18 +8,22 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
     {
         private readonly TextBox _gamePath = new TextBox();
         private readonly TextBox _status = new TextBox();
+        private readonly ComboBox _settingsKey = new ComboBox();
+        private readonly ComboBox _enableKey = new ComboBox();
+        private readonly ComboBox _disableKey = new ComboBox();
         private readonly Button _browse = new Button();
         private readonly Button _uninstall = new Button();
         private readonly Button _install = new Button();
         private readonly Button _close = new Button();
         private InstallerInstallationState _installationState;
         private bool _busy;
+        private string _loadedGamePath;
 
         internal InstallerForm()
         {
-            Text = "DragonSword Native World Radar 2.2.1 Setup";
-            ClientSize = new Size(760, 390);
-            MinimumSize = new Size(776, 429);
+            Text = "DragonSword Native World Radar 2.3.0 Setup";
+            ClientSize = new Size(760, 510);
+            MinimumSize = new Size(776, 549);
             StartPosition = FormStartPosition.CenterScreen;
             Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
             MaximizeBox = false;
@@ -52,7 +56,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             _gamePath.Location = new Point(30, 150);
             _gamePath.Size = new Size(600, 23);
             _gamePath.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            _gamePath.Leave += delegate { RefreshInstallationState(); };
+            _gamePath.Leave += delegate { RefreshInstallationState(false); };
             Controls.Add(_gamePath);
 
             _browse.Location = new Point(640, 148);
@@ -62,7 +66,19 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             _browse.Click += BrowseClick;
             Controls.Add(_browse);
 
-            _status.Location = new Point(30, 194);
+            AddHotkeyControl(_settingsKey, "Settings key", "F6", 30);
+            AddHotkeyControl(_enableKey, "Enable key", "F7", 268);
+            AddHotkeyControl(_disableKey, "Disable key", "F8", 506);
+            Controls.Add(new Label
+            {
+                Location = new Point(30, 249),
+                Size = new Size(702, 46),
+                Text = "Choose three different keys (for example INSERT / HOME / PAGEUP). " +
+                       "Install, Update and Repair apply these keys after confirmation. " +
+                       "Avoid game or other Mod bindings. Restart the game to apply."
+            });
+
+            _status.Location = new Point(30, 310);
             _status.Size = new Size(702, 128);
             _status.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             _status.Multiline = true;
@@ -72,14 +88,14 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             _status.Text = "Ready. Public diagnostics default to Off. This installer is unsigned.";
             Controls.Add(_status);
 
-            _close.Location = new Point(493, 340);
+            _close.Location = new Point(493, 460);
             _close.Size = new Size(96, 30);
             _close.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             _close.Text = "Close";
             _close.Click += delegate { Close(); };
             Controls.Add(_close);
 
-            _uninstall.Location = new Point(381, 340);
+            _uninstall.Location = new Point(381, 460);
             _uninstall.Size = new Size(102, 30);
             _uninstall.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             _uninstall.Text = "Uninstall";
@@ -88,7 +104,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             _uninstall.Click += UninstallClick;
             Controls.Add(_uninstall);
 
-            _install.Location = new Point(603, 340);
+            _install.Location = new Point(603, 460);
             _install.Size = new Size(129, 30);
             _install.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             _install.Text = "Install";
@@ -104,12 +120,29 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             if (!string.IsNullOrEmpty(discovered))
             {
                 _gamePath.Text = discovered;
-                RefreshInstallationState();
+                RefreshInstallationState(true);
             }
             else
             {
                 UpdateActionButtons();
             }
+        }
+
+        private void AddHotkeyControl(ComboBox box, string label, string defaultKey, int left)
+        {
+            Controls.Add(new Label { AutoSize = true, Location = new Point(left, 194), Text = label });
+            box.Location = new Point(left, 216);
+            box.Size = new Size(226, 23);
+            box.DropDownStyle = ComboBoxStyle.DropDown;
+            box.MaxLength = 32;
+            box.MaxDropDownItems = 12;
+            box.AccessibleName = label;
+            for (int key = 1; key <= 24; ++key) box.Items.Add("F" + key);
+            foreach (var name in new[] { "INSERT", "HOME", "PAGEUP", "PAGEDOWN", "END", "DELETE", "SPACE" }) box.Items.Add(name);
+            for (char key = 'A'; key <= 'Z'; ++key) box.Items.Add(key.ToString());
+            for (int key = 0; key <= 9; ++key) { box.Items.Add(key.ToString()); box.Items.Add("NUM" + key); }
+            box.Text = defaultKey;
+            Controls.Add(box);
         }
 
         private void BrowseClick(object sender, EventArgs e)
@@ -123,12 +156,12 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                 if (dialog.ShowDialog(this) == DialogResult.OK)
                 {
                     _gamePath.Text = dialog.FileName;
-                    RefreshInstallationState();
+                    RefreshInstallationState(true);
                 }
             }
         }
 
-        private void RefreshInstallationState()
+        private void RefreshInstallationState(bool reloadHotkeys)
         {
             if (_busy)
             {
@@ -137,6 +170,14 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             try
             {
                 _installationState = InstallerEngine.InspectInstallationState(_gamePath.Text);
+                if (reloadHotkeys || !string.Equals(_loadedGamePath, _gamePath.Text.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    var hotkeys = _installationState.Hotkeys;
+                    _settingsKey.Text = hotkeys.Settings;
+                    _enableKey.Text = hotkeys.Enable;
+                    _disableKey.Text = hotkeys.Disable;
+                    _loadedGamePath = _gamePath.Text.Trim();
+                }
                 _status.Text = _installationState.StatusDescription;
             }
             catch (Exception exception)
@@ -153,7 +194,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             var canInstall = _installationState != null &&
                 (_installationState.CanInstall || _installationState.CanUpdate);
             _install.Text = _installationState != null && _installationState.CanUpdate
-                ? string.Equals(_installationState.InstalledVersion, "2.2.1", StringComparison.Ordinal)
+                ? string.Equals(_installationState.InstalledVersion, "2.3.0", StringComparison.Ordinal)
                     ? "Repair"
                     : "Update"
                 : "Install";
@@ -162,12 +203,15 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                 _installationState.CanUninstall;
             _browse.Enabled = !_busy;
             _gamePath.Enabled = !_busy;
+            _settingsKey.Enabled = !_busy && canInstall;
+            _enableKey.Enabled = !_busy && canInstall;
+            _disableKey.Enabled = !_busy && canInstall;
             _close.Enabled = !_busy;
         }
 
         private void InstallClick(object sender, EventArgs e)
         {
-            RefreshInstallationState();
+            RefreshInstallationState(false);
             if (_installationState == null ||
                 (!_installationState.CanInstall && !_installationState.CanUpdate))
             {
@@ -180,17 +224,19 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                 return;
             }
             var requestedUpdate = _installationState.CanUpdate;
+            var completed = false;
             SetBusy(true);
             try
             {
                 _status.Text = "Inspecting the game, UE4SS structure, paths, existing Radar, and embedded release identity...";
                 _status.Refresh();
-                var plan = InstallerEngine.Inspect(_gamePath.Text);
+                var plan = InstallerEngine.InspectWithHotkeys(_gamePath.Text,
+                    _settingsKey.Text, _enableKey.Text, _disableKey.Text);
                 _status.Text =
                     (requestedUpdate ? "Update / Repair plan completed." : "Installation plan completed.") + Environment.NewLine +
                     "Detected: " + plan.LayoutDescription + Environment.NewLine +
                     "Payload: " + plan.PluginDescription + Environment.NewLine +
-                    "Action: " + plan.ActionDescription;
+                    "Action: " + plan.ActionDescription + Environment.NewLine + plan.Hotkeys.Description;
                 var confirmation = MessageBox.Show(
                     this,
                     "Detected UE4SS: " + plan.LayoutDescription + Environment.NewLine +
@@ -198,6 +244,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                     plan.ActionDescription + Environment.NewLine + Environment.NewLine +
                     "UE4SS directory: " + plan.UE4SSDirectory + Environment.NewLine +
                     "Radar directory: " + plan.ModDirectory + Environment.NewLine + Environment.NewLine +
+                    "Keys to apply: " + plan.Hotkeys.Description + Environment.NewLine + Environment.NewLine +
                     (plan.ConvertsUE4SS
                         ? "WARNING: The detected UE4SS loader is not compatible with this Radar build. " +
                           "Continuing will back up every loader file that is replaced or deactivated, install the pinned " +
@@ -224,9 +271,11 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
 
                 _status.Text = "Revalidating the confirmed plan and installing transactionally...";
                 _status.Refresh();
-                var result = InstallerEngine.InstallConfirmed(
+                var result = InstallerEngine.InstallConfirmedWithHotkeys(
                     _gamePath.Text,
+                    plan.Hotkeys.Settings, plan.Hotkeys.Enable, plan.Hotkeys.Disable,
                     plan.IdentityToken);
+                completed = true;
                 _status.Text =
                     (requestedUpdate || result.UpdatedExistingRadar
                         ? "Update / Repair completed successfully."
@@ -234,13 +283,15 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                     "UE4SS layout: " + result.LayoutDescription + Environment.NewLine +
                     "Mod directory: " + result.ModDirectory + Environment.NewLine +
                     "Controlling mods.txt: " + result.ModsTxtPath + Environment.NewLine +
+                    result.Hotkeys.Description + Environment.NewLine +
                     (string.IsNullOrEmpty(result.BackupDirectory)
                         ? "Persistent backup: not required"
                         : "Conversion backup and install log: " + result.BackupDirectory);
                 MessageBox.Show(
                     this,
                     (requestedUpdate || result.UpdatedExistingRadar ? "Update / Repair successful. " : "Installation successful. ") +
-                        "Press F7 in the open world to enable the radar, F8 to disable it, and F6 for visibility settings.",
+                        result.Hotkeys.Description + ". Restart the game, load the open world, and press " +
+                        result.Hotkeys.Enable + " to enable Radar. Run Setup again to change these keys through Update / Repair.",
                     requestedUpdate || result.UpdatedExistingRadar ? "Update / Repair successful" : "Installation successful",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
@@ -258,13 +309,13 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             finally
             {
                 SetBusy(false);
-                RefreshInstallationState();
+                RefreshInstallationState(completed);
             }
         }
 
         private void UninstallClick(object sender, EventArgs e)
         {
-            RefreshInstallationState();
+            RefreshInstallationState(false);
             if (_installationState == null || !_installationState.CanUninstall)
             {
                 MessageBox.Show(
@@ -339,7 +390,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             finally
             {
                 SetBusy(false);
-                RefreshInstallationState();
+                RefreshInstallationState(true);
             }
         }
 

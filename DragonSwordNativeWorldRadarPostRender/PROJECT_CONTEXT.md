@@ -1,5 +1,10 @@
 # Project Context
 
+Current local package identities and documentation closeout:
+`docs/RELEASE_STATUS.md`. The dated CM-04 and installer-only receipts below
+remain evidence for their exact bytes, not the latest repackaged ZIPs.
+Nexus copy is indexed in `assets/nexus/README.md`.
+
 ## Ownership
 
 `DragonSwordNativeWorldRadarPostRender` is the active native-only successor to
@@ -12,7 +17,80 @@ is:
 available through Git history, not a current working-tree project. Do not
 modify or deploy other Mods from this project.
 
-## Current release
+## Next release - 2.3.0 (unreleased)
+
+2.2.2 was not published. On 2026-09-07 the owner promoted its flight/language
+work plus configurable hotkeys to 2.3.0. `config/hotkeys.ini` is a standalone
+startup-only file for settings/enable/disable; F6 saves must never rewrite it.
+Setup reads existing keys and allows an explicitly confirmed new set on
+Install / Update / Repair. Preserve unchanged key-file bytes and all other
+user settings; public defaults remain F6/F7/F8. The 2026-09-07 installer-only
+follow-up does not change the accepted/native-test candidate DLL.
+
+The owner assigned all unpublished follow-up work to 2.3.0. Runtime, installer,
+metadata, package tools, and source gates now target 2.3.0. The published 2.2.1
+package set is unchanged; do not relabel historical artifacts or receipts.
+Current candidate build/deployment identities, scope, and
+acceptance boundaries are tracked in `docs/RELEASE_PLAN_2_3_0.md`.
+
+On 2026-09-07 the owner requested the three local 2.3.0 packages. The preceding
+CM-04 set is now in `dist/final-2.3.0`, with Setup 20/20, Manual 2/2 and
+byte-identical archive/payload checks passed. The installer-hotkey follow-up
+supersedes the initial set (manifest UTC `2026-09-07T11:00:51.0231580Z`): Setup
+now offers three editable key selectors for Install / Update / Repair; parser
+and editor checks pass 177 assertions. The previous five files are preserved
+in `dist/work/candidates/cm04-before-installer-hotkeys-20260907`.
+It contains the same CM-04 DLL
+as the controller-tested installation, with public debug off and AUTO/F6/F7/F8
+defaults. Older `dist/work/candidates/hotkeys-2.3.0` files are superseded for
+delivery. This is local packaging, not upload, full runtime acceptance, or
+third-party publication-rights clearance; see the 2.3.0 plan for exact hashes.
+
+### Owner-authorized local deployment workflow (2026-09-07)
+
+The owner requested installation of CM-04 and automatic local installation
+after subsequent Radar fixes in this development workflow. After a successful
+build, matching receipt and relevant regression checks, deploy through the
+product's backup/rollback-capable script with `-Diagnostics Preserve` without
+asking for installation approval each time. Preserve current language,
+visibility, hotkeys, diagnostics and treasure overrides byte-for-byte.
+Never overwrite a running game's mod or terminate the game automatically;
+if it is running, wait for the owner to close it before installation. This
+authorization does not cover game launch, save changes, other mods, public
+release/packaging, Git commits/pushes, or acceptance claims.
+
+## Active follow-up - WM-07 flight attachment (2026-09-06)
+
+The current worktree includes an unpublished fix to 2.2.1's initial world-map
+attachment gate. Raw PlayerIcon motion previously exhausted all three attempts
+while flying. The new attach-only sampler compares the motion-compensated
+world-to-Canvas origin and parent extent using the same attempt's player
+coordinates. It requires two valid samples with matching layer, FogAbove,
+PlayerIcon, and owning-controller weak identities and matching map metadata.
+The generic extent sampler and WM-06 immutable retained placement are unchanged.
+`WORLD_MAP_ATTACH_PROJECTION` records inputs and separate deltas only during
+bounded attachment attempts. Existing public ZIPs remain the WM-06 artifacts;
+the version label alone does not identify the developer candidate. Exact build,
+deployment, and runtime status are appended to `docs/WORLD_MAP_ATTEMPT_LEDGER.md`.
+The owner reported that preliminary testing found no issue. The current local
+log independently confirms moving-player attachment on attempt 2/3 with a
+compensated-origin delta of 0.052545. This does not fill the entire runtime
+matrix. The next issue is compact Radar remaining visible in the controller
+start menu/submenus. On 2026-09-07 a virtual Xbox controller reproduced leakage
+in both the main menu and Hero information page, confirmed by the owner.
+CM-03 proved hidden native paint ancestry while the local minimap stays Visible.
+CM-04 implements this additional compact-only guard at the existing 250 ms edge;
+two virtual-controller Start/Hero return cycles, including Hero Skill, passed
+without settled-menu residue on 2026-09-07. Full runtime acceptance remains
+pending; exact evidence and untested routes are in
+`docs/CONTROLLER_MENU_ATTEMPT_LEDGER.md`. CM-04 is installed for owner testing;
+the preceding CM-03 diagnostic and logs are retained in the deployment backup.
+WM-09 records Radar-on/F8-disabled map-close comparisons: similar 0.7-0.8 s
+transitions, with no additional close stall reproduced in the tested scene.
+Persistent follow-game language is implemented in 2.3.0;
+its runtime acceptance is tracked separately in the release plan.
+
+## Historical 2.2.1 baseline (not 2.3.0 acceptance)
 
 - Version: current fixes-only release candidate `2.2.1`.
 - Runtime label: `DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1`.
@@ -150,12 +228,12 @@ modify or deploy other Mods from this project.
   object scan, or steady-state work.
   F7 re-reads bounded runtime and save-backed state; it does not run Setup,
   replace files, extract PAKs, or regenerate immutable catalogs.
-  The centered language selector shows only the 11 explicit UI languages; it
-  no longer exposes a Use Game Language/AUTO choice. A legacy persisted AUTO
-  value is migration input only: the next actual F6 opening or F7 activation
-  resolves `DGameUserSettings.LanguageText`, then falls back to Kismet and
-  English, and converts that value to one explicit persisted language. An
-  explicit persisted language remains authoritative. The 11 UI languages are English,
+  In 2.3.0 the centered language selector exposes `AUTO (Game Language)` first,
+  followed by 11 explicit UI languages. AUTO persists;
+  each actual F6 opening or F7 activation samples `DGameUserSettings.LanguageText`
+  with a bounded Kismet fallback. Invalid samples retain the last valid detection,
+  with English only before the first valid sample. Explicit persisted languages
+  remain authoritative and detection never overwrites the preference. The 11 UI languages are English,
   Japanese, Korean, Simplified Chinese, Traditional Chinese, French, German,
   Spanish (Spain), Russian, Thai, and Portuguese (Brazil). No per-frame or
   recurring language/font work is added. F6 selects already-loaded game Font
@@ -553,9 +631,9 @@ modify or deploy other Mods from this project.
   sections. Every category is a
   named `true|false` key; `area_quests` and `assault` modes accept
   `available|all`; three height keys accept `true|false`, and `language`
-  accepts one of the 11 explicit languages. A strictly valid legacy AUTO value
-  remains readable only for one-time migration on the next actual F6 opening or
-  F7 activation. Strictly valid legacy schema 1-4 packed-mask files remain
+  accepts one of the 11 explicit languages or persistent `auto` in 2.3.0.
+  AUTO follows the game on actual F6 opening or F7 activation without converting
+  to an explicit persisted language. Strictly valid legacy schema 1-4 files remain
   readable for upgrades. F6 applies changes immediately and replaces the file
   atomically in current format only on a real change; there is no hot polling.
 - Dev65 added a binary-package `Install.cmd` one-click installer. The 2.0.0

@@ -1,17 +1,83 @@
 # DragonSwordNativeWorldRadarPostRender
 
+Current complete 2.3.0 package set: [Release status](docs/RELEASE_STATUS.md).
+Public-page copy: [Nexus publishing index](assets/nexus/README.md).
+
 Native UE4SS C++ successor to DragonSword World Radar. It renders inside the
 game's UMG composition tree and ships no external runtime executable or Lua
 runtime. The Windows Setup executable is installation tooling only.
 
-Current release candidate: `2.2.1`.
+## Custom keys (2.3.0)
 
-Runtime label: `DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1`.
+Close the game and run Setup. Choose **Settings key**, **Enable key**, and
+**Disable key**, then click **Install**, **Update**, or **Repair** and confirm.
+Setup loads existing bindings automatically; leave them unchanged to keep them.
+For example, choose INSERT / HOME / PAGEUP. Restart the game to apply.
+
+Alternatively, edit this file under your game installation:
+
+`DS/Binaries/Win64/ue4ss/Mods/DragonSwordNativeWorldRadarPostRender/config/hotkeys.ini`
+
+For example, replace the three default bindings with:
+
+```ini
+[hotkeys]
+settings_hotkey=INSERT
+enable_hotkey=HOME
+disable_hotkey=PAGEUP
+```
+
+Restart the game to apply. Defaults remain F6 (settings), F7 (enable), and F8
+(disable). These are independent actions, not one toggle. Supported names:
+F1-F24, A-Z, 0-9, NUM0-NUM9, HOME, END, PAGEUP, PAGEDOWN, INSERT, DELETE, SPACE.
+Key names are case-insensitive; modifier combinations are not supported.
+Use three different keys and avoid game or other Mod bindings (AutoPickup
+defaults to F9). Missing, invalid, duplicate, or oversized runtime configuration
+restores all three default keys. The file is UTF-8, at most 4 KiB.
+
+Setup Update / Repair changes only explicitly selected key values and preserves
+comments and formatting. Unchanged bindings remain byte-for-byte intact; missing
+files start with F6/F7/F8 unless you choose other keys. Other user settings are
+preserved. Invalid existing configuration stops Setup
+before mutation: correct the file and retry. Back up configuration before a
+manual overwrite. `visibility.ini` holds categories/language; `diagnostics.ini`
+controls logging (public default off). Changing F6 settings never rewrites
+`hotkeys.ini`. References to F6/F7/F8 below name the default control actions.
+
+## Development status
+
+2.2.2 was never published; its flight-attachment and follow-language changes are
+included in the next 2.3.0 release alongside configurable hotkeys.
+
+Next development release: `2.3.0` (unreleased).
+Current source targets `2.3.0`. Existing public `2.2.1` archives are unchanged.
+The exact candidate build/deployment status and remaining runtime checks are
+tracked in [the 2.3.0 plan](docs/RELEASE_PLAN_2_3_0.md). Historical acceptance
+sections below remain bound to their named version and artifact.
+
+Developer follow-up WM-07 corrects initial map attachment during player motion.
+It retains two-sample layout validation using a motion-compensated projection
+origin; retained pan/zoom placement stays immutable. This follow-up is not in
+the existing public ZIPs. Preliminary owner testing found no issue, and a live
+moving-player attachment passed; the full regression matrix remains pending.
+See the [attempt ledger](docs/WORLD_MAP_ATTEMPT_LEDGER.md) for exact identities
+and the [2.3.0 plan](docs/RELEASE_PLAN_2_3_0.md) for remaining work.
+
+Runtime label: `DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0`.
+
+The CM-04 package candidate also includes controller-menu suppression and
+persistent AUTO as the first language choice. AUTO follows the game when
+Settings is opened; a manual choice stays selected until AUTO is chosen again.
+Two virtual Xbox Start/Hero return cycles, including Hero Skill, passed without
+settled-menu Radar residue. City-first-activation diagnosis and the broader
+runtime matrix remain open; this is not a claim that every reported issue is
+resolved. Package checks are recorded in the final release manifest, separately
+from gameplay and third-party publication clearance.
 
 Current START identity:
 
 ```text
-START version=2.2.1 runtime_label=DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1
+START version=2.3.0 runtime_label=DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0
 ```
 
 Version `1.2.0` was never published. Its candidate changes are included in
@@ -147,13 +213,15 @@ strip. Enable, Disable, or Retry is a separate action; using it
 keeps the page open, and enabling still requires a loaded playable world.
 Translucent section cards, equal-width filter choices, aligned text, and bounded
 non-overlapping hit regions are presentation-only.
-The centered language dropdown contains only English, Japanese, Korean,
+The centered language dropdown starts with `AUTO (Game Language)`, then English, Japanese, Korean,
 Simplified Chinese, Traditional Chinese, French, German, Spanish (Spain),
-Russian, Thai, and Portuguese (Brazil). It does not display an AUTO or Use Game
-Language choice. A legacy persisted AUTO value is migration input only: the
-next actual F6 opening or F7 activation resolves `DGameUserSettings.LanguageText`,
-falls back to Kismet and then English, and converts it to one explicit persisted
-language. An explicit selection persists and takes precedence. F6 uses the
+Russian, Thai, and Portuguese (Brazil).
+AUTO remains saved as `auto`: each actual F6 opening or F7 activation samples
+`DGameUserSettings.LanguageText`, with a bounded Kismet fallback. Failed detection
+retains the last valid language, or English before the first valid sample.
+Manual choices persist and take precedence; detection never changes the saved
+preference. A game-language change while F6 is open takes effect next opening.
+The closed selector shows the currently resolved language. F6 uses the
 already-loaded game fonts `DsCompositFont_CommonSystem` for Korean and
 Latin/Cyrillic languages, `DsCompositFont_TCSystem` for both Chinese choices,
 `DsCompositFont_JPSystem` for Japanese, and `DsCompositFont_THSystem` for Thai.
@@ -274,7 +342,13 @@ current layer's `IsVisible` state and optional `IsGamePaused` state are sampled
 only through the existing shared 250 ms activity service for bounded catch-up
 and release. The 16 ms compact path consumes the resulting Booleans only. This
 adds no controller poll, focus hook, new timer, UObject scan, allocation, or
-recurring diagnostic record.
+recurring diagnostic record on the default debug-off path. CM-04 additionally
+reads the exact current native minimap's proven paint ancestry at that same
+250 ms edge: Hidden, Collapsed, or zero opacity suppresses Radar's owned host,
+including controller Start/Hero menus where the minimap's own visibility stays
+unchanged. Unknown ancestry does not latch an old hidden state; existing guards
+remain authoritative. No native widget is changed and the marker pool is retained.
+CM-04 still requires exact-candidate in-game acceptance.
 
 F6 also stores one `AREA QUEST MODE` choice. `AVAILABLE` keeps the strict
 prerequisite-proven filter. `ALL` displays every catalog task that is not
@@ -617,10 +691,10 @@ changing files. See [Installation](docs/INSTALL.md) for the manual fallback.
   MODE` defaults to `AVAILABLE`; selecting `ALL` shows all 40 static Assault
   records regardless of active hours, defeat, cooldown, or save readiness.
   Switching back to `AVAILABLE` restores those live filters. Boss and area-
-  quest rules do not change. The selector contains only the 11 explicit
-  languages. A legacy AUTO value resolves once on the next actual F6 opening or
-  F7 activation from `DGameUserSettings.LanguageText`, then Kismet and English,
-  and migrates to the matching explicit persisted language. Close the page with
+  quest rules do not change. The selector contains 11 explicit languages plus
+  `AUTO (Game Language)`. AUTO follows each actual F6 opening or F7 activation;
+  manual choices remain authoritative and failed reads retain the last valid
+  language. Neither detection nor a fallback rewrites the preference. Close with
   `X` or F6.
 
 ## Compatibility, logs, and source builds
@@ -1365,11 +1439,12 @@ acceptance.
   canonical `assets/ui/f6` payload, and native game-font rendering for the other
   nine languages. Static no-clipping checks do not replace in-game size, weight,
   and alignment acceptance.
-- Seed a legacy AUTO preference, change game language, and confirm the next
+- Select the first AUTO option, change game language, and confirm the next
   actual F6 opening or F7 activation reads `DGameUserSettings.LanguageText`,
-  applies the Kismet and English fallbacks when required, and persists the
-  matching explicit language. Confirm AUTO/Use Game Language is not displayed,
-  explicit choices persist, and no recurring language/font work is added.
+  applies the Kismet/last-valid/English fallbacks when required, and keeps the
+  saved preference as `auto`. Confirm AUTO remains highlighted on reopening,
+  manual choices survive subsequent game-language changes and restarts until
+  AUTO is selected again, and no recurring language/font work is added.
 - Confirm F6 opens while Radar is Off, On, and Faulted, reports the matching
   state through read-only text and a thin strip, exposes a separate
   Enable/Disable/Retry action without closing the page, rejects Enable before a

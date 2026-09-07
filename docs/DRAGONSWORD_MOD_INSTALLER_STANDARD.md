@@ -52,6 +52,36 @@ installer's own toggle key.
 
 The game must be closed. The installer must never terminate it automatically.
 
+### 2.1 Current native Pickup / Radar key-editing contract (2026-09-07)
+
+This interaction contract applies to Pickup 1.3.1 and Native World Radar 2.3.0
+Setup. Product-owned current installer documentation takes precedence over
+historical layout/ABI examples elsewhere in this standard.
+
+- Inspect the selected game and load its existing key values; otherwise show
+  safe public defaults. Reload when the game path changes, not on every click.
+- Expose editable key selectors during Install, Update, and Repair. Do not
+  silently substitute installed old keys for an explicit new selection.
+- Validate before mutation. Show the normalized selected keys, target, optional
+  changes, and conversion warning in a default-No confirmation. Execute those
+  exact plan values, with a token binding both source state and selections.
+- Preserve uncommitted choices on cancellation or failure. After success,
+  reinspect persisted values. Reject stale configuration or selection tokens.
+- For owned config, replace only selected key value spans; keep unrelated
+  settings, separate comments, spacing, and line endings. Unchanged valid
+  canonical values leave the file byte-identical. Do not enable public debug.
+- Include configuration edits in existing verified transaction/rollback paths.
+  Never introduce an untracked post-install configuration write.
+- Test custom fresh/update/repair keys, no-op exact bytes, invalid selections,
+  stale plans, form reload behavior, and late-write rollback independently from
+  real elevated UI and gameplay acceptance.
+
+Pickup keeps Toggle + Interaction fallback and its optional range selector.
+Fallback is a concrete Unreal key, not AUTO; the separate runtime interaction
+mode remains unchanged. Radar keeps Settings + Enable + Disable and requires
+three distinct keys. The native key vocabularies, configuration parsers,
+ownership rules, and UE4SS compatibility policies are not merged.
+
 ```mermaid
 flowchart TD
     A["Select exact game executable"] --> B["Verify executable fingerprint"]

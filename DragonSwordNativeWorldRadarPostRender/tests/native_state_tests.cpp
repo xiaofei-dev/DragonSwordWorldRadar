@@ -2,6 +2,7 @@
 #include <dswros/compact_menu_state.hpp>
 #include <dswros/compact_render_model.hpp>
 #include <dswros/diagnostics_config.hpp>
+#include <dswros/hotkey_config.hpp>
 #include <dswros/diagnostic_log_format.hpp>
 #include <dswros/object_state.hpp>
 #include <dswros/owner_pointer_pattern.hpp>
@@ -159,6 +160,51 @@ std::vector<std::uint8_t> synthetic_owner_pointer_pe() {
 } // namespace
 
 int main() {
+    {
+        using Status = dswros::HotkeyConfigStatus;
+        for (unsigned i = 1; i <= 24; ++i)
+            require(dswros::parse_radar_hotkey("F" + std::to_string(i)) == 0x6F + i, "all function keys map correctly");
+        for (char c = 'A'; c <= 'Z'; ++c) {
+            require(dswros::parse_radar_hotkey(std::string(1, c)) == static_cast<unsigned>(c), "letter hotkey");
+            require(dswros::parse_radar_hotkey(std::string(1, static_cast<char>(c + 'a' - 'A'))) == static_cast<unsigned>(c), "lowercase hotkey");
+        }
+        for (unsigned i = 0; i <= 9; ++i) {
+            require(dswros::parse_radar_hotkey(std::to_string(i)) == 0x30 + i, "digit hotkey");
+            require(dswros::parse_radar_hotkey("NUM" + std::to_string(i)) == 0x60 + i, "numpad hotkey");
+        }
+        constexpr std::array<std::string_view, 7> names{"HOME", "END", "PAGEUP", "PAGEDOWN", "INSERT", "DELETE", "SPACE"};
+        constexpr std::array<unsigned, 7> codes{0x24, 0x23, 0x21, 0x22, 0x2D, 0x2E, 0x20};
+        for (std::size_t i = 0; i < names.size(); ++i)
+            require(dswros::parse_radar_hotkey(names[i]) == codes[i], "named hotkey matches Pickup key families");
+        for (const auto bad : {"", "F0", "F25", "F01", "NUM10", "CTRL+F6", "F6x", "PAGE UP", "ESC", "MOUSE1", "NONE"})
+            require(!dswros::parse_radar_hotkey(bad), "unsupported binding rejected");
+        const std::string defaults = "[hotkeys]\nsettings_hotkey=F6\nenable_hotkey=F7\ndisable_hotkey=F8\n";
+        const std::string custom = "[hotkeys]\nsettings_hotkey=Insert\nenable_hotkey=Home\ndisable_hotkey=PageUp\n";
+        const auto d = dswros::parse_hotkey_config(defaults);
+        require(d.status == Status::Success && d.settings.settings == 0x75 && d.settings.enable == 0x76 && d.settings.disable == 0x77, "defaults retain original actions");
+        const auto c = dswros::parse_hotkey_config(custom);
+        require(c.status == Status::Success && c.settings.settings == 0x2D && c.settings.enable == 0x24 && c.settings.disable == 0x21, "Insert/Home/PageUp remap all three actions");
+        require(dswros::parse_hotkey_config("\xEF\xBB\xBF" + custom).status == Status::Success, "Notepad UTF8 BOM accepted");
+        require(dswros::parse_hotkey_config("# comment\r\n[hotkeys]\r\nsettings_hotkey = insert\r\nenable_hotkey = home\r\ndisable_hotkey = pageup\r\n").status == Status::Success, "CRLF whitespace and lowercase values accepted");
+        const std::array malformed{
+            std::string{}, std::string{"[hotkeys]\nsettings_hotkey=INSERT\n"},
+            defaults + "settings_hotkey=HOME\n", defaults + "unknown=K\n", defaults + "[hotkeys]\n",
+            custom + "[other]\n", std::string{"settings_hotkey=F6\n"} + defaults,
+            std::string{"[hotkeys]\nsettings_hotkey=F25\nenable_hotkey=HOME\ndisable_hotkey=PAGEUP\n"},
+            std::string{"[hotkeys]\nsettings_hotkey=INSERT\nenable_hotkey=insert\ndisable_hotkey=PAGEUP\n"},
+            std::string{"[hotkeys]\nsettings_hotkey=HOME\nenable_hotkey=INSERT\ndisable_hotkey=HOME\n"},
+            std::string{"[hotkeys]\nsettings_hotkey=INSERT\nenable_hotkey=HOME\ndisable_hotkey=home\n"},
+            defaults + '\r', defaults + std::string(1, '\0'), std::string(4097, ' ')};
+        for (const auto& text : malformed) {
+            const auto result = dswros::parse_hotkey_config(text);
+            require(result.status != Status::Success, "malformed or conflicting config rejected");
+            require(result.settings.settings == 0x75 && result.settings.enable == 0x76 && result.settings.disable == 0x77, "failure reverts entire binding set without partial remap");
+        }
+        require(dswros::parse_hotkey_config(std::string(4096 - defaults.size(), ' ') + defaults).status == Status::Success, "exact 4 KiB bound accepted");
+        const auto before = allocation_count;
+        (void)dswros::parse_hotkey_config(custom);
+        require(allocation_count == before, "hotkey parsing allocates no heap storage");
+    }
     {
         using FontSource = dswros::RadarVisibilityHubFontPlanSource;
         using TextKind = dswros::RadarVisibilityHubTextWidgetKind;
@@ -455,16 +501,55 @@ int main() {
                     dswros::RadarUiLanguage::SpanishSpain)
                     == dswros::RadarUiFontFamily::Common,
             "visible languages must select the game's four proven system-font families");
-        require(
-            dswros::resolve_explicit_radar_language_preference(
-                dswros::RadarLanguagePreference::Auto,
-                dswros::RadarUiLanguage::Korean)
-                    == dswros::RadarLanguagePreference::Korean
-                && dswros::resolve_explicit_radar_language_preference(
-                    dswros::RadarLanguagePreference::Thai,
-                    dswros::RadarUiLanguage::English)
-                    == dswros::RadarLanguagePreference::Thai,
-            "legacy AUTO must migrate to the detected explicit language while manual choices remain authoritative");
+        for (std::size_t index = 0; index < dswros::kRadarLanguagePreferenceCount;
+             ++index) {
+            const auto choice = dswros::radar_language_choice(index);
+            require(dswros::radar_language_choice_index(choice) == index,
+                    "all twelve language choices must retain their popup cell");
+            auto settings = dswros::parse_visibility_config(current_config).settings;
+            settings.language = choice;
+            const auto saved = dswros::format_visibility_config(settings);
+            require(dswros::parse_visibility_config(saved).settings.language == choice,
+                    "AUTO and manual choices must survive config round trips unchanged");
+        }
+        require(dswros::radar_language_choice(0U)
+                    == dswros::RadarLanguagePreference::Auto
+                && dswros::radar_language_choice_index(
+                    dswros::RadarLanguagePreference::Korean) == 3U
+                && dswros::radar_language_choice_index(
+                    dswros::RadarLanguagePreference::TraditionalChinese) == 5U,
+                "AUTO must be first and the raster-backed labels must use their new cells");
+        require(dswros::radar_language_choice(12U)
+                    == dswros::RadarLanguagePreference::Auto
+                && dswros::radar_language_choice_index(
+                    dswros::RadarLanguagePreference::Count) == 0U,
+                "invalid popup indices and preferences must safely select AUTO");
+        using Language = dswros::RadarUiLanguage;
+        using Preference = dswros::RadarLanguagePreference;
+        auto detected = dswros::retain_detected_radar_language(
+            Language::Count, Language::Count);
+        require(detected == Language::English,
+                "no valid language sample must safely fall back to English");
+        for (const auto language : {Language::Korean, Language::Japanese,
+                                   Language::TraditionalChinese, Language::English}) {
+            detected = dswros::retain_detected_radar_language(detected, language);
+            require(dswros::resolve_radar_ui_language(Preference::Auto, detected)
+                        == language,
+                    "persistent AUTO must follow successive control-open samples");
+            require(dswros::resolve_radar_ui_language(Preference::Thai, detected)
+                        == Language::Thai,
+                    "game language changes must never override manual preference");
+            require(dswros::retain_detected_radar_language(
+                        detected, Language::Count) == detected,
+                    "unavailable language provider must preserve the last valid sample");
+        }
+        require(dswros::sample_radar_ui_language_from_culture(L"unknown")
+                    == Language::Count
+                && dswros::sample_radar_ui_language_from_culture(L"")
+                    == Language::Count
+                && dswros::sample_radar_ui_language_from_culture(L"en-US")
+                    == Language::English,
+                "unknown culture must be distinguishable from a valid English sample");
         constexpr std::array expected_game_languages{
             dswros::RadarUiLanguage::Korean,
             dswros::RadarUiLanguage::English,
@@ -557,7 +642,7 @@ int main() {
                     dswros::RadarUiLanguage::SimplifiedChinese)
                         .language_name)
                     == L"简体中文",
-            "the F6 selector must expose only the eleven explicit languages and exclude the legacy AUTO value");
+            "the F6 selector must expose persistent AUTO plus eleven explicit languages");
         const auto& english_controls = dswros::radar_localized_text(
             dswros::RadarUiLanguage::English);
         require(
@@ -2340,6 +2425,138 @@ int main() {
             "a cleared extent-stability sample must not reuse a prior observation to request rebuild");
     }
     {
+        // Motion values come from the reported failed attach. World positions
+        // below are synthetic, paired with an independently fixed map origin;
+        // the old log did not contain same-attempt world-position samples.
+        const auto make_sample = [](double anchor_x, double anchor_y,
+                                    double width = 3000.0,
+                                    double height = 3000.0) {
+            return dswros::WorldMapProjectionSample{
+                {anchor_x, anchor_y, width, height},
+                {(anchor_x - 750.0) * 570000.0 / width,
+                 (anchor_y - 1100.0) * 570000.0 / height, 0.0},
+                570000.0, 3000.0, 100,
+                {{{10, 101}, {11, 102}, {12, 103}, {13, 104}}}};
+        };
+        const auto seeded_sample = make_sample(1326.105, 2072.274);
+        bool valid{};
+        dswros::WorldMapProjectionSample retained{};
+        dswros::WorldMapProjectionDelta delta{};
+        using Result = dswros::WorldMapGeometryStabilityResult;
+        const auto observe = [&](const dswros::WorldMapProjectionSample& sample) {
+            return dswros::observe_world_map_projection_sample(
+                valid, retained, sample, delta);
+        };
+        require(observe(seeded_sample) == Result::Seeded && !delta.comparable,
+            "projection readiness must never accept the first valid observation");
+        require(observe(seeded_sample) == Result::Stable && near(delta.maximum, 0.0),
+            "stationary map attachment must retain its two-sample readiness behavior");
+
+        const std::array moving_samples{
+            make_sample(1326.453, 2071.404),
+            make_sample(1326.788, 2070.560),
+            make_sample(1200.0, 2200.0), // Fast motion and direction reversal.
+        };
+        for (const auto& sample : moving_samples) {
+            require(observe(sample) == Result::Stable && delta.comparable
+                        && delta.anchor > 0.5 && delta.player_world > 0.0
+                        && near(delta.origin, 0.0) && near(delta.extent, 0.0),
+                "paired flight motion must settle without requiring a stationary player icon");
+            const auto target = dswros::project_world_map_point(
+                sample.geometry.player_canvas_x, sample.geometry.player_canvas_y,
+                sample.player_world, {57000.0, -114000.0, 0.0},
+                sample.map_dimensions, sample.geometry.parent_width,
+                sample.geometry.parent_height);
+            require(target && near(target->x, 1050.0) && near(target->y, 500.0),
+                "a fixed world marker must retain identical projected coordinates during flight");
+        }
+
+        // A UI-only anchor change must still defer, even with unchanged extents.
+        for (const auto& sample : moving_samples) {
+            auto animation = sample;
+            animation.player_world = retained.player_world;
+            require(observe(animation) == Result::Replaced && delta.origin > 0.5,
+                "constant-extent UI anchor drift must remain blocked across the three-attempt budget");
+        }
+        auto jitter = retained;
+        jitter.geometry.player_canvas_x += 0.5;
+        require(observe(jitter) == Result::Stable,
+            "compensated origin must retain the inclusive half-Slate-unit rounding tolerance");
+        jitter.geometry.player_canvas_y += 0.501;
+        require(observe(jitter) == Result::Replaced,
+            "unexplained origin drift above the existing tolerance must not be accepted");
+        require(observe(jitter) == Result::Stable,
+            "a settled layout after one changed sample may use the final bounded attempt");
+
+        // Player position changes but Slate still reports the previous anchor.
+        auto stale = retained;
+        stale.player_world.x += 190.0;
+        require(observe(stale) == Result::Replaced && near(delta.origin, 1.0),
+            "unmatched world-position and cached-anchor movement must remain detectable");
+
+        valid = false;
+        require(observe(seeded_sample) == Result::Seeded,
+            "a reopened map must discard the previous projection sample");
+        for (const auto extent : std::array{
+                 std::array{3191.521, 3000.0},
+                 std::array{3440.0, 1440.0},
+                 std::array{3840.0, 3840.0},
+                 std::array{2560.0, 1600.0}}) {
+            const auto resized = make_sample(1800.0, 1200.0, extent[0], extent[1]);
+            require(observe(resized) == Result::Replaced && delta.extent > 0.5,
+                "extent changes must defer even when the compensated origin is identical");
+            require(observe(resized) == Result::Stable,
+                "non-square and ultrawide extents may attach after a second matching sample");
+        }
+        for (std::size_t index = 0; index < seeded_sample.identities.size(); ++index) {
+            auto replaced = retained;
+            ++replaced.identities[index].serial;
+            require(observe(replaced) == Result::Seeded && !delta.comparable,
+                "same-index object replacement must reseed layer parent icon and owner independently");
+            require(observe(replaced) == Result::Stable,
+                "two observations from the new weak identity may settle");
+            ++replaced.identities[index].index;
+            require(observe(replaced) == Result::Seeded,
+                "object index changes must reseed even with the same serial and geometry");
+        }
+        auto remapped = retained;
+        remapped.map_id = 200;
+        require(observe(remapped) == Result::Seeded,
+            "map identity changes must never compare samples from the previous map");
+        remapped.map_dimensions += 1.0;
+        require(observe(remapped) == Result::Seeded,
+            "world map scale metadata changes must reseed before attachment");
+        remapped.map_ui_size += 1.0;
+        require(observe(remapped) == Result::Seeded,
+            "authored map metadata changes must reseed before attachment");
+
+        for (int invalid_case = 0; invalid_case < 10; ++invalid_case) {
+            auto invalid_sample = seeded_sample;
+            switch (invalid_case) {
+            case 0: invalid_sample.geometry.player_canvas_x =
+                        std::numeric_limits<double>::quiet_NaN(); break;
+            case 1: invalid_sample.player_world.y =
+                        std::numeric_limits<double>::infinity(); break;
+            case 2: invalid_sample.geometry.parent_width = 0.0; break;
+            case 3: invalid_sample.geometry.parent_height = -1.0; break;
+            case 4: invalid_sample.map_dimensions = 0.0; break;
+            case 5: invalid_sample.map_ui_size = 0.0; break;
+            case 6: invalid_sample.identities[1].serial = 0; break;
+            case 7: invalid_sample.identities[0].index = -1; break;
+            case 8: invalid_sample.geometry.player_canvas_y = 5000.0; break;
+            case 9: invalid_sample.map_dimensions =
+                        std::numeric_limits<double>::min(); break;
+            }
+            require(observe(invalid_sample) == Result::None && !valid
+                        && !delta.comparable,
+                "invalid identity bounds dimensions or nonfinite projection must invalidate the attach seed");
+            require(observe(seeded_sample) == Result::Seeded,
+                "the first valid sample after invalid geometry must not reuse an old seed");
+            require(observe(seeded_sample) == Result::Stable,
+                "valid projection may recover through the existing second sample");
+        }
+    }
+    {
         bool sample_valid{};
         dswros::WorldMapGeometrySample retained{};
         double maximum_delta{-1.0};
@@ -2916,6 +3133,43 @@ int main() {
         require(dswros::compact_render_suppressed({
                     true, true, false, false, false, true}),
                 "a confirmed non-open-world activity must suppress rendering");
+        require(dswros::compact_render_suppressed({
+                    true, true, false, false, false, false, true}),
+                "a hidden native paint ancestor must suppress controller menu leakage");
+        using Paint = dswros::NativeMinimapPaint;
+        for (const std::uint64_t visibility : {0U, 3U, 4U}) {
+            require(dswros::native_widget_paint(true, visibility, true, 1.0)
+                        == Paint::Visible,
+                    "visible and hit-test-invisible gameplay widgets must remain visible");
+        }
+        for (const std::uint64_t visibility : {1U, 2U}) {
+            require(dswros::native_widget_paint(true, visibility, false, -1.0)
+                        == Paint::Hidden,
+                    "Hidden/Collapsed is sufficient even when opacity is unknown");
+        }
+        require(dswros::native_widget_paint(true, 4U, true, 0.0) == Paint::Hidden
+                && dswros::native_widget_paint(true, 4U, true, 0.01) == Paint::Visible,
+                "zero opacity hides the owned overlay without inventing a fade threshold");
+        require(dswros::native_widget_paint(false, 0U, true, 1.0) == Paint::Unknown
+                && dswros::native_widget_paint(true, 255U, true, 1.0) == Paint::Unknown
+                && dswros::native_widget_paint(true, 0U, false, -1.0) == Paint::Unknown
+                && dswros::native_widget_paint(true, 0U, true,
+                    std::numeric_limits<double>::quiet_NaN()) == Paint::Unknown,
+                "unavailable, unsupported and non-finite samples must not masquerade as gameplay");
+        // CM-03 replay: gameplay -> Start -> Hero -> Start -> gameplay.
+        // Cursor and pause remain false for every controller step.
+        for (const bool hidden : {false, true, true, true, false}) {
+            require(dswros::compact_render_suppressed({
+                        true, true, false, false, false, false, hidden}) == hidden,
+                    "controller navigation must hide and restore without an input latch");
+        }
+        require(!dswros::compact_render_suppressed({
+                    true, true, false, false, false, false,
+                    Paint::Unknown == Paint::Hidden})
+                && dswros::compact_render_suppressed({
+                    true, true, true, false, false, false,
+                    Paint::Unknown == Paint::Hidden}),
+                "unknown/stale native state must not latch a blank HUD or bypass cursor guards");
         require(allocation_count == allocations_before,
                 "compact menu-state classification must not allocate");
     }

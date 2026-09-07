@@ -189,9 +189,8 @@ inline constexpr std::size_t kRadarUiLanguageCount =
     return RadarUiLanguage::English;
 }
 
-// Converts one of the eleven visible F6 choices into its persisted manual
-// preference. Auto remains a parser-only migration value and is deliberately
-// absent from this mapping.
+// Converts an explicit language into its persisted manual preference.
+// Follow-game mode is a separate choice, never a detected language to persist.
 [[nodiscard]] constexpr RadarLanguagePreference
 explicit_radar_language_preference(RadarUiLanguage language) noexcept {
     switch (language) {
@@ -222,24 +221,28 @@ explicit_radar_language_preference(RadarUiLanguage language) noexcept {
     return RadarLanguagePreference::English;
 }
 
-// Old visibility.ini files may still contain language=auto. Resolve that
-// legacy value once on the next real F6/F7 language sample, then persist the
-// returned explicit value so later sessions no longer depend on an AUTO mode.
-[[nodiscard]] constexpr RadarLanguagePreference
-resolve_explicit_radar_language_preference(
-    RadarLanguagePreference preference,
-    RadarUiLanguage detected_game_language) noexcept {
-    if (preference == RadarLanguagePreference::Auto) {
-        return explicit_radar_language_preference(
-            static_cast<std::size_t>(detected_game_language)
-                    < kRadarUiLanguageCount
-                ? detected_game_language
-                : RadarUiLanguage::English);
+// AUTO is the first persistent preference, followed by the eleven languages.
+// Popup labels, hit targets, highlights and raster overlays share this order.
+[[nodiscard]] constexpr RadarLanguagePreference radar_language_choice(
+    std::size_t index) noexcept {
+    return index < kRadarLanguagePreferenceCount
+        ? static_cast<RadarLanguagePreference>(index)
+        : RadarLanguagePreference::Auto;
+}
+
+[[nodiscard]] constexpr std::size_t radar_language_choice_index(
+    RadarLanguagePreference preference) noexcept {
+    return static_cast<std::size_t>(preference) < kRadarLanguagePreferenceCount
+        ? static_cast<std::size_t>(preference) : 0;
+}
+
+[[nodiscard]] constexpr RadarUiLanguage retain_detected_radar_language(
+    RadarUiLanguage previous, RadarUiLanguage sample) noexcept {
+    if (static_cast<std::size_t>(sample) < kRadarUiLanguageCount) {
+        return sample;
     }
-    return static_cast<std::size_t>(preference)
-            < kRadarLanguagePreferenceCount
-        ? preference
-        : RadarLanguagePreference::English;
+    return static_cast<std::size_t>(previous) < kRadarUiLanguageCount
+        ? previous : RadarUiLanguage::English;
 }
 
 [[nodiscard]] constexpr RadarUiLanguage resolve_radar_ui_language(
@@ -304,8 +307,8 @@ resolve_explicit_radar_language_preference(
 
 // Maps the culture tag returned by UE's internationalization library to the
 // exact interface-language set shipped by the game. Unsupported, malformed,
-// and empty values deliberately fail closed to English.
-[[nodiscard]] constexpr RadarUiLanguage radar_ui_language_from_culture(
+// and empty values are unknown, not an authoritative English selection.
+[[nodiscard]] constexpr RadarUiLanguage sample_radar_ui_language_from_culture(
     std::wstring_view culture) noexcept {
     if (culture_tag_starts_with(culture, L"ja")) {
         return RadarUiLanguage::Japanese;
@@ -340,7 +343,17 @@ resolve_explicit_radar_language_preference(
     if (culture_tag_starts_with(culture, L"pt")) {
         return RadarUiLanguage::PortugueseBrazil;
     }
-    return RadarUiLanguage::English;
+    if (culture_tag_starts_with(culture, L"en")) {
+        return RadarUiLanguage::English;
+    }
+    return RadarUiLanguage::Count;
+}
+
+// Stateless callers without a last-known language retain an English fallback.
+[[nodiscard]] constexpr RadarUiLanguage radar_ui_language_from_culture(
+    std::wstring_view culture) noexcept {
+    return retain_detected_radar_language(
+        RadarUiLanguage::English, sample_radar_ui_language_from_culture(culture));
 }
 
 } // namespace dswros

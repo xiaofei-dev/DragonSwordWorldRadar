@@ -3647,6 +3647,7 @@ bool WorldMapUmgRenderer::attach_unsafe(
         ? dswros::WorldMapGeometryStabilityResult::Seeded
         : dswros::WorldMapGeometryStabilityResult::None;
     geometry_sample_max_delta_ = 0.0;
+    projection_delta_ = {};
     atlas_cache_hit_count_ = 0;
     runtime_visibility_allowed_ = false;
     transform_ready_ = false;
@@ -3786,20 +3787,31 @@ bool WorldMapUmgRenderer::attach_unsafe(
     player_canvas_anchor_y_ = player_map_y;
     native_parent_width_ = parent_width;
     native_parent_height_ = parent_height;
-    geometry_stability_result_ = dswros::observe_world_map_geometry_sample(
-        geometry_sample_valid_, geometry_sample_,
+    const dswros::Position player_world{
+        player_world_x, player_world_y, 0.0};
+    const auto numeric_identity = [](UObject* object) {
+        FWeakObjectPtr identity{};
+        identity = object;
+        return dswros::WorldMapProjectionIdentity{
+            identity.ObjectIndex, identity.ObjectSerialNumber};
+    };
+    const dswros::WorldMapProjectionSample projection_sample{
         {player_map_x, player_map_y, parent_width, parent_height},
-        geometry_sample_max_delta_);
+        player_world, dimensions, ui_size, detected_map_id,
+        {numeric_identity(current_layer), numeric_identity(native_parent),
+         numeric_identity(player_icon), numeric_identity(expected_owning_player)}};
+    geometry_stability_result_ = dswros::observe_world_map_projection_sample(
+        geometry_sample_valid_, geometry_sample_, projection_sample,
+        projection_delta_);
+    geometry_sample_max_delta_ = projection_delta_.maximum;
     if (geometry_stability_result_
         != dswros::WorldMapGeometryStabilityResult::Stable) {
-        // The first valid sample only seeds four numeric values. A changed
-        // second sample replaces them, allowing the third and final existing
-        // service attempt to accept only the settled coordinate space.
+        // Keep the existing bounded two-sample layout guard, but compensate
+        // actual player motion before deciding whether the map is settled.
+        // A replaced layer/parent/icon/controller or scale must seed anew.
         last_attach_failure_ = 24;
         return false;
     }
-    const dswros::Position player_world{
-        player_world_x, player_world_y, 0.0};
     std::array<Vector2D, kWorldMapUmgMarkerCapacity> local_positions{};
     for (std::size_t index = 0; index < marker_count; ++index) {
         const WorldMapUmgMarker& marker = markers[index];
@@ -4330,6 +4342,7 @@ void WorldMapUmgRenderer::reset_runtime_handles() noexcept {
 void WorldMapUmgRenderer::reset_geometry_stability_sample() noexcept {
     geometry_sample_valid_ = false;
     geometry_sample_ = {};
+    projection_delta_ = {};
     geometry_stability_result_ =
         dswros::WorldMapGeometryStabilityResult::None;
     geometry_sample_max_delta_ = 0.0;

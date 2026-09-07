@@ -1,5 +1,12 @@
 1.3.1
-Preserved Auto Pickup target selection, input, scheduling, retry, and confirmation behavior.
+Fixed Setup Update and Repair ignoring newly selected toggle and interaction fallback keys.
+Added editable key selectors and an explicit confirmation for Install, Update, and Repair.
+Preserved other settings, unchanged key formatting, and unrelated Mods when changing keys.
+Kept uncommitted key choices after cancellation or failure and restored previous files on a failed installation.
+Fixed a startup timing issue where Auto Pickup could remain disabled if the game's interactable default object was not ready yet.
+Added a fail-closed startup retry every 250ms for up to 30 seconds.
+Full compatibility and selector checks still run before F9, scanning, or pickup becomes available.
+Kept the native pickup selector and input route; the installer refresh does not change native gameplay behavior.
 Kept full 15x and 20x range for gather and interactable-animal targets.
 Capped short-lived item drops at the stable 10x range inside the 15x and 20x PAKs to reduce stuck prompt lists while moving quickly.
 Reused the exact 1.3.0 3x, 5x, and 10x PAK files.

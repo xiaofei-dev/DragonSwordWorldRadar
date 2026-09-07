@@ -283,6 +283,23 @@ Assert-True ($configureOverlaySlot -notmatch `
     'The native host slot helper must never carry atlas coordinates, size feedback, a render transform, or a forced layout pass.'
 
 $attach = Get-RendererFunction $rendererCode 'attach_unsafe'
+# Flight readiness must be confined to fresh attachment; retained zoom/layout
+# validation continues to use the independent extent sampler below.
+Assert-True ($attach -match '(?s)read_live_player_canvas_anchor.*?WorldMapProjectionSample.*?observe_world_map_projection_sample.*?WorldMapGeometryStabilityResult::Stable.*?project_world_map_point' `
+    -and $attach -notmatch '\bobserve_world_map_geometry_sample\s*\(' `
+    -and ([regex]::Matches($rendererCode, '\bobserve_world_map_projection_sample\s*\(')).Count -eq 1) `
+    'Motion-compensated readiness must gate fresh projection only, never retained atlas placement.'
+foreach ($identityExpression in @(
+        'numeric_identity(current_layer)', 'numeric_identity(native_parent)',
+        'numeric_identity(player_icon)', 'numeric_identity(expected_owning_player)')) {
+    Assert-True ($attach.Contains($identityExpression)) `
+        "Attachment projection is missing a weak identity boundary: $identityExpression"
+}
+Assert-True ($mainCode.Contains('WORLD_MAP_ATTACH_PROJECTION') `
+    -and $mainCode.Contains('policy=motion_compensated_origin') `
+    -and $mainCode.Contains('origin_delta=') `
+    -and $mainCode -match 'player_\s*=\s*position;\s*position_valid_\s*=\s*true;\s*request_or_apply_save_reconcile\(\);\s*service_world_map_atlas\(engine\)') `
+    'Attach diagnostics and current-tick player sampling must accompany the motion-compensated gate.'
 $refreshNativeParent = Get-RendererFunction `
     $rendererCode 'refresh_native_parent_unsafe'
 $refreshLayering = Get-RendererFunction $rendererCode 'refresh_layering'

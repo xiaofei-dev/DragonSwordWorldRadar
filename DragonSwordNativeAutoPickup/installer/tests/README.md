@@ -25,8 +25,11 @@ The isolated 1.3.1 matrix must pass 11/11 fixtures:
    1.2.0 payload is recognized for upgrade, while mutated and unproven hashes
    are rejected;
 2. exact-runtime fresh installation is backup-free and exposes owned actions;
-3. exact-runtime Repair preserves `config.ini` without a persistent backup;
-4. a recorded schema-2 1.3.0 install exposes Upgrade, preserves configuration,
+3. exact-runtime Repair applies selected keys, preserves other config bytes,
+   tests actual form state without showing a window, rejects invalid/stale
+   plans, and restores config/range/mods.txt after an injected late failure;
+4. a recorded schema-2 1.3.0 install exposes Update, applies selected keys,
+   preserves other configuration,
    UE4SS, another Mod, and mods.txt, and replaces a same-name old 15x PAK;
 5. unknown same-name Mod content is rejected without mutation;
 6. owned Uninstall removes only product-owned files and preserves UE4SS and
@@ -39,6 +42,11 @@ The isolated 1.3.1 matrix must pass 11/11 fixtures:
 
 Final archive contents pass in the canonical release pipeline. Deployment, UAC
 UI, file-picker behavior, Authenticode trust, and gameplay are separate gates.
+
+The wrapper also runs `HotkeyConfiguration.Tests.ps1` against the same EXE:
+95 parser/editor assertions cover supported keys, exact no-op bytes, BOM and
+newline preservation, separate comments/spacing, duplicates, malformed input,
+and native-specific rejection of AUTO fallback and inline value comments.
 
 ## Evidence boundary
 

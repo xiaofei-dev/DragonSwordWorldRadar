@@ -11,6 +11,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
+& (Join-Path $projectRoot 'installer\tests\HotkeyConfiguration.Tests.ps1') -InstallerExe $InstallerExe
 $testScript = Join-Path $projectRoot 'installer\tests\InstallerExperimentalConversion.Tests.ps1'
 if (-not (Test-Path -LiteralPath $testScript -PathType Leaf)) {
     throw "Installer integration test script is missing: $testScript"

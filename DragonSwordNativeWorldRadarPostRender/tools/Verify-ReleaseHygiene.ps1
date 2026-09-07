@@ -41,6 +41,22 @@ function Assert-NotContains {
 
 & (Join-Path $PSScriptRoot 'Verify-F6LocalizedTextOverlays.ps1') | Out-Null
 
+$hotkeyMain = Read-ProjectText 'src\native\main.cpp'
+$hotkeyParser = Read-ProjectText 'include\dswros\hotkey_config.hpp'
+$hotkeyDefault = Read-ProjectText 'config\hotkeys.ini'
+Assert-True ([regex]::Matches($hotkeyMain, 'load_hotkey_settings\(').Count -eq 2) `
+    'Hotkeys must be loaded once at construction, never polled or reloaded by F6.'
+foreach ($action in @('settings', 'enable', 'disable')) {
+    Assert-Contains $hotkeyMain `
+        ('register_keydown_event\(static_cast<Input::Key>\(hotkey_settings_\.' + $action + '\)') `
+        "The $action callback does not use its configured key."
+}
+Assert-Contains $hotkeyParser 'kMaximumHotkeyConfigBytes = 4096U' 'Hotkey parsing lost its size bound.'
+Assert-Contains $hotkeyParser 'DuplicateBinding' 'Hotkeys must reject duplicate bindings.'
+foreach ($setting in @('settings_hotkey=F6', 'enable_hotkey=F7', 'disable_hotkey=F8')) {
+    Assert-Contains $hotkeyDefault ('(?m)^' + $setting + '\r?$') 'Public hotkeys must retain F6/F7/F8.'
+}
+
 $deployScript = Read-ProjectText 'tools\Deploy-NativePrototype.ps1'
 Assert-NotContains $deployScript `
     '\$prohibited\s*=\s*@\([\s\S]{0,300}?["'']assets["'']' `
@@ -54,9 +70,9 @@ $profile = Read-ProjectText 'metadata\installer-product-profile.json' |
     ConvertFrom-Json
 $providers = Read-ProjectText 'metadata\data-providers.json' | ConvertFrom-Json
 $version = [string]$release.version
-$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1'
+$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0'
 
-Assert-True ($version -eq '2.2.1' `
+Assert-True ($version -eq '2.3.0' `
     -and [string]$release.runtime_label -eq $runtimeLabel `
     -and [string]$profile.product.public_version -eq $version `
     -and [string]$profile.product.runtime_label -eq $runtimeLabel) `
@@ -84,12 +100,13 @@ Assert-True (-not [bool]$profile.game.installer_validation.exact_game_hash_allow
 
 $expectedUserPaths = @(
     'config/diagnostics.ini',
+    'config/hotkeys.ini',
     'config/visibility.ini',
     'data/defaults/treasure_overrides.txt'
 ) | Sort-Object
 $actualUserPaths = @($profile.configuration.user_owned_paths) | Sort-Object
 Assert-True (($actualUserPaths -join '|') -eq ($expectedUserPaths -join '|')) `
-    'The three user-owned files are not declared exactly.'
+    'The four user-owned files are not declared exactly.'
 Assert-True (-not [bool]$profile.installation.successful_update_persistent_backup `
     -and [bool]$profile.installation.conversion_persistent_backup `
     -and [bool]$profile.installation.rollback_required) `
@@ -165,10 +182,10 @@ Assert-True ([string]$providers.release_installer.game_compatibility_policy -mat
 $engine = Read-ProjectText 'installer\InstallerEngine.cs'
 $visibilityConfig = Read-ProjectText 'config\visibility.ini'
 $visibilityParser = Read-ProjectText 'include\dswros\visibility_config.hpp'
-Assert-Contains $engine 'ProductVersion\s*=\s*"2\.2\.1"' `
+Assert-Contains $engine 'ProductVersion\s*=\s*"2\.3\.0"' `
     'Setup engine product version differs from the release identity.'
 Assert-Contains $engine `
-    'RuntimeLabel\s*=\s*"DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1"' `
+    'RuntimeLabel\s*=\s*"DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0"' `
     'Setup engine runtime label differs from the release identity.'
 Assert-Contains $engine 'IsStructurallyValidX64Dll' `
     'Setup does not contain bounded structural UE4SS DLL validation.'
@@ -264,10 +281,10 @@ Assert-Contains $builder 'dist\\work\\build\\native\\main\.dll' `
     'Installer builder reads the native DLL outside dist/work.'
 Assert-Contains $builder 'dist\\work\\build\\installer' `
     'Installer builder writes outside dist/work.'
-Assert-Contains $builder '\$version\s*=\s*''2\.2\.1''' `
+Assert-Contains $builder '\$version\s*=\s*''2\.3\.0''' `
     'Installer builder version differs from the release identity.'
 Assert-Contains $builder `
-    '\$runtimeLabel\s*=\s*''DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1''' `
+    '\$runtimeLabel\s*=\s*''DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0''' `
     'Installer builder runtime label differs from the release identity.'
 foreach ($required in @(
         'Payload.Manifest.ini',
@@ -290,7 +307,7 @@ Assert-Contains $builder 'Get-AuthenticodeSignature' `
 $releaseBuilder = Read-ProjectText 'tools\Build-Release.ps1'
 Assert-Contains $releaseBuilder 'dist\\work\\build\\native' `
     'Release builder writes the native build outside dist/work.'
-Assert-Contains $releaseBuilder '\$version\s*=\s*''2\.2\.1''' `
+Assert-Contains $releaseBuilder '\$version\s*=\s*''2\.3\.0''' `
     'Release builder version differs from the release identity.'
 Assert-Contains $releaseBuilder 'Test-Installer\.ps1' `
     'The release builder does not run the isolated installer matrix.'
@@ -436,7 +453,7 @@ Assert-True ($testMatrix -match `
     -and $integrationMatrix -match `
         '''auto'',\s*''en'',\s*''ja'',\s*''ko'',\s*''zh-hans'',\s*''zh-hant'',[\s\S]*?''fr'',\s*''de'',\s*''es-es'',\s*''ru'',\s*''th'',\s*''pt-br''' `
     -and $integrationMatrix -match `
-        'Name = ''sectioned-2\.2\.1-''\s*\+\s*\$languageId[\s\S]*?\[height_arrows\][\s\S]*?\[interface\][\s\S]*?language=\$languageId' `
+        'Name = ''sectioned-2\.3\.0-''\s*\+\s*\$languageId[\s\S]*?\[height_arrows\][\s\S]*?\[interface\][\s\S]*?language=\$languageId' `
     -and $integrationMatrix -match `
         'partial, unknown-language, incomplete, or non-canonical 2\.2 visibility config was accepted' `
     -and $integrationMatrix -match `
@@ -504,6 +521,7 @@ $payload = @(Get-DsnwrRuntimePayloadSpecification `
     -DllPath (Join-Path $NativeBuildDirectory 'main.dll'))
 foreach ($requiredPath in @(
         'LICENSE',
+        'config/hotkeys.example.ini',
         'dlls/main.dll',
         'metadata/release.json',
         'metadata/data-providers.json',
@@ -531,7 +549,7 @@ Assert-True (($actualF6OverlayPaths -join '|') -eq `
     'The public runtime payload does not contain the exact F6 overlay set.'
 Assert-True (@($payload | Where-Object {
             $_.RelativePath -match `
-                '(?i)(^|/)enabled\.txt$|(^|/)runtime/(logs|diagnostics|backups)(/|$)|(^|/)config/(visibility|diagnostics)\.ini$'
+                '(?i)(^|/)enabled\.txt$|(^|/)runtime/(logs|diagnostics|backups)(/|$)|(^|/)config/(visibility|diagnostics|hotkeys)\.ini$'
         }).Count -eq 0) `
     'The public embedded runtime contains live local state or legacy load authority.'
 

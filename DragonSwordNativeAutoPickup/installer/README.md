@@ -32,8 +32,17 @@ records once.
 5. Choose a concrete fallback interaction key. F is the default and is used
    only when automatic semantic `INTERACT` keyboard-binding resolution fails.
 6. Choose Original, 3x, 5x, 10x, 15x, or 20x native interaction range.
-7. Review the detected state and choose Install, Upgrade, Repair, or Uninstall.
-8. Confirm a UE4SS conversion warning if conversion is required.
+7. Review the detected state and choose Install, Update, Repair, or Uninstall.
+8. Confirm the selected keys and range. Any required UE4SS conversion is shown
+   in the same confirmation. Cancel leaves files unchanged and retains edits.
+
+Update and Repair load the installed keys into editable selectors. Change
+them there to reconfigure an existing installation; only those two key values
+are edited in `config.ini`. All other settings remain intact. Unchanged valid
+keys preserve the exact file bytes. A different game path reloads its own
+settings. The shared interaction contract is documented in
+`../../docs/DRAGONSWORD_MOD_INSTALLER_STANDARD.md`, section 2.1 (workspace root).
+Pickup still owns its exact native ABI and runtime compatibility decisions.
 
 Auto Pickup starts disabled after every game launch. Returning to the main menu
 or initializing a new save or World disables it again. Press the configured
@@ -78,10 +87,12 @@ paths and writes only inside the selected game tree.
 ## Installation-state actions
 
 - Install is exposed when Auto Pickup is absent.
-- Upgrade is exposed only for one recognized older owned installation.
+- Update is exposed only for one recognized older owned installation.
 - Repair is exposed for the current exact owned version. On the exact runtime,
-  Upgrade and Repair preserve `config.ini`, use temporary rollback data, and
-  retain no persistent conversion backup.
+  Update and Repair apply confirmed key edits while preserving all other
+  `config.ini` contents, use temporary rollback data, and retain no persistent
+  conversion backup. Keys must be standalone names; a fallback of AUTO and
+  inline comments on key assignments are rejected, matching native parsing.
 - Uninstall is exposed only for one recognized owned installation. It removes
   the Mod, its authoritative `mods.txt` entry, and approved owned range PAKs.
   It preserves UE4SS and unrelated Mods.

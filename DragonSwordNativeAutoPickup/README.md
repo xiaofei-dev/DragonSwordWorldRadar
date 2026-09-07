@@ -2,6 +2,9 @@
 
 Native UE4SS automatic pickup for DragonSword: Awakening.
 
+Current complete package set: [Release status](docs/RELEASE_STATUS.md).
+Public-page copy: [Nexus publishing index](assets/nexus/README.md).
+
 ## Project status
 
 The selector and Enhanced Input pickup route is functionally established for
@@ -28,6 +31,13 @@ marker, releases the global slot, and applies a 750 ms same-Component re-entry
 delay. This proves that the game reached its interaction dispatch, not that the
 selector-returned target was picked up, so diagnostics explicitly record
 `target_match_unproven=1` and `pickup_success_claim=0`.
+
+On game build `25076183`, one startup session exposed a readiness race where
+the reflected interactable class was present before its class default object.
+Version 1.3.1 now waits fail-closed and retries only that dependency every 250
+ms for at most 30 seconds. `READY`, F9 handling, scanning, and injection remain
+unavailable until the original complete reflection and dual-selector contracts
+pass; unrelated contract failures are not retried or relaxed.
 
 If no matching dispatch arrives, the conservative fallback window remains
 750 ms. One retry may follow after 200 ms; a second no-dispatch result applies a
@@ -143,11 +153,18 @@ Browse to select it manually.
 Setup exposes one safe action for the inspected installation state:
 
 - **Install** when Auto Pickup is absent;
-- **Upgrade** when the existing Auto Pickup installation is owned and
-  recognized; the installed `config.ini` is preserved;
+- **Update** for a recognized older owned installation;
+- **Repair** for the current owned version; both Update and Repair let you
+  change the toggle and fallback keys while preserving all other settings;
 - **Uninstall** when the owned installation can be removed safely.
 
-An exact-runtime Upgrade uses temporary transactional rollback data and does
+Review the loaded keys, edit them if needed, and confirm the selected values
+before applying the action. Cancel changes no files. The complete 2026-09-07
+release refresh is under `dist/releases/1.3.1`; use its manifest and
+`docs/RELEASE_STATUS.md`. The separate `out/installer/unified-keys-20260907/`
+EXE and its receipt are retained as an earlier installer-only checkpoint.
+
+An exact-runtime Update or Repair uses temporary transactional rollback data and does
 not create a persistent conversion backup. If another or mixed UE4SS layout
 must be converted, Setup requires confirmation, creates a complete verified
 backup inside `Win64`, installs the tested runtime, and migrates unrelated Mods

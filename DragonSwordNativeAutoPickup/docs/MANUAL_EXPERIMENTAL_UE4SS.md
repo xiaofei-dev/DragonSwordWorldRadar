@@ -1,5 +1,10 @@
 # Manual installation for the tested ExperimentalNested UE4SS layout
 
+Current full release: [Release status](RELEASE_STATUS.md). For updates, Setup
+Update / Repair can change keys while preserving other settings. Before a
+manual update, back up `config.ini` and `mods.txt`, copy only the Mod folder,
+restore your settings, and merge the single enablement line.
+
 This archive is the manual-install alternative to the one-click Setup program.
 It is intentionally limited to the exact experimental UE4SS layout used by the
 author during development.

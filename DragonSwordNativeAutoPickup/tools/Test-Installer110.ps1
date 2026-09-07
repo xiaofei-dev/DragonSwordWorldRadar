@@ -273,6 +273,7 @@ if ([string]::IsNullOrWhiteSpace($WorkingDirectory)) {
 }
 
 $script:Installer = (Resolve-Path -LiteralPath $InstallerExe).Path
+& (Join-Path $project 'installer\tests\HotkeyConfiguration.Tests.ps1') -InstallerExe $script:Installer
 $script:Game = (Resolve-Path -LiteralPath $GameExecutable).Path
 [void][IO.Directory]::CreateDirectory($WorkingDirectory)
 $working = (Resolve-Path -LiteralPath $WorkingDirectory).Path
@@ -466,7 +467,10 @@ Run 'Exact runtime fresh install is backup-free and exposes Repair and Uninstall
     AssertNoPersistentBackup $malformed
 
     $bare = NewFixture (Join-Path $root 'bare') Bare
-    $bareOperation = Install $bare $script:Ranges.None
+    $bareOperation = Install $bare $script:Ranges.None 'INSERT' 'HOME'
+    Equal ([string](Prop $bareOperation.Plan 'ToggleHotkey')) 'INSERT' 'Fresh confirmation lost the chosen key.'
+    Equal ([string](Prop (State $bare) 'ToggleHotkey')) 'INSERT' 'Fresh install ignored the chosen toggle.'
+    Equal ([string](Prop (State $bare) 'InteractionKeyFallback')) 'HOME' 'Fresh install ignored the chosen fallback.'
     Assert ([bool](Prop $bareOperation.Plan 'BootstrapsUE4SS')) 'Bare fixture was not classified for UE4SS bootstrap.'
     $bareMods = [IO.File]::ReadAllText($bare.ModsTxt)
     Assert ($bareMods -match '(?m)^\s*Keybinds\s*:\s*1\s*$') 'UE4SS bootstrap lost its built-in mods.txt authority entries.'
@@ -474,7 +478,7 @@ Run 'Exact runtime fresh install is backup-free and exposes Repair and Uninstall
     AssertNoPersistentBackup $bare
 }
 
-Run 'Owned repair preserves config and is backup-free' {
+Run 'Owned repair applies confirmed keys, preserves other settings, and rejects stale plans' {
     param($root)
     $f = NewFixture $root Exact
     [void](Install $f $script:Ranges.None)
@@ -484,7 +488,6 @@ Run 'Owned repair preserves config and is backup-free' {
     $config = $config -replace '(?mi)^\s*debug_logging\s*=.*$', 'debug_logging = true'
     $config += "`r`n; installer-lifecycle-preserve=true`r`n"
     WriteText $configPath $config
-    $configHash = Hash $configPath
     WriteText (Join-Path $f.Mods 'OtherMod\settings.ini') "keep=true`r`n"
     [IO.File]::WriteAllText((Join-Path $f.Target 'enabled.txt'), '1', [Text.UTF8Encoding]::new($false))
     AssertOwnedState (State $f)
@@ -493,11 +496,69 @@ Run 'Owned repair preserves config and is backup-free' {
         WriteText $f.ModsTxt ($modsText.TrimEnd() + "`r`nOtherMod : 1`r`n")
     }
     $plan = InspectPlan $f $script:Ranges.None 'F10' 'K'
+    $beforePlan = TreeHash $f.Root
+    [void](InspectPlan $f $script:Ranges.None 'INSERT' 'HOME')
+    Equal (TreeHash $f.Root) $beforePlan 'Preview / cancellation changed files.'
+    foreach ($invalid in @('', 'CTRL+K', "F9`n")) {
+        $caught = $null
+        try { [void](InspectPlan $f $script:Ranges.None $invalid 'F') } catch { $caught = $_.Exception }
+        Assert ($null -ne $caught) 'Invalid selection was accepted.'
+        Equal (TreeHash $f.Root) $beforePlan 'Invalid selection changed files.'
+    }
     Assert ([bool](Prop $plan 'UpdatesExistingAutoPickup')) 'Owned install was not classified as Upgrade / Repair.'
     $token = [string](Prop $plan 'IdentityToken')
+    $stale = $null
+    try { [void]$script:InstallConfirmed.Invoke($null, [object[]]@(
+        [string]$f.Game, 'INSERT', 'HOME', $script:Ranges.None, $token)) } catch { $stale = $_.Exception }
+    Assert ($null -ne $stale) 'Changed selections reused the old confirmation.'
+    Equal (TreeHash $f.Root) $beforePlan 'Stale selection rejection changed files.'
     $result = $script:InstallConfirmed.Invoke($null, [object[]]@(
         [string]$f.Game, [string]'F10', [string]'K', $script:Ranges.None, $token))
-    Equal (Hash $configPath) $configHash 'Owned upgrade overwrote the user configuration.'
+    $expectedConfig = $config.Replace('toggle_hotkey = F12', 'toggle_hotkey = F10').Replace('interaction_key_fallback=F', 'interaction_key_fallback=K')
+    Equal ([IO.File]::ReadAllText($configPath)) $expectedConfig 'Repair changed unrelated configuration bytes or ignored the selected keys.'
+    Equal ([string](Prop $result 'ToggleHotkey')) 'F10' 'Result reported the wrong toggle.'
+    Equal ([string](Prop (State $f) 'InteractionKeyFallback')) 'K' 'Reinspection did not see the selected fallback.'
+    $unchangedHash = Hash $configPath
+    [void](Install $f $script:Ranges.None 'F10' 'K')
+    Equal (Hash $configPath) $unchangedHash 'Repair with unchanged keys did not preserve exact config bytes.'
+
+    # Exercise the actual form state without showing a window or accepting a dialog.
+    Add-Type -AssemblyName System.Windows.Forms
+    $formType = $script:Assembly.GetType('DragonSwordNativeAutoPickup.Installer.InstallerForm', $true)
+    $form = [Activator]::CreateInstance($formType, $true)
+    try {
+        $flags = [Reflection.BindingFlags]'Instance,NonPublic'
+        $pathControl = $formType.GetField('_gamePath', $flags).GetValue($form)
+        $toggleControl = $formType.GetField('_hotkey', $flags).GetValue($form)
+        $fallbackControl = $formType.GetField('_interactionKeyFallback', $flags).GetValue($form)
+        $refresh = $formType.GetMethod('RefreshInstallationState', $flags)
+        $pathControl.Text = $f.Game
+        [void]$refresh.Invoke($form, [object[]]@($true))
+        Equal $toggleControl.Text 'F10' 'Form did not load the installed toggle.'
+        Equal $fallbackControl.Text 'K' 'Form did not load the installed fallback.'
+        $toggleControl.Text = 'INSERT'
+        $fallbackControl.Text = 'HOME'
+        [void]$refresh.Invoke($form, [object[]]@($false))
+        Equal $toggleControl.Text 'INSERT' 'Same-path refresh discarded uncommitted keys.'
+        Equal $fallbackControl.Text 'HOME' 'Cancel/error refresh discarded the fallback.'
+        $otherPath = NewFixture (Join-Path $root 'other-game') Exact
+        $pathControl.Text = $otherPath.Game
+        [void]$refresh.Invoke($form, [object[]]@($false))
+        Equal $toggleControl.Text 'F9' 'Changed game path retained keys from the previous game.'
+        Equal $fallbackControl.Text 'F' 'Changed game path retained the previous fallback.'
+        $pathControl.Text = $f.Game
+        [void]$refresh.Invoke($form, [object[]]@($false))
+        Equal $toggleControl.Text 'F10' 'Returning to an installed game did not load its values.'
+    } finally { $form.Dispose() }
+
+    $stalePlan = InspectPlan $f $script:Ranges.None 'INSERT' 'HOME'
+    WriteText $configPath ($expectedConfig + '; changed after confirmation')
+    $afterEdit = TreeHash $f.Root
+    $stale = $null
+    try { [void]$script:InstallConfirmed.Invoke($null, [object[]]@(
+        [string]$f.Game, 'INSERT', 'HOME', $script:Ranges.None, [string](Prop $stalePlan 'IdentityToken'))) } catch { $stale = $_.Exception }
+    Assert ($null -ne $stale) 'Changed config reused an old confirmation.'
+    Equal (TreeHash $f.Root) $afterEdit 'Stale config rejection changed files.'
     Assert (-not (Test-Path -LiteralPath (Join-Path $f.Target 'enabled.txt'))) 'Owned upgrade did not remove exact legacy enabled.txt.'
     Assert (Test-Path -LiteralPath (Join-Path $f.Mods 'OtherMod\settings.ini')) 'Owned upgrade removed another mod.'
     Assert ((Get-Content -LiteralPath $f.ModsTxt -Raw) -match '(?m)^\s*OtherMod\s*:\s*1\s*$') `
@@ -507,6 +568,29 @@ Run 'Owned repair preserves config and is backup-free' {
         'Owned upgrade reported a persistent backup.'
     AssertNoPersistentBackup $f
     AssertOwnedState (State $f)
+
+    $rollback = NewFixture (Join-Path $root 'rollback') Exact
+    [void](Install $rollback $script:Ranges.X3 'HOME' 'K')
+    $rollbackConfig = Join-Path $rollback.Target 'config.ini'
+    WriteText $rollbackConfig (([IO.File]::ReadAllText($rollbackConfig)) + "; preserve failure settings`r`n")
+    $configBefore = Hash $rollbackConfig
+    $modBefore = TreeHash $rollback.Target
+    $pakBefore = TreeHash $rollback.PakDirectory
+    $modsBefore = Hash $rollback.ModsTxt
+    $loaderBefore = Hash (Join-Path $rollback.Nested 'UE4SS.dll')
+    $failureField = $engine.GetField('IntegrationTestFailurePoint', [Reflection.BindingFlags]'Static,NonPublic')
+    $failure = $null
+    try {
+        $failureField.SetValue($null, 'after-recorded-mutations')
+        [void](Install $rollback $script:Ranges.X20 'INSERT' 'Gamepad_FaceButton_Bottom')
+    } catch { $failure = ErrorText $_.Exception }
+    finally { $failureField.SetValue($null, $null) }
+    Assert ($failure -like '*Injected installer test failure*') 'Rollback injection did not reach post-write failure.'
+    Equal (Hash $rollbackConfig) $configBefore 'Rollback did not restore config.'
+    Equal (TreeHash $rollback.Target) $modBefore 'Rollback did not restore the owned mod.'
+    Equal (TreeHash $rollback.PakDirectory) $pakBefore 'Rollback did not restore range PAK.'
+    Equal (Hash $rollback.ModsTxt) $modsBefore 'Rollback did not restore mods.txt.'
+    Equal (Hash (Join-Path $rollback.Nested 'UE4SS.dll')) $loaderBefore 'Rollback changed runtime.'
 }
 
 Run 'Recorded schema-2 1.3.0 upgrades to 1.3.1 and replaces a same-name range PAK' {
@@ -516,7 +600,6 @@ Run 'Recorded schema-2 1.3.0 upgrades to 1.3.1 and replaces a same-name range PA
     $configPath = Join-Path $f.Target 'config.ini'
     $config = (Get-Content -LiteralPath $configPath -Raw) + "`r`n; preserve-130-upgrade=true`r`n"
     WriteText $configPath $config
-    $configHash = Hash $configPath
     WriteText (Join-Path $f.Mods 'OtherMod\settings.ini') "keep=true`r`n"
     $modsText = Get-Content -LiteralPath $f.ModsTxt -Raw
     WriteText $f.ModsTxt ($modsText.TrimEnd() + "`r`nOtherMod : 1`r`n")
@@ -536,9 +619,9 @@ Run 'Recorded schema-2 1.3.0 upgrades to 1.3.1 and replaces a same-name range PA
     Assert (-not [bool](Prop $before 'CanRepair')) 'Recorded schema-2 1.3.0 fixture incorrectly exposed Repair.'
     Equal ([string](Prop $before 'InstalledVersion')) '1.3.0' 'Upgrade fixture reported the wrong version.'
 
-    $operation = Install $f $script:Ranges.X15
+    $operation = Install $f $script:Ranges.X15 'INSERT' 'HOME'
     Assert ([bool](Prop $operation.Plan 'UpdatesExistingAutoPickup')) '1.3.0 fixture was not classified as an upgrade.'
-    Equal (Hash $configPath) $configHash '1.3.0 to 1.3.1 upgrade overwrote config.ini.'
+    Equal ([IO.File]::ReadAllText($configPath)) ($config.Replace('toggle_hotkey=F9', 'toggle_hotkey=INSERT').Replace('interaction_key_fallback=F', 'interaction_key_fallback=HOME')) 'Update did not apply only the selected keys.'
     Equal (Hash $rangePath) (HashBytes (GetResourceBytes $rangeResources.X15)) `
         '1.3.0 to 1.3.1 upgrade did not replace the same-name 15x PAK.'
     Assert (Test-Path -LiteralPath (Join-Path $f.Mods 'OtherMod\settings.ini')) `

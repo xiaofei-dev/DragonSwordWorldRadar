@@ -1,0 +1,16 @@
+Native World Radar 2.3.0
+
+File: DragonSwordNativeWorldRadarPostRender-v2.3.0-Installer.zip
+Display name: Native World Radar Installer (Recommended)
+Version: 2.3.0
+Description: Recommended installer with supported UE4SS runtime setup. Configure Settings, Enable, and Disable keys during Install, Update, or Repair while preserving other settings. Close the game before use; restart after changing keys.
+
+File: DragonSwordNativeWorldRadarPostRender-v2.3.0-Manual-No-UE4SS.zip
+Display name: Native World Radar Manual (Without UE4SS)
+Version: 2.3.0
+Description: Mod-only package for an existing compatible ExperimentalNested UE4SS installation. Preserve your configuration and merge mods.txt; do not overwrite other Mod entries. Use Setup if unsure.
+
+File: DragonSwordNativeWorldRadarPostRender-v2.3.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip
+Display name: Native World Radar Manual (With UE4SS)
+Version: 2.3.0
+Description: Includes the tested UE4SS v3.0.1 Beta #0 runtime. For a clean installation without UE4SS. Do not extract the whole archive over an existing runtime or other Mods; use Setup for updates and conversion.

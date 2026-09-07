@@ -1,8 +1,12 @@
 # Installation
 
+This is the 2.3.0 installation guide. Use the checksums shipped with your
+archive for its exact identity. Workspace validation and prior receipts are
+indexed in `docs/RELEASE_STATUS.md`; old receipt hashes are not current hashes.
+
 ## Release identity
 
-Native World Radar 2.2.1 uses the ExperimentalNested UE4SS directory contract.
+Native World Radar 2.3.0 uses the ExperimentalNested UE4SS directory contract.
 The game executable and existing UE4SS loader/proxy are validated structurally
 rather than through fixed compatibility hashes, so a compatible game or UE4SS
 update does not require rebuilding the Mod.
@@ -30,12 +34,13 @@ resynchronization; it is not an installer and does not rebuild static catalogs.
 1. Close DragonSword Awakening.
 2. Fully extract the installer archive.
 3. Verify the Setup executable against its `.sha256` sidecar.
-4. Run `DragonSwordNativeWorldRadarPostRender-Setup-2.2.1.exe`.
+4. Run `DragonSwordNativeWorldRadarPostRender-Setup-2.3.0.exe`.
 5. Select `DSClient-Win64-Shipping.exe` from `DS/Binaries/Win64`.
 6. Setup inspects the selected path and automatically presents `Install`,
    `Update`, or `Repair`. `Uninstall` remains disabled unless an active Radar
    installation passes strict same-product ownership validation.
-7. Review the read-only plan shown by Setup.
+7. Review or change the Settings / Enable / Disable key selectors, then review
+   the plan shown by Setup. Update and Repair can change keys as well.
 8. Confirm the plan only when the detected location and action are correct.
 9. Record the backup path only when Setup performed a UE4SS conversion. A
    normal installation or Update / Repair intentionally retains no backup.
@@ -44,6 +49,11 @@ resynchronization; it is not an installer and does not rebuild static catalogs.
 
 Setup is unsigned and requests elevation because the game is commonly installed
 under a protected library. It never launches or terminates the game.
+
+Key-editing interaction follows the same contract as Pickup Setup (workspace
+`docs/DRAGONSWORD_MOD_INSTALLER_STANDARD.md`, section 2.1). Radar retains its
+own three-distinct-key rule, language settings, and runtime compatibility
+policy; UI consistency does not imply identical native ABI support.
 
 ## UE4SS behavior
 
@@ -113,11 +123,14 @@ disabling it.
 The installed user-owned configuration files are:
 
 - `config/visibility.ini`
+- `config/hotkeys.ini`
 - `config/diagnostics.ini`
 - `data/defaults/treasure_overrides.txt`
 
 Recognized existing values are preserved byte-for-byte during an update after
-strict syntax and size validation. All bundled generated catalogs are replaced
+strict syntax and size validation, except for hotkey values you explicitly
+change in Setup. Unchanged bindings, comments, and formatting are preserved.
+All bundled generated catalogs are replaced
 from the current Setup payload. Public diagnostics
 default to disabled. To capture a diagnostic session, close the game, set
 `debug_logging=true` in the `[diagnostics]` section of `diagnostics.ini`, then
@@ -129,14 +142,40 @@ never included in a release package.
 Fresh visibility configuration uses readable `[radar]`, `[map]`, `[modes]`,
 `[height_arrows]`, and `[interface]` sections. Height-arrow defaults are
 Treasure ON, Area Quest ON, and Mole ON. A valid existing configuration keeps
-its choices. The interface stores one of 11 explicit languages. A legacy AUTO
-value migrates on the next actual F6 opening or F7 activation by resolving
-`DGameUserSettings.LanguageText`, then Kismet and English, and persisting the
-matching explicit language; AUTO is not displayed. Explicit choices persist and
-remain authoritative. Strictly valid older formats remain upgrade-readable;
+its choices. The interface offers 11 explicit languages and persistent AUTO
+(Game Language). AUTO refreshes on an actual Settings opening or Enable action,
+retains the last valid detected language on failure, and never replaces a
+saved manual choice. Strictly valid older formats remain upgrade-readable;
 the next real F6 change atomically writes the current complete format. Setup
 rejects malformed, oversized, duplicate, unknown, mixed, or incomplete content
 before mutation.
+
+### Custom keyboard bindings
+
+Close the game, run Setup, and choose **Settings key**, **Enable key**, and
+**Disable key**. Click **Install**, **Update**, or **Repair** and confirm the
+displayed keys. Existing bindings are loaded automatically. Reopening Setup
+lets you change them again without editing a file. Restart the game to apply.
+
+Alternatively, edit
+`DS/Binaries/Win64/ue4ss/Mods/DragonSwordNativeWorldRadarPostRender/config/hotkeys.ini`.
+For example:
+
+```ini
+[hotkeys]
+settings_hotkey=INSERT
+enable_hotkey=HOME
+disable_hotkey=PAGEUP
+```
+
+Restart to apply. Defaults remain F6/F7/F8; references below use those default
+action names. Supported keys: F1-F24, A-Z, 0-9, NUM0-NUM9, HOME, END, PAGEUP,
+PAGEDOWN, INSERT, DELETE, SPACE (case-insensitive). Use three different keys,
+avoid game/other Mod bindings, and do not use modifier combinations. An invalid
+runtime file restores all three defaults. Setup preserves unchanged bindings,
+edits only selected values, and supplies defaults for missing files unless you
+choose other keys; invalid config stops Setup before mutation. F6 saves
+never change this file. It must be UTF-8, at most 4 KiB.
 
 F6 may open while Radar is Off, On, or Faulted. Bug Report and Close are
 separate top-bar controls. Read-only status text uses a thin state-colored strip;
@@ -194,7 +233,7 @@ been accepted in game.
 
 ## Manual installation without UE4SS
 
-Use `DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-No-UE4SS.zip` only
+Use `DragonSwordNativeWorldRadarPostRender-v2.3.0-Manual-No-UE4SS.zip` only
 when a structurally compatible ExperimentalNested UE4SS runtime is already
 installed. Fully extract the archive and close the game. Copy only
 `ue4ss/Mods/DragonSwordNativeWorldRadarPostRender` into the existing
@@ -216,7 +255,7 @@ never supports StableRoot.
 
 ## Manual installation with UE4SS
 
-`DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip` contains
+`DragonSwordNativeWorldRadarPostRender-v2.3.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip` contains
 the same Mod payload plus the pinned integrity-verified ExperimentalNested
 runtime and a clean enabled `mods.txt`. It is valid only when the target has no
 existing UE4SS installation. Fully extract it, close the game, and copy
@@ -226,7 +265,7 @@ Do not merge this package over another loader, settings file, or Mods tree.
 Both manual archives are script-free and perform no structural detection,
 version restriction, path derivation, load-control merge, Update / Repair,
 ownership validation, automatic backup, rollback, or uninstall. Generic copy
-updates can overwrite `config/visibility.ini`, `config/diagnostics.ini`, and
+updates can overwrite `config/hotkeys.ini`, `config/visibility.ini`, `config/diagnostics.ini`, and
 `data/defaults/treasure_overrides.txt`; use Setup Update / Repair for an
 existing Radar. See `MANUAL_INSTALL.md` for the exact clean-copy instructions.
 Neither manual channel contains or restores a StableRoot payload. Both ship
@@ -251,6 +290,10 @@ single normalized load-control entry. Never remove UE4SS, unrelated Mods, or
 game saves as part of Radar removal.
 
 ## Acceptance boundary
+
+Current 2.3.0 build/test and runtime status is in `RELEASE_PLAN_2_3_0.md`.
+The exact-byte receipts below are historical 2.2.0/2.2.1 evidence only, not
+2.3.0 validation.
 
 Successful compilation, package hashing, isolated installation, or rollback
 testing proves only those stages. Fresh in-game startup, F7 activation, world

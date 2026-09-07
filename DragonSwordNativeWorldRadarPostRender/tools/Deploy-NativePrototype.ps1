@@ -18,6 +18,7 @@ $sourceBuildReceipt = Join-Path $projectRoot `
     'dist\work\build\native\native-build-receipt.json'
 $sourceVisibilityConfig = Join-Path $projectRoot 'config\visibility.ini'
 $sourceDiagnosticsConfig = Join-Path $projectRoot 'config\diagnostics.ini'
+$sourceHotkeyConfig = Join-Path $projectRoot 'config\hotkeys.ini'
 $sourceData = Join-Path $projectRoot 'src\data\generated'
 $sourceOverrides = Join-Path $projectRoot 'src\data\defaults\treasure_overrides.txt'
 $sourceSqlCipher = Join-Path $projectRoot 'assets\vendor\sqlcipher\e_sqlcipher.dll'
@@ -314,7 +315,7 @@ Assert-InstalledDeploymentInputsSafe
 Assert-DragonSwordStopped -Operation 'deploy'
 foreach ($required in @(
         $sourceDll, $sourceBuildReceipt, $sourceVisibilityConfig,
-        $sourceDiagnosticsConfig,
+        $sourceDiagnosticsConfig, $sourceHotkeyConfig,
         $sourceData, $sourceOverrides,
         $sourceSqlCipher, $sourceApacheLicense, $sourceSqlCipherLicense,
         $sourceFmtLicense, $sourceUe4ssLicense, $sourceLibTomCryptLicense,
@@ -537,6 +538,7 @@ $backupStableMarkers = Join-Path $backup 'stable-markers'
 $installStage = Join-Path $backup 'install-stage'
 $preservedVisibility = Join-Path $backup 'preserved\visibility.ini'
 $preservedDiagnostics = Join-Path $backup 'preserved\diagnostics.ini'
+$preservedHotkeys = Join-Path $backup 'preserved\hotkeys.ini'
 $preservedTreasureOverrides = Join-Path $backup `
     'preserved\treasure_overrides.txt'
 $currentTreasureOverrides = Join-Path $target `
@@ -560,6 +562,13 @@ if ($targetExisted) {
             -Destination $preservedVisibility -Force
     }
     $currentDiagnostics = Join-Path $target 'config\diagnostics.ini'
+    $currentHotkeys = Join-Path $target 'config\hotkeys.ini'
+    if (Test-Path -LiteralPath $currentHotkeys -PathType Leaf) {
+        New-Item -ItemType Directory -Path (Split-Path -Parent $preservedHotkeys) -Force | Out-Null
+        Copy-Item -LiteralPath $currentHotkeys -Destination $preservedHotkeys -Force
+    } elseif (Test-Path -LiteralPath $currentHotkeys) {
+        throw 'Installed hotkeys.ini is not a regular file.'
+    }
     if (Test-Path -LiteralPath $currentDiagnostics -PathType Leaf) {
         New-Item -ItemType Directory -Path `
             (Split-Path -Parent $preservedDiagnostics) -Force | Out-Null
@@ -658,6 +667,7 @@ New-Item -ItemType Directory -Path $target -Force | Out-Null
 Get-ChildItem -LiteralPath $installStage -Force | Copy-Item `
     -Destination $target -Recurse -Force
 foreach ($installerOnlyDefault in @(
+        'config\hotkeys.example.ini',
         'config\visibility.example.ini',
         'config\diagnostics.example.ini')) {
     $installedDefault = Join-Path $target $installerOnlyDefault
@@ -667,6 +677,13 @@ foreach ($installerOnlyDefault in @(
 }
 
 $installedVisibilityConfig = Join-Path $target 'config\visibility.ini'
+$installedHotkeys = Join-Path $target 'config\hotkeys.ini'
+$hotkeySource = if (Test-Path -LiteralPath $preservedHotkeys -PathType Leaf) { $preservedHotkeys } else { $sourceHotkeyConfig }
+Copy-Item -LiteralPath $hotkeySource -Destination $installedHotkeys -Force
+if ((Get-FileHash -LiteralPath $hotkeySource -Algorithm SHA256).Hash -ne
+    (Get-FileHash -LiteralPath $installedHotkeys -Algorithm SHA256).Hash) {
+    throw 'Installed hotkey settings were not preserved byte-for-byte.'
+}
 if (Test-Path -LiteralPath $preservedVisibility -PathType Leaf) {
     Copy-Item -LiteralPath $preservedVisibility `
         -Destination $installedVisibilityConfig -Force

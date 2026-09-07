@@ -21,6 +21,9 @@ namespace DragonSwordNativeAutoPickup.Installer
         internal bool ConvertsUE4SS { get; set; }
         internal bool BootstrapsUE4SS { get; set; }
         internal bool UpdatesExistingAutoPickup { get; set; }
+        internal string ToggleHotkey { get; set; }
+        internal string InteractionKeyFallback { get; set; }
+        internal InstallerEngine.RangeSelection RangeSelection { get; set; }
     }
 
     internal sealed class AutoPickupInstallerResult110
@@ -59,6 +62,7 @@ namespace DragonSwordNativeAutoPickup.Installer
     // UE4SS layout is backed up, removed, and converted after explicit consent.
     internal static class InstallerEngine110
     {
+        internal static string IntegrationTestFailurePoint = null;
         private const string ProductVersion = "1.3.1";
         private const string GameFileName = "DSClient-Win64-Shipping.exe";
         private const string ModName = "DragonSwordNativeAutoPickup";
@@ -263,7 +267,7 @@ namespace DragonSwordNativeAutoPickup.Installer
                     ? "Auto Pickup " + ProductVersion +
                       " is installed and strictly owned. Repair is available."
                     : "Auto Pickup " + state.InstalledVersion +
-                      " is installed and strictly owned. Upgrade to " + ProductVersion +
+                      " is installed and strictly owned. Update to " + ProductVersion +
                       " is available.";
             }
             else if (state.IsInstalled)
@@ -288,6 +292,9 @@ namespace DragonSwordNativeAutoPickup.Installer
             InstallerEngine.RangeSelection rangeSelection)
         {
             EnsureGameIsClosed();
+            ValidateRequestedKeys(requestedHotkey, requestedInteractionKeyFallback);
+            if (!Enum.IsDefined(typeof(InstallerEngine.RangeSelection), rangeSelection))
+                throw new ArgumentOutOfRangeException("rangeSelection");
             var hotkey = NormalizeKey(requestedHotkey, "F9", false);
             var fallback = NormalizeKey(requestedInteractionKeyFallback, "F", true);
             var executable = ValidateGameExecutable(selectedGameExecutable, true);
@@ -299,8 +306,10 @@ namespace DragonSwordNativeAutoPickup.Installer
             EnsureMutableInstallationState(state);
             if (state.IsOwned)
             {
-                hotkey = state.ToggleHotkey;
-                fallback = state.InteractionKeyFallback;
+                // Validate the proposed edit during read-only planning. Never
+                // replace an explicit selection with the installed old keys.
+                ApplyConfiguredKeys(ReadConfigBytes(Path.Combine(state.InstalledModDirectory, "config.ini")),
+                    hotkey, fallback);
             }
             return BuildPlan(context, state, hotkey, fallback, rangeSelection);
         }
@@ -405,6 +414,7 @@ namespace DragonSwordNativeAutoPickup.Installer
             EnsureGameIsClosed();
             if (!Enum.IsDefined(typeof(InstallerEngine.RangeSelection), rangeSelection))
                 throw new ArgumentOutOfRangeException("rangeSelection");
+            ValidateRequestedKeys(requestedHotkey, requestedInteractionKeyFallback);
             var hotkey = NormalizeKey(requestedHotkey, "F9", false);
             var fallback = NormalizeKey(requestedInteractionKeyFallback, "F", true);
             var executable = ValidateGameExecutable(selectedGameExecutable, true);
@@ -414,22 +424,19 @@ namespace DragonSwordNativeAutoPickup.Installer
             ValidateTrees(context);
             var installationState = InspectInstallationState(executable);
             EnsureMutableInstallationState(installationState);
-            if (installationState.IsOwned)
-            {
-                hotkey = installationState.ToggleHotkey;
-                fallback = installationState.InteractionKeyFallback;
-            }
             var plan = BuildPlan(context, installationState, hotkey, fallback, rangeSelection);
             if (!string.Equals(plan.IdentityToken, confirmedIdentity, StringComparison.Ordinal))
-                throw new InvalidOperationException("The game or UE4SS layout changed after confirmation. Run the check again.");
+                throw new InvalidOperationException("The game, UE4SS layout, configuration, or selected options changed after confirmation. Run the check again.");
 
             var existingRange = ValidateExistingRangeFiles(context);
             var ownsLegacyCanary = ValidateLegacyRangeCanary(context);
 
             var preservedConfig = installationState.IsOwned
-                ? File.ReadAllBytes(Path.Combine(installationState.InstalledModDirectory, "config.ini"))
+                ? ReadConfigBytes(Path.Combine(installationState.InstalledModDirectory, "config.ini"))
                 : null;
-            var config = preservedConfig ?? BuildConfig(ReadResource(ConfigResource), hotkey, fallback);
+            var config = preservedConfig == null
+                ? BuildConfig(ReadResource(ConfigResource), hotkey, fallback)
+                : ApplyConfiguredKeys(preservedConfig, hotkey, fallback);
             var sourceModsTxt = string.IsNullOrEmpty(context.MigrationModsTxt) ? context.ModsTxt : context.MigrationModsTxt;
             var modsTxt = File.Exists(sourceModsTxt)
                 ? BuildModsTxt(sourceModsTxt)
@@ -479,6 +486,8 @@ namespace DragonSwordNativeAutoPickup.Installer
                     var record = BuildRecord(context, gameHash, hotkey, fallback, rangeSelection,
                         retainBackup ? backupRoot : "none (transaction journal removed after success)");
                     transaction.WriteBytes(Path.Combine(mod, "INSTALL-RECORD.txt"), Encoding.UTF8.GetBytes(record), "Write install record");
+                    if (string.Equals(IntegrationTestFailurePoint, "after-recorded-mutations", StringComparison.Ordinal))
+                        throw new IOException("Injected installer test failure after recorded mutations.");
                     transaction.Commit(new[]
                     {
                         "DragonSword Native Auto Pickup " + ProductVersion,
@@ -621,12 +630,15 @@ namespace DragonSwordNativeAutoPickup.Installer
                 ConvertsUE4SS = context.Converts,
                 BootstrapsUE4SS = context.Bootstraps,
                 UpdatesExistingAutoPickup = state.IsOwned,
+                ToggleHotkey = hotkey,
+                InteractionKeyFallback = fallback,
+                RangeSelection = range,
                 ActionDescription = context.Converts
                     ? "Setup will create a complete verified backup, replace the active UE4SS layout with the tested ExperimentalNested runtime, migrate existing Mods and settings, and install Auto Pickup."
                     : context.Bootstraps
                         ? "Setup will install the tested ExperimentalNested UE4SS runtime and Auto Pickup."
                         : state.IsOwned
-                            ? "Setup will keep the tested UE4SS runtime, preserve config.ini, and update the owned Auto Pickup files in place."
+                            ? "Setup will keep the tested UE4SS runtime, apply the confirmed keys and range, preserve all other config.ini settings, and update the owned Auto Pickup files in place. Unchanged key values keep their original formatting."
                             : "Setup will keep the tested UE4SS runtime and install Auto Pickup."
             };
         }
@@ -820,20 +832,81 @@ namespace DragonSwordNativeAutoPickup.Installer
 
         private static void ReadInstalledKeys(string configPath, out string hotkey, out string fallback)
         {
-            var text = File.ReadAllText(configPath, new UTF8Encoding(false, true));
-            if (!Regex.IsMatch(text, "(?m)^\\s*\\[auto_pickup\\]\\s*$"))
-                throw new InvalidDataException("Installed Auto Pickup config has no [auto_pickup] section.");
-            hotkey = ReadConfigSetting(text, "toggle_hotkey");
-            fallback = ReadConfigSetting(text, "interaction_key_fallback");
+            ReadConfiguredKeys(ReadConfigBytes(configPath), out hotkey, out fallback);
             hotkey = NormalizeKey(hotkey, "F9", false);
             fallback = NormalizeKey(fallback, "F", true);
         }
 
+        private static byte[] ReadConfigBytes(string path)
+        {
+            if (new FileInfo(path).Length > 65536)
+                throw new InvalidDataException("Auto Pickup config.ini exceeds the 64 KiB limit.");
+            return File.ReadAllBytes(path);
+        }
+
+        private static void ReadConfiguredKeys(byte[] bytes, out string hotkey, out string fallback)
+        {
+            if (bytes == null || bytes.Length == 0 || bytes.Length > 65536)
+                throw new InvalidDataException("Auto Pickup config.ini is empty or exceeds the 64 KiB limit.");
+            var text = new UTF8Encoding(false, true).GetString(bytes).TrimStart('\uFEFF');
+            if (text.IndexOf('\0') >= 0 || text.Replace("\r\n", "\n").IndexOf('\r') >= 0)
+                throw new InvalidDataException("Auto Pickup config.ini has invalid text or line endings.");
+            hotkey = ReadConfigSetting(text, "toggle_hotkey");
+            fallback = ReadConfigSetting(text, "interaction_key_fallback");
+            ValidateRequestedKeys(hotkey, fallback);
+        }
+
         private static string ReadConfigSetting(string text, string key)
         {
-            var match = Regex.Match(text, "(?m)^\\s*" + Regex.Escape(key) + "\\s*=\\s*([^#;\\r\\n]+?)\\s*$");
-            if (!match.Success) throw new InvalidDataException("Config setting is missing: " + key);
-            return match.Groups[1].Value.Trim();
+            return FindConfigKey(text, key).Groups[2].Value;
+        }
+
+        private static Match FindConfigKey(string text, string key)
+        {
+            var sections = Regex.Matches(text, "(?m)^[ \\t]*\\[([^\\]\\r\\n]+)\\][ \\t]*\\r?$");
+            var owners = sections.Cast<Match>().Where(match => match.Groups[1].Value == "auto_pickup").ToArray();
+            if (owners.Length != 1)
+                throw new InvalidDataException("config.ini requires one [auto_pickup] section.");
+            int start = owners[0].Index + owners[0].Length;
+            var next = sections.Cast<Match>().FirstOrDefault(match => match.Index > owners[0].Index);
+            int end = next == null ? text.Length : next.Index;
+            var matches = Regex.Matches(text, "(?m)^([ \\t]*" + Regex.Escape(key) +
+                "[ \\t]*=[ \\t]*)([^ \\t#;\\r\\n]+)([ \\t]*)(\\r?)$")
+                .Cast<Match>().Where(match => match.Index >= start && match.Index < end).ToArray();
+            // The native parser is flat: reject duplicate assignments anywhere,
+            // including other sections. Inline comments are not native values.
+            int assignments = Regex.Matches(text, "(?m)^[ \\t]*" + Regex.Escape(key) + "[ \\t]*=")
+                .Count;
+            if (matches.Length != 1 || assignments != 1)
+                throw new InvalidDataException("Missing, duplicate, or invalid config.ini key: " + key);
+            return matches[0];
+        }
+
+        private static byte[] ApplyConfiguredKeys(byte[] original, string hotkey, string fallback)
+        {
+            ValidateRequestedKeys(hotkey, fallback);
+            hotkey = NormalizeKey(hotkey, "F9", false);
+            fallback = NormalizeKey(fallback, "F", true);
+            ReadConfiguredKeys(original, out var oldHotkey, out var oldFallback);
+            if (oldHotkey == hotkey && oldFallback == fallback)
+                return original;
+            var text = new UTF8Encoding(false, true).GetString(original);
+            var keys = new[] { "toggle_hotkey", "interaction_key_fallback" };
+            var before = new[] { oldHotkey, oldFallback };
+            var after = new[] { hotkey, fallback };
+            for (int index = 0; index < keys.Length; ++index)
+            {
+                if (before[index] == after[index]) continue;
+                // Strip only the optional BOM for matching, then use its offset
+                // to replace the exact value span, preserving every other byte.
+                int bomOffset = text.Length > 0 && text[0] == '\uFEFF' ? 1 : 0;
+                var value = FindConfigKey(text.Substring(bomOffset), keys[index]).Groups[2];
+                int offset = value.Index + bomOffset;
+                text = text.Substring(0, offset) + after[index] + text.Substring(offset + value.Length);
+            }
+            var result = new UTF8Encoding(false).GetBytes(text);
+            ReadConfiguredKeys(result, out _, out _);
+            return result;
         }
 
         private static string BuildInstallationStateIdentity(Context context, AutoPickupInstallationState110 state)
@@ -1305,10 +1378,21 @@ namespace DragonSwordNativeAutoPickup.Installer
         private static string NormalizeKey(string value, string fallback, bool allowGamepad)
         {
             var key = string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+            if (allowGamepad && string.Equals(key, "AUTO", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Interaction fallback must be a concrete key, not AUTO.");
             if (Regex.IsMatch(key, "^(F([1-9]|1[0-9]|2[0-4])|[A-Z0-9]|NUM[0-9]|HOME|END|PAGEUP|PAGEDOWN|INSERT|DELETE|SPACE)$", RegexOptions.IgnoreCase))
                 return key.ToUpperInvariant();
             if (allowGamepad && Regex.IsMatch(key, "^[A-Za-z][A-Za-z0-9_]{1,63}$")) return key;
             throw new InvalidOperationException("Unsupported key name: " + key);
+        }
+
+        private static void ValidateRequestedKeys(string hotkey, string fallback)
+        {
+            if (new[] { hotkey, fallback }.Any(value => string.IsNullOrWhiteSpace(value) ||
+                    value.Length > 64 || value.Any(c => c < ' ' && c != '\t')))
+                throw new InvalidDataException("Choose a Toggle key and an Interaction fallback key. Empty keys and modifier combinations are not supported.");
+            NormalizeKey(hotkey, "F9", false);
+            NormalizeKey(fallback, "F", true);
         }
 
         private static void EnsureGameIsClosed()

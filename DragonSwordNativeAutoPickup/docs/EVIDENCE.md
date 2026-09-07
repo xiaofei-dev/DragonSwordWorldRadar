@@ -1,5 +1,34 @@
 # Evidence
 
+## 1.3.1 deferred startup-readiness correction
+
+The first installed 1.3.1 session on Steam build `25076183`, game SHA-256
+`B3E0B8CAB6752ACB981E104CA95A0105F76FCDD42EE622A8063AB8DE44FCA94C`,
+loaded the exact Mod and passed the pinned UE4SS fingerprint. At 6,220 ms it
+recorded `required_reflection_object_missing`: every required class, function,
+and property was present except `interactable_cdo=false`. No selector attempt,
+F9 event, scan, or injection occurred. This isolates a startup-readiness race
+before selector resolution; it is not range-PAK, debug-logging, input, or
+pickup-scheduler evidence.
+
+The corrective 1.3.1 source registers one bootstrap EngineTick after the pinned
+UE4SS fingerprint gate. Only the exact CDO-not-ready predicate is deferred at
+250 ms intervals for at most 30 seconds. Operational EngineTick work rejects
+all non-Ready states. Recovery reruns the complete reflection validation and
+dual-anchor selector consensus before registering F9 and publishing `READY`.
+Static/source/core/native-artifact, installer 11/11, deterministic archive,
+exact-entry, and checksum validation passed. The corrective DLL is 944,640
+bytes / `44FFCECD0CCC4CB1BA30502F147E1E439F919D229A4B9DD5D72B66C1155D1B64`.
+The unsigned Setup is 13,027,328 bytes /
+`8B3B883EFB8BF1E269643D98A0B0E5270682E17157FF92321D8110335BAF4B8D`.
+The installer, manual-without-UE4SS, manual-with-UE4SS, and unchanged range ZIP
+hashes are respectively
+`B9243CFD00AE87574923CFD986EC01CD9E06A6228C15DEDCE319D968C7E0553A`,
+`0955697D4F83B91CDBF103188CEEB1958114C5959148E7FB22BC8E6222E5F3B8`,
+`630ECBA521836A2F4F3C216E809068D328EF21D51BA582B642DB95A643DADEC0`,
+and `A346C4F20CF85C60FD2965FCC583129AFD8EB2B805CF4E20A80C1B20B79B49FE`.
+Deployment and owner gameplay acceptance remain separate until recorded below.
+
 ## 1.3.1 high-range drop-list correction
 
 Version 1.3.1 preserves the accepted 1.3.0 native pickup logic and changes the

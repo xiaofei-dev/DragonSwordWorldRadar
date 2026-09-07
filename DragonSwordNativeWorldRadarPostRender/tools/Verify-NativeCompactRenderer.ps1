@@ -150,11 +150,11 @@ Assert-True ($renderIds.Count -eq 1693 `
     -and $actorOnlyIds.Count -eq 0) `
     'Treasure render/Actor catalog difference must remain exactly the confirmed absent ID 11230106.'
 
-Assert-True ($metadata.version -eq '2.2.1' `
+Assert-True ($metadata.version -eq '2.3.0' `
     -and $mainCode -match `
-        'kVersion\s*=\s*STR\("2\.2\.1"\)' `
+        'kVersion\s*=\s*STR\("2\.3\.0"\)' `
     -and $mainCode -match `
-        'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1') `
+        'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0') `
     'Release metadata version does not match the native compact-pool milestone.'
 Assert-True ($main -match '#include "compact_umg_renderer\.hpp"') `
     'The native owner does not include the compact UMG renderer.'
@@ -2008,6 +2008,36 @@ Assert-True ($compactMenuStateCode -match `
         'compact menu-state classification must not allocate') `
     'Compact suppression must remain one allocation-free pure helper covering categories, Pawn validity, cursor, controller map, pause, and activity state.'
 
+# CM-04: production behavior must not depend on debug logging or on the
+# controller/mouse route. Keep this bounded read off the 16 ms position path.
+$nativePaintRead = [regex]::Match($mainCode,
+    '(?s)read_native_minimap_paint_unsafe\(UWorld\* expected_world\)\s*\{.*?(?=\s*\[\[nodiscard\]\])').Value
+$nativePaintRefresh = Get-MainFunction $mainCode 'refresh_native_minimap_paint'
+$nativePaintActivity = Get-MainFunction $mainCode 'probe_activity_context_unsafe'
+Assert-True ($nativePaintRead.Length -gt 0 `
+    -and $nativePaintRead -match 'compact_layer_candidate_\.Get\(\)' `
+    -and $nativePaintRead -match 'layer->GetWorld\(\)\s*!=\s*expected_world' `
+    -and $nativePaintRead -match 'layer->IsA\(compact_layer_class_\)' `
+    -and $nativePaintRead -match 'depth\s*<\s*8' `
+    -and $nativePaintRead -match 'read_object\(owner, L"DLayerMiniMap"\)\s*==\s*layer' `
+    -and $nativePaintRead -match 'std::array<UObject\*,\s*24>\s+visited' `
+    -and $nativePaintRead -match 'std::find\(visited.begin\(\)' `
+    -and $nativePaintRead -match 'read_object\(slot, L"Content"\)\s*==\s*node' `
+    -and $nativePaintRead -match 'read_object\(tree, L"RootWidget"\)\s*==\s*node' `
+    -and $nativePaintRead -match 'read_object\(tree_owner, L"WidgetTree"\)\s*==\s*tree' `
+    -and $nativePaintRead -match 'dswros::native_widget_paint\(' `
+    -and $nativePaintRead -notmatch 'native_event_log_enabled|FindAllOf|FindFirstOf|StaticFindObject|ProcessEvent|SetVisibility|SetRenderOpacity|set_visibility|std::vector|std::string' `
+    -and $nativePaintRefresh -match 'read_native_minimap_paint_guarded\(expected_world\)' `
+    -and $nativePaintRefresh -match 'native_minimap_paint_\s*=\s*next' `
+    -and $nativePaintRefresh -match 'apply_compact_suppression\(\)' `
+    -and $nativePaintRefresh -notmatch 'detach|begin_activation|world_map_umg_renderer_' `
+    -and $nativePaintActivity -match 'refresh_native_minimap_paint\(' `
+    -and [regex]::Matches($mainCode, 'refresh_native_minimap_paint\(').Count -eq 2 `
+    -and $compactRenderSuppressed -match 'native_minimap_paint_\s*==\s*dswros::NativeMinimapPaint::Hidden' `
+    -and $compactMenuStateCode -match '\|\|\s*state\.native_minimap_hidden' `
+    -and $nativeTests -match 'controller navigation must hide and restore without an input latch') `
+    'CM-04 must read only proven current-minimap paint ancestry at the shared activity edge and suppress only the owned compact host without a debug dependency or native UI writes.'
+
 Assert-True ($mainCode -match `
         'kWidgetIsVisibleFunction\s*=\s*STR\("/Script/UMG\.Widget:IsVisible"\)' `
     -and $mainCode -match `
@@ -2879,13 +2909,13 @@ Assert-True ($detectCurrentLanguage.Length -gt 0 `
     -and $mainCode -match `
         '/Script/Engine\.Default__KismetInternationalizationLibrary' `
     -and $mainCode -match `
-        'detect_current_game_language_guarded\s*\([\s\S]*?__try[\s\S]*?detect_current_game_language\(engine\)[\s\S]*?seh_fault_fallback_en' `
+        'detect_current_game_language_guarded\s*\([\s\S]*?__try[\s\S]*?detect_current_game_language\(engine\)[\s\S]*?seh_fault_preserve_last' `
     -and $mainCode -match `
         'current_player_controller_for_visibility_hub\s*\([\s\S]*?__try[\s\S]*?current_player_controller\(engine\)[\s\S]*?return\s+nullptr' `
     -and [regex]::Matches(
         $mainCode, 'ProcessEvent\(current_language_function_').Count -eq 1 `
     -and $activateLifecycle -match `
-        'detected_game_language_\s*=\s*detect_current_game_language_guarded\(engine\)[\s\S]*?resolve_radar_ui_language' `
+        'detected_game_language_\s*=\s*dswros::retain_detected_radar_language\([\s\S]*?detected_game_language_,\s*detect_current_game_language_guarded\(engine\)\)[\s\S]*?resolve_radar_ui_language' `
     -and $detectCurrentLanguage -match `
         'game_user_settings_language_schema_ready_[\s\S]*?engine_game_user_settings_property_[\s\S]*?game_language_text_property_[\s\S]*?game_language_text_numeric_property_[\s\S]*?radar_ui_language_from_game_setting' `
     -and $mainCode -match `
@@ -2893,9 +2923,9 @@ Assert-True ($detectCurrentLanguage.Length -gt 0 `
     -and $mainCode -match `
         'game_language_text_numeric_property_\s*->GetUnsignedIntPropertyValue' `
     -and $detectCurrentLanguage -match `
-        'internationalization_language_schema_ready_[\s\S]*?ProcessEvent\(current_language_function_[\s\S]*?RadarUiLanguage::English' `
+        'internationalization_language_schema_ready_[\s\S]*?ProcessEvent\(current_language_function_[\s\S]*?RadarUiLanguage::Count' `
     -and $detectCurrentLanguage -match `
-        'length\s*<=\s*0\s*\|\|\s*length\s*>\s*63[\s\S]*?RadarUiLanguage::English' `
+        'length\s*<=\s*0\s*\|\|\s*length\s*>\s*63[\s\S]*?RadarUiLanguage::Count' `
     -and $openVisibilityHubWhenReady -match `
         'detect_current_game_language_guarded\(engine\)[\s\S]*?visibility_hub_\.toggle' `
     -and $openVisibilityHubWhenReady -match `
@@ -2903,7 +2933,7 @@ Assert-True ($detectCurrentLanguage.Length -gt 0 `
     -and ($probeActivityContext + $runtimeVisibilityService + `
         $updateCompactPool) -notmatch `
         'current_language|detect_current_game_language|internationalization') `
-    'LanguageText must run once per F7 and real F6 open through bounded fault guards, fall back through GetCurrentLanguage then English, and remain absent from the 16 ms and 250 ms paths.'
+    'LanguageText must run once per F7 and real F6 open through bounded fault guards, preserve last-known language on failure, and remain absent from the 16 ms and 250 ms paths.'
 
 $serviceVisibilityHub = Get-MainFunction $mainCode 'service_visibility_hub'
 $serviceVisibilityHubToggleRequest = Get-MainFunction `
@@ -2938,13 +2968,17 @@ Assert-True ($visibilityHubHeader -match `
     -and $visibilityHub -match `
         'language_dropdown_control_[\s\S]*?language_choice_controls_[\s\S]*?language_choice_selected_visuals_' `
     -and $visibilityHub -match `
-        'language_dropdown_expanded_[\s\S]*?pending_language_\s*=\s*[\s\S]*?explicit_radar_language_preference[\s\S]*?refresh_localized_text_unsafe\(\)[\s\S]*?set_language_popup_visibility_unsafe\(false\)' `
+        'language_dropdown_expanded_[\s\S]*?pending_language_\s*=\s*dswros::radar_language_choice\(index\)[\s\S]*?refresh_localized_text_unsafe\(\)[\s\S]*?set_language_popup_visibility_unsafe\(false\)' `
     -and $visibilityHubHeader -match `
-        'kLanguageChoiceCount\s*=\s*[\s\S]*?kRadarUiLanguageCount' `
+        'kLanguageChoiceCount\s*=\s*dswros::kRadarLanguagePreferenceCount' `
     -and $visibilityHub -notmatch `
         'choice_label\s*=\s*[\s\S]*?localized\.automatic' `
-    -and $mainCode -match `
-        'migrate_legacy_auto_language_preference[\s\S]*?resolve_explicit_radar_language_preference[\s\S]*?persist_visibility_settings' `
+    -and ($mainCode + $visibilityHub) -notmatch `
+        'migrate_legacy_auto_language_preference|resolve_explicit_radar_language_preference' `
+    -and $visibilityHub -match 'source_language_\s*=\s*sanitize_language\(current_language\)' `
+    -and $visibilityHub -match 'radar_language_choice_index\(' `
+    -and $visibilityHub -match 'follow_game\s*=\s*choice\s*==\s*dswros::RadarLanguagePreference::Auto' `
+    -and [regex]::Matches($mainCode, 'dswros::retain_detected_radar_language\(').Count -eq 2 `
     -and $visibilityHub -match `
         '/Script/UMG\.TextLayoutWidget:SetJustification' `
     -and $visibilityHub -match `
@@ -2955,7 +2989,7 @@ Assert-True ($visibilityHubHeader -match `
         'append\(text\.automatic\)' `
     -and $visibilityHub -notmatch `
         'L"(?:RADAR SETTINGS|MARKER VISIBILITY|BIRD EGGS|AREA QUEST MODE|ASSAULT MODE|AVAILABLE|ALL|CLOSE)"') `
-    'F6 must publish height/language state, expose only eleven explicit language choices, migrate legacy AUTO on a bounded F6/F7 sample, and keep optional text centering from disabling the pre-created language popup.'
+    'F6 must preserve AUTO first plus eleven manual choices, use preference-based popup cells, retain last-known language only at F6/F7 edges, and keep optional centering nonfatal.'
 Assert-True ($visibilityHub -match `
         'kReferencePanelWidth\s*=\s*680\.0' `
     -and $visibilityHub -match `

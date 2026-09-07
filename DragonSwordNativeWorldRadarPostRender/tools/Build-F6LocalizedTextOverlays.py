@@ -127,8 +127,8 @@ MAIN_LAYOUT = (
 
 # language, x, y, width, height, native role scale, horizontally centered
 POPUP_LAYOUT = (
-    ("ko", 448, 145, 180, 24, 0.42, True),
-    ("zh-hant", 246, 185, 180, 24, 0.42, True),
+    ("ko", 44, 185, 180, 24, 0.42, True),
+    ("zh-hant", 448, 185, 180, 24, 0.42, True),
 )
 
 

@@ -3,8 +3,8 @@
   "product": {
     "mod_name": "DragonSwordNativeWorldRadarPostRender",
     "display_name": "DragonSword Native World Radar",
-    "public_version": "2.2.1",
-    "runtime_label": "DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1"
+    "public_version": "2.3.0",
+    "runtime_label": "DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0"
   },
   "game": {
     "steam_app_id": 4570720,
@@ -111,26 +111,34 @@
       },
       "height_arrows": {
         "treasure": true,
-        "area_quests": false,
-        "mole": false
+        "area_quests": true,
+        "mole": true
       },
       "interface": {
         "language": "auto"
+      },
+      "hotkeys": {
+        "settings_hotkey": "F6",
+        "enable_hotkey": "F7",
+        "disable_hotkey": "F8"
       }
     },
     "visibility_config": "startup-only config/visibility.ini; legacy complete [radar], [map], and [modes] files migrate with Treasure-only height and AUTO language defaults, while current files require complete [radar], [map], [modes], [height_arrows], and [interface] sections; no hot polling",
     "diagnostics_config": "startup-only config/diagnostics.ini; public default debug_logging=false; enabled log schema 2 records seq, utc_ms, and elapsed_ms; disabled path returns before formatting, mutex acquisition, directory creation, rotation, or file I/O",
     "user_owned_paths": [
+      "config/hotkeys.ini",
       "config/visibility.ini",
       "config/diagnostics.ini",
       "data/defaults/treasure_overrides.txt"
     ],
     "installed_paths": [
+      "config/hotkeys.ini",
       "config/visibility.ini",
       "config/diagnostics.ini",
       "data/defaults/treasure_overrides.txt"
     ],
     "installer_only_defaults_are_not_installed": true,
+    "hotkeys_config": "startup-only config/hotkeys.ini; three distinct single-key bindings; invalid runtime config falls back as a whole to F6/F7/F8; Setup reads existing bindings and allows confirmed selections on Install, Update, and Repair; unchanged selections preserve exact bytes, changed values preserve comments and formatting, other user settings are preserved; invalid or duplicate keys and stale confirmations reject before mutation; failures roll back old keys; no F6 save or live reload",
     "local_debug_override": "installed_copy_only",
     "public_staging_source": "immutable_embedded_defaults_only"
   },
@@ -196,16 +204,16 @@
   "release": {
     "installer_first": true,
     "installer_unsigned": true,
-    "archive_name": "DragonSwordNativeWorldRadarPostRender-v2.2.1-Installer.zip",
+    "archive_name": "DragonSwordNativeWorldRadarPostRender-v2.3.0-Installer.zip",
     "manual_package": true,
     "manual_archives": [
       {
-        "name": "DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-No-UE4SS.zip",
+        "name": "DragonSwordNativeWorldRadarPostRender-v2.3.0-Manual-No-UE4SS.zip",
         "layout": "experimental_nested",
         "includes_ue4ss": false
       },
       {
-        "name": "DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip",
+        "name": "DragonSwordNativeWorldRadarPostRender-v2.3.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip",
         "layout": "experimental_nested",
         "includes_ue4ss": true,
         "runtime_policy": "pinned_integrity_verified_experimental_nested_only"
@@ -223,22 +231,27 @@
       "failed": 0,
       "skipped": 0
     },
-    "final_output_directory": "dist/final-2.2.1",
+    "final_output_directory": "dist/final-2.3.0",
     "expected_final_files": [
-      "DragonSwordNativeWorldRadarPostRender-v2.2.1-Installer.zip",
-      "DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-No-UE4SS.zip",
-      "DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip",
+      "DragonSwordNativeWorldRadarPostRender-v2.3.0-Installer.zip",
+      "DragonSwordNativeWorldRadarPostRender-v2.3.0-Manual-No-UE4SS.zip",
+      "DragonSwordNativeWorldRadarPostRender-v2.3.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip",
       "release-manifest.json",
       "SHA256SUMS.txt"
     ],
     "expected_public_files": [
-      "DragonSwordNativeWorldRadarPostRender-Setup-2.2.1.exe",
-      "DragonSwordNativeWorldRadarPostRender-Setup-2.2.1.exe.sha256",
+      "DragonSwordNativeWorldRadarPostRender-Setup-2.3.0.exe",
+      "DragonSwordNativeWorldRadarPostRender-Setup-2.3.0.exe.sha256",
       "INSTALL.md",
       "THIRD_PARTY_NOTICES.txt"
     ]
   },
   "acceptance": {
+    "tracking": "docs/RELEASE_PLAN_2_3_0.md",
+    "gameplay": "NOT_VALIDATED",
+    "publication": "BLOCKED"
+  },
+  "historical_2_2_1_acceptance": {
     "source": "PASSED_CURRENT_WM06_IMMUTABLE_SAME_PARENT_SOURCE_AND_RELEASE_HYGIENE",
     "build": "PASSED_CURRENT_WM06_LOCAL_NATIVE_BUILD",
     "compiled_source_sha256": "0A1A4CE3EE9F3A04E4B258976CFD830654BCB778B1F9BF5715FB66242B5E5BC5",
@@ -253,7 +266,7 @@
     "exit": "NOT_VALIDATED",
     "performance": "NOT_VALIDATED",
     "f6_text_lifecycle": "Source lifecycle centering covers initial open, language changes, status changes, and popup visibility changes. Exact-font text accepts GetDesiredSize only when ReturnValue matches the known Vector2D struct identity, then centers the measured line height within the authored vertical slot. Render-scale fallback preserves authored slot geometry. Invalid desired-size evidence preserves authored text-slot geometry. The work is edge-only and changes no per-frame path, radar or world-map geometry, or button hit region; live visual behavior remains NOT_VALIDATED.",
-    "evidence_boundary": "Historical 2.2.0 and superseded 2.2.1 evidence remains bound to its recorded bytes and is not current WM-06 evidence. Exact-artifact 2.2.1 source validation, native build, package, Setup 20/20, Manual 2/2, payload equivalence, layout, clean-target, archive re-extraction, and rollback-backed developer-local deployment passed for current WM-06 DLL 6435E10031D90840BF0499664CF57347D7991C9C192BD3B2239ADE2324C723A1 and compiled source 0A1A4CE3EE9F3A04E4B258976CFD830654BCB778B1F9BF5715FB66242B5E5BC5. Gameplay, native-icon stability, click-target alignment, F6 visual behavior, controller behavior, localization, resolution, exit, and performance remain NOT_VALIDATED.",
+    "evidence_boundary": "This section records historical 2.2.1 WM-06 artifact evidence only, not 2.3.0 acceptance. Current status is in metadata/release.json release_acceptance and docs/RELEASE_PLAN_2_3_0.md.",
     "publication": "BLOCKED"
   }
 }

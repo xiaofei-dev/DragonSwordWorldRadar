@@ -78,6 +78,12 @@ function InspectState($Fixture) {
 function InstallConfirmed($Fixture, [string]$Token) {
     $script:InstallConfirmed.Invoke($null, [object[]]@([string]$Fixture.Game, [string]$Token))
 }
+function InspectKeys($Fixture, [string[]]$Keys) {
+    $script:InspectWithHotkeys.Invoke($null, [object[]]@([string]$Fixture.Game, $Keys[0], $Keys[1], $Keys[2]))
+}
+function InstallKeys($Fixture, [string[]]$Keys, [string]$Token) {
+    $script:InstallWithHotkeys.Invoke($null, [object[]]@([string]$Fixture.Game, $Keys[0], $Keys[1], $Keys[2], $Token))
+}
 function InspectUninstall($Fixture) {
     $script:InspectUninstall.Invoke($null, [object[]]@([string]$Fixture.Game))
 }
@@ -144,6 +150,8 @@ $engine = $script:Assembly.GetType('DragonSwordNativeWorldRadarPostRender.Instal
 $script:Install = $engine.GetMethod('Install', [Reflection.BindingFlags]'Static, NonPublic')
 $script:Inspect = $engine.GetMethod('Inspect', [Reflection.BindingFlags]'Static, NonPublic')
 $script:InspectState = $engine.GetMethod('InspectInstallationState', [Reflection.BindingFlags]'Static, NonPublic')
+$script:InspectWithHotkeys = $engine.GetMethod('InspectWithHotkeys', [Reflection.BindingFlags]'Static, NonPublic')
+$script:InstallWithHotkeys = $engine.GetMethod('InstallConfirmedWithHotkeys', [Reflection.BindingFlags]'Static, NonPublic')
 $script:InstallConfirmed = $engine.GetMethod('InstallConfirmed', [Reflection.BindingFlags]'Static, NonPublic')
 $script:InspectUninstall = $engine.GetMethod('InspectUninstall', [Reflection.BindingFlags]'Static, NonPublic')
 $script:UninstallConfirmed = $engine.GetMethod('UninstallConfirmed', [Reflection.BindingFlags]'Static, NonPublic')
@@ -254,6 +262,21 @@ Run 'Bare install creates complete Experimental loader and Radar' {
     Assert (Test-Path -LiteralPath (Join-Path $f.Target 'dlls\main.dll')) 'Radar DLL missing.'
     Assert ((Get-Content (Join-Path $f.Mods 'mods.txt') -Raw) -match "$product\s*:\s*1") 'Radar authority missing.'
     Equal (Hash (Join-Path $f.Nested 'UE4SS-settings.ini')) $settingsHash 'Bare install settings differ.'
+    $customFixture = NewFixture (Join-Path $root 'custom-keys') Bare
+    $keys = @('INSERT','HOME','PAGEUP')
+    $before = TreeHash $customFixture.Root
+    $plan = InspectKeys $customFixture $keys
+    Equal (TreeHash $customFixture.Root) $before 'Custom-key inspection changed a clean target.'
+    Equal ([string](Prop (Prop $plan 'Hotkeys') 'Settings')) 'INSERT' 'Plan omitted selected Settings key.'
+    $rejected = $false
+    try { [void](InstallKeys $customFixture @('F6','F7','F8') ([string](Prop $plan 'IdentityToken'))) } catch { $rejected = $true }
+    Assert $rejected 'Changed selected keys were accepted with an old confirmation token.'
+    Equal (TreeHash $customFixture.Root) $before 'Rejected selected keys changed a clean target.'
+    [void](InstallKeys $customFixture $keys ([string](Prop $plan 'IdentityToken')))
+    VerifyLoader $customFixture
+    $customState = InspectState $customFixture
+    Equal ([string](Prop (Prop $customState 'Hotkeys') 'Enable')) 'HOME' 'Installed keys did not populate UI state.'
+    Equal ([string](Prop (Prop $customState 'Hotkeys') 'Disable')) 'PAGEUP' 'Installed disable key was lost.'
 }
 Run 'Other UE4SS converts and migrates Mods and configuration' {
     param($root)
@@ -412,6 +435,24 @@ Run 'Update repair preserves user settings and refreshes bundled catalogs withou
     $treasureOverrides = "# User treasure exclusions`r`nignore 11230106`r`nignore 12345678`r`n"
     WriteText (Join-Path $f.Target 'config\visibility.ini') $visibility
     WriteText (Join-Path $f.Target 'config\diagnostics.ini') $diagnostics
+    foreach ($badHotkeys in @(
+        "[hotkeys]`nsettings_hotkey=Insert`nenable_hotkey=Home`ndisable_hotkey=HOME`n",
+        "[hotkeys]`nsettings_hotkey=F25`nenable_hotkey=Home`ndisable_hotkey=PageUp`n",
+        "[hotkeys]`nsettings_hotkey=Insert`nenable_hotkey=Home`n",
+        ('#' + ('x' * 4096)))) {
+        WriteText (Join-Path $f.Target 'config\hotkeys.ini') $badHotkeys
+        $hotkeyBefore = TreeHash $root
+        $hotkeyError = $null
+        try { [void](Install $f) } catch { $hotkeyError = $_.Exception }
+        Assert ($null -ne $hotkeyError) 'Invalid hotkeys were accepted.'
+        Assert ((ErrorText $hotkeyError) -match 'hotkeys.ini') 'Unexpected hotkey validation failure.'
+        Equal (TreeHash $root) $hotkeyBefore 'Rejected hotkeys changed the installed tree.'
+        $invalidState = InspectState $f
+        Assert (-not [bool](Prop $invalidState 'CanUpdate')) 'Invalid existing hotkeys enabled GUI Repair.'
+        Assert ([bool](Prop $invalidState 'CanUninstall')) 'Invalid hotkeys blocked safe uninstall of an otherwise owned Mod.'
+    }
+    $hotkeys = "# Keep my bindings`r`n[hotkeys]`r`nsettings_hotkey=Insert`r`nenable_hotkey=Home`r`ndisable_hotkey=PageUp`r`n"
+    WriteText (Join-Path $f.Target 'config\hotkeys.ini') $hotkeys
     WriteText (Join-Path $f.Target 'data\defaults\treasure_overrides.txt') $treasureOverrides
     $catalog = Join-Path $f.Target 'data\generated\treasures.lua'
     [IO.File]::SetLastWriteTimeUtc($catalog, [DateTime]::Parse('2000-01-01T00:00:00Z').ToUniversalTime())
@@ -420,14 +461,66 @@ Run 'Update repair preserves user settings and refreshes bundled catalogs withou
     $state = InspectState $f
     Assert ([bool](Prop $state 'CanUpdate')) 'Owned current Radar did not enable Repair.'
     Assert ([bool](Prop $state 'CanUninstall')) 'Owned current Radar did not enable Uninstall.'
-    Equal ([string](Prop $state 'InstalledVersion')) '2.2.1' 'Current Radar version was not detected.'
+    Equal ([string](Prop $state 'InstalledVersion')) '2.3.0' 'Current Radar version was not detected.'
     $result = Install $f
     Assert ([bool](Prop $result 'UpdatedExistingRadar')) 'Install result did not report Update / Repair.'
     Equal (Get-Content (Join-Path $f.Target 'config\visibility.ini') -Raw) $visibility 'Visibility settings were overwritten.'
     Equal (Get-Content (Join-Path $f.Target 'config\diagnostics.ini') -Raw) $diagnostics 'Diagnostics settings were overwritten.'
+    Equal (Get-Content (Join-Path $f.Target 'config\hotkeys.ini') -Raw) $hotkeys 'Hotkey settings were overwritten.'
     Equal (Get-Content (Join-Path $f.Target 'data\defaults\treasure_overrides.txt') -Raw) $treasureOverrides 'Treasure ignores were overwritten.'
     Assert ([IO.File]::GetLastWriteTimeUtc($catalog).Year -ne 2000) 'Bundled treasure catalog was not refreshed.'
     Assert ([string]::IsNullOrEmpty([string](Prop $result 'BackupDirectory'))) 'Update / Repair reported a persistent backup.'
+    AssertNoPersistentBackup $f
+
+    # Exercise the same explicit-selection API used by the GUI, not only the
+    # legacy preserve-settings entry point. Unchanged selections preserve bytes.
+    $unchangedKeys = @('INSERT','HOME','PAGEUP')
+    $plan = InspectKeys $f $unchangedKeys
+    [void](InstallKeys $f $unchangedKeys ([string](Prop $plan 'IdentityToken')))
+    $keysPath = Join-Path $f.Target 'config\hotkeys.ini'
+    Equal (Get-Content -LiteralPath $keysPath -Raw) $hotkeys 'Unchanged GUI selection reformatted hotkeys.'
+    $before = TreeHash $root
+    $caught = $null
+    try { [void](InspectKeys $f @('HOME','home','F8')) } catch { $caught = $_.Exception }
+    Assert ($null -ne $caught) 'Duplicate GUI keys were accepted.'
+    Equal (TreeHash $root) $before 'Rejected GUI keys mutated the fixture.'
+
+    $newKeys = @('F6','F7','F8')
+    $plan = InspectKeys $f $newKeys
+    WriteText $keysPath ($hotkeys + "# edited after confirmation`r`n")
+    $before = TreeHash $root
+    $caught = $null
+    try { [void](InstallKeys $f $newKeys ([string](Prop $plan 'IdentityToken'))) } catch { $caught = $_.Exception }
+    Assert ($null -ne $caught) 'An externally changed hotkey file did not invalidate confirmation.'
+    Assert ((ErrorText $caught) -match 'changed after') 'Stale hotkey confirmation failed for an unexpected reason.'
+    Equal (TreeHash $root) $before 'Stale hotkey confirmation mutated the fixture.'
+    WriteText $keysPath $hotkeys
+
+    # Failed transactions intentionally keep their recovery journal. Isolate
+    # that fixture so successful repair's no-persistent-backup check stays exact.
+    $rollbackFixture = NewFixture (Join-Path $root 'hotkey-rollback') Experimental
+    $plan = InspectKeys $rollbackFixture $unchangedKeys
+    [void](InstallKeys $rollbackFixture $unchangedKeys ([string](Prop $plan 'IdentityToken')))
+    $plan = InspectKeys $rollbackFixture $newKeys
+    $beforeTarget = TreeHash $rollbackFixture.Target
+    $beforeMods = Get-Content -LiteralPath (Join-Path $rollbackFixture.Mods 'mods.txt') -Raw
+    $failurePoint.SetValue($null, 'after-recorded-mutations')
+    $caught = $null
+    try { [void](InstallKeys $rollbackFixture $newKeys ([string](Prop $plan 'IdentityToken'))) }
+    catch { $caught = $_.Exception } finally { $failurePoint.SetValue($null, $null) }
+    Assert ($null -ne $caught) 'Injected hotkey repair failure was not triggered.'
+    Equal (TreeHash $rollbackFixture.Target) $beforeTarget 'Repair rollback did not restore old hotkeys and other Radar files.'
+    Equal (Get-Content -LiteralPath (Join-Path $rollbackFixture.Mods 'mods.txt') -Raw) $beforeMods 'Repair rollback changed mods.txt.'
+
+    $plan = InspectKeys $f $newKeys
+    [void](InstallKeys $f $newKeys ([string](Prop $plan 'IdentityToken')))
+    $expectedKeys = $hotkeys.Replace('=Insert','=F6').Replace('=Home','=F7').Replace('=PageUp','=F8')
+    Equal (Get-Content -LiteralPath $keysPath -Raw) $expectedKeys 'Repair did not apply the selected keys or preserve comments.'
+    Equal (Get-Content (Join-Path $f.Target 'config\visibility.ini') -Raw) $visibility 'Key repair changed visibility.'
+    Equal (Get-Content (Join-Path $f.Target 'config\diagnostics.ini') -Raw) $diagnostics 'Key repair changed diagnostics.'
+    Equal (Get-Content (Join-Path $f.Target 'data\defaults\treasure_overrides.txt') -Raw) $treasureOverrides 'Key repair changed treasure ignores.'
+    $state = InspectState $f
+    Equal ([string](Prop (Prop $state 'Hotkeys') 'Settings')) 'F6' 'Reopened Setup did not read the repaired key.'
     AssertNoPersistentBackup $f
 }
 Run 'Older structurally owned Radar version is accepted for update' {
@@ -447,17 +540,26 @@ Run 'Older structurally owned Radar version is accepted for update' {
     $releaseEntry[0].size = (Get-Item -LiteralPath $releasePath).Length
     $releaseEntry[0].sha256 = Hash $releasePath
     WriteText $manifestPath ($manifest | ConvertTo-Json -Depth 100)
-    $record = (Get-Content -LiteralPath $recordPath -Raw) -replace 'Version: 2\.2\.1', 'Version: 2.1.1'
+    $record = (Get-Content -LiteralPath $recordPath -Raw) -replace 'Version: 2\.3\.0', 'Version: 2.1.1'
     WriteText $recordPath $record
+    # Pre-2.3 installations have no hotkey file. Show defaults, then allow an
+    # explicit custom selection on Update rather than silently ignoring it.
+    [IO.File]::Delete((Join-Path $f.Target 'config\hotkeys.ini'))
     $state = InspectState $f
     Assert ([bool](Prop $state 'CanUpdate')) 'Owned older Radar did not enable Update.'
     Assert ([bool](Prop $state 'CanUninstall')) 'Owned older Radar did not enable Uninstall.'
     Equal ([string](Prop $state 'InstalledVersion')) '2.1.1' 'Older Radar version was not detected.'
-    $plan = Inspect $f
+    Equal ([string](Prop (Prop $state 'Hotkeys') 'Settings')) 'F6' 'Missing old config did not show default keys.'
+    $upgradeKeys = @('INSERT','HOME','PAGEUP')
+    $plan = InspectKeys $f $upgradeKeys
     Assert ([bool](Prop $plan 'UpdatesExistingRadar')) 'Older owned Radar was not accepted for Update / Repair.'
-    [void](Install $f)
+    [void](InstallKeys $f $upgradeKeys ([string](Prop $plan 'IdentityToken')))
     $updatedRelease = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
-    Equal ([string]$updatedRelease.version) '2.2.1' 'Update did not restore the current release version.'
+    Equal ([string]$updatedRelease.version) '2.3.0' 'Update did not restore the current release version.'
+    $upgradedKeys = Get-Content (Join-Path $f.Target 'config\hotkeys.ini') -Raw
+    Assert ($upgradedKeys -match '(?m)^settings_hotkey=INSERT\r?$' -and
+        $upgradedKeys -match '(?m)^enable_hotkey=HOME\r?$' -and
+        $upgradedKeys -match '(?m)^disable_hotkey=PAGEUP\r?$') 'Upgrade did not apply selected hotkeys.'
     AssertNoPersistentBackup $f
 }
 Run 'Injected late failure restores converted loader and Mods state' {

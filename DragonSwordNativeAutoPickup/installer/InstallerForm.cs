@@ -8,8 +8,8 @@ namespace DragonSwordNativeAutoPickup.Installer
     internal sealed class InstallerForm : Form
     {
         private readonly TextBox _gamePath = new TextBox();
-        private readonly TextBox _hotkey = new TextBox();
-        private readonly TextBox _interactionKeyFallback = new TextBox();
+        private readonly ComboBox _hotkey = new ComboBox();
+        private readonly ComboBox _interactionKeyFallback = new ComboBox();
         private readonly ComboBox _rangeSelection = new ComboBox();
         private readonly TextBox _status = new TextBox();
         private readonly Button _browse = new Button();
@@ -17,6 +17,7 @@ namespace DragonSwordNativeAutoPickup.Installer
         private readonly Button _uninstall = new Button();
         private readonly Button _close = new Button();
         private AutoPickupInstallationState110 _installationState;
+        private string _loadedGamePath;
         private bool _busy;
 
         internal InstallerForm()
@@ -42,7 +43,7 @@ namespace DragonSwordNativeAutoPickup.Installer
                 AutoSize = false,
                 Location = new Point(25, 55),
                 Size = new Size(670, 42),
-                Text = "Choose DSClient-Win64-Shipping.exe. Setup installs, upgrades, or repairs Auto Pickup, " +
+                Text = "Choose DSClient-Win64-Shipping.exe. Setup installs, updates, or repairs Auto Pickup, " +
                        "can safely remove an owned installation, and preserves unrelated Mods."
             };
             Controls.Add(introduction);
@@ -78,7 +79,7 @@ namespace DragonSwordNativeAutoPickup.Installer
 
             _hotkey.Location = new Point(28, 190);
             _hotkey.Size = new Size(112, 23);
-            _hotkey.CharacterCasing = CharacterCasing.Upper;
+            ConfigureKeySelector(_hotkey, false);
             _hotkey.Text = "F9";
             Controls.Add(_hotkey);
 
@@ -100,6 +101,7 @@ namespace DragonSwordNativeAutoPickup.Installer
 
             _interactionKeyFallback.Location = new Point(28, 250);
             _interactionKeyFallback.Size = new Size(190, 23);
+            ConfigureKeySelector(_interactionKeyFallback, true);
             _interactionKeyFallback.Text = "F";
             Controls.Add(_interactionKeyFallback);
 
@@ -177,6 +179,7 @@ namespace DragonSwordNativeAutoPickup.Installer
 
             AcceptButton = _install;
             CancelButton = _close;
+            UpdateActionButtons();
 
             var discovered = InstallerEngine110.TryDiscoverGameExecutable();
             if (!string.IsNullOrWhiteSpace(discovered))
@@ -184,6 +187,21 @@ namespace DragonSwordNativeAutoPickup.Installer
                 _gamePath.Text = discovered;
                 RefreshInstallationState(true);
             }
+        }
+
+        private static void ConfigureKeySelector(ComboBox selector, bool allowGamepad)
+        {
+            selector.DropDownStyle = ComboBoxStyle.DropDown;
+            selector.MaxLength = allowGamepad ? 64 : 32;
+            selector.DropDownWidth = allowGamepad ? 285 : 150;
+            selector.Items.AddRange(new object[] { "INSERT", "HOME", "PAGEUP", "PAGEDOWN", "END", "DELETE", "SPACE" });
+            for (var index = 1; index <= 24; index++) selector.Items.Add("F" + index);
+            for (var key = 'A'; key <= 'Z'; key++) selector.Items.Add(key.ToString());
+            for (var index = 0; index <= 9; index++) selector.Items.Add(index.ToString());
+            for (var index = 0; index <= 9; index++) selector.Items.Add("NUM" + index);
+            if (allowGamepad) selector.Items.AddRange(new object[] {
+                "Gamepad_FaceButton_Bottom", "Gamepad_FaceButton_Right",
+                "Gamepad_FaceButton_Left", "Gamepad_FaceButton_Top" });
         }
 
         private void BrowseClick(object sender, EventArgs e)
@@ -208,21 +226,20 @@ namespace DragonSwordNativeAutoPickup.Installer
             {
                 var state = InstallerEngine110.InspectInstallationState(_gamePath.Text);
                 _installationState = state;
-                if (selectDetectedOptions)
+                var inspectedPath = Path.GetFullPath(_gamePath.Text.Trim().Trim('"'));
+                if (selectDetectedOptions || !string.Equals(_loadedGamePath, inspectedPath, StringComparison.OrdinalIgnoreCase))
                 {
                     SelectInstalledRange(state.RangeState);
-                    if (state.IsOwned)
-                    {
-                        _hotkey.Text = state.ToggleHotkey;
-                        _interactionKeyFallback.Text = state.InteractionKeyFallback;
-                    }
+                    _hotkey.Text = state.ToggleHotkey;
+                    _interactionKeyFallback.Text = state.InteractionKeyFallback;
+                    _loadedGamePath = inspectedPath;
                 }
 
                 _status.Text = state.StatusDescription + Environment.NewLine +
                     "Optional range: " + DescribeRangeState(state.RangeState) + "." + Environment.NewLine +
                     (state.IsOwned
-                        ? (state.CanRepair ? "Repair" : "Upgrade") +
-                          " replaces installer-owned files in place and preserves config.ini. Uninstall removes only Auto Pickup and its owned range PAK."
+                        ? (state.CanRepair ? "Repair" : "Update") +
+                          " applies the keys and range you confirm, preserving all other settings. Uninstall removes only Auto Pickup and its owned range PAK."
                         : state.CanInstall
                             ? "Install is available. UE4SS is installed or converted only when required."
                             : "Setup will not modify files whose ownership cannot be verified.");
@@ -242,15 +259,15 @@ namespace DragonSwordNativeAutoPickup.Installer
             _install.Text = _installationState != null && _installationState.CanRepair
                 ? "Repair"
                 : _installationState != null && _installationState.CanUpgrade
-                    ? "Upgrade"
+                    ? "Update"
                     : "Install";
             _install.Enabled = !_busy && canInstall;
             _uninstall.Enabled = !_busy && _installationState != null && _installationState.CanUninstall;
             _browse.Enabled = !_busy;
             _gamePath.Enabled = !_busy;
-            _hotkey.Enabled = !_busy;
-            _interactionKeyFallback.Enabled = !_busy;
-            _rangeSelection.Enabled = !_busy;
+            _hotkey.Enabled = !_busy && canInstall;
+            _interactionKeyFallback.Enabled = !_busy && canInstall;
+            _rangeSelection.Enabled = !_busy && canInstall;
             _close.Enabled = !_busy;
         }
 
@@ -261,35 +278,19 @@ namespace DragonSwordNativeAutoPickup.Installer
                 (!_installationState.CanInstall && !_installationState.CanUpgrade &&
                  !_installationState.CanRepair))
             {
-                MessageBox.Show(this, "Setup cannot install, upgrade, or repair the current installation safely.",
+                MessageBox.Show(this, "Setup cannot install, update, or repair the current installation safely.",
                     "Action unavailable", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
             var requestedRepair = _installationState.CanRepair;
+            var completed = false;
 
             SetBusy(true);
             try
             {
                 var pakState = _installationState.RangeState;
                 var requestedRange = SelectedRange;
-                if (pakState != InstallerEngine.OptionalRangePakState.Absent &&
-                    !StateMatchesSelection(pakState, requestedRange))
-                {
-                    var choice = MessageBox.Show(
-                        this,
-                        "The current owned range PAK selection will be replaced or removed. Continue?",
-                        "Change optional range PAK?",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Warning,
-                        MessageBoxDefaultButton.Button2);
-                    if (choice != DialogResult.Yes)
-                    {
-                        _status.Text = "Action cancelled. No files were changed.";
-                        return;
-                    }
-                }
-
                 _status.Text = "Validating the game, UE4SS, and embedded release payload...";
                 _status.Refresh();
 
@@ -298,34 +299,38 @@ namespace DragonSwordNativeAutoPickup.Installer
                     _hotkey.Text,
                     _interactionKeyFallback.Text,
                     requestedRange);
-                if (plan.ConvertsUE4SS)
+                var confirmation = MessageBox.Show(
+                    this,
+                    "Game: " + _gamePath.Text + "\n\n" +
+                    "Toggle key: " + plan.ToggleHotkey + "\n" +
+                    "Interaction fallback: " + plan.InteractionKeyFallback + "\n" +
+                    "Optional range: " + DescribeRangeState(pakState) + " -> " +
+                    (plan.RangeSelection == InstallerEngine.RangeSelection.None ? "original" :
+                        plan.RangeSelection.ToString().Substring(1) + "x") + "\n\n" +
+                    plan.ActionDescription +
+                    (plan.ConvertsUE4SS ? "\n\nA verified UE4SS conversion is required. Existing layout: " + plan.ExistingLayout : string.Empty) +
+                    "\n\nApply these settings? Restart the game afterward if it is running.",
+                    requestedRepair ? "Confirm Repair" : plan.UpdatesExistingAutoPickup ? "Confirm Update" : "Confirm Install",
+                    MessageBoxButtons.YesNo,
+                    plan.ConvertsUE4SS ? MessageBoxIcon.Warning : MessageBoxIcon.Question,
+                    MessageBoxDefaultButton.Button2);
+                if (confirmation != DialogResult.Yes)
                 {
-                    var conversion = MessageBox.Show(
-                        this,
-                        "A different or mixed UE4SS installation was detected.\n\n" +
-                        plan.ActionDescription + "\n\nExisting layout: " + plan.ExistingLayout +
-                        "\n\nContinue with the verified conversion?",
-                        "Convert UE4SS installation?",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Warning,
-                        MessageBoxDefaultButton.Button2);
-                    if (conversion != DialogResult.Yes)
-                    {
-                        _status.Text = "Action cancelled. No files were changed.";
-                        return;
-                    }
+                    _status.Text = "Action cancelled. No files were changed.";
+                    return;
                 }
 
                 var result = InstallerEngine110.InstallConfirmed(
                     _gamePath.Text,
-                    _hotkey.Text,
-                    _interactionKeyFallback.Text,
-                    requestedRange,
+                    plan.ToggleHotkey,
+                    plan.InteractionKeyFallback,
+                    plan.RangeSelection,
                     plan.IdentityToken);
+                completed = true;
 
                 var verb = requestedRepair
                     ? "Repair"
-                    : plan.UpdatesExistingAutoPickup ? "Upgrade" : "Installation";
+                    : plan.UpdatesExistingAutoPickup ? "Update" : "Installation";
                 _status.Text =
                     verb + " completed successfully." + Environment.NewLine +
                     "UE4SS layout: " + result.LayoutDescription + Environment.NewLine +
@@ -341,7 +346,7 @@ namespace DragonSwordNativeAutoPickup.Installer
                 MessageBox.Show(
                     this,
                     verb + " completed. Auto Pickup starts off each time the game starts. Press " +
-                    result.ToggleHotkey + " to enable it.",
+                    result.ToggleHotkey + " to enable it. Restart the game if it is already running.",
                     verb + " complete",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
@@ -354,7 +359,7 @@ namespace DragonSwordNativeAutoPickup.Installer
             finally
             {
                 SetBusy(false);
-                RefreshInstallationState(true);
+                RefreshInstallationState(completed);
             }
         }
 

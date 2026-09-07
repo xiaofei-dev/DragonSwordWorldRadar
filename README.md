@@ -13,8 +13,8 @@ describes only one Mod.
 
 | Directory | Role | Status |
 |---|---|---|
-| `DragonSwordNativeWorldRadarPostRender/` | Native in-game World Radar | Maintained `2.1.0`; owner gameplay-tested and accepted on 2026-08-31 |
-| `DragonSwordNativeAutoPickup/` | Native automatic pickup | Maintained `1.3.0`; owner gameplay-tested and accepted on 2026-08-31 |
+| `DragonSwordNativeWorldRadarPostRender/` | Native in-game World Radar | Current local release: `2.3.0`; see product release status |
+| `DragonSwordNativeAutoPickup/` | Native automatic pickup | Current local release: `1.3.1`; see product release status |
 | `DragonSwordPickupRangeExpansion/` | Optional interaction-range PAK variants | Maintained independent product |
 | `DragonSwordNativeAllMountsFreeFlight/` | Pure-resource all-mount free-flight PAK | Maintained independent product |
 | `DragonSwordWorldDataProbe/` | Independent read-only data-capture test Mod | Retained at the root even when inactive; it is not archived |
@@ -28,8 +28,12 @@ working tree. Their history remains available through Git.
 
 ## Current integration status
 
-The owner completed gameplay testing and accepted the current Radar and
-AutoPickup versions on 2026-08-31. During diagnosis, one mounted-flight session
+The complete local release handoff is indexed in
+[`docs/RELEASE_CLOSEOUT_2026_09_07.md`](docs/RELEASE_CLOSEOUT_2026_09_07.md).
+Package verification, gameplay acceptance, and publication are separate states.
+
+Historically, the owner accepted Radar 2.1.0 and AutoPickup 1.3.0 on
+2026-08-31. That acceptance does not validate later packages. During diagnosis, one mounted-flight session
 showed a temporary loss of the native `F` interaction prompt and automatic
 pickup confirmations; normal behavior later recovered during continued flight.
 The evidence did not establish a direct Radar hook conflict. This observation

@@ -33,6 +33,15 @@ Before any gameplay reflection is used, the adapter verifies the exact nested
 UE4SS hash and loaded module path. It then parses the loaded game PE32+ image
 and its executable `.text` section.
 
+UE4SS may publish the reflected `DInteractableComponent` class shortly before
+its class default object becomes available. A bootstrap EngineTick therefore
+permits only this exact readiness condition to remain Pending, probing every
+250 ms for no longer than 30 seconds. Pending and Failed states return before
+all operational pickup work. When the CDO appears, initialization reruns the
+complete reflection contract, both selector anchors, observer registration,
+and callback gates before publishing `Ready`. No other reflection or machine-
+code mismatch is treated as transient.
+
 The Server path treats the reflected `Server_RunInteractV2` exec thunk as a
 virtual-dispatch anchor. It requires one unique virtual slot, reads that slot
 from the interactable CDO, follows a bounded direct-jump chain, and bounds the

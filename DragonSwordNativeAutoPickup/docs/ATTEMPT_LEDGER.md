@@ -1,6 +1,6 @@
 ﻿# Auto Pickup Attempt Ledger
 
-Last evidence audit: 2026-09-03.
+Last evidence audit: 2026-09-07.
 
 This ledger is the mandatory starting point for every future AutoPickup change. It records what each version actually changed, which runtime gate was reached, and which route must not be presented as new without new contradictory evidence.
 
@@ -13,7 +13,14 @@ This ledger is the mandatory starting point for every future AutoPickup change. 
   750 ms fallback/re-entry window, one selector-represented retry after 200 ms,
   and 1500 ms self-expiring exact-Component failure backoff. No target selection,
   injection, scheduling, confirmation, retry, or input behavior changes in
-  1.3.1. The only functional correction is in the separate range PAK layer:
+  1.3.1. An installed 1.3.1 session on Steam build `25076183` then exposed a
+  startup-only race: all required reflected objects except the interactable CDO
+  were present at 6,220 ms, so the former one-shot preflight disabled before
+  selector resolution, F9 registration, or EngineTick scheduling. The current
+  1.3.1 source retries only that exact readiness dependency every 250 ms for at
+  most 30 seconds, remains fail-closed while Pending, and reruns the complete
+  reflection plus dual-anchor selector contracts before `READY`. Every other
+  mismatch remains terminal. The separate range PAK functional correction is:
   50 gather/animal targets retain the selected multiplier, while the 19 short-
   lived type-7 drop overlap targets use `min(selected multiplier, 10x)`. Thus
   the 15x and 20x variants no longer enlarge drop overlap beyond the stable 10x
@@ -23,6 +30,19 @@ This ledger is the mandatory starting point for every future AutoPickup change. 
   targets, 138 entries, zero treasure targets, and full 15x/20x authored-target
   scales. Source, range-package, and installer 11/11 validation are required;
   deployment and exact-package gameplay acceptance remain separate.
+- The corrective 1.3.1 full offline release passed source/core/native-artifact,
+  installer 11/11, deterministic archive, exact-entry, checksum, and range-
+  owner gates. DLL: 944,640 /
+  `44FFCECD0CCC4CB1BA30502F147E1E439F919D229A4B9DD5D72B66C1155D1B64`;
+  unsigned Setup: 13,027,328 /
+  `8B3B883EFB8BF1E269643D98A0B0E5270682E17157FF92321D8110335BAF4B8D`;
+  installer, manual-without-UE4SS, manual-with-UE4SS, and unchanged range ZIP:
+  `B9243CFD00AE87574923CFD986EC01CD9E06A6228C15DEDCE319D968C7E0553A`,
+  `0955697D4F83B91CDBF103188CEEB1958114C5959148E7FB22BC8E6222E5F3B8`,
+  `630ECBA521836A2F4F3C216E809068D328EF21D51BA582B642DB95A643DADEC0`,
+  and `A346C4F20CF85C60FD2965FCC583129AFD8EB2B805CF4E20A80C1B20B79B49FE`.
+  These are offline identities only; deployment and owner gameplay acceptance
+  remain pending.
 - Static review caught one P1 before the final package: the reflected
   `SetInteractUIV2::GetFuncPtr` is a `.pdata`-bounded direct rel32 native
   wrapper, not a virtual-dispatch thunk. The resolver model was corrected to
@@ -828,3 +848,34 @@ the rejected 1.2 observational supersede or 250 ms same-target storm policy.
 Status: `DISPATCH_OBSERVER_CANDIDATE_RUNTIME_PENDING`. Static compilation,
 artifact identity, deployment, and owner gameplay acceptance must be recorded
 separately when available.
+
+## 2026-09-07 - Unified Setup key editing (installer-only)
+
+Request: align Pickup and Radar EXE behavior so Install, Update, and Repair can
+apply user-selected keys. Root cause: Pickup accepted UI values but replaced
+them with the installed values in both Inspect and InstallCore, then copied
+the entire original config unchanged.
+
+This attempt removes that override, edits only the two selected value spans,
+and adds normalized plan fields and an explicit default-No confirmation.
+Same-path refresh/cancel/error retain edits; a newly selected game path reloads
+its installed values. Existing transaction, ownership, runtime compatibility,
+range selection, and native gameplay policies remain separate and unchanged.
+Tests cover no-change byte preservation, config formatting, invalid/stale
+plans, custom fresh/update/repair keys, and post-write rollback.
+
+Baseline: 1.3.1 Setup SHA-256
+`8B3B883EFB8BF1E269643D98A0B0E5270682E17157FF92321D8110335BAF4B8D`;
+embedded native DLL
+`44FFCECD0CCC4CB1BA30502F147E1E439F919D229A4B9DD5D72B66C1155D1B64`.
+Build an installer-only candidate without rebuilding the native DLL or
+overwriting the previous release archives. Validation and delivery receipt
+will be recorded after checking the real EXE.
+
+Outcome: `INSTALLER_KEYS_ISOLATED_PASS`. Pickup 95 parser/editor assertions
+and 11/11 integration cases passed; Radar 177 assertions and 20/20 cases passed.
+The actual form's non-visible state checks also passed. All 11 Pickup embedded
+resources match the baseline exactly. New Pickup Setup SHA-256:
+`D7D1491E4396862A32CE8ED2D759BBD3617FD99585D0B88E8B3D737676BDB676`.
+See `docs/INSTALLER_KEYS_2026_09_07.md` for paths, previous failed-test diagnosis,
+scope, and acceptance boundaries. Real installation and release ZIPs unchanged.

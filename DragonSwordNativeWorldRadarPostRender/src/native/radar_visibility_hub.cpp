@@ -1434,8 +1434,7 @@ RadarVisibilityHubResult RadarVisibilityHub::open_unsafe(
                 < dswros::kRadarUiLanguageCount
             ? detected_game_language
             : dswros::RadarUiLanguage::English;
-    source_language_ = dswros::resolve_explicit_radar_language_preference(
-        sanitize_language(current_language), detected_game_language_);
+    source_language_ = sanitize_language(current_language);
     pending_language_ = source_language_;
     auto* expected_font_property = CastField<FStructProperty>(
         text_block_font_property_);
@@ -2004,10 +2003,13 @@ RadarVisibilityHubResult RadarVisibilityHub::open_unsafe(
         const std::size_t row = index / 3U;
         const double x = 39.0 + static_cast<double>(column) * 202.0;
         const double y = 141.0 + static_cast<double>(row) * 40.0;
-        const auto choice_language =
-            static_cast<dswros::RadarUiLanguage>(index);
-        const wchar_t* choice_label = dswros::radar_localized_text(
-            choice_language).language_name;
+        const auto choice = dswros::radar_language_choice(index);
+        const bool follow_game = choice == dswros::RadarLanguagePreference::Auto;
+        const auto choice_language = dswros::explicit_radar_ui_language(choice);
+        // A shared Latin label keeps this new cell readable even where the
+        // game's Korean/TC fonts need the existing fixed raster fallbacks.
+        const wchar_t* choice_label = follow_game ? L"AUTO (Game Language)"
+            : dswros::radar_localized_text(choice_language).language_name;
         if (!add_popup_decoration(add_border(
                 x, y, 190.0, 32.0, 33, kLanguageOption))) {
             last_failure_ = 35;
@@ -2940,11 +2942,8 @@ bool RadarVisibilityHub::set_language_popup_visibility_unsafe(bool visible) {
             overlay, set_visibility_,
             packaged_popup_ready ? kHitTestInvisible : kCollapsed);
     }
-    const std::size_t selected_index = static_cast<std::size_t>(
-        dswros::explicit_radar_ui_language(
-            dswros::resolve_explicit_radar_language_preference(
-                sanitize_language(pending_language_),
-                detected_game_language_)));
+    const std::size_t selected_index = dswros::radar_language_choice_index(
+        sanitize_language(pending_language_));
     for (std::size_t index = 0; index < kLanguageChoiceCount; ++index) {
         UObject* control = language_choice_controls_[index].Get();
         UObject* selected = language_choice_selected_visuals_[index].Get();
@@ -2954,10 +2953,9 @@ bool RadarVisibilityHub::set_language_popup_visibility_unsafe(bool visible) {
         }
         set_checked(control, set_is_checked_, false);
         set_visibility(control, set_visibility_, popup_visibility);
-        const bool packaged_choice = index == static_cast<std::size_t>(
-                dswros::RadarUiLanguage::Korean)
-            || index == static_cast<std::size_t>(
-                dswros::RadarUiLanguage::TraditionalChinese);
+        const auto choice = dswros::radar_language_choice(index);
+        const bool packaged_choice = choice == dswros::RadarLanguagePreference::Korean
+            || choice == dswros::RadarLanguagePreference::TraditionalChinese;
         set_visibility(
             text, set_visibility_,
             visible && (!packaged_popup_ready || !packaged_choice)
@@ -3196,9 +3194,7 @@ RadarVisibilityHubResult RadarVisibilityHub::service_unsafe(
                     continue;
                 }
                 set_checked(choice, set_is_checked_, false);
-                pending_language_ =
-                    dswros::explicit_radar_language_preference(
-                        static_cast<dswros::RadarUiLanguage>(index));
+                pending_language_ = dswros::radar_language_choice(index);
                 resolved_ui_language_ = dswros::resolve_radar_ui_language(
                     pending_language_, detected_game_language_);
                 if (!refresh_localized_text_unsafe()

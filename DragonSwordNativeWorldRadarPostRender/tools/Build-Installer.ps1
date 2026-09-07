@@ -16,8 +16,8 @@ Set-StrictMode -Version 2.0
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $installerRoot = Join-Path $projectRoot 'installer'
-$version = '2.2.1'
-$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1'
+$version = '2.3.0'
+$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0'
 $gameCompatibilityPolicy = 'pe32plus-x64-runtime-unique-owner-pointer-pattern'
 $experimentalUE4SSHash = 'F31188D59B34A812AFC32DB4B6FF0C74E1B44861D1ED7967452EE4B3B6635BE1'
 $experimentalDwmapiHash = '30122355CB2784E3BA89F6FB55EA4443467FF8EAE2747CBDEDBEEF49B03E669B'
@@ -87,7 +87,7 @@ function Assert-X64ReleaseDll {
     $unicode = [Text.Encoding]::Unicode.GetString($bytes)
     if ((-not $ascii.Contains($version) -and -not $unicode.Contains($version)) -or
         (-not $ascii.Contains($runtimeLabel) -and -not $unicode.Contains($runtimeLabel))) {
-        throw 'Native Radar payload does not contain the 2.2.1 release identity.'
+        throw 'Native Radar payload does not contain the 2.3.0 release identity.'
     }
 }
 

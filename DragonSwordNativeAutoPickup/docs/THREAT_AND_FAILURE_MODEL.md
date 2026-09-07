@@ -21,6 +21,8 @@
 - malformed PE32+ or x64 runtime-function metadata;
 - missing, ambiguous, or inconsistent selector evidence after a game recompile;
 - selector or reflection faults during initialization or transition;
+- a valid reflected class appearing before its class default object and causing
+  a permanent one-shot startup rejection;
 - per-scan logging, object enumeration, workers, or collision lifecycle work.
 
 ## Active mitigations
@@ -60,6 +62,12 @@ per bounded invocation, while periodic aggregates expose suppression and logger
 queue/drop/failure counters.
 
 The exact UE4SS hash and loaded-path gate runs before gameplay reflection. The
+only retryable startup observation is a present `DInteractableComponent` class
+with its CDO not yet ready while every other required reflected object and
+property is present. A bootstrap EngineTick retries at 250 ms for at most 30
+seconds and returns before pickup work until initialization is `Ready`. Success
+reruns the complete contract; timeout or any other mismatch remains fail-
+closed. The
 selector resolver then validates the loaded PE32+ image and executable `.text`,
 bounds native code through x64 `.pdata` and bounded `CHAININFO`, and decodes only
 real instruction boundaries. The reflected `Server_RunInteractV2` exec thunk
