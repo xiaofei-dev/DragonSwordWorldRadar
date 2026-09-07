@@ -25,33 +25,90 @@ polling, UObject enumeration, save query, or SQL schedule.
 ## World-map projection provider
 
 Projection is attach-only. Each bounded sample reads the live player-icon
-alignment pivot, converts through the player widget's current cached Slate
-geometry with `LocalToAbsolute`, reads the selected native icon Canvas's cached
-geometry only as a witness with `LocalToAbsolute`, and converts both absolute
-results into game-viewport local space with `AbsoluteToLocal`. The first valid numeric
-result only seeds stability state. A sample at least 150 ms later is accepted
-when stable; if it changed, one third sample may establish stability, for three
-samples maximum. Only numeric coordinates and timing cross samples--no sampled
-UObject wrapper or `FGeometry`. Missing, implausible, or still-unstable geometry
-fails into the existing bounded attach budget. No centered fallback, new timer,
-polling service, or per-frame projection path is added.
+alignment pivot and exact native icon Canvas geometry, then produces numeric
+native-parent-local atlas placement. The first valid numeric result only seeds
+stability state. A sample at least 150 ms later is accepted when stable; if it
+changed, one third sample may establish stability, for three samples maximum.
+Only numeric coordinates and timing cross samples--no sampled UObject wrapper
+or `FGeometry`. Missing or implausible geometry fails into the existing bounded
+attach budget. No centered fallback, new timer, polling service, or per-frame
+projection path is added.
 
-The 2.2.1 placement contract keeps the native icon Canvas read-only. Radar does
-not add children to it, alter its desired size, participate in its prepass, or
-affect its hit-test layout. Each `Panel_Point` Image lives inside an independent,
-hit-test-invisible viewport-owned host. Accepted geometry changes update only
-those host transforms in game-viewport local space; they do not rerasterize,
-rebuild, reproject, re-add, or reparent an atlas. Missing, mismatched, or final-
-unstable geometry collapses only the Mod-owned hosts and follows the existing
-bounded fail-closed/defer path. The cached-Slate player anchor, independent X/Y
-scale, DPI, zoom, and aspect-ratio inputs are unchanged. No `3000`/`8000`
-constant replaces live geometry, and no new timer, poll, or per-frame projection
-route is added.
+The 2.2.1 candidate places each `Panel_Point` Image inside a Mod-owned, hit-test-
+invisible child of the directly resolved current `DLayerMap.FogAbovePanel`.
+`ArrayIconInfo` supplies only a creation-time instantiable icon class; it does
+not select the parent, and retained-host validation/refresh does not scan it.
+The outer slot is full stretch with zero offsets, `AutoSize=false`, alignment
+`(0,0)`, and maximum Z. After every fresh attachment, including a scheduler-
+accepted rebuild, the cloned host's inner `Panel_Point` slot is also forced to
+full stretch with zero offsets,
+`AutoSize=false`, and alignment `(0,0)`. Only the locally owned Image Canvas slot
+holds `{atlas_left,atlas_top,atlas_width,atlas_height}`; Image render translation
+remains `(0,0)`. The host has no render transform and the route uses no forced
+layout prepass. Pan, zoom, clipping,
+visibility, and RetainerBox composition are inherited directly, so same-parent
+motion performs no viewport-transform sync. Every event-tail pass reads only
+the live `FogAbovePanel` extent. A fully unchanged same-parent pass, including
+the final pass, performs no layout/transform/visibility write, `ArrayIconInfo`
+or `PlayerIconWidget` scan, restack, Remove/Add, or `RequestRender`. Sibling-icon
+anchor drift is ignored and the attach-time Image slot stays immutable. A real
+`FogAbovePanel` replacement reports `RebuildRequired`; only a scheduler-owned
+fresh attachment restores the outer and inner fills, Image atlas rectangle,
+and zero Image translation. The
+finite event tail starts from a fresh post-attach completion time, and attach
+does not submit an empty Retainer `RequestRender` before visibility is applied.
+Extent drift must produce two matching successful observations before returning
+`RebuildRequired`. That request is report-only and does not pre-collapse a valid
+payload; only an accepted schedule owns detach/rebuild. Retained-RetainerBox or
+owned-payload drift may report the same result directly. One open-map session
+may rebuild at most once while preserving the marker snapshot. The rebuild has
+its own three-attempt attach/geometry budget, bounding the session to initial 3
+plus rebuild 3. No
+`3000`/`8000` constant replaces live geometry, and no new timer, poll, or per-
+frame projection route is added.
+
+Temporary 2.2.1 topology logs instead captured the superseded first-valid-parent
+heuristic changing between `FogAbovePanel` and `FogUnderPanel` as zoom rebuilt
+native icon widgets. Four host reattachments in one zoom sequence crossed the
+fog boundary and explain the observed occlusion, hitching, and flashing. These
+logs are development diagnosis and do not validate the corrected runtime.
+
+The subsequent full-stretch-outer/Image-translation candidate is also runtime
+rejected. Quantitative 2026-09-05 screenshots measured near-identical base-map/
+Radar zoom scales (1.214/1.218 zooming in and 0.760/0.758 reversing) but relative
+translations of about `(+113,-190)` and `(+67,+200)` px, with only 0.28 px and
+0.82 px mean fit residuals. The sign-reversing vertical offset rules out a scale
+formula or cumulative frame-drift cause and identifies a different local origin/
+zoom pivot. The following outer-atlas-rectangle candidate is runtime rejected as
+well. Exact DLL
+`CD41F0E1FD04AE3E06AA3EA0163EAE0019A19E6B3B7B0B9A110A907B06E6FBB2`,
+compiled source
+`433710E06412A5BEB4F225CB7B3658024C5974AC5B26CDD94BDB09D55ED2E62C`, and
+backup
+`dist/work/deployment/deploy-backups/20260905-182946-652-native-only-deploy`
+remain exact-byte historical evidence. Its negative atlas-left outer slot grew
+the native parent extent from `3000x3000` to `3191.520996x3000`, causing a self-
+induced rebuild loop with 6 attaches and 5 detaches, flashing, and an empty map.
+The same run populated 1,632 markers and reported no data, texture, or ABI fault.
+
+The current WM-06 immutable-slot candidate passes source/static gates, Core
+`2/2`, release hygiene, and the local native build at DLL
+`6435E10031D90840BF0499664CF57347D7991C9C192BD3B2239ADE2324C723A1`, from
+compiled source
+`0A1A4CE3EE9F3A04E4B258976CFD830654BCB778B1F9BF5715FB66242B5E5BC5`, size
+1,107,968 bytes. Rollback-backed diagnostics-enabled local developer deployment
+passes for the exact DLL. Installed identity matches, the single controlling Mod
+entry is enabled (`mods=1`), and `debug_logging=true`; backup:
+`dist/work/deployment/deploy-backups/20260905-202742-614-native-only-deploy`.
+Package and installer validation pass for the exact WM-06 bytes: Setup `20/20`,
+Manual `2/2`, payload equivalence, layout, clean-target, and all three archive
+re-extractions. Exact-artifact gameplay, visual, performance, and resolution
+acceptance remain `NOT_VALIDATED`.
 
 Historical exact 2.2.0 logs recorded one atlas attach and no repeated
 detach/rebuild sequence. Their 1,632 total markers, including 1,501 Treasures,
 were below the old 1,785 limit, proving capacity was not that dense-map flicker
-root. Those logs do not validate the 2.2.1 ownership fix; exact-artifact
+  root. Neither historical nor temporary diagnostic logs validate the 2.2.1 ownership fix; exact-artifact
 alignment, dense-Treasure stability, native icon/click behavior, and gameplay
 acceptance remain pending.
 
@@ -410,10 +467,17 @@ recurring language query.
 
 The expanded-map renderer reserves 4,096 fixed marker slots. The accepted input
 ceiling is 2,500 Treasure rows plus 279 fixed non-Treasure rows, or 2,779 total,
-leaving 1,317 spare slots. Its two event-built 3072-by-3072 atlases use style
-revision 50 and approximately 72 MiB raw decoded BGRA memory versus about 32 MiB
-at 2048. The larger raster changes neither marker coordinates nor projection,
-zoom, parent ownership, or outer/inner container geometry.
+leaving 1,317 spare slots. Its two event-built 2048-by-2048 atlases use atlas
+style revision 51 and approximately 32 MiB raw decoded BGRA memory. The cache
+envelope is `DSNWRA52`, separate from the atlas style revision, and quantizes its
+fingerprint at 1/4096 UMG logical unit. A hit requires exact dimensions/header/
+magic/fingerprint/visible count, full RLE decode to exactly 2048-by-2048 pixels,
+encoded-payload checksum validation, and exact EOF. Revision-51, corrupt,
+truncated, or trailing-byte files miss. Writes use a same-directory temporary
+file and atomically publish through `MoveFileExW` with replace-existing and
+write-through flags; failure removes the temporary file. Cache validation/write
+and texture import remain bounded attachment work. Marker coordinates remain unchanged. Live visual and performance
+acceptance remains `NOT_VALIDATED`.
 
 F6 may open while Radar is Off, On, or Faulted. Its status/action transaction
 exposes Enable, Disable, or Retry without changing the playable-world guard for

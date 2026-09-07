@@ -1,6 +1,6 @@
 namespace DragonSwordNativeAutoPickup.Installer
 {
-    // Minimal UI contracts for the 1.3.0 single-ABI installer. The historical
+    // Minimal UI contracts for the 1.3.1 single-ABI installer. The historical
     // dual-ABI InstallerEngine.cs is intentionally excluded from release builds.
     internal static class InstallerEngine
     {

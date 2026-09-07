@@ -6,11 +6,11 @@ even while Auto Pickup is disabled.
 
 ## Choose one variant
 
-- `DS_PickupRangeX3_P.pak` — 3x native interaction range.
-- `DS_PickupRangeX5_P.pak` — 5x native interaction range.
-- `DS_PickupRangeX10_P.pak` — 10x native interaction range.
-- `DS_PickupRangeX15_P.pak` — 15x native interaction range.
-- `DS_PickupRangeX20_P.pak` — 20x native interaction range.
+- `DS_PickupRangeX3_P.pak` - 3x gather/animal and item-drop range.
+- `DS_PickupRangeX5_P.pak` - 5x gather/animal and item-drop range.
+- `DS_PickupRangeX10_P.pak` - 10x gather/animal and item-drop range.
+- `DS_PickupRangeX15_P.pak` - 15x gather/animal range; item drops remain 10x.
+- `DS_PickupRangeX20_P.pak` - 20x gather/animal range; item drops remain 10x.
 
 Install **exactly one** variant. Do not install multiple range PAKs together,
 because they override the same 69 reviewed game packages.
@@ -41,15 +41,16 @@ game. No save data is modified.
 
 ## Scope and safety
 
-Each production variant overrides the same reviewed inventory of 50 cooked
-packages: 45 gather packages and 5 interactable-animal packages. Treasure
-chests are intentionally excluded. The add-on changes only the dedicated
-authored interaction-capsule scale and adds no runtime hook, polling loop,
-UObject scan, or background process.
+Each production variant overrides the same reviewed inventory of 69 cooked
+packages: 45 gather packages, 5 interactable-animal packages, and 19 item-drop
+packages. Treasure chests are intentionally excluded. The add-on changes only
+the dedicated authored interaction-capsule scale and the reviewed drop overlap
+sphere; it adds no runtime hook, polling loop, UObject scan, or background process.
 
-The 3x, 5x, 10x, 15x, and 20x variants differ only by the selected scale multiplier.
-Higher values are more convenient but can make the native prompt select an
-object from farther away.
+Gather/animal targets use the selected variant multiplier. The 19 short-lived
+item-drop targets are capped at 10x in the 15x and 20x variants to reduce stale
+native prompt-list entries when moving quickly. Higher gather/animal values are
+more convenient but can make the native prompt select an object from farther away.
 
 ## Compatibility
 

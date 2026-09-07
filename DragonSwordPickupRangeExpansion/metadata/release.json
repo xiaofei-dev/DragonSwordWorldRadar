@@ -1,42 +1,57 @@
 {
-  "schema_version": 1,
-  "version": "1.3.0",
+  "schema_version": 2,
+  "version": "1.3.1",
   "artifacts": [
     {
       "multiplier": 3,
+      "authored_range_multiplier": 3,
+      "drop_item_range_multiplier": 3,
+      "reused_from_version": "1.3.0",
       "name": "DS_PickupRangeX3_P.pak",
       "size_bytes": 783051,
       "sha256": "6BB99A1E35C06EB0284370B9D7BD2F34E90CB6DCA7479CF10A477C68EA0103E8"
     },
     {
       "multiplier": 5,
+      "authored_range_multiplier": 5,
+      "drop_item_range_multiplier": 5,
+      "reused_from_version": "1.3.0",
       "name": "DS_PickupRangeX5_P.pak",
       "size_bytes": 783051,
       "sha256": "DB9E129D8F8FCCA025864EC908C13C70F950AD779C37CF13A41164476587CECD"
     },
     {
       "multiplier": 10,
+      "authored_range_multiplier": 10,
+      "drop_item_range_multiplier": 10,
+      "reused_from_version": "1.3.0",
       "name": "DS_PickupRangeX10_P.pak",
       "size_bytes": 783051,
       "sha256": "6A1ADB7592BA0C70A17984DB3AC01348086AABE196F0FDAF914B3F52C7A395F1"
     },
     {
       "multiplier": 15,
+      "authored_range_multiplier": 15,
+      "drop_item_range_multiplier": 10,
+      "reused_from_version": null,
       "name": "DS_PickupRangeX15_P.pak",
       "size_bytes": 783051,
-      "sha256": "16CA8F2353D40BCED8ACBBC95FE4CE8A57E304DEB76D758517E716FF43740100"
+      "sha256": "F8330CEA2F127319887FD3718BC66E2825D39DFE21D635404FC7535C7FAA37EC"
     },
     {
       "multiplier": 20,
+      "authored_range_multiplier": 20,
+      "drop_item_range_multiplier": 10,
+      "reused_from_version": null,
       "name": "DS_PickupRangeX20_P.pak",
       "size_bytes": 783051,
-      "sha256": "C10E1B252849B1D5DE5C94F468B60841E412487055AB7115B2E73E0D50AFF9BA"
+      "sha256": "81214319100646CD5663940CACE3AFA8F3523F5E319AB7C4AE8D935443FB93D2"
     }
   ],
   "standalone_bundle": {
-    "name": "DragonSwordPickupRangeExpansion-v1.3.0.zip",
-    "size_bytes": 3919600,
-    "sha256": "504C1E9524CDE63B096C88E24DBA0D5E008F9076BA24B6BC6065D60780848801",
+    "name": "DragonSwordPickupRangeExpansion-v1.3.1.zip",
+    "size_bytes": 3920172,
+    "sha256": "A346C4F20CF85C60FD2965FCC583129AFD8EB2B805CF4E20A80C1B20B79B49FE",
     "entries": [
       "DS_PickupRangeX10_P.pak",
       "DS_PickupRangeX15_P.pak",
@@ -53,6 +68,10 @@
   "drop_item_target_count": 19,
   "pak_entry_count": 138,
   "range_multipliers": [3, 5, 10, 15, 20],
+  "authored_target_multiplier_policy": "selected_variant",
+  "drop_item_multiplier_policy": "min_selected_variant_and_cap",
+  "drop_item_multiplier_cap": 10,
+  "repak_sha256": "FCD538E5994B9BB833622D425AE346F4E0692F02D4B0025114A559F9B6286022",
   "install_exactly_one": true,
   "historical_x3_canary_preserved": true,
   "auto_pickup_required": false,
@@ -64,6 +83,8 @@
     "pak_inventory": "PASSED",
     "independent_unpack_hashes": "PASSED",
     "deterministic_zip": "PASSED",
+    "immutable_x3_x5_x10_containers": "PASSED",
+    "x15_x20_drop_entries_equal_x10": "PASSED_38_OF_38",
     "semantic_reparse_authored_capsules": "PASSED_PREVIOUSLY",
     "structured_drop_item_roundtrip": "PASSED_19_OF_19",
     "treasure_targets": 0

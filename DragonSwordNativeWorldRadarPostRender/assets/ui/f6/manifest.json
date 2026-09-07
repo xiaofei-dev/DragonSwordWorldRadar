@@ -1,0 +1,58 @@
+{
+  "schema_version": 2,
+  "reference_size": [
+    680,
+    660
+  ],
+  "raster_scale": 2,
+  "generator_sha256": "71F0EF617E277ACE7E2165C3D5443C57ACD0828237647241886EF6615B91C7D5",
+  "layout_sha256": "DDF83DEAB188EEB82BA9A2E6B87B2E7CE9819A3C240D8EDD69A8F68235B1763F",
+  "localizations_sha256": "DCB5017F7F16B258A8811B988E3C29A4C9EFC6969ADF750A75661B8EFCC83A41",
+  "font_source": "RE-UE4SS/deps/fonts/droid/DroidSansFallback.ttf",
+  "font_sha256": "05D71B179EF97B82CF1BB91CEF290C600A510F77F39B4964359E3EF88378C79D",
+  "verified_codepoint_count": 123,
+  "files": [
+    {
+      "path": "ko-off.tga",
+      "width": 1360,
+      "height": 1320,
+      "sha256": "68CC9A1916610230157DA98C02FC72FF5162150D9891CFF02D324FA3C766EA1A"
+    },
+    {
+      "path": "ko-on.tga",
+      "width": 1360,
+      "height": 1320,
+      "sha256": "A66B85D91E7D8B2CD40E6678B42B37A04E5AA1C3AB7578577188A37894DE4F65"
+    },
+    {
+      "path": "ko-fault.tga",
+      "width": 1360,
+      "height": 1320,
+      "sha256": "9B1F72860AE7CABE76FAC4F3FA03A43757CD688E32AC63E31AFB380D83DECDD2"
+    },
+    {
+      "path": "zh-hant-off.tga",
+      "width": 1360,
+      "height": 1320,
+      "sha256": "AC6797F963D8F502C227BE5F6FD993EFC11BB35190635EAE42247AAB8A01DFA7"
+    },
+    {
+      "path": "zh-hant-on.tga",
+      "width": 1360,
+      "height": 1320,
+      "sha256": "5BB1984BC96BC089C0886A55EF79FC46B8BDACBFBFD318CEA44168FF130F3C60"
+    },
+    {
+      "path": "zh-hant-fault.tga",
+      "width": 1360,
+      "height": 1320,
+      "sha256": "325AF59A5D3338E0B3160DD8CFE841616B97F38FFCAB10E5FEC5784DB7DAE2C1"
+    },
+    {
+      "path": "language-popup.tga",
+      "width": 1360,
+      "height": 1320,
+      "sha256": "527A4A9D10DBB2651A54D2E2C4EB0F5CBABA18AFE6A13075D37B0DB4E142336C"
+    }
+  ]
+}

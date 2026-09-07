@@ -13,28 +13,59 @@
   supported; TreasureBox type 4 excluded.
 - [x] Saved semantic `INTERACT` keyboard binding resolved once per enable, with
   a concrete fail-closed fallback and troubleshooting override.
-- [x] One global pending action blocks every later automatic invocation.
-- [x] Exact pending actor/component invalidation or exact component-state change
-  confirms success; one selector-represented retry is allowed after the first
-  timeout and the second timeout quarantines that exact identity.
+- [x] One global in-flight action blocks every later automatic invocation only
+  while that injection remains armed.
+- [x] One post observer is registered for the exact reflected
+  `Server_RunInteractV2` UFunction. The record is armed before injection and
+  remains live after return until dispatch, existing exact confirmation,
+  timeout, or reset. While armed, the observer performs only raw receiver
+  comparison and atomic marker publication: no logging, reflection, UObject
+  read, game call, or action-state mutation.
+- [x] EngineTick consumes a matching dispatch marker, releases the global slot,
+  records `target_match_unproven=1` and `pickup_success_claim=0`, and applies a
+  750 ms same-Component re-entry delay.
+- [x] One selector-represented retry is allowed 200 ms after the first
+  no-dispatch fallback timeout; the second result applies a 1500 ms expiring
+  backoff, never activation-long quarantine. Neither delay writes a global
+  scan deadline, so another selector result may proceed immediately.
 - [x] Same-`UWorld` interaction-owner replacement clears pending/retry state and
   applies the normal world-settle delay.
 - [x] World-settle delay and bounded failure backoff retained.
-- [x] No UObject or Actor scan, overlap hook, root/physics/hit collision
+- [x] No UObject or Actor scan, overlap hook, broad `ProcessEvent` hook,
+  root/physics/hit collision
   mutation, direct pickup RPC, Windows synthetic input, recurring Lua scheduler,
   or worker thread.
 - [x] Each range PAK authors 19 exact type-7
-  `DropItemActor.SphereOverlapComp` scales; native runtime range multiplication
-  is compile-time disabled to prevent double application.
+  `DropItemActor.SphereOverlapComp` scales; 15x/20x cap these short-lived drop
+  targets at 10x while keeping their 50 gather/animal targets at the selected
+  multiplier. Native runtime range multiplication is compile-time disabled.
 - [x] Owner runtime evidence confirms on-foot automatic pickup, mounted Rider
   pickup, fish pickup, and bounded performance through the 1.6.10 baseline.
 
-These gates establish the 1.3.0 corrective source contract. Historical range
+These gates establish the 1.3.1 source and range policy. Historical range
 experiments and rejected action routes must not be treated as unfinished work.
-The earlier pre-compatibility 1.3.0 artifact remains historical. The post-audit
-final exact build and package gates now pass. Selector runtime resolution,
-deployment, gameplay acceptance, and owner smoke testing remain separate and
-pending.
+The earlier pre-compatibility and pre-observer 1.3.0 artifacts remain
+historical. The exact 1.3.1 offline package and build identity now pass static
+gates. Exact-package deployment, selector/observer runtime behavior, gameplay,
+and owner smoke testing remain separate and pending.
+
+## 1.3.1 high-range drop-list patch gates
+
+- [x] Preserve native target selection, input, scheduling, retry, confirmation,
+  and F9 behavior; only release identity may change in the DLL.
+- [x] Reuse the exact 1.3.0 3x, 5x, and 10x PAK bytes and hashes.
+- [x] Keep all 50 authored gather/animal targets at 15x or 20x in the matching
+  high-range variant.
+- [x] Require all 19 drop targets and 38 packed drop entries in each 15x/20x
+  PAK to match the reviewed 10x output exactly.
+- [x] Preserve 69 targets, 138 PAK entries, zero treasure targets, and protected
+  physics/hit components in every variant.
+- [x] Preserve all seven explicit 1.3.0 ownership tuples and add a recorded
+  schema-2 1.3.0 to 1.3.1 Upgrade fixture.
+- [ ] Test the exact 1.3.1 10x, 15x, and 20x PAKs after separate game restarts,
+  including fast mounted travel through dense animal and destructible drops.
+- [ ] Confirm no stuck prompt list, normal automatic recovery, manual F,
+  treasure exclusion, World travel, and clean exit.
 
 ## 1.3.0 source contract
 
@@ -56,6 +87,9 @@ pending.
 - [x] The reflected `Server_RunInteractV2` exec thunk must identify one unique
   virtual slot; the interactable CDO entry and bounded native implementation
   must expose one structurally valid selector call.
+- [x] The same exact reflected `Server_RunInteractV2` UFunction owns the sole
+  per-function post observer; shutdown unregisters only this Mod's hook IDs and
+  never calls a global unregister-all operation.
 - [x] The complete reflected `SetInteractUIV2` exec wrapper must contain one
   unique terminal `E8 rel32` native-implementation call; that bounded
   implementation must expose one structurally valid UI selector call.
@@ -68,9 +102,12 @@ pending.
 - [x] The standalone PAK owns 50 gather/animal targets plus 19 class-proven
   type-7 drop targets (69 targets / 138 entries), including ordinary and aged
   meat; treasure/type-4 assets remain excluded.
-- [x] The confirmation window is 650 ms; engine/active and post-pickup cadence
-  are 25 ms, idle cadence remains 33 ms, and first-timeout retry cooldown is
-  100 ms.
+- [x] Engine/active/post-invocation due is 25 ms and idle cadence is 33 ms;
+  dispatch consumption does not add another 25 ms wait and its EngineTick may
+  continue scanning.
+  The no-dispatch fallback window is 750 ms, retry delay is 200 ms,
+  same-Component dispatch re-entry is 750 ms, and terminal no-dispatch backoff
+  is 1500 ms.
 - [x] The release contract contains exactly four package classes: installer,
   manual without UE4SS, manual with UE4SS, and standalone range PAKs.
 
@@ -126,6 +163,18 @@ The checked resolver items above establish source and deterministic fixture
 behavior only. They do not prove that either the reflected Server virtual path
 or the reflected UI direct-wrapper path resolves in a particular game process.
 
+## Dispatch-observer local candidate
+
+- [x] Pass source, manifest, package-layout, mods.txt, core, native, and
+  built-artifact gates.
+- [x] Record and deploy 927,744-byte DLL
+  `AC86CF2FA26047CF713B567C1CA63D4AD424C86A3FF9C020B80CAD07B4211F5D`
+  while the game is closed.
+- [x] Verify the installed DLL matches ownership schema 2 while preserving
+  `config.ini` and `mods.txt` byte-for-byte.
+- [ ] Launch and complete the runtime items under Exact 1.3.0 release smoke
+  test before accepting the candidate.
+
 ## 1.3.0 reflection-fix candidate gates
 
 - [x] Record the failed deployed artifact hash and prove that UE4SS identity
@@ -150,6 +199,23 @@ or the reflected UI direct-wrapper path resolves in a particular game process.
   `SELECTOR_RESOLVED` or named fail-closed selector result.
 - [ ] Confirm one physical F9 transition and one visible supported pickup.
 
+## Native status-card visual smoke test
+
+- [x] Keep status timing in a pure model with unit coverage for queued
+  Starting-to-result transitions, smoothstep midpoint, expiry, and travel clear.
+- [x] Require native UMG, hit-test-invisible widgets, guarded UI failure, and no
+  pickup/input/hook ownership in the static source gate.
+- [x] Build and verify the exact ExperimentalNested native DLL with strict
+  warnings enabled.
+- [ ] In gameplay, confirm the top-center translucent card is readable over
+  bright terrain and dark interiors at the owner's normal resolution.
+- [ ] Confirm `STARTING...` resolves to `ENABLED` or `NOT READY`, F9 Off shows
+  `DISABLED`, and every card fades away without leaving a stale widget.
+- [ ] Confirm mouse, keyboard, controller, mounted play, World travel, and clean
+  exit are unchanged while the card is visible and after it expires.
+- [ ] Review the exact deployed candidate before treating the visual design as
+  accepted; build and hash verification alone are not visual acceptance.
+
 ## Exact 1.3.0 release smoke test
 
 The following unchecked items are release QA, not feature-development tasks:
@@ -167,12 +233,15 @@ The following unchecked items are release QA, not feature-development tasks:
   requires F9 again.
 - [ ] Confirm one normal gather, one fish or monster drop, and treasure
   exclusion.
-- [ ] Confirm a successful action blocks every later candidate until exact
-  weak-identity invalidation.
-- [ ] Force one controlled timeout and confirm a single
-  selector-represented retry after 100 ms; force its second timeout and confirm
-  exact-candidate quarantine, manual F availability, continued processing of
-  other candidates, and reset after a deliberate Off/On cycle.
+- [ ] Confirm one matching `PICKUP_DISPATCH_OBSERVED` releases the global
+  in-flight slot without claiming target-level pickup success, then confirm a
+  different candidate can proceed while the first Component remains inside its
+  750 ms re-entry delay.
+- [ ] Force one controlled no-dispatch fallback timeout and confirm a single
+  selector-represented retry after 200 ms; force the second no-dispatch result
+  and confirm a 1500 ms self-expiring Component backoff, manual F availability,
+  continued processing of other candidates, and automatic recovery without an
+  Off/On cycle.
 - [ ] Collect ordinary meat, aged meat, and one other monster drop from beyond
   original range with exactly one expanded PAK, then confirm Original/no-PAK
   behavior and that only one supported range filename is installed.
@@ -190,13 +259,10 @@ No enhancement below is required for the completed current scope:
   configured gamepad key;
 - Authenticode signing for the one-click installer.
 
-The final 1.3.0 installer matrix passed 10/10 isolated fixtures, and all exact
-artifact/archive boxes above are established. On 2026-08-31 the owner reported
-completed gameplay testing and accepted the current version. Fine-grained rows
-left unchecked above mean that no separate retained artifact was recorded for
-that prescribed scenario; they do not override the owner acceptance decision.
-The exact installed DLL hash also remains unrecorded.
+The final pre-observer 1.3.0 installer matrix passed 10/10 isolated fixtures and
+its exact artifact/archive identities remain historical evidence. They do not
+validate the dispatch-observer repair. Every unchecked row above remains open.
 
-Status: `GAMEPLAY_ACCEPTED = OWNER_ACCEPTED_2026_08_31`.
+Status: `DISPATCH_OBSERVER_CANDIDATE = RUNTIME_PENDING`.
 
-Status: `INSTALLED_ARTIFACT_HASH = NOT_RECORDED`.
+Status: `INSTALLED_ARTIFACT_HASH = NOT_APPLICABLE_UNTIL_DEPLOYED`.

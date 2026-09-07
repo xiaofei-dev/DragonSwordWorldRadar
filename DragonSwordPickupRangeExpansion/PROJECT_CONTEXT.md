@@ -17,6 +17,9 @@ and 20x choices and is architecturally separate from `DragonSwordNativeAutoPicku
   and 5 `/Script/DS.DsInteractableAnimal` packages.
 - Structured drop coverage: 19 class-proven type-7 packages, changing only
   `SphereOverlapComp.RelativeScale3D`.
+- Multiplier policy: authored gather/animal targets use the selected variant;
+  short-lived drop targets use `min(selected variant, 10x)` to avoid stale
+  native prompt-list entries at the two highest choices.
 - Excluded from PAK patching: every treasure/type-4 package, visual assets,
   root/movement collision, and drop-item physics/hit components.
 - Historical artifact: `DS_PickupRangeX3Canary_P.pak` is preserved byte-for-byte
@@ -33,7 +36,7 @@ and 20x choices and is architecturally separate from `DragonSwordNativeAutoPicku
 `metadata/targets-x5.json` is the legacy-named reviewed source and exclusion
 inventory. Its 5x values remain an immutable review baseline; production 3x,
 5x, 10x, 15x, and 20x values are derived from each recorded original scale.
-`metadata/variants.json` defines the supported multiplier policy and pins the
+`metadata/variants.json` defines the category-aware multiplier policy and pins the
 historical canary hashes. `build/Build-Release.ps1` verifies exact source hashes,
 applies one dedicated capsule-scale patch per target, enforces exact PAK
 inventory, performs a second content-equivalent build, and verifies independent
@@ -53,7 +56,7 @@ targets plus 19 type-7 drop targets without Auto Pickup. The production build
 uses a pinned structured asset writer and exact UE5.3 mapping file to add only
 `SphereOverlapComp.RelativeScale3D` to the drop packages. Round-trip binary
 equality, exact source hashes, and protected physics/hit components are gated
-for every target. Auto Pickup 1.3.0 does not multiply range at runtime; the PAK
+for every target. Auto Pickup 1.3.1 does not multiply range at runtime; the PAK
 is the sole owner and works independently.
 
 ## Safety boundary

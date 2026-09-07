@@ -6,6 +6,11 @@
 - Range PAK source and reviewed assets:
   `G:\my_projects\game_mods\DragonSword\DragonSwordPickupRangeExpansion`
 - Pinned third-party build dependencies: `DragonSwordNativeAutoPickup\.sdk`
+  - `.sdk\fetchcontent-experimentalnested` is the persistent, pinned source
+    cache used by `Build-Native.ps1 -OfflineDependencies`; its ten source trees
+    are authorized by `metadata\offline-fetchcontent-sources.json` and checked
+    byte-for-byte before and after each offline build. It must remain
+    independent of disposable CMake build directories.
 
 No `DragonSwordOpenSource` copy, alternate source checkout, or timestamped
 project directory is part of the release workflow.
@@ -16,12 +21,14 @@ All disposable Auto Pickup build state lives under `out/`:
 
 - `out/core`
 - `out/native/ExperimentalNested`
-- `out/installer/1.3.0`
+- `out/installer/1.3.1`
 - `out/tests/installer`
 - `out/staging`
 
 These directories may be deleted whenever no build or Setup process is using
-them. Build scripts must not create timestamped or suffixed build roots.
+them. Deleting them must not remove any source needed for a subsequent fully
+offline build. Build scripts must not create timestamped or suffixed build
+roots.
 
 The Range PAK project uses its ignored `runtime/`, `staging/`, and `dist/`
 directories. `runtime/source` is the retained exact source-asset collection;
@@ -29,9 +36,9 @@ other Range runtime children are disposable.
 
 ## Immutable local release
 
-The only publishable local output for version 1.3.0 is:
+The only publishable local output for version 1.3.1 is:
 
-`DragonSwordNativeAutoPickup\dist\releases\1.3.0`
+`DragonSwordNativeAutoPickup\dist\releases\1.3.1`
 
 It contains exactly the installer ZIP, manual-without-UE4SS ZIP,
 manual-with-UE4SS ZIP, standalone range ZIP, and release JSON. Do not publish

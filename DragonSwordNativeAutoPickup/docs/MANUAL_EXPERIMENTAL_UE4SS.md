@@ -53,11 +53,15 @@ migration are required.
 Returning to the main menu or initializing another save or World forces Auto
 Pickup Off. Press the configured toggle again after the playable World loads.
 Holding F9 does not repeat the transition; release is required before another
-press is accepted. If an automatic action times out, the same exact returned
-Component may be retried once after 100 ms only when the game selector presents
-it again. A second timeout quarantines that Component for the current activation; other
-candidates may still proceed. Use separate press/release cycles to go Off and
-then On to clear the attempt records.
+press is accepted. The action record remains armed after the injection call
+returns until matching dispatch, existing exact confirmation, timeout, or reset.
+A matching exact `Server_RunInteractV2` post-dispatch
+releases the global in-flight slot and applies a 750 ms same-Component re-entry
+delay; it does not claim that the selected target was picked up. If no matching
+dispatch or exact confirmation arrives within 750 ms, the same Component may be retried once after
+200 ms only when the game selector presents it again. A second no-dispatch
+result applies a 1500 ms self-expiring backoff. Other candidates may proceed,
+and recovery does not require an Off/On cycle.
 
 The archive includes a one-line `ue4ss/Mods/mods.txt` for installations that do
 not already have one. Never copy it over an existing `mods.txt`; doing so would
@@ -86,24 +90,25 @@ saved gamepad binding is not a current public guarantee.
 The selector and Enhanced Input route is owner-accepted through the historical
 1.6.10 baseline. Version 1.3.0 corrects the deployed 1.2.0 action-storm and F9
 repeat policies and replaces the fixed selector RVA with fail-closed dual-
-path runtime resolution. The current manual-without-UE4SS ZIP is 362,076 bytes /
+path runtime resolution. The following manual archives predate the dispatch-
+observer repair. The manual-without-UE4SS ZIP is 362,076 bytes /
 `9E4A7177C2D28AB2C823B1FCBB92473445CDD21FE5FEB3CF9C8A88E91080274B`;
 the current manual-with-UE4SS ZIP is 8,446,667 bytes /
 `55BE6AA64FE035B0F9F76BBD6479E3F715AA1A5A35BA2B2B4C2B1F277E628C6D`.
-Both contain the 919,552-byte 750 ms confirmation-window / 200 ms retry-
-cooldown native DLL with SHA-256
+Both contain the 919,552-byte 750 ms fallback-window / 200 ms retry-delay
+native DLL with SHA-256
 `10F5F4D575C07FF90A7C692E6A91906B6EA5B01E50D1671F82CBB40E8DB174B2`.
 Static, source, core, built-artifact, deterministic ZIP, exact-entry, and
-checksum gates passed. A local 1.3.0 diagnostic installation later produced
-in-process evidence, and the owner reported gameplay acceptance on 2026-08-31.
-The installed DLL was not independently hash-matched to this manual archive.
+checksum gates passed for those preceding artifacts. They do not contain or
+validate the dispatch-observer repair. The repaired manual artifact and its
+deployment, gameplay, and owner acceptance all remain `RUNTIME_PENDING`.
 
 ## Optional interaction-range PAKs
 
 Original, 3x, 5x, 10x, 15x, and 20x are the complete range-selection set in
 the one-click installer. Manual Auto Pickup archives do not include range PAKs.
 For manual installation, use the separately published
-`DragonSwordPickupRangeExpansion-v1.3.0.zip` and install exactly one option at
+`DragonSwordPickupRangeExpansion-v1.3.1.zip` and install exactly one option at
 a time under `DS/Content/Paks/~mods`. Range works independently of the Auto
 Pickup toggle; 15x and 20x are aggressive options for separate testing in
 dense areas.

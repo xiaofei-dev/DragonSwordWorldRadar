@@ -19,8 +19,8 @@ if ($bytes.Length -lt 2 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
 }
 $ascii = [Text.Encoding]::ASCII.GetString($bytes)
 $unicode = [Text.Encoding]::Unicode.GetString($bytes)
-if (-not $ascii.Contains('DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_0') -or
-    -not $unicode.Contains('1.3.0') -or
+if (-not $ascii.Contains('DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_1') -or
+    -not $unicode.Contains('1.3.1') -or
     $ascii -match 'OVERLAP_PROXY|overlap_proxy|SetCapsuleSize' -or
     $unicode -match 'OVERLAP_PROXY|overlap_proxy|SetCapsuleSize') {
     throw 'The DLL identity or no-range/configured-key binary invariant failed.'
@@ -38,7 +38,10 @@ foreach ($forbidden in @(
     'CONFIRMATION_SUPERSEDED',
     'scheduler_blocked=0',
     'recent_target_cooldown',
-    'automatic_retry=0')) {
+    'action_quarantine_capacity_exhausted',
+    'quarantine_exact_component',
+    'quarantine_size=',
+    'activation_quarantine=1')) {
     if ($ascii.Contains($forbidden) -or $unicode.Contains($forbidden)) {
         throw "The native artifact contains a forbidden legacy action-retry marker: $forbidden"
     }
@@ -47,14 +50,22 @@ foreach ($required in @(
     'PICKUP_ACTION_INVOKED',
     'PICKUP_CONFIRMED',
     'PICKUP_UNCONFIRMED',
-    'pending_global=1',
+    'PICKUP_DISPATCH_OBSERVED',
+    'DISPATCH_MARKER_IGNORED',
+    'pending_action_policy=one_until_game_dispatch',
     'bounded_retry=1 max_attempts={}',
-    'attempt={}/{} terminal={} automatic_retry={} retry_after_ms={}',
+    'dispatch_observer=Server_RunInteractV2_post activation_quarantine=0',
+    'signal=game_Server_RunInteractV2_post',
+    'target_match_unproven=1 pickup_success_claim=0',
+    'terminal_for_injection=1 same_component_reentry_ms={}',
+    'attempt={}/{} cycle_terminal={} automatic_retry={} retry_after_ms={}',
+    'recovery_after_ms={} activation_quarantine=0 action_record_size={}',
     'reason=interaction_owner_changed',
     'pending_and_attempt_records=cleared',
     'DROP_ITEM_RANGE_PAK_OWNED',
     'structured_drop_assets=19 native_multiplier=disabled double_apply_prevented=1',
-    'action_quarantine_capacity_exhausted',
+    'action_record_capacity_exhausted',
+    'required Server_RunInteractV2 post observer registration failed',
     'runtime_reflection_dual_caller_rel32_consensus_fail_closed',
     'Server_RunInteractV2 reflected virtual implementation + SetInteractUIV2 reflected direct implementation',
     'reflection_exec_runtime_function_decode_failed',
@@ -71,7 +82,7 @@ foreach ($required in @(
     'SELECTOR_UNAVAILABLE',
     'SELECTOR_FAULTED')) {
     if (-not $ascii.Contains($required) -and -not $unicode.Contains($required)) {
-        throw "The native artifact is missing a required 1.3.0 action-lifecycle marker: $required"
+        throw "The native artifact is missing a required 1.3.1 action-lifecycle marker: $required"
     }
 }
 $result = [ordered]@{
@@ -79,8 +90,8 @@ $result = [ordered]@{
     path = $dll.FullName
     size_bytes = [int64]$dll.Length
     sha256 = (Get-FileHash -LiteralPath $dll.FullName -Algorithm SHA256).Hash
-    runtime_label = 'DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_0'
-    version = '1.3.0'
+    runtime_label = 'DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_1'
+    version = '1.3.1'
     hotkey_validation = 'UE4SS_KEYDOWN_PLUS_WIN32_RELEASE'
     selector_resolution_policy = 'RUNTIME_REFLECTION_DUAL_CALLER_REL32_CONSENSUS_FAIL_CLOSED'
     static_validation = 'PASSED'

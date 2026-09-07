@@ -1,5 +1,28 @@
 # Evidence
 
+## 1.3.1 high-range drop-list correction
+
+Version 1.3.1 preserves the accepted 1.3.0 native pickup logic and changes the
+separate range-PAK policy only. The 50 authored gather/animal targets retain the
+selected 15x or 20x multiplier; the 19 short-lived type-7 drop overlap targets
+are capped at 10x in both high-range variants. The exact 1.3.0 3x/5x/10x PAK
+containers are reused unchanged.
+
+The category-aware range build and independent release verifier passed with 69
+targets, 138 entries, zero treasure targets, and all 38 packed drop entries in
+each high variant equal to the corresponding 10x entries. Current range hashes:
+
+- 3x: `6BB99A1E35C06EB0284370B9D7BD2F34E90CB6DCA7479CF10A477C68EA0103E8`;
+- 5x: `DB9E129D8F8FCCA025864EC908C13C70F950AD779C37CF13A41164476587CECD`;
+- 10x: `6A1ADB7592BA0C70A17984DB3AC01348086AABE196F0FDAF914B3F52C7A395F1`;
+- 15x with 10x drops: `F8330CEA2F127319887FD3718BC66E2825D39DFE21D635404FC7535C7FAA37EC`;
+- 20x with 10x drops: `81214319100646CD5663940CACE3AFA8F3523F5E319AB7C4AE8D935443FB93D2`;
+- standalone range ZIP: `A346C4F20CF85C60FD2965FCC583129AFD8EB2B805CF4E20A80C1B20B79B49FE`.
+
+These are static/package results, not gameplay acceptance. The exact 1.3.1
+package build has passed; deployment and the high-speed 10x/15x/20x gameplay
+comparison remain separate gates.
+
 ## 1.3.0 release boundary
 
 Version 1.3.0 preserves the game-owned selector behavior, saved-binding
@@ -7,11 +30,18 @@ Enhanced Input action, target policy, on-foot and mounted receiver routes,
 World/session guards, and no-scan safety boundary. It removes the active fixed
 selector RVA and replaces two deployed 1.2.0 scheduling policies:
 
-- only one automatic action may be pending globally;
-- exact actor/component invalidation or an exact pending-component transition
-  out of the live interactable state is the success signal;
-- a first timeout permits one selector-represented retry after 200 ms; a second
-  timeout quarantines only that exact identity;
+- only one automatic injection may be in flight globally;
+- one exact `Server_RunInteractV2` post observer compares the armed raw receiver
+  and publishes only an atomic action marker; it does no logging, reflection,
+  UObject read, game call, or state mutation;
+- EngineTick consumes a matching marker, releases the global slot, and records
+  dispatch evidence with `target_match_unproven=1` and
+  `pickup_success_claim=0`; the same Component has a 750 ms re-entry delay;
+- existing exact weak-identity/state evidence remains an alternate terminal
+  signal inside the same fallback window;
+- missing dispatch and exact confirmation retain a 750 ms fallback window, one selector-represented
+  retry after 200 ms, and a 1500 ms self-expiring second-result backoff; no
+  timeout record lasts for the whole activation;
 - interaction-owner replacement resets pending/retry state even when the
   `UWorld` identity remains stable;
 - one physical F9 press causes at most one transition, regardless of operating-
@@ -103,21 +133,22 @@ can enable automation.
 fault and forces automation Off. The logged selector RVA is diagnostic output
 derived from the resolved address; it is not a configured input or fallback.
 
-The User log emits one `PICKUP_ACTION_INVOKED` record after a successful input
-injection and one terminal `PICKUP_CONFIRMED` or `PICKUP_UNCONFIRMED` record for
-that action. The three records share scalar activation, action, request, actor,
-and component identities. `PICKUP_CONFIRMED` means only that the exact actor or
-component identity became invalid, or the exact pending component changed out
-of `InteractableValue=2`, inside the confirmation window; it does not by itself
-prove inventory gain or visible pickup. `PICKUP_UNCONFIRMED` records elapsed
-time, attempt ordinal, whether the one bounded retry is available, and the
-activation-scoped quarantine size.
+The User log emits `PICKUP_ACTION_INVOKED` after a successful input injection.
+A matching post observer is consumed by EngineTick as
+`PICKUP_DISPATCH_OBSERVED`; both records share scalar activation, action,
+request, actor, component, and tick correlation. Dispatch observation means
+only that the injected action reached the game interaction UFunction on the
+armed receiver. It cannot prove that the game reselected the same target or
+that inventory changed, so the record must include
+`target_match_unproven=1 pickup_success_claim=0`. A no-dispatch fallback emits
+`PICKUP_UNCONFIRMED` with elapsed time, attempt ordinal, bounded-retry status,
+and expiring backoff state. No hook callback emits these logs directly.
 
 With Debug enabled, `PLAYER_CONTEXT_CHANGED`, `SELECTOR_PAIR_OBSERVED`, and
 `AUTO_SCAN_DEFERRED` are change-only and independently capped at 32, 64, and 32
 records per activation. `ACTION_TRACE` is emitted once per bounded automatic
-invocation. `PERF_AGGREGATE` exposes action, pending, quarantine, confirmation,
-timeout, debug-emitted/suppressed, and logger queue/drop/failure counters;
+invocation. `PERF_AGGREGATE` exposes action, in-flight, dispatch, re-entry/
+backoff, no-dispatch, debug-emitted/suppressed, and logger queue/drop/failure counters;
 `PERF_TIMING` separates scheduler, scan, context, selector, validation, action
 resolution, subsystem, injection, and logger-flush timings. Identity fields are
 packed scalars for correlation only; no live UObject pointer or instance name is
@@ -398,25 +429,30 @@ it expects the removed internal `InstallerEngine.Install` method. The current
 release script uses `Test-Installer110.ps1`; its 10-case matrix is the retained
 installer evidence.
 
-## Current validation boundary
+## Historical 1.3.0 validation boundary (superseded)
 
-The 1.3.0 corrective and compatibility-repair source and fresh exact offline
-artifact provenance are complete after the 200 ms retry-cooldown and Repair
-ownership-correction audit.
-Selector resolution in the game, deployment, gameplay acceptance, and owner
-smoke testing remain open evidence classes. The
+This section preserves the evidence boundary as it stood before the canonical
+1.3.1 offline release was built. It is not the current package status.
+
+The 1.3.0 corrective and compatibility-repair history, including preceding
+offline artifact provenance, remains preserved. The dispatch-observer repair is
+a later source candidate and has no exact artifact receipt or runtime acceptance.
+Selector resolution with the repaired binary, deployment, gameplay acceptance,
+and owner smoke testing remain open evidence classes. The
 smoke test must first
 confirm Server virtual-path/UI direct-wrapper `SELECTOR_RESOLVED` consensus on
 the reference build and fail-closed Off behavior on any incompatible or
 ambiguous build. It must then cover true
 F9 edge behavior under a held key, main-menu forced-
 Off behavior, one on-foot pickup, one mounted pickup, fish or a drop, treasure
-exclusion, one first-time timeout followed by at most one
-selector-represented retry, a second-timeout exact-Component quarantine,
-continued handling of unrelated candidates, manual F after quarantine,
+exclusion, one matching dispatch that releases global in-flight while preserving
+the 750 ms same-Component re-entry delay, one first no-dispatch timeout followed
+by at most one selector-represented retry after 200 ms, a second no-dispatch
+1500 ms expiring backoff, automatic recovery, continued handling of unrelated
+candidates, manual F during backoff,
 same-`UWorld` travel, clean exit, one ordinary/aged meat or other monster drop
 at the selected range, and a brief performance
-comparison. It must use the exact final 1.3.0 package and retain the historical
+comparison. It had to use the exact final 1.3.0 package and retain the historical
 1.2.0 build and runtime results as separate evidence classes.
 
 Rebound keyboard input, concrete gamepad-key override, Treasure Radar Overlay
@@ -496,7 +532,7 @@ old 20x PAK, and the authoritative `mods.txt` entry. The post-state was absent
 with no range. No new package was deployed or launched during that cleanup
 operation.
 
-## 2026-08-31 owner acceptance and integration observation
+## 2026-08-31 historical owner acceptance and integration observation
 
 A later local 1.3.0 diagnostic installation ran in the game and produced
 selector, binding, action-invocation, mounted-context, timeout, and quarantine
@@ -512,6 +548,78 @@ mount-speed modification. It therefore does not prove a direct Radar hook
 conflict. See the repository-level `docs/INTEGRATION_STATUS.md` for the shared
 evidence boundary.
 
-Status: `GAMEPLAY_ACCEPTED = OWNER_ACCEPTED_2026_08_31`.
+Status: `PRE_OBSERVER_GAMEPLAY_ACCEPTED = OWNER_ACCEPTED_2026_08_31`.
 
 Status: `INSTALLED_ARTIFACT_HASH = NOT_RECORDED`.
+
+## 2026-08-31 dispatch-observer recovery candidate
+
+The later log review separated two facts that the former confirmation model had
+combined. A successful Enhanced Input injection can reach the game's
+`Server_RunInteractV2` dispatch even when the exact selector Component remains
+live, especially for type-2 gatherables. Waiting for identity invalidation or a
+state transition therefore held the one global slot unnecessarily. A second
+timeout then created activation-long exact-Component quarantine and repeated
+500 ms scan deferrals, which could starve unrelated selector-presented targets.
+
+The repair observes only the exact reflected `Server_RunInteractV2` post call.
+The record is armed before injection and remains correlatable after the call
+returns until matching dispatch, existing exact confirmation, timeout, or reset.
+While that record is armed, the callback compares only the raw receiver
+address and publishes one atomic action token. It performs no logging,
+formatting, reflection, UObject read, game call, or state-machine transition.
+The next actual EngineTick pulse consumes the token, correlates it to the same
+action/request, releases the global in-flight slot, and logs
+`target_match_unproven=1 pickup_success_claim=0`. Because that pulse normally
+arrives roughly one game frame after injection, the existing 25 ms active/post
+due has already been satisfied; consumption does not add another 25 ms wait and
+the same tick may continue scanning. The exact Component retains a 750 ms
+re-entry delay.
+
+If no matching dispatch is observed, the fallback remains conservative: a
+750 ms window, one retry after 200 ms, then a 1500 ms self-expiring Component
+backoff. There is no activation-long quarantine and no 500 ms quarantine scan
+loop. Engine/active/post due remains 25 ms and idle remains 33 ms.
+
+The corrective DLL was built and passed source, manifest, core, native, and
+built-artifact gates, then was locally deployed while the game was closed:
+
+- file: `dist/dispatch-recovery-audit/main.dll`;
+- size: 927,744 bytes;
+- SHA-256: `AC86CF2FA26047CF713B567C1CA63D4AD424C86A3FF9C020B80CAD07B4211F5D`;
+- deployed UTC: `2026-08-31T17:26:37.0305139Z`;
+- installed DLL hash and ownership-schema-2 record: matching;
+- `config.ini` and `mods.txt`: byte-preserved.
+
+It has not yet been launched or exercised. Historical logs motivate it but do
+not accept this exact artifact.
+
+Status: `DISPATCH_OBSERVER_CANDIDATE = RUNTIME_PENDING`.
+
+## 2026-08-31 native status-card polish candidate
+
+The F9 status card was refined without changing selector, target validation,
+action scheduling, retry, confirmation, or Enhanced Input behavior. The native
+UMG tree now uses a 72% opaque deep-blue outer glass layer, 32% inner glass,
+28% shadow, 13% highlight, and state-colored low-opacity glow/rule layers.
+The pure display timeline uses smoothstep fade/slide easing; the host adds a
+bounded 98.5%-to-100% reveal scale. Every widget remains hit-test-invisible and
+the guarded renderer still fails independently with `pickup_unaffected=1`.
+
+Source, manifest, selector/isolation, package-layout, core, native-build, and
+built-artifact gates passed. The exact DLL was deployed while the game was
+closed:
+
+- file: `dist/status-toast-polish-audit/main.dll`;
+- size: 943,104 bytes;
+- SHA-256: `FA5B5485EAD59726AD80A027C2139083DD1C1C1D1FF9F294891320296F2CC8F7`;
+- deployed UTC: `2026-09-01T00:00:48.2361864Z`;
+- installed DLL hash and ownership-schema-2 record: matching;
+- `config.ini` and `mods.txt`: byte-preserved;
+- rollback: `runtime/rollback/installed-1.3.0-pre-status-toast-polish-20260831-170048`.
+
+Static and hash evidence does not validate readability, animation quality, or
+gameplay behavior. Those remain owner visual/runtime smoke-test items for this
+exact artifact.
+
+Status: `STATUS_TOAST_POLISH = DEPLOYED_RUNTIME_PENDING`.

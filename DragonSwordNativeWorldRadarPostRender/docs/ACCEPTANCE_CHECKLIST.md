@@ -5,33 +5,61 @@ package, installation, gameplay, performance, and publication are independent.
 
 ## Current 2.2.1 acceptance state
 
-- [ ] Source identity is `2.2.1` and runtime label is
+- [x] Source identity is `2.2.1` and runtime label is
       `DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1` in every compiled,
       installer, metadata, and package authority.
-- [ ] Core, static, world-map, PostRender, release-hygiene, and clean native
-      `/W4 /WX` build gates pass against the exact 2.2.1 source.
-- [ ] Installer `20/20`, manual `2/2`, payload-equivalence, clean-target,
+- [x] Source review, Core `2/2`, static gates, release hygiene, and the clean
+      native build pass for the exact full-stretch-host/inner-atlas candidate
+      bytes.
+- [x] Rollback-backed diagnostics-enabled developer deployment installs the
+      exact current DLL while the game is stopped, verifies the installed hash
+      and size, retains exactly one Radar entry in `mods.txt`, preserves
+      `debug_logging=true`, and leaves the game stopped after deployment.
+- [x] Installer `20/20`, manual `2/2`, payload-equivalence, clean-target,
       archive-integrity, and final-package gates pass against the exact 2.2.1
       DLL and `dist/final-2.2.1` manifest.
 - [ ] The exact 2.2.1 package is installed and gameplay-tested with native icons
       and click targets stable through pan, zoom, reopen, travel, 4K, 21:9,
       16:10, DPI, windowed, dense-Treasure, controller, and clean-exit cases.
-- [ ] The native icon Canvas remains a read-only geometry witness. Both Mod
-      atlas hosts are independent, hit-test-invisible viewport widgets, and a
-      same-parent geometry change updates only host transforms without reraster,
-      rebuild, reprojection, re-add, or reparent.
+- [ ] Both Mod atlas hosts remain hit-test-invisible children of the directly
+      resolved current `DLayerMap.FogAbovePanel`. `ArrayIconInfo` supplies only
+      a creation-time instantiable icon class and is not scanned by retained-host
+      validation/refresh. Each outer slot is full stretch with zero offsets,
+      `AutoSize=false`, zero alignment, and maximum Z. Each cloned inner
+      `Panel_Point` slot is independently reasserted as full stretch with zero
+      offsets. Only the Image Canvas slot owns
+      `{atlas_left,atlas_top,atlas_width,atlas_height}`; Image render translation
+      remains `(0,0)`. No Mod-owned negative outer offset may feed back into the
+      native parent's desired extent, and no host transform or forced prepass is
+      used.
 
-Status: `SOURCE_VALIDATED = PENDING_FOR_2_2_1`
+Status: `SOURCE_VALIDATED = PASSED_FOR_FULL_STRETCH_HOST_INNER_ATLAS_CANDIDATE_WITH_RELEASE_HYGIENE`
 
-Status: `BUILT = PENDING_FOR_2_2_1`
+Status: `BUILT = PASSED_FOR_WM_06_IMMUTABLE_SLOT_CANDIDATE`
 
-Status: `INSTALLER_TESTED = PENDING_FOR_2_2_1`
+Built DLL SHA-256: `6435E10031D90840BF0499664CF57347D7991C9C192BD3B2239ADE2324C723A1`
 
-Status: `PACKAGED = PENDING_FOR_2_2_1`
+Compiled-source SHA-256: `0A1A4CE3EE9F3A04E4B258976CFD830654BCB778B1F9BF5715FB66242B5E5BC5`
 
-Status: `DEPLOYED = PENDING_FOR_2_2_1`
+Built DLL size: `1,107,968` bytes
+
+Status: `INSTALLER_TESTED = PASSED_CURRENT_WM06_SETUP_20_OF_20_MANUAL_2_OF_2_AND_PAYLOAD_GATES`
+
+Status: `PACKAGED = PASSED_CURRENT_WM06_THREE_ARCHIVE_BYTE_IDENTICAL_REEXTRACTION`
+
+Installer ZIP SHA-256: `A7F4065F52C4032A26B0D93FA7074FA478C1F985B98315C498DFEA23F44FC025`
+
+Manual No-UE4SS ZIP SHA-256: `5ED7B0736C27B521CD11381EB912AE32068FD360B043DB9D35FBCA3CC97FEF14`
+
+Manual With-UE4SS ZIP SHA-256: `D54AF55078C972DE4044403BBA29E2785821C73B8747C9CF306587A9B21595F2`
+
+Status: `DEPLOYED = PASSED_ROLLBACK_BACKED_DIAGNOSTICS_ENABLED_CURRENT_CANDIDATE`
 
 Status: `GAMEPLAY_ACCEPTED = NOT_VALIDATED_FOR_2_2_1`
+
+Status: `VISUAL_ACCEPTED = NOT_VALIDATED_FOR_2_2_1`
+
+Status: `RESOLUTION_ACCEPTED = NOT_VALIDATED_FOR_2_2_1`
 
 Status: `CONTROLLER_ACCEPTED = NOT_VALIDATED_FOR_2_2_1`
 
@@ -40,6 +68,39 @@ Status: `RESPONSIVE_UI_ACCEPTED = NOT_VALIDATED_FOR_2_2_1`
 Status: `LOCALIZATION_GLYPHS_ACCEPTED = NOT_VALIDATED_FOR_2_2_1`
 
 Status: `PERFORMANCE_ACCEPTED = NOT_VALIDATED_FOR_2_2_1`
+
+Status: `BINARY_AND_DERIVED_DATA_PUBLICATION = BLOCKED`
+
+Current developer-deployment backup:
+`dist/work/deployment/deploy-backups/20260905-202742-614-native-only-deploy`
+
+The deployed and installed DLL both match SHA-256
+`6435E10031D90840BF0499664CF57347D7991C9C192BD3B2239ADE2324C723A1`
+and size 1,107,968 bytes. The controlling `mods.txt` contains exactly one Radar
+entry, `debug_logging=true`, and the game was stopped after deployment. This
+developer deployment proves only rollback-backed local installation identity;
+it is not Setup ownership, gameplay acceptance, visual acceptance, resolution
+acceptance, or performance acceptance. Package and installer evidence is
+recorded separately against the same exact DLL in `dist/final-2.2.1`.
+
+The prior independent-viewport/extreme-Z candidate is runtime rejected. It made
+markers visible, but live testing reported severe lag, wrong placement, and
+delayed updates. The later first-valid-parent candidate is also rejected:
+temporary topology logs show zoom-driven native icon reconstruction alternating
+the selected parent between `FogAbovePanel` and `FogUnderPanel`, with four Mod-
+host reattachments in one sequence, fog occlusion, hitching, and flashing.
+The later full-stretch-outer/Image-translation candidate, DLL
+`CCC6B1170...6AE00` from compiled source `B650B5FB...74EA`, is runtime rejected
+for its measured zoom-pivot misalignment. The subsequent outer-atlas-rectangle
+candidate, DLL `CD41F0E1...6FBB2` from compiled source `433710E0...E62C`, is
+also runtime rejected. Its diagnostics-enabled deployment is preserved only as
+rejected evidence at
+`dist/work/deployment/deploy-backups/20260905-182946-652-native-only-deploy`.
+That run attached 1,632 markers with no data, texture, or ABI fault, but the Mod's
+negative outer atlas offset changed the native parent extent from `3000` to
+`3191.521`, triggering `WORLD_MAP_LAYERING_REBUILD_REQUIRED` oscillation: six
+attaches and five detaches. These historical logs do not accept the current
+candidate.
 
 The current matrix is maintained in
 `docs/RUNTIME_FEEDBACK_AUDIT_2_2_1.md`.
@@ -434,20 +495,54 @@ Status: `HISTORICAL_2_1_1_DEPLOYED = PASSED_LOCAL_DEBUG_EXACT_B89F`
       layout work.
 - [ ] At native 21:9, a 4K viewport with internal 21:9 black bars, 16:10, and
       windowed 16:9, open, pan, zoom, close, and reopen the expanded map. Every
-      category must stay aligned through player-icon `LocalToAbsolute` into the
-      native Canvas `LocalToAbsolute` and game-viewport `AbsoluteToLocal` space,
-      with X/Y scaled by the witnessed live geometry. A deterministic 3840x1600 unit input
-      is not runtime acceptance. Initial attach may use only its bounded three-
-      attempt readiness service. A later trigger must produce only the five
-      deadlines at 100/250/500/1,000/1,250 ms, one observation per due pass,
-      no overdue multi-observation collapse, and no tree mutation in the first
-      four passes. The native Canvas must remain read-only, and both atlas hosts
-      must remain independent hit-test-invisible viewport widgets. Same-parent
-      geometry changes may update host transforms only, with no reraster,
-      rebuild, reprojection, re-add, reparent, native desired-size change, or
-      native click-target displacement. No sampled
-      UObject wrapper or `FGeometry` may cross passes; no centered/desktop
-      fallback, `3000`/`8000` geometry constant, or steady poll is allowed.
+      category must stay aligned through direct native-parent pan, zoom,
+      clipping, visibility, and RetainerBox inheritance. A deterministic
+      3840x1600 unit input is not runtime acceptance. Initial attach may use only
+      its bounded three-attempt readiness service. A later trigger must produce
+      only the five deadlines at 100/250/500/1,000/1,250 ms, one observation per
+      due pass, and no overdue multi-observation collapse. Both hosts must remain
+      hit-test-invisible native-Canvas children whose outer slots are full
+      stretch with zero offsets, `AutoSize=false`, zero alignment, and maximum
+      Z. Each inner `Panel_Point` must also remain full stretch with zero offsets.
+      Only each Image Canvas slot may hold
+      `{atlas_left,atlas_top,atlas_width,atlas_height}`, while Image render
+      translation stays `(0,0)`. Same-parent pan/zoom must perform no viewport-
+      transform write. Every tail pass must read live parent extent, and the
+      outer/inner full-stretch layout must not change that extent. A fully
+      unchanged same-parent pass, including the final pass, must perform no
+      layout, transform, visibility, restack, Remove/Add, or `RequestRender`.
+      Post-attach tail deadlines must be
+      armed from a fresh clock sample taken after attachment completes, and
+      attachment itself must not submit an empty-host `RequestRender` before
+      visibility is applied. Retained refresh must not read
+      `PlayerIconWidget`; anchor-only changes must leave the attach-time Image
+      Canvas-slot atlas position immutable. A real parent replacement must only
+      report `RebuildRequired`; the scheduler alone may perform a fresh
+      attachment. A changed extent must be observed as
+      two matching stable samples before `RebuildRequired` is reported. Merely
+      reporting that result must not collapse, hide, detach, or mark the valid
+      payload transform-unready; the scheduler alone owns the accepted rebuild
+      mutation. Retained-RetainerBox or owned-payload replacement/invalidity
+      follows the same report-only scheduling boundary. At most one rebuild may
+      run in one open-map session; it must preserve the marker snapshot and
+      receive its own hard-capped three-attempt attach/geometry budget, for a
+      whole-session maximum of initial 3 plus rebuild 3. Require exactly one
+      attach and zero detaches in a stable open-map session, with no
+      `WORLD_MAP_LAYERING_REBUILD_REQUIRED`. Confirm no forced layout prepass,
+      reraster, marker-data rebuild or reprojection, native desired-size growth,
+      or native click-target displacement. No sampled UObject wrapper or
+      `FGeometry` may cross passes; no centered/desktop fallback, `3000`/`8000`
+      geometry constant, or steady poll is allowed.
+- [ ] Confirm the two 2048 atlases consume approximately 32 MiB raw decoded
+      BGRA. A cache hit must use envelope `DSNWRA52` and pass exact dimensions,
+      header, magic, 1/4096-UMG-unit fingerprint, visible-count, full RLE decode
+      to exactly 2048-by-2048 pixels, encoded-payload checksum, and exact-EOF
+      checks. Revision-51, corrupt, truncated, and trailing-byte files must miss.
+      Confirm writes use a same-directory temporary file, atomically publish via
+      `MoveFileExW` with replace-existing and write-through flags, and remove the
+      temporary file on failure. Record cold and cache-hit attach time; bounded
+      cache I/O and texture import are not steady-state work and are not accepted
+      merely because the cache reports a hit.
 - [ ] Both exact bird-egg classes use only the fixed 512-slot weak pool, at most
       eight unknown-position queries per 250 ms control tick, and a nearest-16
       active bound. They never render on the expanded map or invoke enumeration

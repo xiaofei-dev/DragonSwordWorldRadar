@@ -1,0 +1,39 @@
+[size=6][b]DragonSword Auto Pickup v1.3.1 - Quick Support[/b][/size]
+
+Please install the latest v1.3.1 package before reporting an issue. If your UE4SS installation is old or uncertain, use the [url=https://www.nexusmods.com/dragonswordawakening/mods/251?tab=files]One Click Installer from the Files section[/url].
+
+[quote][b]IMPORTANT[/b]
+Auto Pickup starts Off. Load a playable World and press [b]F9[/b].
+Install no more than one optional range PAK.
+Do not use the older Treasure Radar Overlay with Auto Pickup.[/quote]
+
+[size=4][b]Common questions[/b][/size]
+
+[list]
+[*][b]Game build not supported[/b] - This message comes from an older version. Install v1.3.1. Game EXE hashes no longer block installation or activation.[/*]
+[*][b]UE4SS.dll not supported[/b] - Do not mix UE4SS files. Use the latest One Click Installer or the Manual - Includes UE4SS package.[/*]
+[*][b]Linux or Proton[/b] - Linux and Proton are not officially supported or tested. One user reported that [code]WINEDLLOVERRIDES="dwmapi=n,b"[/code] was required, but this community workaround is not guaranteed.[/*]
+[*][b]F9 does nothing or shows NOT READY[/b] - Wait until a playable World is fully loaded, close menus, make sure the game is the active window, and press F9 once.[/*]
+[*][b]The game crashes after F9[/b] - Install v1.3.1 cleanly, use the tested UE4SS package, remove the older Treasure Radar Overlay, and keep only one range PAK. If it still crashes, stop retrying and post the logs below.[/*]
+[*][b]Custom interaction key[/b] - The Mod detects the saved INTERACT key automatically. After changing it, toggle Auto Pickup Off and On.[/*]
+[*][b]Auto Pickup stops briefly and then recovers[/b] - One target may be temporarily unresponsive. The Mod retries safely and continues when it can.[/*]
+[*][b]Animals[/b] - Animals must be defeated first. Auto Pickup collects the resulting loot but does not kill them.[/*]
+[*][b]Treasure chests[/b] - Chests are intentionally excluded and remain manual.[/*]
+[*][b]Animal or destructible drops are outside expanded range[/b] - Use one current v1.3.1 range PAK. It adds 19 verified drop assets, including ordinary meat and aged meat. In the 15x and 20x choices, these short-lived drops intentionally remain 10x while gather and animal targets keep the selected range.[/*]
+[*][b]Which range should I use?[/b] - Start with Original, 3x, or 5x. The 15x and 20x options may cause more prompt competition in dense areas.[/*]
+[*][b]Can the range PAK work without Auto Pickup?[/b] - Yes. Install exactly one expanded PAK. Original range means no expanded PAK.[/*]
+[*][b]How do I uninstall?[/b] - Close the game, run the latest installer, and choose Uninstall.[/*]
+[*][b]Radar compatibility[/b] - Auto Pickup works with [url=https://www.nexusmods.com/dragonswordawakening/mods/254]Native Map and Radar Enhancer[/url], but not with the older Treasure Radar Overlay.[/*]
+[/list]
+
+[size=4][b]Reporting a problem[/b][/size]
+
+Include the installed package, clean install or upgrade, selected range, other UE4SS Mods, reproduction steps, expected and actual behavior, and a screenshot when useful.
+
+For startup failures or crashes, include:
+[code]Win64\UE4SS.log[/code]
+
+For pickup or NOT READY problems, temporarily set [code]debug_logging=true[/code], reproduce once, and include:
+[code]Win64\ue4ss\Mods\DragonSwordNativeAutoPickup\runtime\logs\DragonSwordNativeAutoPickup.Debug.log[/code]
+
+Return debug_logging to false after collecting the log.

@@ -3,8 +3,8 @@
 ## Role
 
 `DragonSwordNativeAutoPickup` owns automatic pickup only. The current release
-is `1.3.0` with runtime label
-`DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_0`.
+is `1.3.1` with runtime label
+`DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_1`.
 
 Version `1.6.10-ue4ss-f9-fish-perf-diagnostics` established the selector,
 Enhanced Input, on-foot, mounted Rider, fish, and bounded-scan route. Deployed
@@ -19,9 +19,12 @@ pending action keyed to the exact returned Component, exact
 invalidation/state-transition confirmation, one selector-represented bounded
 retry before exact-Component quarantine, and a
 true physical F9 edge.
+Version 1.3.1 preserves that native pickup behavior and changes only release
+identity plus the separate high-range PAK policy: 15x/20x gather and animal
+targets retain their selected range, while short-lived drops are capped at 10x.
 The latest corrective source includes the strict owner-settle and preflight
 ordering audit and passed a fresh exact static, core, native-artifact,
-installer 10/10, and deterministic four-package audit. A local 1.3.0
+installer 11/11, and deterministic four-package audit. A local 1.3.0
 diagnostic installation produced in-process evidence, and the owner reported
 completed gameplay testing and acceptance on 2026-08-31. The exact installed
 DLL hash was not independently recorded in this repository.
@@ -73,7 +76,7 @@ and lifecycle source evidence is not gameplay acceptance.
 
 ## Installation boundary
 
-The 1.3.0 release uses one tested native ABI: UE4SS v3.0.1 Beta #0
+The 1.3.1 release uses one tested native ABI: UE4SS v3.0.1 Beta #0
 commit `1c1a1497` in the ExperimentalNested layout. If UE4SS is absent, the
 installer installs that runtime. If another or mixed UE4SS layout is present,
 the installer asks for confirmation, creates a verified Win64-relative backup,
@@ -124,8 +127,9 @@ gather/animal capsule packages plus the exact overlap component in 19 reviewed
 type-7 drop packages, for 69 targets and 138 entries. Ordinary meat, aged meat,
 coins, nuts, crystals, minerals, grain, and the other reviewed F-pickable drops
 are included; treasure/type-4 assets are not. At most one expanded variant may
-be installed. The 15x and 20x variants are aggressive compatibility options,
-not stronger runtime validation.
+be installed. Gather/animal targets use the selected multiplier. Short-lived
+drop targets use `min(selected multiplier, 10x)`, so the 15x and 20x variants
+avoid extending drop overlap beyond the stable 10x range.
 
 ## Public and local diagnostics
 
@@ -143,7 +147,7 @@ counters. It does not restore the 1.2.0 seven-line User-log chain per injection.
 patch is not part of this repository or any Auto Pickup installer/archive and
 must never be redistributed as Auto Pickup content.
 
-The 1.3.0 distribution contract contains the installer, manual-without-UE4SS,
+The 1.3.1 distribution contract contains the installer, manual-without-UE4SS,
 manual-with-UE4SS, and standalone range-PAK archives. The earlier
 pre-compatibility release-candidate DLL was 422,912 bytes /
 `BF6418A9570CCD3FD8FF58E734C38666D8E591504532A5C50A25E8EA5956B188`;

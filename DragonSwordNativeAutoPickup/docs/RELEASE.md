@@ -2,8 +2,8 @@
 
 ## Public release
 
-- Version: `1.3.0`
-- Runtime marker: `DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_0`
+- Version: `1.3.1`
+- Runtime marker: `DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_1`
 - Supported ABI: UE4SS v3.0.1 Beta #0 commit `1c1a1497`, ExperimentalNested only
 - Launch state: Off
 - Main-menu/save/World initialization state: forced Off; toggle required again
@@ -23,26 +23,30 @@
   uses one terminal `E8 rel32` native-implementation call; both implementations
   must resolve the same selector address; no fixed RVA, hash table, or fallback
   address
-- Action lifecycle: one global pending action keyed to the exact returned
-  Component; exact Actor/Component invalidation or exact Component inactive
-  confirms; the first 650 ms timeout permits one selector-represented retry
-  after 100 ms; the second timeout quarantines that exact Component
+- Action lifecycle: one global in-flight action keyed to the exact returned
+  Component and receiver, armed before injection and retained after its return
+  until dispatch, existing exact confirmation, timeout, or reset; an exact
+  `Server_RunInteractV2` post-dispatch marker releases the slot without claiming
+  target-level pickup success; the same
+  Component waits 750 ms before re-entry; one no-dispatch retry follows after
+  200 ms, and a second no-dispatch result applies a 1500 ms expiring backoff
+- Dispatch observer safety: exact per-UFunction post hook only; while armed it
+  performs raw receiver comparison plus atomic publication, with no logging,
+  reflection, UObject read, game call, or action-state mutation
 - Interaction-owner lifecycle: replacement clears pending and attempt records
   and enforces a new 1500 ms settle deadline before the next scan
 - Toggle lifecycle: one transition per physical press; release required before
   another F9 transition
 - Feature status: corrective and compatibility-repair source implemented after
   deployed 1.2.0 action-storm evidence
-- Exact-package status: fresh static, core, built-artifact, installer 10/10,
-  deterministic ZIP, exact-entry, and checksum gates passed for the latest
-  exact-Component preflight and strict owner-settle source; selector in-process
-  resolution, deployment, gameplay acceptance, and owner smoke testing remain
-  pending
+- Exact-package status: native pickup behavior is unchanged from the accepted
+  1.3.0 baseline. The complete 1.3.1 offline package build and static release
+  gates passed; deployment and the owner gameplay smoke test remain separate
 
 ## Release artifacts
 
-The canonical 1.3.0 release artifacts are under
-`dist/releases/1.3.0` and contain exactly four public archives:
+The canonical 1.3.1 release artifacts are under
+`dist/releases/1.3.1` and contain exactly four public archives:
 
 1. One-click installer ZIP with README and checksums.
 2. Manual Mod-only ZIP without UE4SS or range PAKs.
@@ -55,12 +59,14 @@ Do not publish a separate standalone UE4SS runtime archive as part of this Auto
 Pickup release.
 
 The pinned UE4SS compatibility runtime remains a build input only. The five
-approved range PAKs remain owned by the range-expansion project. Each now
-contains 50 reviewed gather/animal packages and 19 structured type-7 monster-
-drop packages; treasure assets are excluded.
+approved range PAKs remain owned by the range-expansion project. Each contains
+50 reviewed gather/animal packages and 19 structured type-7 monster-drop
+packages; treasure assets are excluded. The 15x and 20x variants keep their
+full gather/animal multiplier while the short-lived drop targets remain 10x.
 
-The current action-lifecycle artifact identities with the 750 ms confirmation
-window and 200 ms retry cooldown are:
+The preceding action-lifecycle artifact identities with the 750 ms fallback
+window and 200 ms retry delay are listed below. They do not contain the dispatch-
+observer repair and must remain labeled historical:
 
 - native DLL: 919,552 bytes, SHA-256
   `10F5F4D575C07FF90A7C692E6A91906B6EA5B01E50D1671F82CBB40E8DB174B2`;
@@ -76,11 +82,19 @@ window and 200 ms retry cooldown are:
   `504C1E9524CDE63B096C88E24DBA0D5E008F9076BA24B6BC6065D60780848801`.
 
 Static, source, core, built-artifact, installer 10/10, deterministic ZIP,
-exact-entry, and checksum gates passed. These are offline release results only.
+exact-entry, and checksum gates passed for those preceding historical
+artifacts. At that historical point, the repaired candidate had no recorded
+exact release artifact.
+
+The historical non-release local deployment candidate is 927,744 bytes with SHA-256
+`AC86CF2FA26047CF713B567C1CA63D4AD424C86A3FF9C020B80CAD07B4211F5D`.
+It passed source/core/native/built-artifact gates and is recorded under
+`dist/dispatch-recovery-audit`; it is superseded by the canonical 1.3.1 release
+and must not be substituted for its four public archives.
 
 ## Canonical command
 
-Run the 1.3.0 release gate from the project root:
+Run the 1.3.1 release gate from the project root:
 
 ```powershell
 & .\tools\Build-Release.ps1 `
@@ -89,7 +103,7 @@ Run the 1.3.0 release gate from the project root:
 
 `Build-Release.ps1` is the canonical ExperimentalNested-only builder. It runs
 the full source and core gate, builds and verifies the native DLL and Setup,
-requires the isolated installer matrix to return exactly 10 passed and zero
+requires the isolated installer matrix to return exactly 11 passed and zero
 failed or skipped fixtures, rebuilds each ZIP twice, and checks exact entries,
 complete checksums, first-party ASCII English release text, and payload
 exclusions before replacing the release directory. Pinned upstream text under
@@ -97,9 +111,10 @@ exclusions before replacing the release directory. Pinned upstream text under
 must remain byte-for-byte identical to the approved runtime archive.
 `Build-Release110.ps1` is retained only as a compatibility wrapper.
 
-`-SkipNativeBuild` may reuse an existing DLL, but the DLL still passes exact
-artifact verification. It does not skip source/core, installer, archive, or
-checksum gates.
+`-SkipNativeBuild` is rejected for publishable releases. The canonical gate
+always resets the single native build directory, verifies the tracked offline
+dependency manifest, and rebuilds the DLL with network dependency resolution
+disabled before artifact, installer, archive, and checksum verification.
 
 Generated native, installer, test, and staging state lives only under `out/`.
 If a prior Setup executable is still open, close it before rebuilding; do not
@@ -108,11 +123,12 @@ embedded in the installer ZIP.
 
 ## Required gates
 
-1. Build the ExperimentalNested native DLL and verify its 1.3.0 marker and ABI.
+1. Build the ExperimentalNested native DLL and verify its 1.3.1 marker and ABI.
 2. Verify launch-Off, forced-Off lifecycle behavior, true physical F9 edge,
-   one global pending action, exact invalidation/state confirmation, one
-   selector-represented bounded retry, second-timeout quarantine, and
-   interaction-owner context reset in source and tests.
+   one global in-flight action, exact per-UFunction dispatch observer safety,
+   EngineTick marker consumption, 750 ms same-Component re-entry, one
+   selector-represented bounded retry after 200 ms, 1500 ms expiring terminal
+   backoff, and interaction-owner context reset in source and tests.
 3. Verify the selected game filename rule and diagnostic-only game hash path.
    The hash must never select, authorize, or fall back to a selector address.
 4. Verify the PE32+ and x64 runtime-function fixtures, real instruction-boundary
@@ -122,7 +138,8 @@ embedded in the installer ZIP.
    no fixed RVA, and fail-closed ambiguity/disagreement/fault paths.
 5. Verify Install, Upgrade, Repair, and Uninstall state inspection against isolated
    absent, owned, and unknown same-name fixtures; the current release matrix
-   must return exactly 10 passed, 0 failed, and 0 skipped.
+   must return exactly 11 passed, 0 failed, and 0 skipped, including the recorded
+   schema-2 1.3.0 to 1.3.1 Upgrade fixture.
 6. Confirm exact-runtime Upgrade preserves `config.ini`, does not create a
    persistent conversion backup, and restores temporary transactional changes
    on failure.
@@ -150,6 +167,7 @@ offline release gate does not replace deployment, in-process selector
 resolution, or an exact-package gameplay smoke test,
 including reference-build Server virtual-path/UI direct-wrapper
 `SELECTOR_RESOLVED` consensus, fail-closed Off behavior for an incompatible
-contract, held-F9 repeat, pending blocking, exact-Component timeout
-quarantine, continued handling of unrelated candidates, manual F,
+contract, held-F9 repeat, in-flight blocking, matching dispatch release,
+explicit non-claim of target success, exact-Component re-entry/backoff,
+continued handling of unrelated candidates, automatic recovery, manual F,
 on-foot/mounted pickup, travel, clean exit, and performance.

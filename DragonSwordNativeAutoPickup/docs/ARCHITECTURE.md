@@ -12,6 +12,23 @@ Hotkey ingress does not touch gameplay UObjects and is accepted only while the
 DragonSword game window is foreground and the game thread has published the
 current session generation as playable.
 
+The same game-thread tick publishes completed toggle outcomes to an isolated
+native UMG status-card renderer. The renderer owns only weak widget handles and
+a pure display timeline. It runs after pickup work, is excluded from pickup
+timing and decisions, never owns a hook or input path, and marks its entire
+widget tree hit-test-invisible. World travel clears all widget handles. ABI or
+runtime UI failure disables only the renderer and records
+`pickup_unaffected=1`; it cannot change automation state.
+
+The renderer builds one 360 x 82 reference-unit card from native `Border` and
+`TextBlock` widgets. Its deep-blue outer glass is 72% opaque, with a 32% opaque
+inner layer, 28% shadow, 13% top highlight, and state-colored glow/rule layers.
+The state accent is gold, mint, slate, or soft red. The pure timeline retains
+the existing 120 ms fade-in, 260 ms fade-out, and bounded message lifetimes but
+applies smoothstep easing. The host combines the eased opacity with an 8-unit
+vertical reveal and a 98.5%-to-100% scale. These values are presentation-only
+and cannot feed back into the automation state machine.
+
 Before any gameplay reflection is used, the adapter verifies the exact nested
 UE4SS hash and loaded module path. It then parses the loaded game PE32+ image
 and its executable `.text` section.
@@ -60,17 +77,38 @@ machine-code contracts remain compatible. It does not promise compatibility
 with arbitrary recompiles. Structural drift fails closed instead of calling a
 historical address.
 
-Only one automatic action may be pending globally. Before injection, the exact
-candidate weak identity and scalar World/session identity define the pending
-record, so synchronous re-entry cannot create a second action. No later
-candidate may invoke an action while that record is pending.
-Exact actor/component weak-identity invalidation or the exact pending component
-leaving the live interactable state within the 650 ms confirmation window is
-the success signal. A first timeout records a 100 ms cooldown. The game must
-present the same exact identity again before one retry is admitted; a second
-timeout quarantines it for the current activation. Other candidates may still
-proceed. Separate physical F9 presses take the Mod Off and then On to clear the
-attempt records.
+Only one automatic injection may be in flight globally. Before injection, the
+exact candidate weak identity, raw interaction-receiver address, action token,
+and scalar World/session identity define the armed record, so synchronous
+re-entry cannot create a second action. No later candidate may invoke an action
+while that record remains armed.
+
+The adapter registers one post observer on the exact reflected
+`Server_RunInteractV2` UFunction. The record is armed before injection and
+remains correlatable after the injection call returns until matching dispatch,
+existing exact weak/state confirmation, timeout, or context reset. While that
+record is armed, the observer compares `context.Context` with the raw receiver
+address and, on a match, publishes only the action token through an atomic
+marker. It performs no logging, formatting, reflection, UObject dereference,
+state-machine mutation, or game call. EngineTick consumes the marker, clears
+the global in-flight slot, emits `PICKUP_DISPATCH_OBSERVED`, and gives that exact
+Component a 750 ms re-entry delay. Other selector-presented candidates can then
+advance. The observation proves only that the injected action reached the
+game's interaction dispatch; it does not prove that the selector-returned target
+was chosen or collected. Logs therefore carry `target_match_unproven=1` and
+`pickup_success_claim=0`.
+
+Existing exact Actor/Component invalidation or exact Component state-change
+evidence remains an alternate terminal path inside the same fallback window.
+When neither matching dispatch nor exact confirmation arrives, the 750 ms
+fallback window expires.
+The game must present the same exact identity again after a 200 ms delay before
+one retry is admitted. A second no-dispatch result applies a 1500 ms self-
+expiring Component backoff. There is no activation-long timeout quarantine and
+no 500 ms quarantine scan loop. Context reset still clears pending and attempt
+records. Neither timeout writes a global scan deadline: after clearing the
+in-flight record, that same EngineTick may process a different selector result
+while the exact Component record remains cooled.
 
 The selector result must prove `InteractableValue=2`, matching component Outer
 and World, and one closed target category: NormalGather 2, Animal 5, or
@@ -91,16 +129,21 @@ has its exact allowed property class, array dimension, element size, and bounded
 offset. UObject and UClass parameters are written through the pinned SDK
 `SetObjectPropertyValue` accessor and the subsystem return is read through
 `GetObjectPropertyValue`; weak, soft, interface, or other object-storage
-variants fail closed. The pending action is established before the injection
-ProcessEvent, and no gameplay UObject is read after that call returns.
+variants fail closed. The pending action and raw receiver token are established
+before the injection ProcessEvent. After it returns, the injection path performs
+no gameplay UObject read; the post observer only compares raw addresses and
+publishes an atomic token for later EngineTick consumption.
 
 ## Lifecycle and performance
 
 Disabled state performs no game selector invocations and no steady-state player-chain
 queries. Enabled state uses bounded 25 ms engine/active scheduling, a 33 ms
-idle cadence, 25 ms post-pickup scheduling, failure backoff, one
-global pending action, exact weak/state confirmation, one bounded
-selector-represented retry, per-candidate second-timeout quarantine,
+idle cadence, and a 25 ms post-invocation due. A dispatch marker normally
+arrives on a later real EngineTick after that due is already satisfied, so its
+consumption adds no second 25 ms delay and the same tick may continue scanning.
+The scheduler also retains bounded failure backoff, one
+global in-flight action, exact Server dispatch observation, one bounded
+selector-represented retry, expiring per-Component re-entry/backoff records,
 World-settle delay, and interval-aggregated optional diagnostics. Routine User
 logging is one invocation plus one terminal result. Debug context, selector,
 and deferred-reason attribution is change-only with independent per-activation
@@ -122,7 +165,7 @@ scalar or immutable data only.
 
 ## Installation architecture
 
-Version 1.3.0 publishes one native ABI only: UE4SS v3.0.1 Beta #0 commit
+Version 1.3.1 publishes one native ABI only: UE4SS v3.0.1 Beta #0 commit
 `1c1a1497` in the ExperimentalNested layout. When that exact runtime is absent,
 the installer asks before converting an existing or mixed UE4SS layout. It
 creates and verifies a complete Win64-relative backup, removes the old active
@@ -136,7 +179,7 @@ loaded module path before enabling automation. That post-load passive/Off check
 does not claim to prevent an ABI crash that occurs before the plugin can run.
 
 The active Mods root is `Win64/ue4ss/Mods`. StableRoot plugin payloads are not
-part of the 1.3.0 release.
+part of the 1.3.1 release.
 
 `mods.txt` is the only load authority. The installer preserves unrelated lines,
 normalizes AutoPickup to one entry, and removes the legacy `enabled.txt` bypass.
@@ -152,17 +195,18 @@ hash-verified after writing.
 
 ## Offline release evidence boundary
 
-The current 750 ms confirmation-window / 200 ms retry-cooldown 1.3.0 native DLL
-is 919,552 bytes with
+The preceding 750 ms fallback-window / 200 ms retry-delay 1.3.0 native DLL is
+919,552 bytes with
 SHA-256
 `10F5F4D575C07FF90A7C692E6A91906B6EA5B01E50D1671F82CBB40E8DB174B2`;
 the corrected unsigned Setup is 13,001,728 bytes with SHA-256
 `2BF6109E93606175610374F08ED2D91E813043BF204736AA3260E23966F53997`.
 Static, source, core, built-artifact, installer 10/10, deterministic ZIP,
 exact-entry, and checksum gates passed for the final four archives recorded in
-`docs/EVIDENCE.md`. This proves the packaged architecture and provenance only.
-In-process selector resolution, deployment, gameplay, performance, and owner
-smoke-test acceptance remain pending.
+`docs/EVIDENCE.md`. Those hashes predate the dispatch-observer repair and prove
+only the preceding package provenance. The observer candidate remains
+`RUNTIME_PENDING`; its exact build identity, deployment, dispatch correlation,
+gameplay, performance, and owner smoke-test acceptance remain pending.
 
 Repair remains ownership-bound. The immediately preceding `38DA6C...` DLL is
 accepted only with its exact 1.3.0 version and Lua hash; changed or foreign
@@ -173,13 +217,15 @@ same-name payloads still fail closed with zero mutation.
 The active adapter performs no UObject/Actor enumeration, overlap hook,
 collision proxy construction, root/physics/hit collision resize, target
 collision polling, direct pickup RPC, `SendInput`, continuous injection, or
-unbounded automatic retry. It does not alter general interaction-range
-producers.
+unbounded automatic retry. Its one exact UFunction post observer is not a
+general `ProcessEvent` hook and owns no gameplay work. It does not alter general
+interaction-range producers.
 
 The installer-offered 3x, 5x, 10x, 15x, and 20x range PAK alternatives remain a
 separate resource layer. Each variant contains 50 reviewed gather/animal
 capsule packages and 19 class-proven type-7 drop packages. The drop patch adds
 only `SphereOverlapComp.RelativeScale3D`; physics and hit components are
 protected by the structured asset gate. Native range multiplication is
-compile-time disabled, so the PAK is the sole range owner. Treasure/type-4
-packages remain excluded.
+compile-time disabled, so the PAK is the sole range owner. Gather/animal targets
+use the selected variant multiplier; short-lived drop targets use
+`min(selected multiplier, 10x)`. Treasure/type-4 packages remain excluded.

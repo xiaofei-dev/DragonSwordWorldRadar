@@ -5,7 +5,7 @@ param(
     [string]$UsmapPath,
     [Parameter(Mandatory)][string]$RepakPath,
     [ValidateSet(3, 5, 10, 15, 20)][int]$Multiplier = 5,
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$ReleaseVersion = '1.3.0'
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$ReleaseVersion = '1.3.1'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -14,8 +14,10 @@ Set-StrictMode -Version 2.0
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $manifestPath = Join-Path $projectRoot 'metadata\targets-x5.json'
 $dropManifestPath = Join-Path $projectRoot 'metadata\drop-targets-x5.json'
+$policyPath = Join-Path $projectRoot 'metadata\variants.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $dropManifest = Get-Content -LiteralPath $dropManifestPath -Raw | ConvertFrom-Json
+$policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
 if (-not $SourceRoot) {
     $SourceRoot = Join-Path $projectRoot ([string]$manifest.source_root)
 }
@@ -54,6 +56,9 @@ if (-not (Test-Path -LiteralPath $usmap -PathType Leaf) -or
 if (-not (Test-Path -LiteralPath $repak -PathType Leaf)) {
     throw "repak was not found: $repak"
 }
+if ((Get-FileHash -LiteralPath $repak -Algorithm SHA256).Hash -ne [string]$policy.repak_sha256) {
+    throw "The exact reviewed repak build is required: $repak"
+}
 if ([int]$manifest.range_multiplier -ne 5 -or
     [int]$manifest.target_count -ne 50 -or
     @($manifest.targets).Count -ne 50) {
@@ -66,6 +71,13 @@ if ([int]$dropManifest.range_multiplier -ne 5 -or
     [string]$dropManifest.component -ne 'SphereOverlapComp') {
     throw 'The reviewed drop-item manifest must identify exactly 19 class-proven type-7 targets.'
 }
+if ([string]$policy.release_version -ne $ReleaseVersion -or
+    [string]$policy.authored_target_multiplier_policy -ne 'selected_variant' -or
+    [string]$policy.drop_item_multiplier_policy -ne 'min_selected_variant_and_cap' -or
+    [int]$policy.drop_item_multiplier_cap -ne 10) {
+    throw 'The range policy does not match the approved 1.3.1 category-multiplier contract.'
+}
+$dropItemMultiplier = [Math]::Min($Multiplier, [int]$policy.drop_item_multiplier_cap)
 
 $targetPaths = @($manifest.targets | ForEach-Object { [string]$_.path })
 if (@($targetPaths | Sort-Object -Unique).Count -ne 50) {
@@ -265,13 +277,16 @@ foreach ($target in $dropManifest.targets) {
         --mappings $usmap `
         --expected-uasset-sha256 ([string]$target.source_uasset_sha256) `
         --expected-uexp-sha256 ([string]$target.source_uexp_sha256) `
-        --multiplier $Multiplier)
+        --multiplier $dropItemMultiplier)
     if ($LASTEXITCODE -ne 0 -or $patchOutput.Count -ne 1) {
         throw "Structured drop-item patch failed for $path"
     }
     $patchEvidence = $patchOutput[0] | ConvertFrom-Json
+    $reportedScale = @($patchEvidence.scale | ForEach-Object { [double]$_ })
     if ([string]$patchEvidence.component -ne 'SphereOverlapComp' -or
         [string]$patchEvidence.property -ne 'RelativeScale3D' -or
+        $reportedScale.Count -ne 3 -or
+        @($reportedScale | Where-Object { [Math]::Abs($_ - [double]$dropItemMultiplier) -gt 0.0000001 }).Count -ne 0 -or
         -not [bool]$patchEvidence.binary_equality_after_reload -or
         -not (Test-Path -LiteralPath $destinationUasset -PathType Leaf) -or
         -not (Test-Path -LiteralPath $destinationUexp -PathType Leaf)) {
@@ -282,9 +297,9 @@ foreach ($target in $dropManifest.targets) {
         path = $path
         class = 'drop_item'
         component = 'SphereOverlapComp'
-        range_multiplier = $Multiplier
+        range_multiplier = $dropItemMultiplier
         patch_strategy = 'structured_relative_scale'
-        new_scale = @($Multiplier, $Multiplier, $Multiplier)
+        new_scale = @($dropItemMultiplier, $dropItemMultiplier, $dropItemMultiplier)
         protected_components = @('CapsulePhysicsComp', 'SphereHitComp')
         source_uasset_sha256 = [string]$target.source_uasset_sha256
         source_uexp_sha256 = [string]$target.source_uexp_sha256
@@ -347,13 +362,18 @@ foreach ($entry in $expectedEntries) {
 }
 
 $buildManifest = [ordered]@{
-    schema_version = 1
+    schema_version = 2
     version = "$ReleaseVersion-x$Multiplier"
     built_at_utc = [DateTime]::UtcNow.ToString('O')
     target_manifest_sha256 = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash
     drop_target_manifest_sha256 = (Get-FileHash -LiteralPath $dropManifestPath -Algorithm SHA256).Hash
     engine_mapping_sha256 = (Get-FileHash -LiteralPath $usmap -Algorithm SHA256).Hash
+    repak_sha256 = (Get-FileHash -LiteralPath $repak -Algorithm SHA256).Hash
     range_multiplier = $Multiplier
+    variant_multiplier = $Multiplier
+    authored_range_multiplier = $Multiplier
+    drop_item_range_multiplier = $dropItemMultiplier
+    drop_item_multiplier_cap = [int]$policy.drop_item_multiplier_cap
     target_count = 69
     authored_target_count = 50
     drop_item_target_count = 19

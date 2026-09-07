@@ -13,25 +13,29 @@ injections. The same sessions showed that the 500 ms F9 debounce could accept a
 later operating-system repeat and re-enable automation after an apparent
 disable.
 
-Version `1.3.0` is the corrective release. It keeps the accepted
+Version `1.3.1` is the current patch release. It preserves the accepted
 game-owned selector semantics and Enhanced Input route, but no longer calls a
 fixed selector RVA. The process resolves one selector capability from two
-independent reflected code paths before automation can be enabled. It also permits
-only one globally pending automatic action keyed to the exact returned
-interaction Component. Success requires exact Actor or Component invalidation,
-or an exact same-Component transition out of the live
-  interactable state. The confirmation window is 650 ms. A first unconfirmed
-  timeout enters a 100 ms cooldown; the
-game must present the same exact Component again before one bounded retry is
-admitted. A second timeout quarantines only that Component for the current
-activation. F9 is a true physical press edge, so key repeat cannot create
-another transition until release.
-The latest action-lifecycle source passed the fresh exact static, core,
-built-artifact, installer 10/10, deterministic ZIP, exact-entry, and checksum
-gates. A local 1.3.0 diagnostic installation produced in-process selector and
-action evidence, and the owner reported completed gameplay testing and accepted
-the current version on 2026-08-31. The repository does not independently prove
-that the tested installed DLL is byte-identical to the sealed release hash.
+independent reflected code paths before automation can be enabled. It permits
+only one globally in-flight automatic injection keyed to the exact returned
+interaction Component. A narrowly scoped post observer for the exact reflected
+`Server_RunInteractV2` UFunction is armed before that injection and remains
+correlatable after the injection call returns until matching dispatch, existing
+exact confirmation, timeout, or context reset. The observer
+compares the raw receiver address and publishes one atomic marker; it performs
+no logging, reflection, UObject reads, or game calls. EngineTick consumes the
+marker, releases the global slot, and applies a 750 ms same-Component re-entry
+delay. This proves that the game reached its interaction dispatch, not that the
+selector-returned target was picked up, so diagnostics explicitly record
+`target_match_unproven=1` and `pickup_success_claim=0`.
+
+If no matching dispatch arrives, the conservative fallback window remains
+750 ms. One retry may follow after 200 ms; a second no-dispatch result applies a
+1500 ms self-expiring Component backoff. It does not quarantine a target for the
+whole F9 activation. F9 remains a true physical press edge, so key repeat cannot
+create another transition until release. The exact 1.3.1 offline source, build,
+installer, and package gates pass; deployment and gameplay acceptance remain
+`RUNTIME_PENDING` and are separate evidence classes.
 
 ## Behavior
 
@@ -39,13 +43,22 @@ that the tested installed DLL is byte-identical to the sealed release hash.
   `Server_RunInteractV2` virtual path and the reflected `SetInteractUIV2`
   direct-wrapper path, then uses one bounded selector call per due scan.
 - Uses a bounded 25 ms engine/active cadence, retains a 33 ms idle cadence,
-  waits 25 ms after confirmed pickup, and allows only one globally pending
-  automatic interaction.
-- Confirms exact Actor/Component invalidation or the exact pending
-  component leaving the live interactable state.
-- Allows at most one retry of the same exact Component after a 100 ms cooldown,
-  and only when the game selector presents it again. A second timeout
-  quarantines that Component; unrelated candidates may still proceed.
+  retains the 25 ms post-invocation due, and allows only one globally in-flight
+  automatic interaction. The next real EngineTick normally satisfies that due;
+  consuming a dispatch marker does not add another 25 ms wait and the same tick
+  may continue scanning.
+- Observes the exact `Server_RunInteractV2` post-dispatch through a callback
+  restricted to raw receiver comparison and one atomic marker. EngineTick owns
+  all state transition and logging work.
+- Treats dispatch as input-route evidence only, never target-level pickup proof.
+  The same Component has a 750 ms re-entry delay while other candidates may
+  proceed after the global slot is released.
+- Retains exact Actor/Component invalidation or exact Component state change as
+  alternate terminal evidence inside the same 750 ms fallback window.
+- Allows at most one retry after a 200 ms delay when no dispatch is observed.
+  A second no-dispatch result applies a 1500 ms expiring backoff, not an
+  activation-long quarantine. Both delays belong only to the exact Component;
+  they never pause the global scanner for other selector results.
 - Treats an interaction-owner identity change inside the same `UWorld` as a
   travel/context reset, clears pending attempts, and enforces a new 1500 ms
   settle interval before resuming.
@@ -56,6 +69,9 @@ that the tested installed DLL is byte-identical to the sealed release hash.
 - Explicitly excludes treasure chests.
 - Reads the saved semantic `INTERACT` keyboard binding once per enable.
 - Uses the configured fallback key only when automatic binding resolution fails.
+- Shows a short, top-center native status card when F9 starts, enables,
+  disables, or cannot enable Auto Pickup. It is click-through, does not change
+  input mode or cursor state, and automatically fades away.
 - Retains no enabled state or gameplay UObject across main-menu, save, or World
   initialization boundaries.
 - Performs no UObject/Actor scan, overlap hook, root/physics collision
@@ -65,13 +81,36 @@ that the tested installed DLL is byte-identical to the sealed release hash.
   compile-time disabled, preventing a future reflection change from applying
   the selected range twice.
 
+## Status card
+
+The F9 lifecycle uses a compact native UMG card at the top center of the
+viewport:
+
+| State | Message | Accent |
+| --- | --- | --- |
+| Enable requested | `STARTING...` | warm gold |
+| Automation enabled | `ENABLED` | mint green |
+| Automation disabled | `DISABLED` | slate blue |
+| Enable rejected | `NOT READY` | soft red |
+
+The visual uses a translucent deep-blue glass layer, a softer inner layer,
+subtle shadow and top highlight, plus a low-opacity status glow and rule. It
+fades and slides with smoothstep easing and a restrained 1.5% reveal scale.
+The card remains readable for a bounded interval and then collapses completely;
+it has no persistent per-frame drawing while hidden.
+
+Every widget is hit-test-invisible. The card never changes input mode, cursor
+state, selection, injection, scheduling, retry, or confirmation behavior. A UI
+ABI mismatch or guarded runtime fault disables only the card and leaves Auto
+Pickup operational.
+
 ## Supported runtime
 
-The 1.3.0 release supports one tested UE4SS ABI only:
+The 1.3.1 release supports one tested UE4SS ABI only:
 
 - UE4SS v3.0.1 Beta #0 commit `1c1a1497`
 - ExperimentalNested layout: `Win64/ue4ss/UE4SS.dll`
-- Native DLL marker: `DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_0`
+- Native DLL marker: `DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_1`
 
 StableRoot and other UE4SS plugin variants are not included in this release.
 The game executable SHA-256 is retained for diagnostics only. It never selects
@@ -96,7 +135,7 @@ gate.
 
 ## Installation
 
-The recommended package is `DragonSwordAutoPickup-v1.3.0-Installer.zip`.
+The recommended package is `DragonSwordAutoPickup-v1.3.1-Installer.zip`.
 Close the game, run Setup, and confirm the automatically detected
 `DSClient-Win64-Shipping.exe` path. If Steam discovery is unavailable, use
 Browse to select it manually.
@@ -118,17 +157,19 @@ new embedded PAK bytes remain hash-verified after writing.
 
 Four release packages are generated:
 
-1. `DragonSwordAutoPickup-v1.3.0-Installer.zip` - recommended one-click Setup.
-2. `DragonSwordAutoPickup-v1.3.0-Manual-No-UE4SS.zip` - Mod only for an existing
+1. `DragonSwordAutoPickup-v1.3.1-Installer.zip` - recommended one-click Setup.
+2. `DragonSwordAutoPickup-v1.3.1-Manual-No-UE4SS.zip` - Mod only for an existing
    exact compatible runtime.
-3. `DragonSwordAutoPickup-v1.3.0-Manual-With-UE4SS.zip` - complete direct-paste
+3. `DragonSwordAutoPickup-v1.3.1-Manual-With-UE4SS.zip` - complete direct-paste
    package containing the Mod and tested runtime.
-4. `DragonSwordPickupRangeExpansion-v1.3.0.zip` - standalone manual range bundle
+4. `DragonSwordPickupRangeExpansion-v1.3.1.zip` - standalone manual range bundle
    containing 3x, 5x, 10x, 15x, and 20x PAK choices.
 
 See [docs/INSTALL.md](docs/INSTALL.md) for manual installation and removal.
 See [docs/WORKSPACE_LAYOUT.md](docs/WORKSPACE_LAYOUT.md) for the one authoritative
 source, build, release, and installed-layout contract.
+See [docs/SAFETY_AUDIT_1_2_TO_1_3.md](docs/SAFETY_AUDIT_1_2_TO_1_3.md) for the
+retained/removed safety-boundary audit and runtime acceptance requirements.
 
 ## Optional interaction range
 
@@ -136,14 +177,16 @@ The installer can select Original, 3x, 5x, 10x, 15x, or 20x native interaction
 range. Range expansion is a separate PAK resource and works independently from
 Auto Pickup. Install at most one range option. Manual Auto Pickup packages do
 not include range PAKs; use the standalone range bundle published beside them.
-The 15x and 20x choices are intentionally aggressive and should be tested
-separately in dense areas.
+The 15x and 20x choices keep their full gather/animal range, while the 19
+short-lived drop targets use the stable 10x overlap range to reduce stale
+native prompt-list entries during fast travel.
 
 Each PAK expands 50 reviewed gather/animal interaction capsules and the exact
 overlap sphere in 19 class-proven type-7 drop packages: 69 targets and 138 PAK
 entries total. Ordinary meat, aged meat, coins, nuts, crystals, minerals, grain,
-and the other reviewed F-pickable monster drops therefore use the selected
-range even when Auto Pickup is absent. Treasure/type-4 assets remain excluded.
+and the other reviewed F-pickable monster drops use 3x, 5x, or 10x range; they
+remain capped at 10x in the 15x and 20x packages. The range remains active when
+Auto Pickup is absent. Treasure/type-4 assets remain excluded.
 
 ## Public configuration defaults
 
@@ -162,6 +205,13 @@ installation or configured manually.
 
 ## Validation boundary
 
+The canonical 1.3.1 offline release is built under `dist/releases/1.3.1` and
+passes source, core, native-artifact, 11/11 installer, exact-entry, checksum,
+and deterministic-archive gates. The high-range change is limited to the PAKs:
+15x/20x keep their full gather/animal range while short-lived item drops use
+the reviewed 10x range. Deployment and exact-package gameplay acceptance have
+not been claimed.
+
 Version 1.2.0 was built, packaged, deployed, and exercised in the game. Its
 runtime evidence proves the selector/action route still executes, but rejects
 its observational confirmation and rate-limited F9 policies as the next
@@ -169,16 +219,21 @@ release baseline because they permitted repeated action storms and repeated
 toggle transitions.
 
 Version 1.3.0 implements the bounded corrective policy and the fail-closed
-runtime selector policy described above. The earlier pre-compatibility 1.3.0
+runtime selector policy described above. The dispatch-observer repair is a new
+locally built and deployed candidate with status `RUNTIME_PENDING`: 927,744
+bytes, SHA-256
+`AC86CF2FA26047CF713B567C1CA63D4AD424C86A3FF9C020B80CAD07B4211F5D`.
+It is not a packaged public release. The earlier pre-compatibility 1.3.0
 release-candidate DLL was 422,912 bytes with SHA-256
 `BF6418A9570CCD3FD8FF58E734C38666D8E591504532A5C50A25E8EA5956B188`;
 its unsigned Setup executable was 11,704,832 bytes with SHA-256
 `570E9E81FA31DFE242999C8352311DF6E566D0B18DAEC2E103734C2A4D3447DB`.
 Those hashes are historical and are not the final action-lifecycle artifacts.
-The current offline artifacts retain the exact-Component and owner-settle audit,
-use a 750 ms confirmation window and 200 ms retry cooldown, include the 19
-structured monster-drop packages in every range PAK, and disable native runtime
-range multiplication:
+The following hashes identify the preceding offline artifacts. They predate the
+dispatch-observer repair and must not be presented as its binaries. They retain
+the exact-Component and owner-settle audit, use a 750 ms fallback window and
+200 ms retry delay, include the 19 structured monster-drop packages in every
+range PAK, and disable native runtime range multiplication:
 
 - native DLL: 919,552 bytes, SHA-256
   `10F5F4D575C07FF90A7C692E6A91906B6EA5B01E50D1671F82CBB40E8DB174B2`;
@@ -193,11 +248,12 @@ range multiplication:
 - standalone range ZIP: 3,919,600 bytes, SHA-256
   `504C1E9524CDE63B096C88E24DBA0D5E008F9076BA24B6BC6065D60780848801`.
 
-These values establish exact offline build and package provenance. Runtime logs
-establish that a local 1.3.0 diagnostic build resolved and exercised the action
-route, and the owner accepted current gameplay on 2026-08-31. Exact installed
-artifact identity remains a separate unrecorded receipt; do not infer that the
-tested DLL has the sealed hash solely from its runtime version label.
+These values establish exact provenance only for the preceding artifacts.
+Historical runtime logs establish that a local 1.3.0 diagnostic build resolved
+and exercised the action route, but they do not validate the new observer
+candidate. Its exact local build and deployment are now recorded; dispatch
+correlation, multi-target progress, manual-F availability, travel, and
+performance checks remain pending.
 
 The corrected Setup recognizes the immediately preceding owned 1.3.0 DLL
 `38DA6C417B68F702AF6DAA069F80A348187B55D28C22227537278CEE988D87A1`

@@ -1,17 +1,14 @@
 # One-click installer
 
-`DragonSwordNativeAutoPickup-Setup-1.3.0.exe` is a .NET Framework 4.8 WinForms
-installer. It embeds the 1.3.0 ExperimentalNested native plugin, public
+`DragonSwordNativeAutoPickup-Setup-1.3.1.exe` is a .NET Framework 4.8 WinForms
+installer. It embeds the 1.3.1 ExperimentalNested native plugin, public
 configuration, passive Lua entry point, the exact tested UE4SS compatibility
 runtime, and optional 3x, 5x, 10x, 15x, and 20x range PAKs.
 
-The current 1.3.0 installer embeds the corrective single-pending, 750 ms
-confirmation-window, timeout-quarantine, true-F9-edge, and dual-path runtime-
-selector policies. The corrected unsigned Setup is 13,001,728 bytes with
-SHA-256
-`2BF6109E93606175610374F08ED2D91E813043BF204736AA3260E23966F53997`;
-its installer ZIP is 8,556,743 bytes with SHA-256
-`70A498FCBE8C3F37E2ADFFBCA1509DCAB23065B7E521C426F80C76D14310C124`.
+The current 1.3.1 installer preserves the corrective single-pending, 750 ms
+confirmation-window, expiring-backoff, true-F9-edge, and dual-path runtime-
+selector policies. It also embeds the balanced 15x/20x PAKs. Exact Setup and
+archive hashes are recorded only after the canonical release build.
 The isolated installer state matrix remains separate from selector runtime,
 installed artifact identity, and owner acceptance. A local 1.3.0 diagnostic
 installation produced runtime evidence and the owner reported gameplay
@@ -44,7 +41,7 @@ toggle after a playable World loads.
 
 ## Supported runtime and conversion policy
 
-Version 1.3.0 supports one native ABI only:
+Version 1.3.1 supports one native ABI only:
 
 - UE4SS v3.0.1 Beta #0 commit `1c1a1497`;
 - ExperimentalNested layout with `Win64/ue4ss/UE4SS.dll`;
@@ -116,6 +113,9 @@ Range selection is mutually exclusive:
 - 15x installs `DS_PickupRangeX15_P.pak`;
 - 20x installs `DS_PickupRangeX20_P.pak`.
 
+The 15x and 20x variants retain their full gather/animal range. Their 19
+short-lived item-drop targets intentionally use the stable 10x overlap range.
+
 Setup reconciles only the exact supported and legacy filenames after backup or
 within an owned transaction. Historical hashes are not ownership gates; the
 newly written embedded PAK is still hash-verified. Range PAKs modify authored
@@ -124,7 +124,7 @@ Mod does not add or stack a range multiplier.
 
 ## Build and validation
 
-The final 1.3.0 release produced exactly four public archives: installer, manual
+The final 1.3.1 release produces exactly four public archives: installer, manual
 without UE4SS, manual with UE4SS, and the standalone range PAK bundle. Static,
 source, core, built-artifact, deterministic ZIP, exact-entry, and checksum gates
 passed. Build and isolated installer tests verify the release marker, launch-Off
@@ -132,21 +132,13 @@ and forced-Off lifecycle, public
 Debug-Off configuration, exact UE4SS and PAK hashes, PE architecture,
 Install/Upgrade/Repair/Uninstall ownership states, rollback, and embedded resources.
 
-The isolated installer state matrix passes 10/10 fixtures, including
+The isolated installer state matrix passes 11/11 fixtures, including
 owned install/upgrade/uninstall behavior, unknown same-name rejection,
 confirmed conversion with Mod migration, and all six mutually exclusive range
-states. The tenth fixture verifies stable numeric suffixes for conversion-backup
-name collisions. Final archive/content checks pass in the canonical release
-pipeline.
-
-The current native DLL is 919,552 bytes /
-`10F5F4D575C07FF90A7C692E6A91906B6EA5B01E50D1671F82CBB40E8DB174B2`.
-The manual-without-UE4SS, manual-with-UE4SS, and range ZIPs are 362,076 /
-`9E4A7177C2D28AB2C823B1FCBB92473445CDD21FE5FEB3CF9C8A88E91080274B`,
-8,446,667 / `55BE6AA64FE035B0F9F76BBD6479E3F715AA1A5A35BA2B2B4C2B1F277E628C6D`,
-and 3,919,600 /
-`504C1E9524CDE63B096C88E24DBA0D5E008F9076BA24B6BC6065D60780848801`
-bytes / SHA-256 respectively.
+states. The matrix includes an explicit recorded schema-2 1.3.0 to 1.3.1
+Upgrade that preserves configuration, UE4SS, another Mod, and mods.txt while
+replacing the same-name 15x PAK. Final archive/content checks pass in the
+canonical release pipeline.
 
 The exact preceding owned 1.3.0 DLL
 `38DA6C417B68F702AF6DAA069F80A348187B55D28C22227537278CEE988D87A1`
@@ -154,5 +146,5 @@ is an explicit Repair input when its version and Lua hash also match. Modified
 or foreign same-name files remain blocked with zero mutation.
 
 These checks prove installer and package behavior only. They do not prove that
-the exact 1.3.0 DLL resolves its selector capability or functions inside the
+the exact 1.3.1 DLL resolves its selector capability or functions inside the
 game, and they do not replace deployment or owner smoke-test acceptance.

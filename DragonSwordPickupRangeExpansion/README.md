@@ -1,14 +1,16 @@
 # DragonSword Pickup Range Expansion
 
 This project builds optional pure-resource PAKs that expand the game's native
-interaction-trigger range to 3x, 5x, 10x, 15x, or 20x for reviewed gather and
-interactable-animal assets. It does not modify the original `pakchunk*.pak`
+interaction-trigger range for reviewed gather, interactable-animal, and item-drop
+assets. Gather/animal targets use the selected 3x, 5x, 10x, 15x, or 20x range;
+short-lived item drops are capped at 10x in the 15x and 20x choices to prevent
+the game's native prompt list from becoming stale. It does not modify the original `pakchunk*.pak`
 files and adds no runtime polling, UObject scan, hook, worker, or collision
 proxy.
 
 ## Release artifact
 
-Each production variant overrides the same 50 cooked packages:
+Each production variant overrides the same 69 cooked packages:
 
 - `DS_PickupRangeX3_P.pak`;
 - `DS_PickupRangeX5_P.pak`;
@@ -17,7 +19,7 @@ Each production variant overrides the same 50 cooked packages:
 - `DS_PickupRangeX20_P.pak`.
 
 Install exactly one. The standalone
-`DragonSwordPickupRangeExpansion-v1.3.0.zip` contains all five choices and an
+`DragonSwordPickupRangeExpansion-v1.3.1.zip` contains all five choices and an
 English installation README.
 
 The reviewed inventory contains:
@@ -63,6 +65,10 @@ crystals, minerals, grain, and the other reviewed F-pickable drops are included.
 Treasure/type-4 packages remain excluded. The PAK works independently of Auto
 Pickup; Auto Pickup's native runtime multiplier is disabled to prevent double
 application.
+
+The 15x and 20x names describe gather/animal range. Their 19 short-lived drop
+targets intentionally use the reviewed 10x overlap scale; 3x, 5x, and 10x keep
+the same scale for both target categories.
 
 ## Installation and rollback
 

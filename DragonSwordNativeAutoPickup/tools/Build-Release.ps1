@@ -15,19 +15,23 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $workspaceRoot = Split-Path -Parent $projectRoot
 $rangeRoot = Join-Path $workspaceRoot 'DragonSwordPickupRangeExpansion'
 $runtimeProject = Join-Path $workspaceRoot 'DragonSwordUE4SSCompatibilityRuntime'
-$version = '1.3.0'
-$rangeBundleSourceVersion = '1.3.0'
-$runtimeLabel = 'DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_0'
+$version = '1.3.1'
+$rangeBundleSourceVersion = '1.3.1'
+$runtimeLabel = 'DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_1'
 $runtimeHash = 'AB765EF93BD0DB109D7224C0E2487C68A1CE8748F20B597128D43E247B4AFA77'
 $ue4ssDllHash = 'F31188D59B34A812AFC32DB4B6FF0C74E1B44861D1ED7967452EE4B3B6635BE1'
 $dwmapiHash = '30122355CB2784E3BA89F6FB55EA4443467FF8EAE2747CBDEDBEEF49B03E669B'
-$rangeBundleHash = '504C1E9524CDE63B096C88E24DBA0D5E008F9076BA24B6BC6065D60780848801'
+$rangeBundleHash = 'A346C4F20CF85C60FD2965FCC583129AFD8EB2B805CF4E20A80C1B20B79B49FE'
 $rangeHashes = [ordered]@{
     '3' = '6BB99A1E35C06EB0284370B9D7BD2F34E90CB6DCA7479CF10A477C68EA0103E8'
     '5' = 'DB9E129D8F8FCCA025864EC908C13C70F950AD779C37CF13A41164476587CECD'
     '10' = '6A1ADB7592BA0C70A17984DB3AC01348086AABE196F0FDAF914B3F52C7A395F1'
-    '15' = '16CA8F2353D40BCED8ACBBC95FE4CE8A57E304DEB76D758517E716FF43740100'
-    '20' = 'C10E1B252849B1D5DE5C94F468B60841E412487055AB7115B2E73E0D50AFF9BA'
+    '15' = 'F8330CEA2F127319887FD3718BC66E2825D39DFE21D635404FC7535C7FAA37EC'
+    '20' = '81214319100646CD5663940CACE3AFA8F3523F5E319AB7C4AE8D935443FB93D2'
+}
+
+if ($SkipNativeBuild) {
+    throw '-SkipNativeBuild is disabled for publishable releases. The native DLL must be rebuilt from the pinned offline dependency cache.'
 }
 
 if (-not $UE4SSRoot) { $UE4SSRoot = Join-Path $projectRoot '.sdk\RE-UE4SS' }
@@ -35,9 +39,9 @@ if (-not $RuntimeZip) {
     $RuntimeZip = Join-Path $runtimeProject 'dist\UE4SS-v3.0.1-Beta0-g1c1a1497-DragonSword-Compatibility-Runtime.zip'
 }
 if (-not $InstallerBuildDirectory) {
-    $InstallerBuildDirectory = Join-Path $projectRoot 'out\installer\1.3.0'
+    $InstallerBuildDirectory = Join-Path $projectRoot 'out\installer\1.3.1'
 }
-if (-not $OutputDirectory) { $OutputDirectory = Join-Path $projectRoot 'dist\releases\1.3.0' }
+if (-not $OutputDirectory) { $OutputDirectory = Join-Path $projectRoot 'dist\releases\1.3.1' }
 
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -400,8 +404,8 @@ function Assert-InstallerResources {
     finally { $manifestStream.Dispose() }
     Assert-AsciiBytes $manifestBytes 'Installer embedded manifest'
     $manifestText = [Text.Encoding]::ASCII.GetString($manifestBytes)
-    if ($manifestText -notmatch '(?m)^version=1\.3\.0\r?$') {
-        throw 'Installer embedded manifest does not identify version 1.3.0.'
+    if ($manifestText -notmatch '(?m)^version=1\.3\.1\r?$') {
+        throw 'Installer embedded manifest does not identify version 1.3.1.'
     }
     if ($manifestText -notmatch '(?m)^game_hash_policy=diagnostic_only\r?$') {
         throw 'Installer embedded manifest does not preserve diagnostic-only game hashes.'
@@ -498,13 +502,16 @@ foreach ($multiplier in @(3, 5, 10, 15, 20)) {
     }
 }
 
-$nativeBuild = Join-Path $projectRoot 'out\native\ExperimentalNested'
-if (-not $SkipNativeBuild) {
-    & (Join-Path $PSScriptRoot 'Build-Native.ps1') `
-        -UE4SSRoot $UE4SSRoot `
-        -UE4SSVariant ExperimentalNested `
-        -BuildDirectory $nativeBuild
-}
+$nativeParent = Join-Path $projectRoot 'out\native'
+New-Item -ItemType Directory -Path $nativeParent -Force | Out-Null
+$nativeBuild = Reset-SafeDirectory `
+    (Join-Path $nativeParent 'ExperimentalNested') `
+    $nativeParent
+& (Join-Path $PSScriptRoot 'Build-Native.ps1') `
+    -UE4SSRoot $UE4SSRoot `
+    -UE4SSVariant ExperimentalNested `
+    -BuildDirectory $nativeBuild `
+    -OfflineDependencies
 $dll = Resolve-RequiredFile (Join-Path $nativeBuild 'main.dll') 'ExperimentalNested Auto Pickup DLL'
 $artifact = & (Join-Path $PSScriptRoot 'Verify-BuiltArtifact.ps1') `
     -DllPath $dll `
@@ -561,15 +568,15 @@ if ($installerTestResults.Count -ne 1) {
     throw "Installer matrix returned $($installerTestResults.Count) release-gate objects; expected one."
 }
 $installerTest = $installerTestResults[0]
-if ($installerTest.expected -ne 10 -or $installerTest.passed -ne 10 -or
+    if ($installerTest.expected -ne 11 -or $installerTest.passed -ne 11 -or
     $installerTest.failed -ne 0 -or $installerTest.skipped -ne 0 -or
     $installerTest.release_gate -ne 'PASSED' -or -not $installerTest.fixtures_cleaned) {
-    throw 'Installer release gate requires exactly 10 passed, 0 failed, 0 skipped, and cleaned fixtures.'
+        throw 'Installer release gate requires exactly 11 passed, 0 failed, 0 skipped, and cleaned fixtures.'
 }
 
 $stagingParent = Join-Path $projectRoot 'out\staging'
 New-Item -ItemType Directory -Path $stagingParent -Force | Out-Null
-$releaseStage = Reset-SafeDirectory (Join-Path $stagingParent 'release-1.3.0') $stagingParent
+$releaseStage = Reset-SafeDirectory (Join-Path $stagingParent 'release-1.3.1') $stagingParent
 $installerStage = Join-Path $releaseStage 'installer'
 $manualStage = Join-Path $releaseStage 'manual-no-ue4ss'
 $withStage = Join-Path $releaseStage 'manual-with-ue4ss'
@@ -580,7 +587,7 @@ foreach ($directory in @($installerStage, $manualStage, $withStage, $candidateOu
 
 Copy-Item -LiteralPath $installer -Destination $installerStage -Force
 [IO.File]::WriteAllText((Join-Path $installerStage 'README.md'), @'
-# DragonSword Auto Pickup 1.3.0 - One-Click Installer
+# DragonSword Auto Pickup 1.3.1 - One-Click Installer
 
 Close the game and run the Setup executable. It detects
 `DSClient-Win64-Shipping.exe` from Steam when available; otherwise use Browse.
@@ -594,6 +601,8 @@ Pickup content and approved owned range PAKs.
 Auto Pickup starts disabled. Press F9 after a playable World loads. Returning
 to the main menu or loading another save disables it again. Optional range
 choices are Original, 3x, 5x, 10x, 15x, and 20x.
+The 15x and 20x choices keep their full gather/animal range while short-lived
+item drops use the stable 10x overlap range.
 '@, [Text.UTF8Encoding]::new($false))
 Copy-Item -LiteralPath (Join-Path $projectRoot 'installer\THIRD_PARTY_NOTICES.txt') -Destination $installerStage -Force
 Write-Sha256Sums $installerStage
@@ -604,11 +613,11 @@ Add-ModFiles $manualStage $dll
     "DragonSwordNativeAutoPickup : 1`r`n",
     [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText((Join-Path $manualStage 'README.md'), @'
-# DragonSword Auto Pickup 1.3.0 - Manual Installation (No UE4SS)
+# DragonSword Auto Pickup 1.3.1 - Manual Installation (No UE4SS)
 
 This package requires the existing ExperimentalNested UE4SS v3.0.1 Beta #0
 commit `1c1a1497`. UE4SS and range PAKs are not included. For a manual range
-choice, use the separately published `DragonSwordPickupRangeExpansion-v1.3.0.zip`.
+choice, use the separately published `DragonSwordPickupRangeExpansion-v1.3.1.zip`.
 
 ## Install
 
@@ -675,12 +684,12 @@ $modsLines = @($modsLines | Where-Object { $_ -notmatch '^\s*DragonSwordNativeAu
     'DragonSwordNativeAutoPickup : 1'
 [IO.File]::WriteAllLines($modsTxt, [string[]]$modsLines, [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText((Join-Path $withStage 'README.md'), @'
-# DragonSword Auto Pickup 1.3.0 - Manual Installation (With UE4SS)
+# DragonSword Auto Pickup 1.3.1 - Manual Installation (With UE4SS)
 
 This package contains Auto Pickup and the tested ExperimentalNested UE4SS
 v3.0.1 Beta #0 commit `1c1a1497`. Range PAKs are not included. For a manual
 range choice, use the separately published
-`DragonSwordPickupRangeExpansion-v1.3.0.zip`.
+`DragonSwordPickupRangeExpansion-v1.3.1.zip`.
 
 ## Clean installation with no existing UE4SS
 
@@ -811,7 +820,7 @@ $rangeInputs = @(
     }
 )
 $manifest = [ordered]@{
-    schema_version = 5
+    schema_version = 6
     version = $version
     generated_at_utc = [DateTime]::UtcNow.ToString('O')
     runtime_label = $runtimeLabel
@@ -839,20 +848,42 @@ $manifest = [ordered]@{
         failure = 'automation_off_for_process_no_historical_address_fallback'
     }
     action_lifecycle = [ordered]@{
-        pending_identity = 'exact_returned_interaction_component_weak_identity'
-        confirmation = 'exact_actor_or_component_invalidation_or_exact_component_inactive'
-        confirmation_window_ms = 650
-        retry_delay_ms = 100
+        pending_identity = 'exact_returned_interaction_component_weak_identity_plus_raw_receiver_and_action_token'
+        pending_policy = 'one_global_in_flight_armed_before_injection_persists_after_return_until_matching_dispatch_existing_exact_confirmation_timeout_or_reset'
+        dispatch_observer = 'exact_per_UFunction_Server_RunInteractV2_post_raw_receiver_compare_atomic_marker_only_no_logging_no_formatting_no_reflection_no_UObject_read_or_dereference_no_game_call_no_state_mutation'
+        dispatch_claim = 'input_reached_game_interaction_dispatch_target_match_unproven_pickup_success_claim_false'
+        dispatch_marker_consumer = 'next_actual_EngineTick_no_extra_25ms_delay_same_tick_may_continue_scanning'
+        timeout_scan_policy = 'retry_and_failure_backoff_apply_only_to_exact_component_record_no_global_scan_pause_same_tick_may_consider_different_candidate'
+        confirmation = 'matching_dispatch_releases_in_flight_without_target_success_claim_existing_exact_actor_or_component_invalidation_or_exact_component_inactive_remains_alternate_terminal_evidence'
+        fallback_window_ms = 750
+        retry_delay_ms = 200
+        same_component_dispatch_reentry_ms = 750
+        terminal_failure_backoff_ms = 1500
+        retry_opportunity_window_ms = 1500
         maximum_attempts = 2
-        terminal_timeout = 'quarantine_exact_component_for_current_activation'
-        retry_preflight = 'before_live_action_mapping_and_subsystem_resolution'
+        terminal_timeout = 'first_no_dispatch_or_confirmation_timeout_cools_down_then_one_selector_represented_retry_second_timeout_applies_1500ms_self_expiring_exact_component_backoff'
+        retry_preflight = 'exact_component_expiring_reentry_or_failure_backoff_before_live_action_mapping_and_subsystem_resolution'
+        activation_long_quarantine = $false
+        quarantine_scan_backoff_ms = 0
+        engine_pulse_ms = 25
+        active_scan_ms = 25
+        idle_scan_ms = 33
+        post_pickup_ms = 25
         interaction_owner_change = 'clear_pending_and_attempt_records_then_enforce_1500ms_settle'
     }
     drop_item_range = [ordered]@{
-        activation = 'one_recognized_owned_range_pak_only'
-        hook = 'DropItemActor_BeginPlay_exact_reflection'
+        activation = 'exactly_one_owned_range_pak_authors_drop_overlap_assets_at_load'
+        hook = 'none_pure_resource_pak_only'
+        runtime_hook = $false
+        native_runtime_multiplier = $false
         target = 'DropItemActor.SphereOverlapComp'
         coverage = 'ordinary_meat_aged_meat_and_other_class_proven_monster_drops'
+        authored_target_count = 50
+        drop_item_target_count = 19
+        authored_target_multiplier_policy = 'selected_variant'
+        drop_item_multiplier_policy = 'min_selected_variant_and_cap'
+        drop_item_multiplier_cap = 10
+        unchanged_variant_payloads = @('3x', '5x', '10x')
         general_uobject_scan = $false
         root_physics_or_hit_collision_mutation = $false
     }
@@ -900,8 +931,8 @@ $manifest = [ordered]@{
         pe_runtime_fixtures = 'PASSED'
         native_artifact = 'PASSED'
         installer_matrix = [ordered]@{
-            expected = 10
-            passed = 10
+            expected = 11
+            passed = 11
             failed = 0
             skipped = 0
         }
@@ -916,7 +947,7 @@ $manifest = [ordered]@{
     static_validation = 'PASSED'
     deployed = $false
     runtime_acceptance = 'NOT_VALIDATED_FOR_EXACT_ARTIFACT'
-    gameplay_acceptance = 'NOT_VALIDATED_FOR_EXACT_1.3.0_PACKAGES; OWNER_SMOKE_TEST_REQUIRED'
+    gameplay_acceptance = 'NOT_VALIDATED_FOR_EXACT_1.3.1_PACKAGES; OWNER_SMOKE_TEST_REQUIRED'
 }
 $manifestPath = Join-Path $candidateOutput "DragonSwordAutoPickup-v$version.release.json"
 [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 12), [Text.UTF8Encoding]::new($false))
@@ -963,8 +994,8 @@ foreach ($record in $artifacts) {
     version = $version
     output = $output
     archives = @($artifacts | ForEach-Object { $_.name })
-    installer_tests = '10/10'
+    installer_tests = '11/11'
     static_validation = 'PASSED'
     deployed = $false
-    gameplay_acceptance = 'NOT_VALIDATED_FOR_EXACT_1.3.0_PACKAGES'
+    gameplay_acceptance = 'NOT_VALIDATED_FOR_EXACT_1.3.1_PACKAGES'
 }

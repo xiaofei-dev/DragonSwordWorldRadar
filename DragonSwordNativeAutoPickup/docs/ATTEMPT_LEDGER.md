@@ -1,38 +1,28 @@
 ﻿# Auto Pickup Attempt Ledger
 
-Last evidence audit: 2026-08-31.
+Last evidence audit: 2026-09-03.
 
 This ledger is the mandatory starting point for every future AutoPickup change. It records what each version actually changed, which runtime gate was reached, and which route must not be presented as new without new contradictory evidence.
 
 ## Current conclusion
 
-- Version 1.3.0 is the current corrective release. It preserves the
-  game-owned selector behavior, saved-binding Enhanced Input action, mounted
-  Rider, fish, drop-item, treasure exclusion, session lifecycle, and no-scan
-  safety route while removing the active fixed selector RVA. It resolves one
-  process capability only when the reflected `Server_RunInteractV2` virtual-
-  slot/CDO path and reflected `SetInteractUIV2` direct-wrapper path agree on the
-  same selector target inside validated PE32+ and x64 `.pdata`/`CHAININFO`
-  bounds. The policy is
-  `runtime_reflection_dual_caller_rel32_consensus_fail_closed`. It permits one
-  globally pending action keyed to the exact returned interaction Component.
-  Exact Actor or Component invalidation, or that exact Component leaving the
-  live interactable state, confirms success. The first 650 ms timeout permits
-  one game-selector-represented retry after a 100 ms cooldown; the second
-  timeout quarantines only that exact Component for the current activation.
-  Interaction-owner replacement clears pending/attempt state and enforces a
-  new 1500 ms settle period before scanning resumes. Retry cooldown and
-  quarantine are checked before live action mapping and subsystem resolution.
-  Every range PAK authors the exact `SphereOverlapComp.RelativeScale3D` in 19
-  reviewed type-7 child packages, covering ordinary meat, aged meat, and the
-  other class-proven monster drops without root/physics/hit collision mutation.
-  Native runtime range multiplication is compile-time disabled. The release
-  requires one true physical F9 edge per transition, retains strong normal and
-  mounted identity, and compacts action/performance logging. There is no fixed-
-  RVA or game-hash address fallback. The schema-60/schema-26 corrective source
-  passed a fresh exact static, core, native-artifact, installer 10/10, and
-  deterministic four-package audit. Process resolution, deployment, gameplay,
-  and owner smoke-test acceptance remain pending.
+- Version 1.3.1 is the current package release. It preserves the accepted 1.3.0
+  game-owned selector, saved-binding Enhanced Input action, mounted Rider,
+  fish/drop coverage, treasure exclusion, physical F9 edge, session lifecycle,
+  one-global-pending action, exact `Server_RunInteractV2` dispatch observer,
+  750 ms fallback/re-entry window, one selector-represented retry after 200 ms,
+  and 1500 ms self-expiring exact-Component failure backoff. No target selection,
+  injection, scheduling, confirmation, retry, or input behavior changes in
+  1.3.1. The only functional correction is in the separate range PAK layer:
+  50 gather/animal targets retain the selected multiplier, while the 19 short-
+  lived type-7 drop overlap targets use `min(selected multiplier, 10x)`. Thus
+  the 15x and 20x variants no longer enlarge drop overlap beyond the stable 10x
+  range that can feed stale native prompt-list entries during fast movement.
+  The exact 1.3.0 3x/5x/10x PAK bytes are reused. New gates require every 15x
+  and 20x packed drop entry to equal its 10x counterpart, while preserving 69
+  targets, 138 entries, zero treasure targets, and full 15x/20x authored-target
+  scales. Source, range-package, and installer 11/11 validation are required;
+  deployment and exact-package gameplay acceptance remain separate.
 - Static review caught one P1 before the final package: the reflected
   `SetInteractUIV2::GetFuncPtr` is a `.pdata`-bounded direct rel32 native
   wrapper, not a virtual-dispatch thunk. The resolver model was corrected to
@@ -632,7 +622,10 @@ modified `deps/first/patternsleuth_bind/Cargo.lock`; that third-party file was
 not cleaned or overwritten. Release packaging, deployment, and gameplay
 acceptance remain pending.
 
-## Current gate
+## Historical gate snapshot (superseded by 1.3.1)
+
+This append-only snapshot records the gate before the final 1.3.1 package. The
+current status is the 1.3.1 entry at the top of this ledger.
 
 Version 1.6.10 remains the accepted selector/action, mounted-fish, and bounded-
 scan baseline. The deployed 1.2.0 release proves that route still executes but
@@ -798,3 +791,40 @@ timeout exact-target quarantine, selector, target policy, and input route remain
 unchanged. A fully
 unconfirmed same-target cycle is reduced from about 1700 ms to about 1400 ms.
 The exact tuned DLL still requires owner gameplay validation.
+
+## 2026-08-31 dispatch-observer and expiring-recovery correction
+
+The tuning candidate above did not address the head-of-line mechanism revealed
+by the next owner run: one target could remain globally pending until fallback,
+then acquire an activation-long exact-Component quarantine. The single-result
+selector could repeatedly return that record, producing 500 ms deferred scans
+and starving later items. Debug logging was a separate, already isolated fault;
+it does not justify removing the other 1.3 safety boundaries.
+
+The corrective contract keeps the 25 ms engine/active/post due, 33 ms idle due,
+one globally armed injection, maximum two no-dispatch attempts, true physical
+F9 edge, dynamic dual-path selector consensus, foreground/current-Pawn/Rider/
+owner checks, exact reflection storage allowlists, and owner-reset settle. It
+adds one exact per-UFunction `Server_RunInteractV2` post observer. The record is
+armed before injection and persists after the call returns until matching
+dispatch, existing exact confirmation, timeout, or reset. While armed, that
+callback may only compare the raw receiver address and
+publish an atomic action token; it must not log, format, reflect, read a UObject,
+call the game, or mutate the action state machine.
+
+EngineTick consumes the marker and releases the global slot. The event proves
+game interaction dispatch, not exact target pickup, so it records
+`target_match_unproven=1 pickup_success_claim=0`. The next real EngineTick is
+normally already later than the existing 25 ms post/active due; marker
+consumption does not schedule a second 25 ms delay, and that tick may continue
+scanning. The same exact Component remains in a 750 ms re-entry delay so a
+different candidate can advance without immediate duplicate injection.
+
+No-dispatch recovery uses the conservative 750 ms fallback window, one retry
+after 200 ms, and a 1500 ms self-expiring backoff after the second result. This
+removes activation-long quarantine and its 500 ms scan loop without restoring
+the rejected 1.2 observational supersede or 250 ms same-target storm policy.
+
+Status: `DISPATCH_OBSERVER_CANDIDATE_RUNTIME_PENDING`. Static compilation,
+artifact identity, deployment, and owner gameplay acceptance must be recorded
+separately when available.

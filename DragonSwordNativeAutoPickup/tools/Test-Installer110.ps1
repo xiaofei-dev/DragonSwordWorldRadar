@@ -11,7 +11,7 @@ Set-StrictMode -Version 2.0
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-$expectedCount = 10
+$expectedCount = 11
 $product = 'DragonSwordNativeAutoPickup'
 $project = Split-Path -Parent $PSScriptRoot
 
@@ -239,7 +239,7 @@ function AssertOwnedState($State) {
     Assert (-not [bool](Prop $State 'CanUpgrade')) 'Current owned product incorrectly enables upgrade.'
     Assert ([bool](Prop $State 'CanRepair')) 'Current owned product does not enable repair.'
     Assert ([bool](Prop $State 'CanUninstall')) 'Owned product does not enable uninstall.'
-    Equal ([string](Prop $State 'InstalledVersion')) '1.3.0' `
+    Equal ([string](Prop $State 'InstalledVersion')) '1.3.1' `
         'Current owned product reported the wrong installed version.'
     Assert (-not [string]::IsNullOrWhiteSpace([string](Prop $State 'IdentityToken'))) `
         'Owned product did not expose an uninstall identity token.'
@@ -262,9 +262,9 @@ function ProductEntryCount([string]$ModsTxt) {
 }
 
 if ([string]::IsNullOrWhiteSpace($InstallerExe)) {
-    $candidate = Join-Path $project 'out\installer\1.3.0\DragonSwordNativeAutoPickup-Setup-1.3.0.exe'
+    $candidate = Join-Path $project 'out\installer\1.3.1\DragonSwordNativeAutoPickup-Setup-1.3.1.exe'
     if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
-        throw "InstallerExe was not supplied and the expected 1.3.0 build is missing: $candidate"
+        throw "InstallerExe was not supplied and the expected 1.3.1 build is missing: $candidate"
     }
     $InstallerExe = $candidate
 }
@@ -276,7 +276,7 @@ $script:Installer = (Resolve-Path -LiteralPath $InstallerExe).Path
 $script:Game = (Resolve-Path -LiteralPath $GameExecutable).Path
 [void][IO.Directory]::CreateDirectory($WorkingDirectory)
 $working = (Resolve-Path -LiteralPath $WorkingDirectory).Path
-$runRoot = Join-Path $working ('DSNAP-Installer130-' + [Guid]::NewGuid().ToString('N'))
+$runRoot = Join-Path $working ('DSNAP-Installer131-' + [Guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($runRoot)
 
 $script:Assembly = [Reflection.Assembly]::LoadFile($script:Installer)
@@ -332,7 +332,7 @@ function Run([string]$Name, [scriptblock]$Body) {
     }
 }
 
-Run '1.3.0 lifecycle, range, and deployed 1.2.0 upgrade contracts are present' {
+Run '1.3.1 lifecycle, range, and historical upgrade contracts are present' {
     param($root)
     foreach ($resource in @(
         'Payload.ExperimentalUE4SSRuntime.zip',
@@ -387,6 +387,17 @@ Run '1.3.0 lifecycle, range, and deployed 1.2.0 upgrade contracts are present' {
         '0B4A52FBA7912C7921816C665AFD872DFAB3458DEE8DE20C6460F2EAC96A7D6A'))
     Assert ([bool]$immediatePredecessor130) `
         'The exact installed predecessor is not recognized for one-time ownership-record migration.'
+    $oldHashMislabelled131 = $script:MatchesKnownOwnedPayload.Invoke($null, [object[]]@(
+        '1.3.1',
+        '6F64645B47A5ADC59FAAB4F663E79C1B0681BF72125E1123D686977C0A7FA5F1',
+        '0B4A52FBA7912C7921816C665AFD872DFAB3458DEE8DE20C6460F2EAC96A7D6A'))
+    Assert (-not [bool]$oldHashMislabelled131) `
+        'A historical 1.3.0 payload was incorrectly relabelled as current 1.3.1 ownership.'
+    $current131 = $script:MatchesKnownOwnedPayload.Invoke($null, [object[]]@(
+        '1.3.1',
+        (HashBytes (GetResourceBytes 'Payload.ExperimentalPlugin.dll')),
+        (HashBytes (GetResourceBytes 'Payload.Main.lua'))))
+    Assert ([bool]$current131) 'The embedded 1.3.1 payload is not recognized for owned repair.'
     $mutated120 = $script:MatchesKnownOwnedPayload.Invoke($null, [object[]]@(
         '1.2.0',
         '8AFFCD7CD29F7CEFED93B51F7A8BC1533E49FB0E5959517DF424A15F3A19FAD6',
@@ -496,6 +507,48 @@ Run 'Owned repair preserves config and is backup-free' {
         'Owned upgrade reported a persistent backup.'
     AssertNoPersistentBackup $f
     AssertOwnedState (State $f)
+}
+
+Run 'Recorded schema-2 1.3.0 upgrades to 1.3.1 and replaces a same-name range PAK' {
+    param($root)
+    $f = NewFixture $root Exact
+    [void](Install $f $script:Ranges.X15)
+    $configPath = Join-Path $f.Target 'config.ini'
+    $config = (Get-Content -LiteralPath $configPath -Raw) + "`r`n; preserve-130-upgrade=true`r`n"
+    WriteText $configPath $config
+    $configHash = Hash $configPath
+    WriteText (Join-Path $f.Mods 'OtherMod\settings.ini') "keep=true`r`n"
+    $modsText = Get-Content -LiteralPath $f.ModsTxt -Raw
+    WriteText $f.ModsTxt ($modsText.TrimEnd() + "`r`nOtherMod : 1`r`n")
+    $loaderHash = Hash (Join-Path $f.Nested 'UE4SS.dll')
+    $proxyHash = Hash (Join-Path $f.Win64 'dwmapi.dll')
+    $recordPath = Join-Path $f.Target 'INSTALL-RECORD.txt'
+    $record = Get-Content -LiteralPath $recordPath -Raw
+    $record = [regex]::Replace($record, '(?m)^Version:\s*1\.3\.1\s*$', 'Version: 1.3.0')
+    Assert ($record -match '(?m)^Version:\s*1\.3\.0\s*$') 'Could not create the recorded 1.3.0 upgrade fixture.'
+    WriteText $recordPath $record
+    $rangePath = Join-Path $f.PakDirectory $rangeFiles.X15
+    WriteText $rangePath 'same-name-1.3.0-range-payload'
+
+    $before = State $f
+    Assert ([bool](Prop $before 'IsOwned')) 'Recorded schema-2 1.3.0 fixture was not recognized as owned.'
+    Assert ([bool](Prop $before 'CanUpgrade')) 'Recorded schema-2 1.3.0 fixture did not expose Upgrade.'
+    Assert (-not [bool](Prop $before 'CanRepair')) 'Recorded schema-2 1.3.0 fixture incorrectly exposed Repair.'
+    Equal ([string](Prop $before 'InstalledVersion')) '1.3.0' 'Upgrade fixture reported the wrong version.'
+
+    $operation = Install $f $script:Ranges.X15
+    Assert ([bool](Prop $operation.Plan 'UpdatesExistingAutoPickup')) '1.3.0 fixture was not classified as an upgrade.'
+    Equal (Hash $configPath) $configHash '1.3.0 to 1.3.1 upgrade overwrote config.ini.'
+    Equal (Hash $rangePath) (HashBytes (GetResourceBytes $rangeResources.X15)) `
+        '1.3.0 to 1.3.1 upgrade did not replace the same-name 15x PAK.'
+    Assert (Test-Path -LiteralPath (Join-Path $f.Mods 'OtherMod\settings.ini')) `
+        '1.3.0 to 1.3.1 upgrade removed another Mod.'
+    Assert ((Get-Content -LiteralPath $f.ModsTxt -Raw) -match '(?m)^\s*OtherMod\s*:\s*1\s*$') `
+        '1.3.0 to 1.3.1 upgrade removed another mods.txt entry.'
+    Equal (Hash (Join-Path $f.Nested 'UE4SS.dll')) $loaderHash 'Upgrade changed UE4SS.dll.'
+    Equal (Hash (Join-Path $f.Win64 'dwmapi.dll')) $proxyHash 'Upgrade changed dwmapi.dll.'
+    AssertOwnedState (State $f)
+    AssertNoPersistentBackup $f
 }
 
 Run 'Unknown same-name target is rejected with zero mutation' {

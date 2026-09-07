@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 $projectRoot = Split-Path -Parent $PSScriptRoot
-throw 'Direct-copy deployment is retired. Build with tools\Build-Release.ps1 and use the Setup inside dist\releases\1.3.0\DragonSwordAutoPickup-v1.3.0-Installer.zip.'
+throw 'Direct-copy deployment is retired. Build with tools\Build-Release.ps1 and use the Setup inside dist\releases\1.3.1\DragonSwordAutoPickup-v1.3.1-Installer.zip.'
 $version = '1.0.1'
 $expectedExperimentalUE4SSHash = 'F31188D59B34A812AFC32DB4B6FF0C74E1B44861D1ED7967452EE4B3B6635BE1'
 $expectedExperimentalProxyHash = '30122355CB2784E3BA89F6FB55EA4443467FF8EAE2747CBDEDBEEF49B03E669B'

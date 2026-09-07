@@ -66,22 +66,28 @@ if(DSNAP_BUILD_UE4SS)
     endif()
 
     if(NOT DSNAP_UE4SS_VARIANT STREQUAL "ExperimentalNested")
-        message(FATAL_ERROR "Version 1.3.0 supports ExperimentalNested only: ${DSNAP_UE4SS_VARIANT}")
+        message(FATAL_ERROR "Version 1.3.1 supports ExperimentalNested only: ${DSNAP_UE4SS_VARIANT}")
     endif()
     set(DSNAP_UE4SS_ADAPTER src/ue4ss/main_1_6.cpp)
 
     # The one supported loader revision uses the required
     # Game__Shipping__Win64 configuration. Historical adapters remain in the
-    # source ledger but are not public 1.3.0 build targets.
+    # source ledger but are not public 1.3.1 build targets.
     add_subdirectory("${UE4SS_ROOT}" "${CMAKE_BINARY_DIR}/ue4ss" EXCLUDE_FROM_ALL)
-    add_library(DragonSwordNativeAutoPickup SHARED "${DSNAP_UE4SS_ADAPTER}")
+    add_library(DragonSwordNativeAutoPickup SHARED
+        "${DSNAP_UE4SS_ADAPTER}"
+        src/ue4ss/status_toast_renderer.cpp
+    )
     target_include_directories(DragonSwordNativeAutoPickup PRIVATE include)
     target_link_libraries(DragonSwordNativeAutoPickup PRIVATE dsnap_core dsnap_platform UE4SS Zydis)
     target_compile_features(DragonSwordNativeAutoPickup PRIVATE cxx_std_20)
     target_compile_definitions(DragonSwordNativeAutoPickup PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
     if(MSVC)
         target_compile_options(DragonSwordNativeAutoPickup PRIVATE /W4 /WX /wd4251 /wd4324 /permissive- /EHsc /utf-8)
-        set_property(SOURCE "${DSNAP_UE4SS_ADAPTER}" APPEND PROPERTY COMPILE_OPTIONS
+        set_property(SOURCE
+            "${DSNAP_UE4SS_ADAPTER}"
+            src/ue4ss/status_toast_renderer.cpp
+            APPEND PROPERTY COMPILE_OPTIONS
             /W4 /WX /wd4324 /external:anglebrackets /external:W0 /permissive- /EHsc /utf-8)
     endif()
     set_target_properties(DragonSwordNativeAutoPickup PROPERTIES OUTPUT_NAME "main")

@@ -3,8 +3,8 @@
 ## Recommended one-click installer
 
 1. Close DragonSword: Awakening.
-2. Extract `DragonSwordAutoPickup-v1.3.0-Installer.zip`.
-3. Run `DragonSwordNativeAutoPickup-Setup-1.3.0.exe`.
+2. Extract `DragonSwordAutoPickup-v1.3.1-Installer.zip`.
+3. Run `DragonSwordNativeAutoPickup-Setup-1.3.1.exe`.
 4. Confirm the automatically detected `DSClient-Win64-Shipping.exe`, or use
    Browse if Steam discovery is unavailable.
 5. Select the fallback interaction key and optional range.
@@ -19,18 +19,23 @@ or World disables it again; press the configured toggle after the playable
 World finishes loading.
 
 One physical toggle-key press causes one transition even when the key is held.
-If an automatic action remains unconfirmed for 650 ms, the exact returned
-Component enters a 100 ms cooldown. The game selector may present it for one
-retry; a second timeout quarantines only that Component for the current
-activation. Press and release the toggle once to go Off, then press and release
-it again to start a fresh activation and clear the attempt records. Manual
-interaction remains available throughout.
+The record is armed before injection and remains live after the injection call
+returns until matching dispatch, existing exact confirmation, timeout, or reset.
+A matching exact `Server_RunInteractV2` post-dispatch releases the global in-
+flight slot and starts a 750 ms re-entry delay for that Component.
+This is dispatch evidence only, not a claim that the selected target was picked
+up. If neither dispatch nor exact confirmation arrives within the 750 ms
+fallback window, the game
+selector may present the same Component for one retry after 200 ms. A second
+no-dispatch result applies a 1500 ms self-expiring backoff; it does not require
+an Off/On cycle to recover. Manual interaction remains available throughout.
 
 ## Exact release package identity
 
-The current exact-Component/owner-settle artifacts with the 750 ms confirmation
-window, 200 ms retry cooldown, structured drop PAKs, and filename-owned range
-replacement policy are:
+The following exact-Component/owner-settle artifacts use a 750 ms fallback
+window and 200 ms retry delay, but predate the dispatch-observer repair. They
+remain historical package identities, together with the structured drop PAKs
+and filename-owned range replacement policy:
 
 - native DLL: 919,552 bytes /
   `10F5F4D575C07FF90A7C692E6A91906B6EA5B01E50D1671F82CBB40E8DB174B2`;
@@ -45,8 +50,9 @@ replacement policy are:
 - standalone range ZIP: 3,919,600 bytes /
   `504C1E9524CDE63B096C88E24DBA0D5E008F9076BA24B6BC6065D60780848801`.
 
-Matching these values proves package identity, not deployment or game behavior.
-In-process selector resolution, gameplay acceptance, and owner smoke testing
+Matching these values proves only the preceding package identity, not the new
+candidate. The observer repair remains `RUNTIME_PENDING`; its exact artifact,
+deployment, in-process dispatch behavior, gameplay, and owner smoke testing
 remain pending.
 
 ## Installer actions
@@ -122,7 +128,7 @@ recompile.
 
 ## Manual without UE4SS
 
-Use `DragonSwordAutoPickup-v1.3.0-Manual-No-UE4SS.zip` only when the exact
+Use `DragonSwordAutoPickup-v1.3.1-Manual-No-UE4SS.zip` only when the exact
 compatible ExperimentalNested runtime is already installed.
 
 Copy only its `ue4ss/Mods/DragonSwordNativeAutoPickup` folder into the active
@@ -140,7 +146,7 @@ Auto Pickup line.
 
 ## Manual with UE4SS
 
-`DragonSwordAutoPickup-v1.3.0-Manual-With-UE4SS.zip` contains the complete
+`DragonSwordAutoPickup-v1.3.1-Manual-With-UE4SS.zip` contains the complete
 tested runtime and enabled Auto Pickup Mod. Close the game and extract the ZIP
 directly into the directory containing `DSClient-Win64-Shipping.exe`.
 
@@ -162,13 +168,15 @@ reviewed F-pickable drops. Treasure/type-4 assets are excluded. The native Mod
 does not multiply drop range at runtime.
 
 For manual installation, use
-`DragonSwordPickupRangeExpansion-v1.3.0.zip` from the same release directory.
+`DragonSwordPickupRangeExpansion-v1.3.1.zip` from the same release directory.
+The 15x and 20x choices retain their full gather/animal range while their 19
+short-lived item-drop targets use the stable 10x overlap range.
 It contains all five expanded choices plus its own step-by-step README and
 checksums.
 
 ## Removal
 
-Preferred: close the game, run the 1.3.0 installer, select the game executable,
+Preferred: close the game, run the 1.3.1 installer, select the game executable,
 and choose **Uninstall**.
 
 Manual removal: close the game, remove

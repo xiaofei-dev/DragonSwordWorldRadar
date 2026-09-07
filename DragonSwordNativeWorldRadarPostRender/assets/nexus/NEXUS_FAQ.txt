@@ -1,0 +1,32 @@
+[size=6][b]Native Map and Radar Enhancer v2.2.1 - Quick Support[/b][/size]
+
+Use the latest v2.2.1 release. If UE4SS is missing, old, or uncertain, use the [url=https://www.nexusmods.com/dragonswordawakening/mods/254?tab=files]One Click Installer[/url]. It installs the supported UE4SS runtime automatically when needed.
+
+[quote][b]IMPORTANT[/b]
+Close the game before installing. Do not mix files from different UE4SS packages. This Mod is compatible with [url=https://www.nexusmods.com/dragonswordawakening/mods/251]DragonSword Auto Pickup[/url], but not with the older [b]Treasure Radar Overlay[/b].[/quote]
+
+[size=4][b]Quick start[/b][/size]
+
+[list=1]
+[*]Install or update with the One Click Installer.
+[*]Load a fully loaded open-world area. Dungeons and other instanced activities are not supported.
+[*]Press [b]F7[/b] once. Use [b]F6[/b] for settings and [b]F8[/b] to disable Radar.
+[/list]
+
+[size=4][b]Common problems[/b][/size]
+
+[list]
+[*][b]F7 does nothing or only the clock appears[/b] - Make sure you are in an open-world area, close other menus, and press F7 again. Check the required RADAR and MAP categories in F6.
+[*][b]The minimap works but the world map is empty[/b] - Enable the required MAP categories in F6, return to gameplay, press F7, and reopen the world map.
+[*][b]The world map flashes, shifts, or markers are misaligned[/b] - Confirm that v2.2.1 is installed. If it continues, send the Radar log and a screenshot or short video.
+[*][b]F6 is blank, clipped, or missing text[/b] - Test once without third-party font replacement PAKs. If it continues, send the Radar log and a screenshot.
+[*][b]The Mod does not load after installation[/b] - Run the latest installer and choose Repair. Do not combine manual files with another UE4SS package.
+[/list]
+
+[size=4][b]Reporting a problem[/b][/size]
+
+Post in the [url=https://www.nexusmods.com/dragonswordawakening/mods/254?tab=posts]Posts section[/url] and include your installed package, whether this was a clean install or update, other UE4SS Mods, reproduction steps, resolution and display mode, and a screenshot.
+
+For startup failures or crashes, attach [b]UE4SS.log[/b] and [b]INSTALL-RECORD.txt[/b] when available. For Radar or map issues, set [code]debug_logging=true[/code] in [code]config\diagnostics.ini[/code] before starting the game, reproduce the problem once, and attach:
+
+[code]runtime\logs\DragonSwordNativeWorldRadarPostRender.Native.log[/code]

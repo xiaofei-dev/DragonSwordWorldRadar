@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "algorithm": "dsnap-tree-sha256-v1",
+  "git_exclusion": "any_path_segment_named_.git_only",
+  "reparse_policy": "reject",
+  "cache_root": ".sdk/fetchcontent-experimentalnested",
+  "sources": [
+    {
+      "fetchcontent_key": "CONCURRENTQUEUE",
+      "directory": "concurrentqueue-src",
+      "sha256": "35123FBCF9431717DBB7180A84759DD5AA457FA0BD127266AF349DCE9AC1E14E",
+      "file_count": 1830,
+      "total_bytes": 12707421
+    },
+    {
+      "fetchcontent_key": "CORROSION",
+      "directory": "corrosion-src",
+      "sha256": "31F7BC4F06B7E461696ECC46E40F82BA34C6526193467B06EA4A49A865C8DB3E",
+      "file_count": 234,
+      "total_bytes": 373304
+    },
+    {
+      "fetchcontent_key": "FMT",
+      "directory": "fmt-src",
+      "sha256": "801FF06644AED85C79B1A0988B4C2F21216E4A309F82C4B210D4A5D0F09F8E4B",
+      "file_count": 132,
+      "total_bytes": 3087255
+    },
+    {
+      "fetchcontent_key": "GLAZE",
+      "directory": "glaze-src",
+      "sha256": "566C2AF80A7BA48170E3FD81BAB946501C6F54E9EDAEF8DA584155C1CB4FC33D",
+      "file_count": 476,
+      "total_bytes": 6114385
+    },
+    {
+      "fetchcontent_key": "GLFW",
+      "directory": "glfw-src",
+      "sha256": "19931B491CE8D0591376ED74E444E5D11B0459995998B1C7AAFFB898198F0477",
+      "file_count": 160,
+      "total_bytes": 4517959
+    },
+    {
+      "fetchcontent_key": "ICONFONTCPPHEADERS",
+      "directory": "iconfontcppheaders-src",
+      "sha256": "38887C665CA235E0402153FFD93653DCFD391E2296D23621CB05A0F77F48CE00",
+      "file_count": 92,
+      "total_bytes": 6450946
+    },
+    {
+      "fetchcontent_key": "IMGUI",
+      "directory": "imgui-src",
+      "sha256": "5B7CDD3FB97996C3FA7E7277D68CBC5C2256684B853D6CD2A7AE2353AFFD3B8D",
+      "file_count": 248,
+      "total_bytes": 7372211
+    },
+    {
+      "fetchcontent_key": "POLYHOOK2",
+      "directory": "polyhook2-src",
+      "sha256": "0246FCD9BE793C795E38C8C00D6FB206414552F4788B3B7D79D32A58314897CB",
+      "file_count": 1002,
+      "total_bytes": 25900469
+    },
+    {
+      "fetchcontent_key": "RAW_PDB",
+      "directory": "raw_pdb-src",
+      "sha256": "EC67A614CBD41322C6D0E2E30B2F7549CF5611DFDACF5111F06363C00B578C9F",
+      "file_count": 82,
+      "total_bytes": 334300
+    },
+    {
+      "fetchcontent_key": "ZYDIS",
+      "directory": "zydis-src",
+      "sha256": "E1D14C41B4695D72EBDF11DDC77EC042F980550CBE06401A6F58D8563820CA27",
+      "file_count": 637,
+      "total_bytes": 15075626
+    }
+  ]
+}

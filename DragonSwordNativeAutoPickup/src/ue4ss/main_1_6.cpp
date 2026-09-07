@@ -1,9 +1,11 @@
-// DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_0 targeting pinned RE-UE4SS v3.0.1.
+// DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_1 targeting pinned RE-UE4SS v3.0.1.
 //
-// Version 1.3.0 preserves the owner-accepted automatic action, mounted Rider,
-// fish, and closed target policy while enforcing one globally pending action,
-// bounded exact-candidate retry, a physical toggle-key edge, and bounded
-// interval diagnostics. Owned range PAKs author both interaction capsules and
+// Version 1.3.1 preserves the owner-accepted automatic action, mounted Rider,
+// fish, and closed target policy while enforcing one in-flight injection,
+// bounded exact-candidate recovery, a physical toggle-key edge, and bounded
+// interval diagnostics. A read-only, exact-UFunction post observer releases the
+// in-flight gate when the game consumes the injected interaction input. Owned
+// range PAKs author both interaction capsules and
 // DropItemActor overlap spheres; native runtime range multiplication is disabled
 // so those authored values can never be applied twice.
 // There is no UObject/Actor scan, cross-World gameplay-object cache, direct
@@ -17,6 +19,8 @@
 #include <dsnap/selector_resolver.hpp>
 #include <dsnap/types.hpp>
 #include <dsnap/windows_fingerprint.hpp>
+
+#include "status_toast_renderer.hpp"
 
 #pragma warning(push)
 #pragma warning(disable : 4324)
@@ -67,8 +71,8 @@ using ProcessShutdownProbe = BOOLEAN(NTAPI*)();
 
 extern "C" IMAGE_DOS_HEADER __ImageBase;
 
-constexpr auto kVersion = STR("1.3.0");
-constexpr auto kLabel = "DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_0";
+constexpr auto kVersion = STR("1.3.1");
+constexpr auto kLabel = "DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_1";
 constexpr bool kNativeDropItemRangeBridgeEnabled = false;
 constexpr auto kDropItemClassPath = STR("/Script/DS.DropItemActor");
 constexpr auto kInteractableClassPath = STR("/Script/DS.DInteractableComponent");
@@ -740,6 +744,7 @@ public:
         const bool process_shutdown = shutdown_probe_ && shutdown_probe_() != FALSE;
         const bool registry_available = !process_shutdown && UnrealInitializer::StaticStorage::bIsInitialized;
         if (registry_available) {
+            status_toast_renderer_.shutdown_guarded();
             unregister_callbacks();
             cancel_window("shutdown");
             reset_action_activation("shutdown", true);
@@ -749,9 +754,16 @@ public:
             automation_enabled_.store(false, std::memory_order_release);
             active_world_identity_.store(0, std::memory_order_release);
             window_active_.store(false, std::memory_order_release);
+            dispatch_observer_armed_.store(false, std::memory_order_release);
+            pending_action_id_visible_.store(0, std::memory_order_release);
+            pending_receiver_address_.store(0, std::memory_order_release);
+            dispatch_observed_action_id_.store(0, std::memory_order_release);
             pending_action_visible_.store(false, std::memory_order_release);
             engine_tick_callback_id_ = Hook::ERROR_ID;
             world_reset_callback_id_ = Hook::ERROR_ID;
+            begin_play_callback_id_ = Hook::ERROR_ID;
+            server_run_interact_hook_ = {};
+            server_run_interact_hook_registered_ = false;
         }
     }
 
@@ -772,7 +784,12 @@ public:
         automation_enabled_.store(false, std::memory_order_release);
         active_world_identity_.store(0, std::memory_order_release);
         window_active_.store(false, std::memory_order_release);
+        dispatch_observer_armed_.store(false, std::memory_order_release);
+        pending_action_id_visible_.store(0, std::memory_order_release);
+        pending_receiver_address_.store(0, std::memory_order_release);
+        dispatch_observed_action_id_.store(0, std::memory_order_release);
         pending_action_visible_.store(false, std::memory_order_release);
+        status_toast_renderer_.release_for_travel();
     }
 
     void on_unreal_init() override {
@@ -812,7 +829,7 @@ public:
         subsystem_library_cdo_ = subsystem_library_class_
             ? subsystem_library_class_->GetClassDefaultObject().Get()
             : nullptr;
-        auto* server_run_interact_function =
+        server_run_interact_function_ =
             UObjectGlobals::StaticFindObject<UFunction*>(nullptr, nullptr, kServerRunInteractFunctionPath);
         auto* set_interact_ui_function =
             UObjectGlobals::StaticFindObject<UFunction*>(nullptr, nullptr, kSetInteractUiFunctionPath);
@@ -828,7 +845,7 @@ public:
             ? exact_property<FObjectProperty>(interactable_class_->FindProperty(target_component_name))
             : nullptr;
         ReflectionContractReport reflection_report{};
-        if (!validate_reflection_contract(server_run_interact_function, set_interact_ui_function,
+        if (!validate_reflection_contract(server_run_interact_function_, set_interact_ui_function,
                                           interactable_cdo, target_object_property,
                                           target_component_property, &reflection_report)) {
             logger_.write(dsnap::LogAudience::User, "DISABLED",
@@ -846,7 +863,7 @@ public:
                                       subsystem_library_class_ != nullptr, subsystem_library_cdo_ != nullptr,
                                       get_local_player_subsystem_function_ != nullptr,
                                       inject_input_vector_function_ != nullptr,
-                                       server_run_interact_function != nullptr,
+                                        server_run_interact_function_ != nullptr,
                                        set_interact_ui_function != nullptr, interactable_cdo != nullptr,
                                        target_object_property != nullptr,
                                        target_component_property != nullptr));
@@ -854,7 +871,7 @@ public:
             return;
         }
         log_reflection_contract_detail(reflection_report, set_interact_ui_function);
-        if (!resolve_selector_capability(server_run_interact_function, set_interact_ui_function,
+        if (!resolve_selector_capability(server_run_interact_function_, set_interact_ui_function,
                                          interactable_cdo,
                                          target_object_property->GetOffset_Internal(),
                                          target_component_property->GetOffset_Internal())) {
@@ -893,6 +910,12 @@ public:
                                    selector_capability_.ui_implementation_call_candidates,
                                    selector_capability_.server_selector_candidates,
                                    selector_capability_.ui_selector_candidates));
+
+        if (!register_server_run_interact_observer()) {
+            logger_.write(dsnap::LogAudience::User, "DISABLED",
+                          "required Server_RunInteractV2 post observer registration failed");
+            return;
+        }
 
         if constexpr (kNativeDropItemRangeBridgeEnabled) {
             resolve_drop_item_range_contract();
@@ -962,6 +985,19 @@ public:
             }
         });
 
+        status_toast_renderer_.initialize();
+        if (status_toast_renderer_.state()
+            == dsnap::ue4ss::StatusToastRendererState::Ready) {
+            logger_.write(dsnap::LogAudience::User, "STATUS_TOAST_READY",
+                          "renderer=native_umg position=top_center input_mode_unchanged=1 "
+                          "hit_test_invisible=1 pickup_decision_input=0");
+        } else {
+            logger_.write(dsnap::LogAudience::User, "STATUS_TOAST_UNAVAILABLE",
+                          std::format("reason=abi_validation_failed mask=0x{:08X} "
+                                      "pickup_unaffected=1",
+                                      status_toast_renderer_.abi_failure_mask()));
+        }
+
         logger_.write(dsnap::LogAudience::User, "READY",
                       std::format("label={} hotkey={} mode=toggle_automatic selector_policy={} "
                                   "selector_rva=0x{:X} "
@@ -972,7 +1008,8 @@ public:
                                   "post_pickup_ms={} world_settle_ms={} selector_calls_per_scan={} "
                                   "debug_logging={} perf_interval_seconds={} slow_scan_threshold_us={} "
                                   "hotkey_source=UE4SS_configured_keydown_with_atomic_physical_edge "
-                                  "pending_action_policy=one_global bounded_retry=1 max_attempts={} "
+                                  "pending_action_policy=one_until_game_dispatch bounded_retry=1 max_attempts={} "
+                                  "dispatch_observer=Server_RunInteractV2_post activation_quarantine=0 "
                                   "drop_item_range_multiplier={} drop_item_range_begin_play={} "
                                   "object_scans=0 cross_world_object_cache=0 target_field_access=0 "
                                   "direct_RPC=0 SendInput=0",
@@ -1064,8 +1101,9 @@ public:
                                           "selector_attempts={} selector_no_candidate={} selector_pairs={} "
                                           "enhanced_input_attempts={} enhanced_input_injections={} "
                                           "action_invocations={} action_injection_failures={} "
-                                          "pending_scan_suppressions={} action_quarantine_hits={} "
-                                          "action_quarantine_size={} action_state_faults={} "
+                                          "pending_scan_suppressions={} action_cooldown_hits={} "
+                                          "action_record_size={} action_dispatch_observations={} "
+                                          "dispatch_marker_mismatches={} action_state_faults={} "
                                           "action_failures={} transient_failures={} confirmations={} "
                                           "unconfirmed_timeouts={} lifecycle_cancellations={} "
                                           "selector_faults={} world_resets={} "
@@ -1084,8 +1122,10 @@ public:
                                           selector_attempts_.load(), selector_no_candidate_.load(), selector_pairs_.load(),
                                           enhanced_input_attempts_.load(), enhanced_input_injections_.load(),
                                           action_invocations_.load(), action_injection_failures_.load(),
-                                          pending_scan_suppressions_.load(), action_quarantine_hits_.load(),
-                                          action_quarantine_size_visible_.load(std::memory_order_acquire),
+                                          pending_scan_suppressions_.load(), action_cooldown_hits_.load(),
+                                          action_record_size_visible_.load(std::memory_order_acquire),
+                                          action_dispatch_observations_.load(),
+                                          dispatch_marker_mismatches_.load(),
                                           action_state_faults_.load(),
                                           action_failures_.load(), transient_failures_.load(), confirmations_.load(),
                                           confirmation_timeouts_.load(), action_lifecycle_cancellations_.load(),
@@ -1137,6 +1177,20 @@ private:
         const char* receiver_source{"none"};
         bool mounted{};
     };
+
+    void update_status_toast(UEngine* engine) noexcept {
+        status_toast_renderer_.tick(engine, Clock::now());
+        const auto faults = status_toast_renderer_.fault_count();
+        if (faults <= status_toast_faults_reported_) return;
+        status_toast_faults_reported_ = faults;
+        try {
+            logger_.write(dsnap::LogAudience::User, "STATUS_TOAST_DISABLED",
+                          std::format("reason=guarded_runtime_fault failure={} faults={} "
+                                      "pickup_unaffected=1",
+                                      status_toast_renderer_.last_failure(), faults));
+        } catch (...) {
+        }
+    }
 
     void emit_selected_distance_diagnostic(std::uint64_t activation_id,
                                            std::uint64_t action_id,
@@ -1382,6 +1436,56 @@ private:
         auto* self = instance_.load(std::memory_order_acquire);
         return self && self->callback_gate_.accepts(generation) &&
                        !self->shutting_down_.load(std::memory_order_acquire) ? self : nullptr;
+    }
+
+    [[nodiscard]] bool register_server_run_interact_observer() noexcept {
+        if (!server_run_interact_function_ || server_run_interact_hook_registered_) return false;
+        const auto generation = callback_gate_.generation();
+        try {
+            server_run_interact_hook_ = UObjectGlobals::RegisterHook(
+                server_run_interact_function_,
+                [](UnrealScriptFunctionCallableContext&, void*) {},
+                [generation](UnrealScriptFunctionCallableContext& context, void*) {
+                    if (auto* self = current_instance(generation)) {
+                        self->observe_server_run_interact_post(context);
+                    }
+                },
+                nullptr);
+            if (server_run_interact_hook_.first == Hook::ERROR_ID ||
+                server_run_interact_hook_.second == Hook::ERROR_ID) {
+                try {
+                    UObjectGlobals::UnregisterHook(server_run_interact_function_,
+                                                   server_run_interact_hook_);
+                } catch (...) {
+                }
+                server_run_interact_hook_ = {};
+                return false;
+            }
+            server_run_interact_hook_registered_ = true;
+            return true;
+        } catch (...) {
+            server_run_interact_hook_ = {};
+            return false;
+        }
+    }
+
+    // Exact hook hot path: raw pointer comparison and atomic publication only.
+    // Logging, reflection, UObject reads, and action-state mutation stay on the
+    // next EngineTickPost after the hooked game call has fully returned.
+    void observe_server_run_interact_post(
+        const UnrealScriptFunctionCallableContext& context) noexcept {
+        if (!dispatch_observer_armed_.load(std::memory_order_acquire)) return;
+        const auto receiver_address =
+            pending_receiver_address_.load(std::memory_order_acquire);
+        if (receiver_address == 0 ||
+            reinterpret_cast<std::uintptr_t>(context.Context) != receiver_address) {
+            return;
+        }
+        const auto action_id = pending_action_id_visible_.load(std::memory_order_acquire);
+        if (action_id == 0) return;
+        std::uint64_t expected{};
+        static_cast<void>(dispatch_observed_action_id_.compare_exchange_strong(
+            expected, action_id, std::memory_order_release, std::memory_order_relaxed));
     }
 
     [[nodiscard]] bool apply_build_fingerprint_once() noexcept {
@@ -2249,6 +2353,9 @@ private:
         logger_.set_tick_sequence(tick_sequence);
         const auto tick_started = Clock::now();
         StageTimings tick_stage_timings{};
+        ScopeExit status_toast_tick{[this, engine]() noexcept {
+            update_status_toast(engine);
+        }};
         ScopeExit tick_diagnostic{[this, tick_started, &tick_stage_timings]() noexcept {
             maybe_log_slow_tick(tick_started, tick_stage_timings);
         }};
@@ -2304,6 +2411,7 @@ private:
             const bool enable = !automation_enabled_.load(std::memory_order_acquire);
             ++toggle_transitions_;
             if (enable) {
+                status_toast_renderer_.notify(dsnap::StatusToastKind::Starting, now);
                 const bool allowed = selector_capability_.resolved() &&
                                      build_trusted_.load(std::memory_order_acquire) &&
                                      configuration_result_.value.automatic_pickup;
@@ -2316,21 +2424,25 @@ private:
                         reinterpret_cast<UObject*>(lifecycle_context.pawn->GetWorld())}) ==
                         current_world_identity;
                 if (!selector_capability_.resolved()) {
+                    status_toast_renderer_.notify(dsnap::StatusToastKind::Unavailable, now);
                     ++action_failures_;
                     logger_.write(dsnap::LogAudience::User, "AUTOMATION_REJECTED",
                                   std::format("reason=selector_capability_{} source=configured_hotkey_toggle "
                                               "fail_closed=1",
                                               selector_capability_.status));
                 } else if (!allowed) {
+                    status_toast_renderer_.notify(dsnap::StatusToastKind::Unavailable, now);
                     ++action_failures_;
                     logger_.write(dsnap::LogAudience::User, "AUTOMATION_REJECTED",
                                   "reason=untrusted_or_disabled source=configured_hotkey_toggle");
                 } else if (current_world_identity == 0 || !playable_interaction_context) {
+                    status_toast_renderer_.notify(dsnap::StatusToastKind::Unavailable, now);
                     ++action_failures_;
                     logger_.write(dsnap::LogAudience::User, "AUTOMATION_REJECTED",
                                   "reason=playable_world_unavailable source=configured_hotkey_toggle "
                                   "retry_after_world_load=1");
                 } else if (!refresh_interaction_binding()) {
+                    status_toast_renderer_.notify(dsnap::StatusToastKind::Unavailable, now);
                     ++action_failures_;
                     logger_.write(dsnap::LogAudience::User, "AUTOMATION_REJECTED",
                                   "reason=interaction_binding_unavailable source=configured_hotkey_toggle");
@@ -2341,6 +2453,7 @@ private:
                     active_world_identity_.store(current_world_identity, std::memory_order_release);
                     automation_enabled_.store(true, std::memory_order_release);
                     next_auto_scan_due_ = now < world_settle_until_ ? world_settle_until_ : now;
+                    status_toast_renderer_.notify(dsnap::StatusToastKind::Enabled, now);
                     logger_.write(dsnap::LogAudience::User, "AUTOMATION_ENABLED",
                                   std::format("source=configured_hotkey_toggle hotkey={} activation_id={} "
                                               "interaction_range=game_or_optional_pak "
@@ -2362,6 +2475,7 @@ private:
                 cancel_window("toggle_off");
                 reset_action_activation("toggle_off", true);
                 next_auto_scan_due_ = {};
+                status_toast_renderer_.notify(dsnap::StatusToastKind::Disabled, now);
                 logger_.write(dsnap::LogAudience::User, "AUTOMATION_DISABLED",
                               std::format("reason=configured_hotkey_toggle hotkey={} pending_action_state=cleared",
                                           configuration_result_.value.toggle_hotkey));
@@ -2450,10 +2564,7 @@ private:
         }
         if (retry_no_candidate) {
             ++selector_no_candidate_;
-            next_auto_scan_due_ = attempt_finished +
-                (failure_reason == "target_quarantined_for_activation"
-                    ? kTransientBackoff
-                    : kIdleScanInterval);
+            next_auto_scan_due_ = attempt_finished + kIdleScanInterval;
             return;
         }
 
@@ -2474,6 +2585,8 @@ private:
             active_world_identity_.store(0, std::memory_order_release);
             ++automatic_disables_;
             next_auto_scan_due_ = {};
+            status_toast_renderer_.notify(dsnap::StatusToastKind::Disabled,
+                                          attempt_finished);
             logger_.write(dsnap::LogAudience::User, "AUTOMATION_DISABLED",
                           std::format("reason={} selector_faulted={} runtime_faulted={} "
                                       "fail_closed=1 retry_hotkey={}",
@@ -2722,14 +2835,10 @@ private:
         const auto component_object_id = weak_object_id(component_weak);
         const auto preflight_decision = automatic_action_.inspect(
             component_object_id, Clock::now(), 0.0);
-        if (preflight_decision == dsnap::AutomaticActionDecision::Quarantined) {
-            ++action_quarantine_hits_;
-            if (retry_no_candidate) *retry_no_candidate = true;
-            return reject("target_quarantined_for_activation");
-        }
         if (preflight_decision == dsnap::AutomaticActionDecision::Cooldown) {
+            ++action_cooldown_hits_;
             if (retry_no_candidate) *retry_no_candidate = true;
-            return reject("action_retry_cooldown");
+            return reject("action_component_cooldown");
         }
         if (preflight_decision == dsnap::AutomaticActionDecision::Pending) {
             return reject("action_state_pending_invariant");
@@ -2768,6 +2877,7 @@ private:
         const FWeakObjectPtr player_input_weak{action_resolution.player_input};
         const FWeakObjectPtr interaction_action_weak{action_resolution.interaction_action};
         const auto receiver_identity = pack_weak_identity(receiver_weak);
+        const auto receiver_address = reinterpret_cast<std::uintptr_t>(context.interaction_receiver);
         const auto player_input_identity = pack_weak_identity(player_input_weak);
         const auto interaction_action_identity = pack_weak_identity(interaction_action_weak);
         const std::string_view receiver_source_snapshot{
@@ -2820,18 +2930,15 @@ private:
             return reject("game_not_foreground_before_injection");
         }
         const auto action_decision = begin_pending_action(
-            request_id, actor_weak, component_weak, actor_identity, component_identity, interact_type_value);
-        if (action_decision == dsnap::AutomaticActionDecision::Quarantined) {
-            ++action_quarantine_hits_;
-            if (retry_no_candidate) *retry_no_candidate = true;
-            return reject("target_quarantined_for_activation");
-        }
+            request_id, actor_weak, component_weak, actor_identity, component_identity,
+            receiver_address, interact_type_value);
         if (action_decision == dsnap::AutomaticActionDecision::Pending) {
             return reject("action_state_pending_invariant");
         }
         if (action_decision == dsnap::AutomaticActionDecision::Cooldown) {
+            ++action_cooldown_hits_;
             if (retry_no_candidate) *retry_no_candidate = true;
-            return reject("action_retry_cooldown");
+            return reject("action_component_cooldown");
         }
         if (action_decision == dsnap::AutomaticActionDecision::FailClosed) {
             return reject("action_state_fail_closed");
@@ -2843,13 +2950,15 @@ private:
         const auto invocation_action_id = pending_action_id_;
         const auto invocation_request_id = pending_request_id_;
         const auto invocation_attempt = automatic_action_.pending_attempt();
-        const auto quarantine_size_snapshot = automatic_action_.quarantine_size();
+        const auto action_record_size_snapshot = automatic_action_.record_size();
         ++enhanced_input_attempts_;
         StageTimingScope injection_scope{timing ? &timing->injection_us : nullptr};
         const char* injection_reason{"unknown"};
-        if (!inject_live_interaction_action_once(live_subsystem,
-                                                live_interaction_action,
-                                                &injection_reason)) {
+        dispatch_observer_armed_.store(true, std::memory_order_release);
+        const bool injection_succeeded = inject_live_interaction_action_once(
+            live_subsystem, live_interaction_action, &injection_reason);
+        if (!injection_succeeded) {
+            dispatch_observer_armed_.store(false, std::memory_order_release);
             const bool pending_unchanged = action_activation_id_ == invocation_activation_id &&
                 pending_action_id_ == invocation_action_id &&
                 pending_request_id_ == invocation_request_id && automatic_action_.pending() &&
@@ -2880,7 +2989,7 @@ private:
                       std::format("activation_id={} action_id={} request_id={} actor=0x{:X} component=0x{:X} "
                                   "receiver=0x{:X} receiver_source={} mounted={} interact_type={} "
                                   "target_kind={} resolution_mode={} active_binding_keys={} "
-                                  "one_shot=1 pending_global=1 attempt={}/{} confirmation_window_ms={} "
+                                  "one_shot=1 in_flight_gate=1 attempt={}/{} confirmation_window_ms={} "
                                   "target_field_access=0 direct_RPC=0 SendInput=0 success_claim=0",
                                   invocation_activation_id, invocation_action_id, invocation_request_id,
                                   actor_identity, component_identity, receiver_identity,
@@ -2896,7 +3005,7 @@ private:
                                       "mapping_count={} matched_mappings={} active_mappings={} ignored_mappings={} "
                                       "action_property_storage={} "
                                       "conflicting_actions={} foreground_first={} foreground_final={} "
-                                      "pending=1 quarantine_size={}",
+                                      "pending=1 action_record_size={}",
                                       invocation_activation_id, invocation_action_id,
                                       selector_capability_.selector_rva,
                                       actor_identity, component_identity,
@@ -2905,7 +3014,7 @@ private:
                                       mapping_count_snapshot, matched_mappings_snapshot,
                                       active_mappings_snapshot, ignored_mappings_snapshot,
                                       action_property_storage_snapshot, conflicting_actions_snapshot, foreground.matched,
-                                      injection_foreground.matched, quarantine_size_snapshot));
+                                      injection_foreground.matched, action_record_size_snapshot));
         }
         if (!pending_unchanged) {
             ++action_lifecycle_cancellations_;
@@ -2940,6 +3049,7 @@ private:
                                                  timing);
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
+            self->dispatch_observer_armed_.store(false, std::memory_order_release);
             invoked = false;
             if (reason) *reason = "guarded_runtime_fault";
             if (retry_no_candidate) *retry_no_candidate = false;
@@ -2997,7 +3107,9 @@ private:
         const FWeakObjectPtr& component,
         std::uint64_t actor_identity,
         std::uint64_t component_identity,
+        std::uintptr_t receiver_address,
         std::uint8_t interact_type) noexcept {
+        if (receiver_address == 0) return dsnap::AutomaticActionDecision::InvalidCandidate;
         const auto decision = automatic_action_.begin(weak_object_id(component), Clock::now(), 0.0);
         if (decision != dsnap::AutomaticActionDecision::Ready) return decision;
         pending_actor_ = actor;
@@ -3008,11 +3120,19 @@ private:
         pending_component_identity_ = component_identity;
         pending_interact_type_ = interact_type;
         pending_action_invoked_ = false;
+        dispatch_observer_armed_.store(false, std::memory_order_relaxed);
+        dispatch_observed_action_id_.store(0, std::memory_order_relaxed);
+        pending_receiver_address_.store(receiver_address, std::memory_order_relaxed);
+        pending_action_id_visible_.store(pending_action_id_, std::memory_order_release);
         pending_action_visible_.store(true, std::memory_order_release);
         return decision;
     }
 
     void clear_pending_runtime_state() noexcept {
+        dispatch_observer_armed_.store(false, std::memory_order_release);
+        pending_action_id_visible_.store(0, std::memory_order_release);
+        pending_receiver_address_.store(0, std::memory_order_relaxed);
+        dispatch_observed_action_id_.store(0, std::memory_order_relaxed);
         pending_action_visible_.store(false, std::memory_order_release);
         pending_actor_.Reset();
         pending_component_.Reset();
@@ -3057,7 +3177,7 @@ private:
         }
         automatic_action_.reset_activation();
         active_interaction_owner_identity_ = 0;
-        action_quarantine_size_visible_.store(0, std::memory_order_release);
+        action_record_size_visible_.store(0, std::memory_order_release);
         clear_pending_runtime_state();
         reset_debug_activation_state();
     }
@@ -3081,6 +3201,8 @@ private:
         next_auto_scan_due_ = {};
         ++automatic_disables_;
         ++action_state_faults_;
+        status_toast_renderer_.notify(dsnap::StatusToastKind::Disabled,
+                                      Clock::now());
         logger_.write(dsnap::LogAudience::User, "AUTOMATION_DISABLED",
                       std::format("reason={} action_state_fail_closed=1 retry_hotkey={}",
                                   reason, configuration_result_.value.toggle_hotkey));
@@ -3133,6 +3255,53 @@ private:
         if (!automatic_action_.pending()) return;
         const auto pending_candidate = automatic_action_.pending_candidate();
         const auto pending_attempt = automatic_action_.pending_attempt();
+        const auto observed_action_id =
+            dispatch_observed_action_id_.exchange(0, std::memory_order_acq_rel);
+        if (observed_action_id != 0) {
+            if (observed_action_id == pending_action_id_) {
+                const auto dispatched = automatic_action_.observe_dispatch(pending_candidate, now);
+                if (!dispatched) {
+                    disable_for_action_fault("dispatch_observer_identity_mismatch");
+                    return;
+                }
+                ++action_dispatch_observations_;
+                action_record_size_visible_.store(
+                    automatic_action_.record_size(), std::memory_order_release);
+                const auto next_scan_delay_ms =
+                    next_auto_scan_due_ == Clock::time_point{} || now >= next_auto_scan_due_
+                    ? std::int64_t{0}
+                    : std::chrono::duration_cast<std::chrono::milliseconds>(
+                          next_auto_scan_due_ - now).count();
+                if (configuration_result_.value.debug_logging) {
+                    logger_.write(dsnap::LogAudience::Debug, "PICKUP_DISPATCH_OBSERVED",
+                                  std::format(
+                                      "activation_id={} action_id={} request_id={} "
+                                      "actor=0x{:X} component=0x{:X} receiver=0x{:X} "
+                                      "interact_type={} signal=game_Server_RunInteractV2_post "
+                                      "target_match_unproven=1 pickup_success_claim=0 "
+                                      "terminal_for_injection=1 same_component_reentry_ms={} "
+                                      "elapsed_pulse_satisfies_post_pickup=1 next_scan_ms={}",
+                                      action_activation_id_, pending_action_id_, pending_request_id_,
+                                      pending_actor_identity_, pending_component_identity_,
+                                      pending_receiver_address_.load(std::memory_order_acquire),
+                                      pending_interact_type_,
+                                      dsnap::kAutomaticActionDispatchReentryDelay.count(),
+                                      next_scan_delay_ms));
+                }
+                clear_pending_runtime_state();
+                if (automatic_action_.fail_closed()) {
+                    disable_for_action_fault("action_record_capacity_exhausted");
+                }
+                return;
+            }
+            ++dispatch_marker_mismatches_;
+            if (configuration_result_.value.debug_logging) {
+                logger_.write(dsnap::LogAudience::Debug, "DISPATCH_MARKER_IGNORED",
+                              std::format("observed_action_id={} pending_action_id={} "
+                                          "scheduler_effect=none",
+                                          observed_action_id, pending_action_id_));
+            }
+        }
         bool actor_faulted{};
         auto* actor = weak_get_guarded(pending_actor_, &actor_faulted);
         if (actor_faulted) {
@@ -3154,6 +3323,8 @@ private:
                 return;
             }
             ++confirmations_;
+            action_record_size_visible_.store(
+                automatic_action_.record_size(), std::memory_order_release);
             logger_.write(dsnap::LogAudience::User, "PICKUP_CONFIRMED",
                           std::format("activation_id={} action_id={} request_id={} signal={} "
                                       "actor=0x{:X} component=0x{:X} interact_type={} terminal=1 next_scan_ms={}",
@@ -3174,12 +3345,13 @@ private:
         ++confirmation_timeouts_;
         const bool retry_scheduled = !automatic_action_.fail_closed() &&
             expired->attempt_ordinal < dsnap::kMaximumAutomaticActionAttempts;
-        action_quarantine_size_visible_.store(
-            automatic_action_.quarantine_size(), std::memory_order_release);
+        action_record_size_visible_.store(
+            automatic_action_.record_size(), std::memory_order_release);
         logger_.write(dsnap::LogAudience::User, "PICKUP_UNCONFIRMED",
                       std::format("activation_id={} action_id={} request_id={} reason=exact_component_still_interactable "
                                   "actor=0x{:X} component=0x{:X} interact_type={} elapsed_ms={} "
-                                  "attempt={}/{} terminal={} automatic_retry={} retry_after_ms={} quarantine_size={}",
+                                  "attempt={}/{} cycle_terminal={} automatic_retry={} retry_after_ms={} "
+                                  "recovery_after_ms={} activation_quarantine=0 action_record_size={}",
                                   action_activation_id_, pending_action_id_, pending_request_id_, pending_actor_identity_,
                                   pending_component_identity_, pending_interact_type_,
                                   std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -3187,13 +3359,18 @@ private:
                                   pending_attempt, dsnap::kMaximumAutomaticActionAttempts,
                                   !retry_scheduled, retry_scheduled,
                                   retry_scheduled ? dsnap::kAutomaticActionRetryDelay.count() : 0,
-                                  automatic_action_.quarantine_size()));
+                                   retry_scheduled ? 0 : dsnap::kAutomaticActionFailureBackoff.count(),
+                                   automatic_action_.record_size()));
         clear_pending_runtime_state();
-        next_auto_scan_due_ = now + (retry_scheduled
-            ? dsnap::kAutomaticActionRetryDelay
-            : kTransientBackoff);
+        // The retry/backoff belongs only to the exact Component record.  The
+        // scan pulse that observed this timeout has already satisfied the
+        // active cadence, so leave the elapsed due time intact: a different
+        // selector result may proceed on this same EngineTick.  If the game
+        // presents the cooled Component again, AutomaticActionState rejects it
+        // before action resolution and the normal idle cadence schedules the
+        // next scan.
         if (automatic_action_.fail_closed()) {
-            disable_for_action_fault("action_quarantine_capacity_exhausted");
+            disable_for_action_fault("action_record_capacity_exhausted");
         }
     }
 
@@ -3242,6 +3419,7 @@ private:
     }
 
     void reset_world(const char* source) noexcept {
+        status_toast_renderer_.release_for_travel();
         const auto session_generation = session_events_.reset();
         const bool was_enabled = automation_enabled_.exchange(false, std::memory_order_acq_rel);
         cancel_window(source);
@@ -3266,13 +3444,23 @@ private:
     }
 
     void unregister_callbacks() noexcept {
-        if (begin_play_callback_id_ != Hook::ERROR_ID) {
-            Hook::UnregisterCallback(begin_play_callback_id_);
-            begin_play_callback_id_ = Hook::ERROR_ID;
-        }
         if (engine_tick_callback_id_ != Hook::ERROR_ID) {
             Hook::UnregisterCallback(engine_tick_callback_id_);
             engine_tick_callback_id_ = Hook::ERROR_ID;
+        }
+        dispatch_observer_armed_.store(false, std::memory_order_release);
+        if (server_run_interact_hook_registered_ && server_run_interact_function_) {
+            try {
+                UObjectGlobals::UnregisterHook(server_run_interact_function_,
+                                               server_run_interact_hook_);
+            } catch (...) {
+            }
+            server_run_interact_hook_ = {};
+            server_run_interact_hook_registered_ = false;
+        }
+        if (begin_play_callback_id_ != Hook::ERROR_ID) {
+            Hook::UnregisterCallback(begin_play_callback_id_);
+            begin_play_callback_id_ = Hook::ERROR_ID;
         }
         if (world_reset_callback_id_ != Hook::ERROR_ID) {
             Hook::UnregisterCallback(world_reset_callback_id_);
@@ -3289,6 +3477,8 @@ private:
     std::string resolved_interaction_key_{};
     std::string interaction_binding_mode_{"unresolved"};
     dsnap::AsyncLogger logger_;
+    dsnap::ue4ss::StatusToastRenderer status_toast_renderer_{};
+    std::uint64_t status_toast_faults_reported_{};
     dsnap::FingerprintResult fingerprint_result_{};
     SelectorCapability selector_capability_{};
     ProcessShutdownProbe shutdown_probe_{};
@@ -3303,7 +3493,7 @@ private:
     bool fingerprint_applied_{};
     std::atomic<bool> pending_action_visible_{};
     dsnap::AtomicPhysicalKeyEdge toggle_key_edge_{};
-    std::atomic<std::size_t> action_quarantine_size_visible_{};
+    std::atomic<std::size_t> action_record_size_visible_{};
     std::uint8_t toggle_virtual_key_{};
 
     UClass* drop_item_class_{};
@@ -3318,6 +3508,7 @@ private:
     UObject* subsystem_library_cdo_{};
     UFunction* get_local_player_subsystem_function_{};
     UFunction* inject_input_vector_function_{};
+    UFunction* server_run_interact_function_{};
     UFunction* set_sphere_radius_function_{};
     FObjectProperty* drop_item_overlap_property_{};
     FFloatProperty* sphere_radius_instance_property_{};
@@ -3326,6 +3517,8 @@ private:
     Hook::GlobalCallbackId engine_tick_callback_id_{Hook::ERROR_ID};
     Hook::GlobalCallbackId world_reset_callback_id_{Hook::ERROR_ID};
     Hook::GlobalCallbackId begin_play_callback_id_{Hook::ERROR_ID};
+    std::pair<int, int> server_run_interact_hook_{};
+    bool server_run_interact_hook_registered_{};
     std::uint32_t drop_item_range_multiplier_{1};
     bool drop_item_range_contract_ready_{};
     std::atomic<std::uint64_t> drop_item_range_applied_{};
@@ -3340,6 +3533,10 @@ private:
     std::uint64_t pending_component_identity_{};
     std::uint8_t pending_interact_type_{};
     bool pending_action_invoked_{};
+    std::atomic<bool> dispatch_observer_armed_{};
+    std::atomic<std::uintptr_t> pending_receiver_address_{};
+    std::atomic<std::uint64_t> pending_action_id_visible_{};
+    std::atomic<std::uint64_t> dispatch_observed_action_id_{};
     bool player_context_observed_{};
     bool deferred_reason_observed_{};
     bool last_context_resolved_{};
@@ -3398,8 +3595,10 @@ private:
     std::atomic<std::uint64_t> action_invocations_{};
     std::atomic<std::uint64_t> action_injection_failures_{};
     std::atomic<std::uint64_t> action_lifecycle_cancellations_{};
-    std::atomic<std::uint64_t> action_quarantine_hits_{};
+    std::atomic<std::uint64_t> action_cooldown_hits_{};
     std::atomic<std::uint64_t> pending_scan_suppressions_{};
+    std::atomic<std::uint64_t> action_dispatch_observations_{};
+    std::atomic<std::uint64_t> dispatch_marker_mismatches_{};
     std::atomic<std::uint64_t> action_state_faults_{};
     std::atomic<std::uint64_t> action_failures_{};
     std::atomic<std::uint64_t> transient_failures_{};

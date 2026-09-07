@@ -10,10 +10,13 @@
 
 namespace dsnap {
 
-inline constexpr auto kActionConfirmationWindow = std::chrono::milliseconds{650};
-inline constexpr auto kAutomaticActionRetryDelay = std::chrono::milliseconds{100};
+inline constexpr auto kActionConfirmationWindow = std::chrono::milliseconds{750};
+inline constexpr auto kAutomaticActionRetryDelay = std::chrono::milliseconds{200};
+inline constexpr auto kAutomaticActionDispatchReentryDelay = std::chrono::milliseconds{750};
+inline constexpr auto kAutomaticActionFailureBackoff = std::chrono::milliseconds{1500};
+inline constexpr auto kAutomaticActionRetryOpportunityWindow = std::chrono::milliseconds{1500};
 inline constexpr std::uint8_t kMaximumAutomaticActionAttempts = 2;
-inline constexpr std::size_t kAutomaticActionQuarantineCapacity = 128;
+inline constexpr std::size_t kAutomaticActionRecordCapacity = 128;
 
 struct PendingActionEvidence {
     WeakObjectId candidate{};
@@ -71,23 +74,23 @@ enum class AutomaticActionDecision : std::uint8_t {
     InvalidCandidate,
     Pending,
     Cooldown,
-    Quarantined,
     FailClosed,
 };
 
 struct AutomaticActionAttemptRecord {
     WeakObjectId candidate{};
     MonotonicTime retry_not_before{};
+    MonotonicTime retain_until{};
     std::uint8_t timeout_count{};
-    bool quarantined{};
 };
 
 // Owns the complete per-activation automatic-action lifecycle. A successful
 // admission establishes the one global pending action before ProcessEvent is
-// called. The game must present the same exact candidate again after a bounded
-// cooldown before one retry is admitted. A second unconfirmed timeout
-// quarantines that exact scalar weak identity for the rest of the activation;
-// record exhaustion fails the whole activation closed.
+// called. Observing the game dispatch its own interaction releases that global
+// pending state and gives only the exact Component a bounded re-entry delay.
+// If no dispatch is observed, one retry is admitted; a second timeout enters a
+// time-bounded backoff instead of activation-long quarantine. Expired terminal
+// records are recycled, while active record exhaustion still fails closed.
 class AutomaticActionState {
 public:
     [[nodiscard]] AutomaticActionDecision inspect(
@@ -100,11 +103,7 @@ public:
         if (fail_closed_) return AutomaticActionDecision::FailClosed;
         if (pending_.pending()) return AutomaticActionDecision::Pending;
         const auto* record = find_record(candidate);
-        if (record && record->quarantined) return AutomaticActionDecision::Quarantined;
         if (record && now < record->retry_not_before) return AutomaticActionDecision::Cooldown;
-        if (record && record->timeout_count >= kMaximumAutomaticActionAttempts) {
-            return AutomaticActionDecision::FailClosed;
-        }
         return AutomaticActionDecision::Ready;
     }
 
@@ -112,6 +111,7 @@ public:
         WeakObjectId candidate,
         MonotonicTime now,
         double distance_meters) noexcept {
+        prune_rearmable_records(now);
         const auto decision = inspect(candidate, now, distance_meters);
         if (decision != AutomaticActionDecision::Ready) return decision;
         const auto* record = find_record(candidate);
@@ -131,6 +131,24 @@ public:
         return confirmed;
     }
 
+    [[nodiscard]] std::optional<PendingActionEvidence> observe_dispatch(
+        WeakObjectId candidate,
+        MonotonicTime now) noexcept {
+        auto dispatched = pending_.confirm_delete(candidate);
+        if (!dispatched) return std::nullopt;
+        prune_rearmable_records(now);
+        auto* record = find_record(candidate);
+        if (!record) record = append_record(candidate);
+        if (!record) {
+            fail_closed_ = true;
+            return dispatched;
+        }
+        record->timeout_count = 0;
+        record->retry_not_before = now + kAutomaticActionDispatchReentryDelay;
+        record->retain_until = record->retry_not_before;
+        return dispatched;
+    }
+
     [[nodiscard]] std::optional<PendingActionEvidence> expire(MonotonicTime now) noexcept {
         auto expired = pending_.expire(now);
         if (!expired) return std::nullopt;
@@ -142,12 +160,12 @@ public:
         }
         record->timeout_count = expired->attempt_ordinal;
         if (expired->attempt_ordinal >= kMaximumAutomaticActionAttempts) {
-            if (!record->quarantined) {
-                record->quarantined = true;
-                ++quarantine_size_;
-            }
+            record->retry_not_before = now + kAutomaticActionFailureBackoff;
+            record->retain_until = record->retry_not_before;
         } else {
             record->retry_not_before = now + kAutomaticActionRetryDelay;
+            record->retain_until = record->retry_not_before +
+                kAutomaticActionRetryOpportunityWindow;
         }
         return expired;
     }
@@ -166,19 +184,13 @@ public:
         return pending_.evidence() ? pending_.evidence()->attempt_ordinal : 0;
     }
 
-    [[nodiscard]] bool quarantined(WeakObjectId candidate) const noexcept {
-        const auto* record = find_record(candidate);
-        return record && record->quarantined;
-    }
-
-    [[nodiscard]] std::size_t quarantine_size() const noexcept { return quarantine_size_; }
+    [[nodiscard]] std::size_t record_size() const noexcept { return record_size_; }
     [[nodiscard]] bool fail_closed() const noexcept { return fail_closed_; }
 
     void reset_activation() noexcept {
         pending_.reset();
         records_ = {};
         record_size_ = 0;
-        quarantine_size_ = 0;
         fail_closed_ = false;
     }
 
@@ -204,21 +216,36 @@ private:
         return &records_[record_size_++];
     }
 
+    void prune_rearmable_records(MonotonicTime now) noexcept {
+        for (std::size_t index = 0; index < record_size_;) {
+            const auto& record = records_[index];
+            const bool first_retry_waiting = record.timeout_count == 1 &&
+                now < record.retain_until;
+            if (first_retry_waiting || now < record.retry_not_before) {
+                ++index;
+                continue;
+            }
+            remove_record_at(index);
+        }
+    }
+
     void remove_record(WeakObjectId candidate) noexcept {
         for (std::size_t index = 0; index < record_size_; ++index) {
             if (records_[index].candidate != candidate) continue;
-            if (records_[index].quarantined && quarantine_size_ != 0) --quarantine_size_;
-            --record_size_;
-            if (index != record_size_) records_[index] = records_[record_size_];
-            records_[record_size_] = {};
+            remove_record_at(index);
             return;
         }
     }
 
+    void remove_record_at(std::size_t index) noexcept {
+        --record_size_;
+        if (index != record_size_) records_[index] = records_[record_size_];
+        records_[record_size_] = {};
+    }
+
     PendingActionTracker pending_{};
-    std::array<AutomaticActionAttemptRecord, kAutomaticActionQuarantineCapacity> records_{};
+    std::array<AutomaticActionAttemptRecord, kAutomaticActionRecordCapacity> records_{};
     std::size_t record_size_{};
-    std::size_t quarantine_size_{};
     bool fail_closed_{};
 };
 

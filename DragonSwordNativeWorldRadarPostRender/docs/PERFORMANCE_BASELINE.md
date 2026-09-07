@@ -326,10 +326,13 @@ rebuild cost until the next exact `SetWorldMapImage` edge. That edge may rearm
 the three-attempt readiness budget once for the matching serviced serial,
 including when three early `map_id` probes exhausted before any renderer
 failure code existed. Duplicate same-layer events cannot create recurring
-attachment work. Prior evidence measured approximately 94-97 ms for
-build/write/import/attach and 27-37 ms for a
-process-local atlas-file cache hit. It occurs only during an explicit attachment
-transaction and is not steady-state work, but it can cause one visible hitch.
+attachment work. Prior larger-atlas evidence measured approximately 94-97 ms
+for build/write/import/attach and 27-37 ms for a process-local atlas-file cache
+hit. Those values do not accept the 2048 hybrid. The current candidate embeds a
+normalized fingerprint in each TGA so an exact persistent cache hit can skip
+rerasterization across process restarts. File validation and texture import
+still occur during an explicit attachment transaction and can cause one visible
+hitch; fresh cold/hit measurements remain required.
 
 ## Expanded-map steady state
 
@@ -459,17 +462,19 @@ cadence.
   `FGeometry`. There is no centered fallback, desktop-resolution substitution,
   per-frame world-map projection, aspect-ratio poll, or steady timer.
 - Verify all expanded-map radar categories remain above game-native icons at
-  several zoom levels. A changed native Canvas or same-parent anchor/extent
-  reflow must remain within the existing witnessed stable-geometry and bounded
-  reconstruction strategy. The five
-  deadlines are 100/250/500/1,000/1,250 ms; each due game-thread pass takes one
-  observation; overdue deadlines remain due and advance only one observation
-  per later pass. For later event tails the first four passes are read-only; only
-  the final pass may use the existing witnessed stable-geometry and bounded
-  map/zoom reconstruction strategy. The atlas-local correction adds no parent-
-  size post-check, growth rejection, or new extent-change allowance. Missing,
-  mismatched, or final-unstable geometry follows the established fail-closed or
-  defer path. There is no steady-state work.
+  several zoom levels. Same-parent sibling-anchor changes must leave the attach-
+  time Image Canvas-slot atlas positions immutable. Each retained-tail pass
+  reads only the directly resolved `FogAbovePanel` extent; it never samples
+  `PlayerIconWidget`. A real parent replacement is report-only
+  `RebuildRequired`, and only the scheduler may perform the fresh attachment.
+  The five deadlines are
+  100/250/500/1,000/1,250 ms; each due game-thread pass takes one observation;
+  overdue deadlines remain due and advance only one observation per later pass.
+  A changed extent must appear in two matching samples before a report-only
+  rebuild request. Observation alone cannot hide or detach the valid payload;
+  only the once-per-session scheduler owns a rebuild mutation. Missing,
+  mismatched, or unstable geometry follows the established fail-closed or defer
+  path. There is no steady-state work.
 
 These statements are static bounded-work properties. Deterministic numeric
 viewport tests, including 3840x1600, are unit inputs only and do not accept real
@@ -649,35 +654,95 @@ not be inferred from the source/static results.
   remain useful architectural evidence only. They do not validate 2.2.0
   direction, placement, appearance, or performance.
 
-## 2.2.1 addendum: world-map ownership isolation
+## 2.2.1 addendum: full-stretch host and inner-atlas ownership
 
-Version 2.2.1 is a fixes-only release. The native world-map icon Canvas is now
-a read-only geometry witness: Radar does not add children to it, alter its
-desired size, participate in its prepass, or affect its hit-test layout. The
-two Mod-owned atlas hosts are independent, hit-test-invisible viewport widgets.
-The player anchor and native Canvas geometry are converted through
-`LocalToAbsolute` and then into game-viewport local space with
-`AbsoluteToLocal`; accepted geometry changes update only the two viewport-host
-transforms.
+Version 2.2.1 is a fixes-only candidate. Each Mod-owned, hit-test-invisible
+atlas host is a child of the directly resolved current
+`DLayerMap.FogAbovePanel`. `ArrayIconInfo` is consulted only when a missing host
+needs an instantiable native icon class; it never chooses the parent, and steady
+retained-host validation/refresh does not scan it or `PlayerIconWidget`. Each outer host slot is full
+stretch with zero offsets, `AutoSize=false`, zero alignment, and maximum Canvas
+Z. After every fresh attachment, including a scheduler-accepted rebuild, the
+cloned inner `Panel_Point` slot is also
+forced to full stretch with zero offsets. Only the Image Canvas slot owns
+`{atlas_left,atlas_top,atlas_width,atlas_height}`; Image render translation stays
+`(0,0)`. This inherits native pan, zoom, clipping, visibility, and RetainerBox
+composition without delayed viewport-transform synchronization or forced layout
+prepass, while keeping negative atlas coordinates out of the native parent's
+desired-size calculation.
 
-This isolation adds no new timer, poll, per-frame projection route, atlas
-rasterization, marker rebuild, or dynamic steady-state container. Same-parent
-pan, zoom, DPI, window, aspect-ratio, and controller-layout changes must not
-rerasterize, rebuild, reproject, re-add, or reparent an atlas. Invalid or
-unstable geometry collapses only the Mod-owned viewport hosts and follows the
-existing bounded settle/defer path.
+The correction adds no timer, poll, per-frame projection route, marker
+recollection, or dynamic steady-state container. Every event-tail pass directly
+reads the live `FogAbovePanel` extent. A fully unchanged same-parent pass,
+including the final pass, performs no `ArrayIconInfo` scan, Mod transform write,
+restack, Remove/Add, or `RequestRender`. It also performs no layout or visibility
+write. Anchor-only changes are ignored and the attach-time Image Canvas-slot
+atlas position remains immutable. A real `FogAbovePanel` replacement reports
+`RebuildRequired`; only a scheduler-owned fresh attachment restores both full-
+stretch hosts, the Image atlas rectangle, and zero Image translation. A changed extent must be
+observed twice as the same stable sample before `RebuildRequired` is reported.
+The report is non-mutating: it does not hide, collapse, detach, or mark the last
+valid payload transform-unready. Only the scheduler owns an accepted rebuild,
+so a consumed once-per-session latch leaves the last valid payload usable.
 
-Exact-artifact 2.2.1 source/static gates, Core `2/2`, native build `444/444`,
-package validation, Setup `20/20`, Manual `2/2`, payload/layout/clean-target
-checks, three-archive byte-identical re-extraction, and rollback-backed developer
-deployment passed for DLL
-`C21823088E38D2BD1635651981187AB4C01C2FFD0DCD4804CB9FFDB1899FABB9` and
+Successful attachment arms its 100/250/500/1,000/1,250 ms tail from a fresh
+post-attach clock sample. It does not issue an empty-host `RequestRender` before
+visibility is applied; the visibility transaction owns the first valid repaint.
+One open-map session may rebuild at most once while preserving its marker
+snapshot. That rebuild receives its own hard-capped three-attempt attach/
+geometry budget, so the session ceiling is initial 3 plus rebuild 3. Stable
+runtime acceptance requires one attach, zero detaches, unchanged parent extent,
+and no `WORLD_MAP_LAYERING_REBUILD_REQUIRED`. Atlas rasterization, persistent
+cache validation/write, texture import, and widget attachment remain explicit
+event work rather than steady-state work.
+
+The persistent cache format is `DSNWRA52`; fingerprint values are quantized at
+1/4096 UMG logical unit. A hit requires exact dimensions/header/magic/
+fingerprint/visible count, full RLE decode to exactly 2048-by-2048 pixels,
+encoded-payload checksum validation, and exact EOF with no trailing bytes.
+Revision-51, corrupt, truncated, and trailing-byte files miss. Writes use a
+same-directory temporary file, atomically publish with `MoveFileExW` replace-
+existing and write-through flags, and remove the temporary file on failure.
+
+The current WM-06 immutable-slot source review, static gates, Core
+`2/2`, release hygiene, and local native build pass. The exact DLL is
+`6435E10031D90840BF0499664CF57347D7991C9C192BD3B2239ADE2324C723A1`, from
 compiled source
-`DE0100B2D4DE894FA94C6911AD328F7699C55D50EC21193C688B44F7F2588BA2`.
-Gameplay, native-icon stability, click alignment, exit behavior, and external
-performance remain `NOT_VALIDATED`. The exact 2.2.0 measurements, hashes, tests,
-package checks, and deployment record below are historical evidence only and
-must not be relabelled as 2.2.1 evidence.
+`0A1A4CE3EE9F3A04E4B258976CFD830654BCB778B1F9BF5715FB66242B5E5BC5`, size
+1,107,968 bytes. Rollback-backed diagnostics-enabled local developer deployment
+passes for the exact DLL. Installed identity matches, the single controlling Mod
+entry is enabled (`mods=1`), and `debug_logging=true`; backup:
+`dist/work/deployment/deploy-backups/20260905-202742-614-native-only-deploy`.
+Package and installer validation pass for the exact WM-06 bytes: Setup `20/20`,
+Manual `2/2`, payload equivalence, layout, clean-target, and all three archive
+re-extractions. Gameplay, visual, performance, and resolution acceptance remain
+`NOT_VALIDATED`. The prior
+independent-viewport/extreme-Z deployed build is runtime rejected:
+markers became visible, but gameplay reported severe lag, wrong placement, and
+delayed updates. Its build/package/deployment evidence remains bound to those
+bytes and does not accept this hybrid. The later first-valid-parent candidate is
+also rejected: temporary topology diagnostics captured native zoom changing the
+first valid icon parent between `FogAbovePanel` and `FogUnderPanel` and four host
+reattachments in one sequence, accounting for fog occlusion, hitching, and
+flashing. The later full-stretch-outer/Image-translation DLL
+`CCC6B117...AE00` is also runtime rejected. Quantitative 2026-09-05 screenshots
+show scale pairs 1.214/1.218 and 0.760/0.758 but relative translations about
+`(+113,-190)` and `(+67,+200)` px, with mean residuals 0.28 px (32 points) and
+0.82 px (35 points). The sign-reversing vertical offset identifies a local-
+origin/zoom-pivot mismatch rather than scale-formula or cumulative-frame drift.
+Those bytes came from compiled source `B650B5FB...74EA`; both hashes are archived
+as runtime rejected. The subsequent DLL `CD41F0E1...6FBB2` from compiled source
+`433710E0...E62C` is also runtime rejected. It attached 1,632 markers with no
+data, texture, or ABI fault, but changed the native parent extent from `3000` to
+`3191.521`, emitted `WORLD_MAP_LAYERING_REBUILD_REQUIRED`, and oscillated through
+six attaches and five detaches. Its deployment backup
+`dist/work/deployment/deploy-backups/20260905-182946-652-native-only-deploy` is
+rejected evidence only. The diagnostic and screenshot evidence does not validate
+corrected gameplay. Full-stretch-host/inner-atlas gameplay, native-icon stability,
+click alignment, 4K/21:9/16:10/DPI/windowed behavior, attach time, memory, exit,
+and external frame-time performance remain `NOT_VALIDATED`. The exact 2.2.0
+measurements, hashes, tests, package checks, and deployment record below remain
+historical evidence only.
 
 ## Historical 2.2.0 addendum: mini-game height, localization, and responsive F6
 
@@ -777,13 +842,17 @@ relabelled as 2.2.0 evidence.
   Canvas, each occupying the atlas parent-local rectangle
   `{atlas_left,atlas_top,atlas_width,atlas_height}`. Each `Panel_Point` Image is
   local `{0,0,atlas_width,atlas_height}`. The live-rejected full-parent
-  outer-host experiment was not part of that historical baseline. Version 2.2.1
-  supersedes this ownership model with independent viewport-owned hosts and a
-  read-only native Canvas as described above.
-- This correction adds no immediate parent-size post-check, parent-growth
-  rejection, extent-change token, or projection fallback. Later layout changes
-  continue through the existing witnessed stable-geometry and bounded map/zoom
-  reconstruction strategy.
+  outer-host experiment was not part of that historical baseline. The first
+  2.2.1 independent-viewport/extreme-Z replacement was also runtime rejected.
+  The current candidate instead uses the directly resolved `FogAbovePanel`, a
+  full-stretch zero-offset outer slot, a full-stretch zero-offset inner
+  `Panel_Point`, an atlas rectangle only in the Image Canvas slot, and zero Image
+  render translation as described above. `ArrayIconInfo` no longer
+  selects the parent or participates in steady validation/refresh.
+- This correction adds no projection fallback. Extent drift is sampled through
+  the existing witnessed stable-geometry path and requires two matching samples
+  before a report-only rebuild request; only the bounded map-session scheduler
+  may mutate the valid retained layer.
 - Live parent resolution, cached-Slate transforms, DPI, window, zoom,
   independent X/Y projection, and aspect-ratio handling remain in the existing
   finite observation chain. No `3000`/`8000` extent is accepted as a geometry

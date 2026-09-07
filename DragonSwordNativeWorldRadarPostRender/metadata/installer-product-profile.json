@@ -239,13 +239,13 @@
     ]
   },
   "acceptance": {
-    "source": "PASSED_2_2_1_FIX_ONLY_GATES",
-    "build": "PASSED_2_2_1_NATIVE_444_OF_444_AND_CORE_2_OF_2",
-    "compiled_source_sha256": "DE0100B2D4DE894FA94C6911AD328F7699C55D50EC21193C688B44F7F2588BA2",
-    "native_main_dll_sha256": "C21823088E38D2BD1635651981187AB4C01C2FFD0DCD4804CB9FFDB1899FABB9",
-    "package": "PASSED_2_2_1_THREE_ARCHIVE_BYTE_IDENTICAL_REEXTRACTION",
-    "installer_matrix": "PASSED_SETUP_20_OF_20_MANUAL_2_OF_2_AND_PAYLOAD_GATES",
-    "deployment": "PASSED_DEVELOPER_LOCAL_DIAGNOSTICS_ENABLED_C2182308",
+    "source": "PASSED_CURRENT_WM06_IMMUTABLE_SAME_PARENT_SOURCE_AND_RELEASE_HYGIENE",
+    "build": "PASSED_CURRENT_WM06_LOCAL_NATIVE_BUILD",
+    "compiled_source_sha256": "0A1A4CE3EE9F3A04E4B258976CFD830654BCB778B1F9BF5715FB66242B5E5BC5",
+    "native_main_dll_sha256": "6435E10031D90840BF0499664CF57347D7991C9C192BD3B2239ADE2324C723A1",
+    "package": "PASSED_CURRENT_WM06_THREE_ARCHIVE_BYTE_IDENTICAL_REEXTRACTION",
+    "installer_matrix": "PASSED_CURRENT_WM06_SETUP_20_OF_20_MANUAL_2_OF_2_AND_PAYLOAD_GATES",
+    "deployment": "PASSED_DEVELOPER_LOCAL_DIAGNOSTICS_ENABLED_CURRENT_WM06_6435E100",
     "gameplay": "NOT_VALIDATED",
     "f6_visual": "NOT_VALIDATED",
     "controller": "NOT_VALIDATED",
@@ -253,7 +253,7 @@
     "exit": "NOT_VALIDATED",
     "performance": "NOT_VALIDATED",
     "f6_text_lifecycle": "Source lifecycle centering covers initial open, language changes, status changes, and popup visibility changes. Exact-font text accepts GetDesiredSize only when ReturnValue matches the known Vector2D struct identity, then centers the measured line height within the authored vertical slot. Render-scale fallback preserves authored slot geometry. Invalid desired-size evidence preserves authored text-slot geometry. The work is edge-only and changes no per-frame path, radar or world-map geometry, or button hit region; live visual behavior remains NOT_VALIDATED.",
-    "evidence_boundary": "Historical 2.2.0 source, build, package, installer, and local-deployment evidence remains bound to DLL 6AEFDACC1A44EF6F387456CB31FE1A6828259EF7ACDEE1D1FE13BAE10BDFA4D5 and compiled source A98660932CC5DA1BC3E2B9D262DBFC13E0FED3935A6174B5C92E8622BBA2A1EC; it is not 2.2.1 evidence. Exact-artifact 2.2.1 source validation, native build, package, Setup 20/20, Manual 2/2, payload equivalence, layout, clean-target, archive re-extraction, and developer-local deployment passed for DLL C21823088E38D2BD1635651981187AB4C01C2FFD0DCD4804CB9FFDB1899FABB9 and compiled source DE0100B2D4DE894FA94C6911AD328F7699C55D50EC21193C688B44F7F2588BA2. Gameplay, native-icon stability, click-target alignment, F6 visual behavior, controller behavior, localization, exit, and performance remain NOT_VALIDATED.",
+    "evidence_boundary": "Historical 2.2.0 and superseded 2.2.1 evidence remains bound to its recorded bytes and is not current WM-06 evidence. Exact-artifact 2.2.1 source validation, native build, package, Setup 20/20, Manual 2/2, payload equivalence, layout, clean-target, archive re-extraction, and rollback-backed developer-local deployment passed for current WM-06 DLL 6435E10031D90840BF0499664CF57347D7991C9C192BD3B2239ADE2324C723A1 and compiled source 0A1A4CE3EE9F3A04E4B258976CFD830654BCB778B1F9BF5715FB66242B5E5BC5. Gameplay, native-icon stability, click-target alignment, F6 visual behavior, controller behavior, localization, resolution, exit, and performance remain NOT_VALIDATED.",
     "publication": "BLOCKED"
   }
 }

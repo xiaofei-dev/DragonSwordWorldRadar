@@ -21,7 +21,7 @@ namespace DragonSwordNativeAutoPickup.Installer
 
         internal InstallerForm()
         {
-            Text = "DragonSword Native Auto Pickup 1.3.0 Setup";
+            Text = "DragonSword Native Auto Pickup 1.3.1 Setup";
             ClientSize = new Size(720, 545);
             MinimumSize = new Size(736, 584);
             StartPosition = FormStartPosition.CenterScreen;

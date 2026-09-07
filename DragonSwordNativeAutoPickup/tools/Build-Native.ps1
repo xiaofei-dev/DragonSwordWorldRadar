@@ -146,6 +146,14 @@ $expectedCompilerPattern = if ($UE4SSVariant -eq 'StableRoot') { '^19\.38\.' } e
 if ($compilerVersion -notmatch $expectedCompilerPattern) {
     throw "MSVC selected through -vcvars_ver=$vcVarsVersion is not the required compiler for $UE4SSVariant; found $compilerVersion"
 }
+$msvcLinker = Resolve-RequiredPath `
+    (Join-Path (Split-Path -Parent $compilerCommand.Source) 'link.exe') `
+    'MSVC linker selected beside cl.exe'
+# Git's Unix helpers must precede other Git entries for FetchContent, but that
+# directory also contains an unrelated Unix link.exe.  A populated Cargo cache
+# can hide the collision; pin fresh Rust builds to the linker from the exact
+# MSVC toolchain selected above.
+$env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER = $msvcLinker
 
 # Upstream fetch declarations use both SSH spellings. Keep translation local to
 # this PowerShell process; no global or repository Git configuration is changed.
@@ -162,6 +170,9 @@ if (-not $BuildDirectory) {
 $buildDirectory = [IO.Path]::GetFullPath($BuildDirectory)
 $patternSleuthBindLock = Join-Path $resolvedUE4SS 'deps\first\patternsleuth_bind\Cargo.lock'
 $patternSleuthBindLockBytes = [System.IO.File]::ReadAllBytes($patternSleuthBindLock)
+$offlineVerifier = $null
+$offlineVerification = $null
+$offlineManifestSha256 = $null
 try {
     $configureArguments = @(
         '--fresh', '-S', $projectRoot, '-B', $buildDirectory, '-G', 'Ninja',
@@ -177,10 +188,66 @@ try {
         "-DFETCHCONTENT_SOURCE_DIR_IMGUITEXTEDIT=$resolvedImGui"
     )
     if ($OfflineDependencies) {
+        $offlineVerifier = Resolve-RequiredPath `
+            (Join-Path $PSScriptRoot 'Verify-OfflineFetchContent.ps1') `
+            'Offline FetchContent verifier'
+        $offlineVerification = & $offlineVerifier -PassThru
+        if ($null -eq $offlineVerification -or $offlineVerification.Status -cne 'PASSED') {
+            throw 'Pinned offline FetchContent verification did not return PASSED.'
+        }
+        $offlineManifestSha256 =
+            (Get-FileHash -LiteralPath $offlineVerification.ManifestPath -Algorithm SHA256).Hash
+        foreach ($dependency in $offlineVerification.Sources) {
+            $configureArguments +=
+                "-DFETCHCONTENT_SOURCE_DIR_$($dependency.FetchContentKey)=$($dependency.AbsolutePath)"
+        }
         $configureArguments += '-DFETCHCONTENT_FULLY_DISCONNECTED=ON'
     }
     & $cmake @configureArguments
     if ($LASTEXITCODE -ne 0) { throw "Native configure failed: $LASTEXITCODE" }
+
+    if ($OfflineDependencies) {
+        $cmakeCachePath = Resolve-RequiredPath `
+            (Join-Path $buildDirectory 'CMakeCache.txt') `
+            'Native CMake cache'
+        $cmakeCache = @{}
+        foreach ($line in Get-Content -LiteralPath $cmakeCachePath) {
+            if ($line -match '^([^#/:][^:]*)\:[^=]*=(.*)$') {
+                $cmakeCache[$matches[1]] = $matches[2]
+            }
+        }
+        if (-not $cmakeCache.ContainsKey('FETCHCONTENT_FULLY_DISCONNECTED') -or
+            $cmakeCache['FETCHCONTENT_FULLY_DISCONNECTED'] -cne 'ON') {
+            throw 'CMake did not preserve FETCHCONTENT_FULLY_DISCONNECTED=ON.'
+        }
+        $expectedCMakeSources = [ordered]@{}
+        foreach ($dependency in $offlineVerification.Sources) {
+            $expectedCMakeSources["FETCHCONTENT_SOURCE_DIR_$($dependency.FetchContentKey)"] =
+                $dependency.AbsolutePath
+        }
+        $expectedCMakeSources['FETCHCONTENT_SOURCE_DIR_IMGUITEXTEDIT'] = $resolvedImGui
+        $actualCMakeSourceKeys = @(
+            $cmakeCache.Keys |
+                Where-Object { ([string]$_).StartsWith(
+                        'FETCHCONTENT_SOURCE_DIR_',
+                        [StringComparison]::Ordinal) })
+        if ($actualCMakeSourceKeys.Count -ne $expectedCMakeSources.Count -or
+            @($actualCMakeSourceKeys |
+                Where-Object { -not $expectedCMakeSources.Contains([string]$_) }).Count -ne 0) {
+            throw 'Unexpected FetchContent source override set in CMakeCache.txt; the exact eleven-source mapping is required.'
+        }
+        foreach ($entry in $expectedCMakeSources.GetEnumerator()) {
+            if (-not $cmakeCache.ContainsKey($entry.Key)) {
+                throw "CMake did not preserve the pinned source mapping $($entry.Key)."
+            }
+            $actualSource = [IO.Path]::GetFullPath(
+                ([string]$cmakeCache[$entry.Key]).Replace('/', '\'))
+            $expectedSource = [IO.Path]::GetFullPath([string]$entry.Value)
+            if (-not $actualSource.Equals($expectedSource, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "CMake source mapping mismatch for $($entry.Key): expected $expectedSource; found $actualSource"
+            }
+        }
+    }
 
     & $cmake --build $buildDirectory --target DragonSwordNativeAutoPickup
     if ($LASTEXITCODE -ne 0) { throw "Native build failed: $LASTEXITCODE" }
@@ -190,6 +257,15 @@ finally {
     # selected crate. Restore the exact pre-build bytes even when the build
     # fails, then let the strict repository checks reject any other mutation.
     [System.IO.File]::WriteAllBytes($patternSleuthBindLock, $patternSleuthBindLockBytes)
+    if ($OfflineDependencies -and $null -ne $offlineVerifier) {
+        $postBuildVerification = & $offlineVerifier -PassThru
+        $postBuildManifestSha256 =
+            (Get-FileHash -LiteralPath $postBuildVerification.ManifestPath -Algorithm SHA256).Hash
+        if ($postBuildVerification.Status -cne 'PASSED' -or
+            $postBuildManifestSha256 -cne $offlineManifestSha256) {
+            throw 'Pinned offline FetchContent inputs changed during the native build.'
+        }
+    }
 }
 
 Assert-GitCommit $resolvedUE4SS $expectedCommits.UE4SS 'RE-UE4SS after build'

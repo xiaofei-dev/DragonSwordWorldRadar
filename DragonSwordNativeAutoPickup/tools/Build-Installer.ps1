@@ -19,7 +19,7 @@ Set-StrictMode -Version 2.0
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $installerRoot = Join-Path $projectRoot 'installer'
-$version = '1.3.0'
+$version = '1.3.1'
 $runtimeZipHash = 'AB765EF93BD0DB109D7224C0E2487C68A1CE8748F20B597128D43E247B4AFA77'
 $experimentalUE4SSDllHash = 'F31188D59B34A812AFC32DB4B6FF0C74E1B44861D1ED7967452EE4B3B6635BE1'
 $experimentalDwmapiHash = '30122355CB2784E3BA89F6FB55EA4443467FF8EAE2747CBDEDBEEF49B03E669B'
@@ -28,8 +28,8 @@ $experimentalSettingsHash = '4E9BBDB5F50A6DCAFFE4046EDB2D78669255C7ADC079AF98E8D
 $approvedRangeX3PakHash = '6BB99A1E35C06EB0284370B9D7BD2F34E90CB6DCA7479CF10A477C68EA0103E8'
 $approvedRangeX5PakHash = 'DB9E129D8F8FCCA025864EC908C13C70F950AD779C37CF13A41164476587CECD'
 $approvedRangeX10PakHash = '6A1ADB7592BA0C70A17984DB3AC01348086AABE196F0FDAF914B3F52C7A395F1'
-$approvedRangeX15PakHash = '16CA8F2353D40BCED8ACBBC95FE4CE8A57E304DEB76D758517E716FF43740100'
-$approvedRangeX20PakHash = 'C10E1B252849B1D5DE5C94F468B60841E412487055AB7115B2E73E0D50AFF9BA'
+$approvedRangeX15PakHash = 'F8330CEA2F127319887FD3718BC66E2825D39DFE21D635404FC7535C7FAA37EC'
+$approvedRangeX20PakHash = '81214319100646CD5663940CACE3AFA8F3523F5E319AB7C4AE8D935443FB93D2'
 
 if (-not $ExperimentalPluginDll) { $ExperimentalPluginDll = Join-Path $projectRoot 'out\native\ExperimentalNested\main.dll' }
 $rangeProjectDist = Join-Path (Split-Path -Parent $projectRoot) 'DragonSwordPickupRangeExpansion\dist'
@@ -41,7 +41,7 @@ if (-not $PickupRangeX20Pak) { $PickupRangeX20Pak = Join-Path $rangeProjectDist 
 if (-not $ConfigPath) { $ConfigPath = Join-Path $projectRoot 'config\default.ini' }
 if (-not $LuaScriptPath) { $LuaScriptPath = Join-Path $projectRoot 'Scripts\main.lua' }
 if (-not $ThirdPartyNoticesPath) { $ThirdPartyNoticesPath = Join-Path $installerRoot 'THIRD_PARTY_NOTICES.txt' }
-if (-not $OutputDirectory) { $OutputDirectory = Join-Path $projectRoot 'out\installer\1.3.0' }
+if (-not $OutputDirectory) { $OutputDirectory = Join-Path $projectRoot 'out\installer\1.3.1' }
 
 function Resolve-RequiredFile {
     param([string]$Path, [string]$Description)
@@ -74,8 +74,8 @@ function Assert-X64PeDll {
         throw "$Description must be an x64 DLL: $Path"
     }
     $ascii = [Text.Encoding]::ASCII.GetString($bytes)
-    if (-not $ascii.Contains('DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_0')) {
-        throw "$Description does not contain the 1.3.0 release identity marker: $Path"
+    if (-not $ascii.Contains('DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_1')) {
+        throw "$Description does not contain the 1.3.1 release identity marker: $Path"
     }
 }
 
@@ -148,8 +148,8 @@ if ($configText -match '(?m)^[\t ]*enabled_on_launch[\t ]*=[\t ]*true[\t ]*(?=\r
     throw 'Public config must remain startup-off and debug-off.'
 }
 $luaText = [IO.File]::ReadAllText($lua, [Text.UTF8Encoding]::new($false, $true))
-if (-not $luaText.Contains('DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_0')) {
-    throw 'Lua entry point does not contain the 1.3.0 release identity marker.'
+if (-not $luaText.Contains('DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_1')) {
+    throw 'Lua entry point does not contain the 1.3.1 release identity marker.'
 }
 
 $outputRoot = [IO.Path]::GetFullPath($OutputDirectory)

@@ -1,0 +1,111 @@
+1.3.1
+Preserved Auto Pickup target selection, input, scheduling, retry, and confirmation behavior.
+Kept full 15x and 20x range for gather and interactable-animal targets.
+Capped short-lived item drops at the stable 10x range inside the 15x and 20x PAKs to reduce stuck prompt lists while moving quickly.
+Reused the exact 1.3.0 3x, 5x, and 10x PAK files.
+Added strict PAK checks for 69 targets, 138 entries, zero treasure targets, and byte-identical 10x drop entries in the 15x and 20x variants.
+Updated the installer and all packages to 1.3.1 with safe owned 1.3.0 upgrade support.
+
+1.3.0
+
+Fixed sustained pickup stalls and repeated interaction attempts.
+Added a single global pending action to prevent overlapping pickup inputs.
+Added dispatch-aware pickup recovery.
+Added one retry after 200ms when no interaction dispatch is detected.
+Added a temporary 1500ms backoff for the exact unresponsive target.
+Other available targets can continue while one target is cooling down.
+Replaced activation-long target quarantine with automatic recovery.
+Changed F9 handling to require a real physical press and release.
+Fixed keyboard repeat unexpectedly toggling Auto Pickup again.
+Replaced the fixed selector address with automatic runtime selector resolution.
+Added two independent selector checks that must resolve the same address.
+Removed the game EXE hash as an activation or address-selection requirement.
+Game hashes are now diagnostic only.
+Improved compatible game-update address relocation support.
+Incompatible or ambiguous game updates now keep Auto Pickup safely disabled.
+Reduced active scanning and post-pickup scanning from 33ms to 25ms.
+Kept the 33ms idle scanning interval.
+Improved World, save, Pawn, controller, mount, and interaction-context recovery.
+Added STARTING, ENABLED, DISABLED, and NOT READY status notifications.
+Added a translucent top-center status card with automatic fade-out.
+Fixed debug_logging changing pickup behavior.
+Detailed diagnostic logging remains disabled by default.
+Expanded every range PAK to 50 gather or animal assets and 19 monster-drop assets.
+Added ordinary meat, aged meat, and other reviewed F-pickable monster drops to every range PAK.
+Treasure chests and Treasure-type assets remain excluded.
+Moved all range scaling into the PAK to prevent accidental double scaling.
+Added safer installer Repair and Upgrade ownership records.
+Supported range PAKs can now be replaced or removed by exact product filename.
+Historical PAK hashes are no longer required for replacement or removal.
+Upgrades preserve config.ini and unrelated Mods.
+Published Installer, Manual No UE4SS, Manual With UE4SS, and Standalone Range PAK packages.
+
+1.2.0
+
+Removed the fixed game EXE hash requirement; game hashes are diagnostic only.
+Added safe Install, Upgrade, and Uninstall actions.
+Upgrades preserve config.ini and unrelated Mods.
+Uninstall removes only owned Auto Pickup files and supported range PAKs.
+Auto Pickup is forced Off after returning to the menu or loading another save or World.
+Added stronger playable-World, current-Pawn, session, and foreground safety checks.
+Added foreground validation before interaction input is injected.
+Added 15x and 20x interaction-range options.
+Added Original, 3x, 5x, 10x, 15x, and 20x mutually exclusive range choices.
+Added a standalone range bundle containing 3x, 5x, 10x, 15x, and 20x PAKs.
+Added step-by-step installation, upgrade, and safe removal instructions.
+Existing mods.txt files must be merged instead of overwritten.
+Added complete checksum coverage for the standalone range bundle.
+Preserved on-foot, mounted, fish, drop, and Treasure-exclusion behavior.
+
+1.1.0
+
+Updated Auto Pickup to version 1.1.0.
+Standardized the Mod on the tested UE4SS ExperimentalNested g1c1a1497 runtime.
+Removed unsupported UE4SS runtime variants from the Auto Pickup package.
+Added automatic detection of other or mixed UE4SS installation layouts.
+Added confirmed conversion of existing UE4SS installations.
+Added complete UE4SS, Mods, settings, and mods.txt backups before conversion.
+Added SHA-256 verification of conversion backups.
+Added automatic migration of existing Mods and configuration.
+Added collision-safe backup names using _2, _3, and later suffixes.
+Preserved the saved interaction binding, mounted pickup, fish, drops, and Treasure exclusion.
+Added Installer, Manual No UE4SS, Manual With UE4SS, and clean tested UE4SS packages.
+
+1.0.1
+
+Added automatic detection of the game's saved INTERACT keyboard binding.
+Added interaction_key=AUTO as the recommended interaction mode.
+Added a configurable fallback interaction key.
+Added F as the default fallback key.
+Added diagnostics for resolved actions, active bindings, ignored mappings, and ambiguous mappings.
+Added optional Original, 3x, 5x, and 10x pickup-range choices.
+Range expansion remains a separate optional PAK and is disabled by default.
+Improved support for different UE4SS installation layouts.
+Improved installer validation and rollback backups.
+Improved preservation of existing configuration.
+Auto Pickup starts disabled and can be toggled with F9.
+Preserved mounted pickup, fish, drops, Treasure exclusion, and existing pickup scheduling.
+
+1.0.0
+
+Initial public release of DragonSword Auto Pickup.
+Added automatic pickup for plants and gatherable materials.
+Added automatic pickup for supported animals.
+Added automatic pickup for fish.
+Added automatic pickup for ground and monster drops.
+Added support for pickup on foot and while mounted.
+Treasure chests are intentionally excluded.
+Auto Pickup starts disabled after every game launch.
+Added a configurable toggle key with F9 as the default.
+Added support for documented function, letter, number, numpad, navigation, and Space keys.
+Added StableRoot and ExperimentalNested UE4SS builds.
+Added a one-click installer with game-path and UE4SS-layout detection.
+Added verified UE4SS installation when no supported runtime is present.
+Added rollback backups before modifying an existing installation.
+Added preservation of unrelated Mod settings.
+Made mods.txt the authoritative Auto Pickup activation file.
+Removed the legacy enabled.txt activation method.
+Added an optional independent 5x interaction-range PAK.
+The native Auto Pickup DLL does not modify interaction range.
+Debug logging is disabled by default.
+Excluded unrelated third-party Mods from the installer and public packages.

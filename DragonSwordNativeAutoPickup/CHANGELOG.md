@@ -1,7 +1,59 @@
 # Changelog
 
+## 1.3.1 - High-range drop-list stability
+
+- Preserves the accepted 1.3.0 native pickup selector, Enhanced Input,
+  scheduling, confirmation, retry, target policy, and F9 behavior unchanged.
+- Keeps the full selected 15x or 20x range for all 50 reviewed gather and
+  interactable-animal targets.
+- Caps the 19 short-lived item-drop overlap targets at the stable 10x range in
+  the 15x and 20x PAKs to reduce stale native prompt-list entries while moving
+  quickly through dense drops.
+- Reuses the exact 1.3.0 3x, 5x, and 10x PAK bytes and SHA-256 hashes.
+- Adds category-aware build manifests and release gates that require the 15x
+  and 20x drop entries to match the reviewed 10x entries byte-for-byte while
+  their gather/animal entries retain 15x and 20x.
+- Updates Setup to 1.3.1 while preserving all explicit historical 1.3.0
+  ownership contracts. Exact supported range filenames remain product-owned,
+  so an owned 1.3.0 installation can replace its old 15x or 20x PAK during
+  Upgrade without relying on the old PAK hash.
+- Expands the isolated installer matrix with a recorded schema-2 1.3.0 to
+  1.3.1 upgrade case covering configuration, UE4SS, unrelated Mod, mods.txt,
+  and same-name range-PAK preservation/replacement boundaries.
+- Static package and installer validation is required before publication;
+  exact-package gameplay acceptance remains separate.
+
 ## 1.3.0 - Pending-action, physical-edge, and runtime selector correction
 
+- Adds a native top-center status card for the configured toggle lifecycle:
+  `STARTING...`, `ENABLED`, `DISABLED`, and `NOT READY`. The card is
+  hit-test-invisible, changes no input mode or cursor state, owns no pickup
+  decision, and fails closed independently so a UI fault cannot disable
+  automatic pickup. The visual follow-up uses layered translucent deep-blue
+  glass, a soft shadow and highlight, state-colored glow/rule accents, and
+  smoothstep fade/slide/scale motion. The locally deployed polish DLL is
+  943,104 bytes /
+  `FA5B5485EAD59726AD80A027C2139083DD1C1C1D1FF9F294891320296F2CC8F7`;
+  exact-artifact visual and gameplay acceptance remain pending.
+- Replaces the activation-long second-timeout quarantine with dispatch-aware,
+  self-expiring recovery. One exact per-UFunction `Server_RunInteractV2` post
+  observer is relevant only while an action record is armed. That record is
+  created before injection and persists after the call returns until matching
+  dispatch, existing exact confirmation, timeout, or reset. Its callback performs
+  raw receiver comparison plus atomic marker publication and nothing else. It
+  does not log, reflect, read a UObject, call the game, or mutate the action
+  state machine. EngineTick consumes a matching marker, releases the global
+  in-flight slot, records `target_match_unproven=1` and
+  `pickup_success_claim=0`, and applies a 750 ms same-Component re-entry delay.
+  A missing dispatch retains the conservative 750 ms fallback window, one retry
+  after 200 ms, and then a 1500 ms self-expiring backoff. The 25 ms engine,
+  active-scan, and post-invocation due and 33 ms idle cadence remain unchanged;
+  dispatch consumption does not add a second 25 ms wait. Retry and terminal
+  backoff remain exact-Component records and do not pause the global scanner.
+  This repair supersedes the 650/100 ms tuning and second-timeout quarantine
+  described below; the older entries remain as chronology. The locally deployed
+  candidate is 927,744 bytes / `AC86CF2FA26047CF713B567C1CA63D4AD424C86A3FF9C020B80CAD07B4211F5D`;
+  gameplay status remains `RUNTIME_PENDING`.
 - Tunes the local runtime confirmation window from 750 ms to 650 ms and the
   first-timeout retry cooldown from 200 ms to 100 ms. The latest Debug-on owner
   session confirmed successful actions in 542-584 ms, so 650 ms retains a

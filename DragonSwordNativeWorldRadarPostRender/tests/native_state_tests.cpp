@@ -2306,6 +2306,40 @@ int main() {
                 "same-parent correction must ignore normal pan or zoom anchors while detecting the logged delayed Canvas extent change");
     }
     {
+        // CD41 put atlas_left=-320.7263 and atlas_width=2870.7947 on the
+        // native-parent slot, inflating a 3000-wide Canvas to 3191.521 and
+        // starting an attach/rebuild loop. A single observation of that exact
+        // drift must retain the current payload; only a consecutive stable
+        // sample may qualify the bounded rebuild.
+        constexpr double inflated_parent_width =
+            2870.7947 - (-320.7263);
+        require(near(inflated_parent_width, 3191.521),
+            "the CD41 outer-atlas regression fixture must reproduce the logged 3191.521 parent width");
+
+        bool sample_valid{};
+        dswros::WorldMapGeometrySample retained{};
+        double maximum_delta{-1.0};
+        const dswros::WorldMapGeometrySample inflated_geometry{
+            1500.0, 1500.0, inflated_parent_width, 3000.0};
+        const auto first = dswros::observe_world_map_geometry_sample(
+            sample_valid, retained, inflated_geometry, maximum_delta);
+        const auto second = dswros::observe_world_map_geometry_sample(
+            sample_valid, retained, inflated_geometry, maximum_delta);
+        require(first == dswros::WorldMapGeometryStabilityResult::Seeded
+                    && second
+                        == dswros::WorldMapGeometryStabilityResult::Stable,
+            "the first CD41-style extent drift must retain the visible payload and only the second matching successful sample may request rebuild");
+
+        sample_valid = false;
+        retained = {};
+        maximum_delta = -1.0;
+        const auto after_reset = dswros::observe_world_map_geometry_sample(
+            sample_valid, retained, inflated_geometry, maximum_delta);
+        require(after_reset
+                    == dswros::WorldMapGeometryStabilityResult::Seeded,
+            "a cleared extent-stability sample must not reuse a prior observation to request rebuild");
+    }
+    {
         bool sample_valid{};
         dswros::WorldMapGeometrySample retained{};
         double maximum_delta{-1.0};
@@ -2402,6 +2436,62 @@ int main() {
         require(!dswros::validate_world_map_canvas_anchor(
                     0.0, 0.0, 0.0, 1440.0, 3000.0),
                 "world-map geometry validation must reject a non-positive parent extent");
+
+        const auto same_parent = dswros::retain_world_map_atlas_placement(
+            {-410.0, -275.0, 2048.0, 2048.0},
+            {2460.347, 2001.596, 3000.0, 3000.0},
+            {2460.347, 2001.596, 3000.0, 3000.0});
+        require(same_parent && near(same_parent->left, -410.0)
+                    && near(same_parent->top, -275.0)
+                    && near(same_parent->width, 2048.0)
+                    && near(same_parent->height, 2048.0),
+                "same-anchor world-map validation must preserve atlas bounds");
+
+        // Exact 5C632820 runtime fixture. The native parent identity and
+        // 3000x3000 extent never changed, but six PlayerIcon observations
+        // moved while zoom animated. Those sibling-anchor samples must all
+        // retain the one placement authored at attach.
+        constexpr dswros::WorldMapAtlasPlacement logged_placement{
+            -320.726335, 118.721024, 2870.794736, 2341.547368};
+        constexpr dswros::WorldMapGeometrySample logged_attach_geometry{
+            1189.152, 2005.302, 3000.0, 3000.0};
+        constexpr std::array<dswros::WorldMapGeometrySample, 6>
+            logged_zoom_geometry{{
+                {1177.0187, 1941.7708, 3000.0, 3000.0},
+                {1189.1520, 2005.3020, 3000.0, 3000.0},
+                {1180.8932, 1962.0581, 3000.0, 3000.0},
+                {1189.1520, 2005.3020, 3000.0, 3000.0},
+                {1195.1682, 1945.7388, 3000.0, 3000.0},
+                {1211.9684, 1779.4022, 3000.0, 3000.0},
+            }};
+        for (const auto& observed : logged_zoom_geometry) {
+            const auto retained =
+                dswros::retain_world_map_atlas_placement(
+                    logged_placement, logged_attach_geometry, observed);
+            require(retained
+                        && near(retained->left, logged_placement.left)
+                        && near(retained->top, logged_placement.top)
+                        && near(retained->width, logged_placement.width)
+                        && near(retained->height, logged_placement.height),
+                "5C632820 same-parent zoom anchors must never move the retained inner atlas slot");
+        }
+
+        require(!dswros::retain_world_map_atlas_placement(
+                    {-410.0, -275.0, 2048.0, 2048.0},
+                    {2460.347, 2001.596, 3000.0, 3000.0},
+                    {3145.620, 2559.683, 3840.0, 3840.0}),
+                "a 3000-to-3840 parent-local extent change must request a fresh atlas instead of scaling marker glyphs");
+
+        require(!dswros::retain_world_map_atlas_placement(
+                    {-410.0, -275.0, 0.0, 2048.0},
+                    {2460.347, 2001.596, 3000.0, 3000.0},
+                    {2480.347, 1991.596, 3000.0, 3000.0})
+                    && !dswros::retain_world_map_atlas_placement(
+                        {-410.0, -275.0, 2048.0, 2048.0},
+                        {2460.347, 2001.596, 3000.0, 3000.0},
+                        {std::numeric_limits<double>::infinity(),
+                         1991.596, 3000.0, 3000.0}),
+                "world-map placement retention must reject invalid retained bounds or anchors");
 
         const auto player = dswros::project_world_map_point(
             3145.620, 2559.683,

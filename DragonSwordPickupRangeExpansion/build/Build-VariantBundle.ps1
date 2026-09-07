@@ -4,7 +4,7 @@ param(
     [string]$SourceRoot,
     [string]$DropSourceRoot,
     [string]$UsmapPath,
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$ReleaseVersion = '1.3.0',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$ReleaseVersion = '1.3.1',
     [switch]$SkipVariantBuild
 )
 
@@ -35,9 +35,15 @@ $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
 $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
 $dropInventory = Get-Content -LiteralPath $dropInventoryPath -Raw | ConvertFrom-Json
 if ([string]$policy.release_version -ne $ReleaseVersion -or
+    [string]$policy.authored_target_multiplier_policy -ne 'selected_variant' -or
+    [string]$policy.drop_item_multiplier_policy -ne 'min_selected_variant_and_cap' -or
+    [int]$policy.drop_item_multiplier_cap -ne 10 -or
     @($policy.supported_multipliers).Count -ne 5 -or
     (Compare-Object -ReferenceObject @(3, 5, 10, 15, 20) -DifferenceObject @($policy.supported_multipliers | ForEach-Object { [int]$_ }))) {
     throw 'The variant policy does not match this release request.'
+}
+if ((Get-FileHash -LiteralPath $repak -Algorithm SHA256).Hash -ne [string]$policy.repak_sha256) {
+    throw "The exact reviewed repak build is required: $repak"
 }
 if ([int]$inventory.target_count -ne 50 -or @($inventory.targets).Count -ne 50) {
     throw 'The reviewed inventory must contain exactly 50 targets.'
@@ -69,10 +75,18 @@ function Assert-ExactHash {
 
 Assert-ExactHash $legacyCanary ([string]$policy.legacy_canary.artifact_sha256) 'Historical x3 canary artifact'
 Assert-ExactHash $legacyCanaryManifest ([string]$policy.legacy_canary.build_manifest_sha256) 'Historical x3 canary build manifest'
+foreach ($stableMultiplier in @(3, 5, 10)) {
+    $stableArtifact = Join-Path $distRoot "DS_PickupRangeX${stableMultiplier}_P.pak"
+    $stableHashProperty = $policy.unchanged_artifact_hashes.PSObject.Properties[[string]$stableMultiplier]
+    if ($null -eq $stableHashProperty) {
+        throw "The immutable x$stableMultiplier artifact hash is missing from the range policy."
+    }
+    Assert-ExactHash $stableArtifact ([string]$stableHashProperty.Value) "Immutable x$stableMultiplier production artifact"
+}
 
 $buildScript = Join-Path $PSScriptRoot 'Build-Release.ps1'
 if (-not $SkipVariantBuild) {
-    foreach ($multiplier in @(3, 5, 10, 15, 20)) {
+    foreach ($multiplier in @(15, 20)) {
         $arguments = @{
             RepakPath = $repak
             Multiplier = $multiplier
@@ -98,14 +112,43 @@ $expectedEntries = @($inventory.targets | ForEach-Object {
 $expectedEntries = @($expectedEntries | Sort-Object)
 $variantRecords = @()
 $bundleFiles = [ordered]@{}
+$buildManifests = @{}
+$pakEntryHashes = @{}
 foreach ($multiplier in @(3, 5, 10, 15, 20)) {
     $artifactName = "DS_PickupRangeX${multiplier}_P.pak"
     $manifestName = "DS_PickupRangeX${multiplier}_P.build.json"
     $artifactPath = Join-Path $distRoot $artifactName
     $manifestPath = Join-Path $distRoot $manifestName
     $buildManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $expectedDropMultiplier = [Math]::Min($multiplier, [int]$policy.drop_item_multiplier_cap)
+    $authoredMultiplierProperty = $buildManifest.PSObject.Properties['authored_range_multiplier']
+    $dropMultiplierProperty = $buildManifest.PSObject.Properties['drop_item_range_multiplier']
+    $manifestAuthoredMultiplier = if ($null -ne $authoredMultiplierProperty) {
+        [int]$authoredMultiplierProperty.Value
+    } else {
+        [int]$buildManifest.range_multiplier
+    }
+    $manifestDropMultiplier = if ($null -ne $dropMultiplierProperty) {
+        [int]$dropMultiplierProperty.Value
+    } else {
+        [int]$buildManifest.range_multiplier
+    }
+    $authoredTargets = @($buildManifest.targets | Where-Object { [string]$_.class -ne 'drop_item' })
+    $dropTargets = @($buildManifest.targets | Where-Object { [string]$_.class -eq 'drop_item' })
     $artifactHash = (Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash
+    if ($multiplier -le 10) {
+        $stableHashProperty = $policy.unchanged_artifact_hashes.PSObject.Properties[[string]$multiplier]
+        if ($null -eq $stableHashProperty -or $artifactHash -ne [string]$stableHashProperty.Value) {
+            throw "The immutable x$multiplier production artifact changed."
+        }
+    }
     if ([int]$buildManifest.range_multiplier -ne $multiplier -or
+        $manifestAuthoredMultiplier -ne $multiplier -or
+        $manifestDropMultiplier -ne $expectedDropMultiplier -or
+        $authoredTargets.Count -ne 50 -or
+        $dropTargets.Count -ne 19 -or
+        @($authoredTargets | Where-Object { [int]$_.range_multiplier -ne $multiplier }).Count -ne 0 -or
+        @($dropTargets | Where-Object { [int]$_.range_multiplier -ne $expectedDropMultiplier }).Count -ne 0 -or
         [int]$buildManifest.target_count -ne 69 -or
         [int]$buildManifest.authored_target_count -ne 50 -or
         [int]$buildManifest.drop_item_target_count -ne 19 -or
@@ -114,6 +157,7 @@ foreach ($multiplier in @(3, 5, 10, 15, 20)) {
         [string]$buildManifest.static_validation -ne 'PASSED') {
         throw "The x$multiplier artifact does not match its build manifest."
     }
+    $buildManifests[$multiplier] = $buildManifest
     $entries = @(& $repak list $artifactPath | ForEach-Object { $_.Trim().Replace('\', '/') } | Sort-Object)
     if ($LASTEXITCODE -ne 0 -or
         (Compare-Object -ReferenceObject $expectedEntries -DifferenceObject $entries)) {
@@ -122,9 +166,27 @@ foreach ($multiplier in @(3, 5, 10, 15, 20)) {
     if (@($entries | Where-Object { $_ -match '(?i)treasure|chest|box|/Art/' }).Count -ne 0) {
         throw "The x$multiplier PAK contains a denied path."
     }
+    $entryHashMap = @{}
+    foreach ($hashLine in @(& $repak hash-list $artifactPath)) {
+        if ($hashLine -notmatch '^([0-9a-fA-F]{64})\s+(.+)$') {
+            throw "The x$multiplier PAK returned an unrecognized entry-hash record: $hashLine"
+        }
+        $entryHashMap[$Matches[2].Trim().Replace('\', '/')] = $Matches[1].ToUpperInvariant()
+    }
+    if ($LASTEXITCODE -ne 0 -or $entryHashMap.Count -ne 138) {
+        throw "The x$multiplier PAK entry hashes could not be verified."
+    }
+    $pakEntryHashes[$multiplier] = $entryHashMap
     $bundleFiles[$artifactName] = $artifactPath
     $variantRecords += [ordered]@{
         multiplier = $multiplier
+        authored_range_multiplier = $multiplier
+        drop_item_range_multiplier = $expectedDropMultiplier
+        reused_from_version = if ($multiplier -le 10) {
+            [string]$policy.unchanged_artifact_source_version
+        } else {
+            $null
+        }
         artifact = $artifactName
         artifact_size_bytes = (Get-Item -LiteralPath $artifactPath).Length
         artifact_sha256 = $artifactHash
@@ -137,6 +199,29 @@ foreach ($multiplier in @(3, 5, 10, 15, 20)) {
         treasure_targets = 0
         static_validation = 'PASSED'
         gameplay_acceptance = 'NOT_VALIDATED'
+    }
+}
+$x10DropTargets = @{}
+foreach ($target in @($buildManifests[10].targets | Where-Object { [string]$_.class -eq 'drop_item' })) {
+    $x10DropTargets[[string]$target.path] = $target
+}
+foreach ($highMultiplier in @(15, 20)) {
+    foreach ($target in @($buildManifests[$highMultiplier].targets | Where-Object { [string]$_.class -eq 'drop_item' })) {
+        $reference = $x10DropTargets[[string]$target.path]
+        if ($null -eq $reference -or
+            [string]$target.patched_uasset_sha256 -ne [string]$reference.patched_uasset_sha256 -or
+            [string]$target.patched_uexp_sha256 -ne [string]$reference.patched_uexp_sha256) {
+            throw "The x$highMultiplier drop output differs from the reviewed x10 cap: $($target.path)"
+        }
+    }
+    foreach ($dropTarget in $dropInventory.targets) {
+        foreach ($extension in @('.uasset', '.uexp')) {
+            $entry = 'DS/Content/' + ([string]$dropTarget.path) + $extension
+            if ([string]$pakEntryHashes[$highMultiplier][$entry] -ne
+                [string]$pakEntryHashes[10][$entry]) {
+                throw "The x$highMultiplier packed drop entry differs from the reviewed x10 cap: $entry"
+            }
+        }
     }
 }
 $null = New-Item -ItemType Directory -Path $workRoot -Force
@@ -198,16 +283,20 @@ if (Compare-Object -ReferenceObject $expectedZipEntries -DifferenceObject $actua
 }
 
 $bundleManifest = [ordered]@{
-    schema_version = 1
+    schema_version = 2
     version = $ReleaseVersion
     built_at_utc = [DateTime]::UtcNow.ToString('O')
     reviewed_inventory = [IO.Path]::GetFileName($inventoryPath)
     reviewed_inventory_sha256 = (Get-FileHash -LiteralPath $inventoryPath -Algorithm SHA256).Hash
     reviewed_drop_inventory = [IO.Path]::GetFileName($dropInventoryPath)
     reviewed_drop_inventory_sha256 = (Get-FileHash -LiteralPath $dropInventoryPath -Algorithm SHA256).Hash
+    repak_sha256 = (Get-FileHash -LiteralPath $repak -Algorithm SHA256).Hash
     target_count_per_variant = 69
     authored_target_count_per_variant = 50
     drop_item_target_count_per_variant = 19
+    authored_target_multiplier_policy = 'selected_variant'
+    drop_item_multiplier_policy = 'min_selected_variant_and_cap'
+    drop_item_multiplier_cap = [int]$policy.drop_item_multiplier_cap
     pak_entry_count_per_variant = 138
     variants = $variantRecords
     bundle = [IO.Path]::GetFileName($bundlePath)

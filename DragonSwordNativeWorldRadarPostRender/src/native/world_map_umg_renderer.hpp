@@ -23,9 +23,11 @@ namespace dsnwr {
 // that full loader boundary plus every current non-treasure catalog and future
 // bounded growth without allocating during a map session.
 inline constexpr std::size_t kWorldMapUmgMarkerCapacity = 4096;
-// Give every glyph 50% more linear raster detail without changing the exact
-// parent-local geometry, marker centers, projection, or two-layer ownership.
-inline constexpr std::uint16_t kWorldMapAtlasTextureSize = 3072;
+// The 3072 experiment consumed about 72 MiB across two decoded atlases and was
+// never accepted in gameplay. 2048 retains the established glyph geometry
+// while reducing first-open raster/upload work and decoded memory to about
+// 32 MiB.
+inline constexpr std::uint16_t kWorldMapAtlasTextureSize = 2048;
 inline constexpr std::size_t kWorldMapAtlasLayerCount = 2;
 
 enum class WorldMapUmgMarkerTone : std::uint8_t {
@@ -78,8 +80,133 @@ enum class WorldMapLayeringRefreshResult : std::uint32_t {
     Updated,
     RetryLater,
     Retained,
+    RebuildRequired,
     Faulted,
     Unchanged,
+};
+
+inline constexpr std::size_t kWorldMapZoomTopologyParentCapacity = 32;
+inline constexpr std::size_t kWorldMapZoomTopologyChainCapacity = 9;
+
+enum class WorldMapZoomTopologyCaptureStage : std::uint8_t {
+    None,
+    InputValidation,
+    CoreObjectObservation,
+    CoreWidgetObservation,
+    IconSchemaObservation,
+    IconArrayObservation,
+    ParentObservation,
+    ThresholdObservation,
+    Complete,
+};
+
+struct WorldMapZoomTopologyWidget {
+    std::int32_t object_index{-1};
+    std::int32_t object_serial{};
+    std::int8_t visible{-1};
+    std::int16_t visibility{-1};
+    std::int16_t clipping{-1};
+    std::int8_t map_overlay_depth{-1};
+    std::int8_t map_overlay_outside_depth{-1};
+    std::int8_t retainer_box_depth{-1};
+    std::int8_t fog_under_panel_depth{-1};
+    std::int8_t fog_above_panel_depth{-1};
+    std::int8_t tracking_panel_depth{-1};
+    std::int8_t selected_panel_depth{-1};
+    std::int8_t slot_content_matches{-1};
+    bool geometry_valid{};
+    bool transformed_bounds_valid{};
+    bool render_scale_valid{};
+    bool render_translation_valid{};
+    bool slot_position_valid{};
+    bool slot_alignment_valid{};
+    double local_width{};
+    double local_height{};
+    double absolute_x{};
+    double absolute_y{};
+    double transformed_min_x{};
+    double transformed_min_y{};
+    double transformed_max_x{};
+    double transformed_max_y{};
+    double render_scale_x{};
+    double render_scale_y{};
+    double render_translation_x{};
+    double render_translation_y{};
+    double slot_position_x{};
+    double slot_position_y{};
+    double slot_alignment_x{};
+    double slot_alignment_y{};
+    std::int32_t slot_object_index{-1};
+    std::int32_t slot_object_serial{};
+    std::int32_t slot_parent_index{-1};
+    std::int32_t slot_parent_serial{};
+};
+
+struct WorldMapZoomTopologyChain {
+    std::uint32_t count{};
+    bool truncated{};
+    bool cycle{};
+    std::array<WorldMapZoomTopologyWidget,
+        kWorldMapZoomTopologyChainCapacity> nodes{};
+};
+
+struct WorldMapZoomTopologyParent {
+    std::int32_t object_index{-1};
+    std::int32_t object_serial{};
+    std::uint32_t icon_count{};
+    std::uint32_t visible_like_icon_count{};
+    std::uint32_t hidden_icon_count{};
+    std::uint32_t unknown_visibility_icon_count{};
+    std::int16_t clipping{-1};
+    std::int8_t map_overlay_depth{-1};
+    std::int8_t map_overlay_outside_depth{-1};
+    std::int8_t retainer_box_depth{-1};
+    std::int8_t fog_under_panel_depth{-1};
+    std::int8_t fog_above_panel_depth{-1};
+    std::int8_t tracking_panel_depth{-1};
+    std::int8_t selected_panel_depth{-1};
+    WorldMapZoomTopologyWidget local_widget{};
+    WorldMapZoomTopologyChain ancestry{};
+};
+
+struct WorldMapZoomTopologySnapshot {
+    bool captured{};
+    WorldMapZoomTopologyCaptureStage capture_stage{
+        WorldMapZoomTopologyCaptureStage::None};
+    bool icon_schema_valid{};
+    bool zoom_thresholds_valid{};
+    std::int32_t array_icon_count{-1};
+    std::uint32_t valid_icon_count{};
+    std::uint32_t captured_parent_count{};
+    bool parent_summary_truncated{};
+    double world_map_base_zoom{};
+    double world_map_zoom_value_per_level{};
+    double world_map_zoom_max_level{};
+    double world_map_hide_treasure_map{};
+    double world_map_hide_field_boss{};
+    WorldMapZoomTopologyWidget map_overlay{};
+    WorldMapZoomTopologyWidget map_overlay_outside{};
+    WorldMapZoomTopologyWidget retainer_box{};
+    WorldMapZoomTopologyWidget fog_under_panel{};
+    WorldMapZoomTopologyWidget fog_above_panel{};
+    WorldMapZoomTopologyWidget tracking_panel{};
+    WorldMapZoomTopologyWidget selected_panel{};
+    WorldMapZoomTopologyWidget selected_native_parent{};
+    WorldMapZoomTopologyChain selected_native_parent_ancestry{};
+    std::array<WorldMapZoomTopologyWidget,
+        kWorldMapAtlasLayerCount> mod_hosts{};
+    std::array<WorldMapZoomTopologyChain,
+        kWorldMapAtlasLayerCount> mod_host_ancestry{};
+    std::array<WorldMapZoomTopologyWidget,
+        kWorldMapAtlasLayerCount> mod_roots{};
+    std::array<WorldMapZoomTopologyChain,
+        kWorldMapAtlasLayerCount> mod_root_ancestry{};
+    std::array<WorldMapZoomTopologyWidget,
+        kWorldMapAtlasLayerCount> mod_images{};
+    std::array<WorldMapZoomTopologyChain,
+        kWorldMapAtlasLayerCount> mod_image_ancestry{};
+    std::array<WorldMapZoomTopologyParent,
+        kWorldMapZoomTopologyParentCapacity> parents{};
 };
 
 class WorldMapUmgRenderer final {
@@ -110,9 +237,11 @@ public:
     [[nodiscard]] bool attached_layer_matches(
         RC::Unreal::UObject* current_layer) const noexcept;
 
-    // Reads the game-owned map Canvas geometry and projects the immutable
-    // atlas bounds into the independent viewport hosts. The native map tree is
-    // a read-only witness and is never made an owner of Mod widgets or slots.
+    // Validates the game-owned map Canvas and full-stretch Mod hosts whose
+    // inner Image Canvas slots own the atlas rectangles.
+    // Same-parent pan/zoom is inherited directly from the native widget tree;
+    // this path only validates the retained owner; any real parent replacement
+    // is reported for one bounded fresh rebuild.
     [[nodiscard]] WorldMapLayeringRefreshResult sync_viewport_transform(
         RC::Unreal::UObject* current_layer) noexcept;
 
@@ -124,6 +253,11 @@ public:
         bool allow_tree_mutation,
         double player_world_x,
         double player_world_y) noexcept;
+
+    // One-shot, read-only telemetry for the final zoom settle sample. This
+    // never participates in attachment, visibility, transform, or fault state.
+    [[nodiscard]] WorldMapZoomTopologySnapshot capture_zoom_topology(
+        RC::Unreal::UObject* current_layer) const noexcept;
 
     // Durable content policy. This survives renderer host lifecycles; callers
     // update it only when expanded-map content is enabled or disabled.
@@ -148,7 +282,7 @@ public:
     void suspend() noexcept;
 
     // F7 restores a suspended host only after exact owned payload validation
-    // and a fresh read-only viewport transform sync.
+    // and native-parent validation or bounded reattachment.
     [[nodiscard]] bool resume_suspended(
         RC::Unreal::UObject* current_layer) noexcept;
 
@@ -194,6 +328,9 @@ public:
     }
     [[nodiscard]] std::uint64_t atlas_file_bytes() const noexcept {
         return atlas_file_bytes_;
+    }
+    [[nodiscard]] std::uint64_t atlas_cache_hit_count() const noexcept {
+        return atlas_cache_hit_count_;
     }
     [[nodiscard]] std::uint64_t attach_elapsed_us() const noexcept {
         return attach_elapsed_us_;
@@ -251,6 +388,10 @@ public:
     [[nodiscard]] double native_parent_height() const noexcept {
         return native_parent_height_;
     }
+    [[nodiscard]] double atlas_left() const noexcept { return atlas_left_; }
+    [[nodiscard]] double atlas_top() const noexcept { return atlas_top_; }
+    [[nodiscard]] double atlas_width() const noexcept { return atlas_width_; }
+    [[nodiscard]] double atlas_height() const noexcept { return atlas_height_; }
     [[nodiscard]] std::uint32_t player_anchor_source() const noexcept {
         return player_anchor_source_;
     }
@@ -333,12 +474,14 @@ private:
     [[nodiscard]] bool validate_host_payload_unsafe(
         RC::Unreal::UObject* current_layer,
         RC::Unreal::UObject*& owning_player) const;
-    [[nodiscard]] bool validate_host_payload_guarded(
-        RC::Unreal::UObject* current_layer) const noexcept;
-    [[nodiscard]] bool sync_viewport_transform_unsafe(
+    [[nodiscard]] bool refresh_native_parent_unsafe(
         RC::Unreal::UObject* current_layer,
+        bool restack_unchanged_parent,
         WorldMapLayeringRefreshResult& result,
         volatile dswros::WorldMapTransformSyncStage& stage);
+    [[nodiscard]] bool capture_zoom_topology_unsafe(
+        RC::Unreal::UObject* current_layer,
+        WorldMapZoomTopologySnapshot& snapshot) const;
     [[nodiscard]] bool reconcile_host_visibility_guarded(
         bool force_collapsed,
         volatile dswros::WorldMapTransformSyncStage& stage) noexcept;
@@ -379,20 +522,19 @@ private:
     RC::Unreal::UFunction* set_slot_size_{};
     RC::Unreal::UFunction* set_slot_alignment_{};
     RC::Unreal::UFunction* set_slot_z_order_{};
+    RC::Unreal::UFunction* set_slot_anchors_{};
+    RC::Unreal::UFunction* set_slot_offsets_{};
+    RC::Unreal::UFunction* set_slot_auto_size_{};
     RC::Unreal::UFunction* set_visibility_{};
+    RC::Unreal::UFunction* set_render_translation_{};
     RC::Unreal::UFunction* set_brush_from_texture_{};
     RC::Unreal::UFunction* import_file_as_texture_{};
     RC::Unreal::UFunction* clear_children_{};
     RC::Unreal::UFunction* remove_from_parent_{};
-    RC::Unreal::UFunction* add_to_viewport_{};
-    RC::Unreal::UFunction* get_viewport_widget_geometry_{};
-    RC::Unreal::UFunction* set_alignment_in_viewport_{};
-    RC::Unreal::UFunction* set_desired_size_in_viewport_{};
-    RC::Unreal::UFunction* set_position_in_viewport_{};
+    RC::Unreal::UFunction* request_retainer_render_{};
     RC::Unreal::FWeakObjectPtr widget_blueprint_library_{};
     RC::Unreal::FWeakObjectPtr kismet_rendering_library_{};
     RC::Unreal::FWeakObjectPtr slate_blueprint_library_{};
-    RC::Unreal::FWeakObjectPtr widget_layout_library_{};
     RC::Unreal::FWeakObjectPtr layer_{};
     RC::Unreal::FWeakObjectPtr retainer_box_{};
     RC::Unreal::FWeakObjectPtr native_parent_{};
@@ -401,6 +543,8 @@ private:
         widget_trees_{};
     std::array<RC::Unreal::FWeakObjectPtr, kWorldMapAtlasLayerCount>
         root_panels_{};
+    std::array<RC::Unreal::FWeakObjectPtr, kWorldMapAtlasLayerCount>
+        native_parent_slots_{};
     std::array<RC::Unreal::FWeakObjectPtr, kWorldMapAtlasLayerCount>
         atlas_images_{};
     std::array<RC::Unreal::FWeakObjectPtr, kWorldMapAtlasLayerCount>
@@ -421,10 +565,6 @@ private:
     bool runtime_visibility_allowed_{};
     bool transform_ready_{};
     std::optional<bool> applied_host_visibility_{};
-    bool viewport_transform_valid_{};
-    dswros::WorldMapAtlasPlacement viewport_placement_{};
-    bool viewport_geometry_sample_valid_{};
-    dswros::WorldMapGeometrySample viewport_geometry_sample_{};
     std::size_t active_marker_input_count_{};
     std::size_t active_marker_count_{};
     std::int32_t map_id_{};
@@ -470,6 +610,7 @@ private:
     std::uint64_t map_data_cache_hit_count_{};
     std::uint64_t atlas_build_elapsed_us_{};
     std::uint64_t atlas_file_bytes_{};
+    std::uint64_t atlas_cache_hit_count_{};
     std::uint64_t attach_elapsed_us_{};
     std::uint64_t reparent_count_{};
     std::uint64_t reproject_count_{};

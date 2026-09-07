@@ -718,81 +718,170 @@ The accepted ceiling is 2,500 Treasure rows plus 279 fixed non-Treasure rows,
 or 2,779 total, leaving 1,317 spare slots. The observed 1,632-marker snapshot,
 including 1,501 Treasures, was below the old 1,785 limit, so capacity was not
 the dense-map flicker root.
-Two transparent 3072-by-3072 RLE-TGA atlases are attached to the exact current
-game-native map-icon Canvas. Native icons and radar hosts can all occupy the
-maximum Canvas Z, so creation-time Z is not an ordering proof. For the same weak
-native parent identity, zoom/geometry observations return `Unchanged`: no
-Remove/Add, reparent, or extra atlas render occurs. Only a real weak parent
-identity change reparents. Background remains before foreground, preserving
-radar-internal order without per-frame layer work:
+Two transparent 2048-by-2048 RLE-TGA atlases are attached beneath the exact
+current game-native map-icon Canvas through Mod-owned hosts. Each outer
+`UCanvasPanelSlot` is full stretch with zero offsets, `AutoSize=false`, alignment
+`(0,0)`, and maximum Canvas Z. The cloned inner `Panel_Point` slot is separately
+reasserted as full stretch with zero offsets. Only the Image Canvas slot owns
+`{atlas_left,atlas_top,atlas_width,atlas_height}`, and Image render translation
+is `(0,0)`. The native parent therefore sees only zero-offset full-stretch Mod
+hosts; negative atlas coordinates cannot enlarge its desired extent. Stable
+native-child insertion plus maximum Z establishes the ordering contract; an
+unchanged same-parent pass, including the final tail pass, makes no layout or
+transform write, never restacks, performs Remove/Add, or requests a RetainerBox
+render.
+Only a fresh attachment authors those slots. A real weak parent identity change
+is reported to the bounded scheduler for a fresh rebuild; retained content is
+never reparented or rebased in place. Background remains
+before foreground, preserving radar-internal order without per-frame layer work:
 
 - lower radar host: area tasks and mini-games, then treasure drawn last;
 - upper radar host: Boss and Assault.
 
-World-map glyph style revision 50 refines raster outlines, shadows, and internal
-details at 50 percent more linear density. Two decoded BGRA atlases occupy about
-72 MiB raw versus about 32 MiB at 2048. This event-built raster-density change
-does not alter marker coordinates, projection, zoom handling, native parent
-ownership, or any outer/inner container geometry. Runtime visual acceptance of
-revision 50 remains `NOT_VALIDATED`.
+Each decoded BGRA atlas occupies 16 MiB, approximately 32 MiB for both. The
+persistent envelope magic is `DSNWRA52`; its normalized fingerprint is quantized
+at 1/4096 UMG logical unit. A hit requires exact dimensions, header, magic,
+fingerprint, and visible count, complete RLE decoding to exactly 2048-by-2048
+pixels, a matching encoded-payload checksum, and payload termination exactly at
+EOF. Revision-51, corrupt, truncated, or trailing-byte files miss automatically.
+Writes use a same-directory temporary file and `MoveFileExW` with replace-
+existing and write-through flags; failure removes the temporary file. The
+bounded file read, optional write, and texture import still occur only at an
+explicit attachment edge. The cache is an optimization, not runtime or hitch
+acceptance. Marker coordinates and the fixed 4,096-entry snapshot are unchanged.
 
 The final F6/localization/compact-indicator closeout changes no expanded-map
 source. The atlas geometry, 4,096-entry capacity, coordinates, projection, zoom,
 parent ownership, and style-revision path remain outside that source change.
 
-The game owns pan, zoom, clipping, map visibility, native icon layout, and click
-routing. There is no expanded-map per-marker tick. In 2.2.1 the native icon
-Canvas is a read-only geometry witness; no Mod widget is added to its child list
-or allowed to influence its desired size, prepass, layout, or hit testing. The
-two Mod-owned atlas hosts are independent hit-test-invisible viewport widgets.
-Player and native-Canvas geometry is converted through `LocalToAbsolute`, then
-through the game viewport's `AbsoluteToLocal`, to update host transforms. A
-same-parent geometry change updates transforms only and cannot reraster, rebuild,
-reproject, re-add, or reparent an atlas. No authored `3000` or `8000` extent
-substitutes for live geometry. Player anchor, independent X/Y projection,
-cached-Slate transforms, DPI, zoom, and aspect handling are unchanged. Exact-
-artifact live alignment, dense-Treasure, native-icon, and click-target acceptance
-remains pending.
+The game owns pan, zoom, clipping, map visibility, native icon layout, click
+routing, and RetainerBox composition. There is no expanded-map per-marker tick.
+In the 2.2.1 candidate the Mod hosts are hit-test-invisible children of the current
+`DLayerMap.FogAbovePanel`, resolved directly from the current layer. The native
+`ArrayIconInfo` array is not an ownership source: it is consulted only while a
+missing host is created, solely to obtain one instantiable icon class. Retained-
+host validation and refresh do not scan it. The hosts' outer slots are full
+stretch with zero offsets, `AutoSize=false`, zero alignment, and maximum Canvas
+Z. After each fresh attachment, including a scheduler-accepted rebuild, the
+cloned host's inner `Panel_Point`
+Canvas slot is also forced to full stretch with zero offsets, `AutoSize=false`,
+and zero alignment, without a Z override. Each `Panel_Point` Image Canvas slot
+alone owns `{atlas_left,atlas_top,atlas_width,atlas_height}`, while Image render
+translation stays `(0,0)`. The host itself receives no render transform, and the
+route uses no forced layout prepass. This lets the atlases inherit
+`FogAbovePanel` pan, zoom,
+clipping, visibility, and RetainerBox updates directly instead of sampling and
+replaying viewport transforms. Exact-artifact live alignment, dense-Treasure,
+native-icon, click-target, resolution, and performance acceptance remains
+`NOT_VALIDATED`.
 The player projection anchor is resolved only during attachment. Each sample
 uses the live `PlayerIconWidget` Canvas-slot alignment pivot, transforms it from
 the player's current cached Slate geometry through `LocalToAbsolute`, and then
-through `AbsoluteToLocal` into the selected native icon Canvas's current cached
-  geometry. The accepted result is validated against that exact Canvas's finite
-  positive local extent. `WorldMapUISize` is authored metadata and never stands
-  in for the parent width/height. World-space X and Y deltas are scaled
-  independently by the live parent-local width and height. Initial attachment
-  retains only numeric observations and uses a separate bounded three-attempt
-  readiness service; no sampled UObject wrapper or `FGeometry` crosses calls.
-  Missing, implausible, or unstable geometry fails into that bounded budget.
-  There is no centered fallback, desktop-resolution substitution, or new poll.
+through `AbsoluteToLocal` into the current `FogAbovePanel` cached geometry. The
+accepted result is validated against that exact Canvas's finite positive local
+extent. `WorldMapUISize` is authored metadata and never stands in for the parent
+width/height. World-space X and Y deltas are scaled independently by the live
+parent-local width and height, then rasterized into atlas-local coordinates.
+Initial attachment retains only numeric observations and uses a separate bounded
+three-attempt readiness service; no sampled UObject wrapper or `FGeometry`
+crosses calls. Missing or implausible geometry fails into that bounded budget.
+There is no centered fallback, desktop-resolution substitution, or new poll.
 
 Attach, same-layer `SetWorldMapImage`, F7 resume, and exact wheel zoom events arm
 one finite five-deadline retained-host tail at 100, 250, 500, 1,000, and
-1,250 ms. Each due game-thread pass takes exactly one fresh numeric observation;
+1,250 ms. A successful attach takes a fresh clock sample only after attachment
+completes before arming this tail, so attachment cost cannot consume its first
+deadline. Attachment does not call `RequestRender` while both new hosts are
+still collapsed; the subsequent visibility transaction owns the first valid
+repaint. Each due game-thread pass takes exactly one fresh numeric observation;
 if the thread is late, overdue deadlines remain due and advance only one
-observation on each later pass. Every pass re-resolves the current native icon
-Canvas plus its live local extent and never trusts a cached native-parent pointer
-as ownership evidence. Before the first verified transform, or after an exact
-layer identity change, an unavailable Canvas or geometry sample is a hidden
-bounded retry. Once the same exact layer has a valid transform, the same
-transient gap returns `Retained`, preserving the last verified host position,
-size, and gated visibility. A later valid sample atomically replaces the cached
-Canvas identity and numeric transform. Mod-owned payload, ABI, and guarded
-runtime failures remain terminal and detach the independent hosts.
+observation on each later pass. Every pass directly re-resolves the current
+`FogAbovePanel` plus its live local extent and never trusts a cached native-
+parent pointer as ownership evidence. It does not scan `ArrayIconInfo` or read
+`PlayerIconWidget`; that witness is attach-only. A fully
+unchanged same-parent pass, including the final tail pass, returns before Image,
+widget-tree, or RetainerBox mutation: it does
+not write layout/transforms, replay pan/zoom transforms, restack, Remove/Add, or
+call `RequestRender`; its visibility edge is published separately by Main.
+Changing sibling-icon anchors are ignored while the direct parent identity and
+extent remain stable, so the attach-time Image Canvas-slot atlas positions are
+immutable. A real weak `FogAbovePanel` replacement is reported as
+`RebuildRequired`; only the scheduler may perform a fresh attachment that
+restores the full-stretch outer host, full-stretch inner `Panel_Point`, Image
+atlas rectangle, and zero Image translation. A changed live
+extent is first placed in the existing geometry-stability sampler and must be
+seen in two matching samples before it can return `RebuildRequired`; until then
+the valid retained layer remains visible. Retained RetainerBox replacement or
+owned-payload replacement/invalidity can also report `RebuildRequired`.
 
-The atlas parent-local outer slots and local-zero `Panel_Point` Images remain
-the placement contract. Real layout transitions continue through the existing
-bounded map/zoom synchronization strategy; this correction introduces no new
-parent-size assumption or separate parent-growth policy. The settle path never
-rerasterizes, rebuilds, reparents, or mutates the native Canvas. Transient
-observation gaps follow the hidden-or-retained policy above without adding
-steady marker collection, file access, texture import, or widget construction.
+`RebuildRequired` is report-only at the renderer boundary: detecting it does not
+collapse, hide, detach, or mark the last complete payload transform-unready.
+Only the session scheduler may accept the request and begin the detach/rebuild
+transaction. If the once-per-session latch is already consumed, the last valid
+payload remains usable instead of being stranded collapsed. At most one
+`RebuildRequired` transaction may run in one open-map session. It
+preserves the existing 4,096-entry marker snapshot and receives its own hard-
+capped three-attempt attach/geometry budget. The whole open session is therefore
+bounded to initial attachment's three attempts plus rebuild's three attempts;
+consumed initial attempts are not carried into the rebuild budget. A final-tail
+`RetryLater` also closes through this same bounded rebuild transaction. Mod-
+owned payload, ABI, and guarded runtime failures remain terminal and detach the
+hosts.
+
+The full-stretch zero-offset outer slots, full-stretch inner `Panel_Point`
+slots, Image Canvas-slot atlas rectangles, and zero Image render translation
+are the placement contract. A stable map session must show one attach, zero
+detaches, no native-parent extent feedback, and no
+`WORLD_MAP_LAYERING_REBUILD_REQUIRED`. The normal unchanged settle path never
+rerasterizes or rebuilds marker data. The single permitted rebuild reuses the
+existing marker snapshot rather than recollecting it. Transient ownership gaps follow the
+bounded hidden-or-retained policy without adding steady marker collection,
+cache access, texture import, or widget construction.
+
+The temporary zoom-topology trace explains why the superseded ownership
+heuristic violated this boundary. Zoom-driven native icon reconstruction changed
+the first valid `ArrayIconInfo` parent between `FogAbovePanel` and
+`FogUnderPanel`. The Mod followed that transient ordering and reattached both
+hosts four times in one zoom sequence, crossing the fog composition boundary and
+producing occlusion, hitching, and flashing. The trace is development evidence
+for the diagnosis only; it does not validate corrected gameplay.
+
+The later direct-`FogAbovePanel` full-stretch-outer/Image-translation candidate
+also violated the placement boundary. Quantitative 2026-09-05 screenshots show
+that zoom-in scaled the base map/Radar by about 1.214/1.218 but left relative
+translation about `(+113,-190)` px (32-point mean residual 0.28 px). Reverse
+zoom scaled them by about 0.760/0.758 but left about `(+67,+200)` px (35-point
+mean residual 0.82 px). The near-identical scale and sign-reversing vertical
+offset correspond to an estimated vertical pivot difference of roughly
+823-872 px. This rejects scale-formula and cumulative-frame-drift explanations
+and identifies different local origins/zoom pivots. It is runtime rejection
+evidence for DLL `CCC6B117...AE00` from compiled source `B650B5FB...74EA`, not
+gameplay evidence for the current candidate.
+
+The subsequent outer-atlas-rectangle candidate is also runtime rejected. DLL
+`CD41F0E1...6FBB2` from compiled source `433710E0...E62C` successfully attached
+1,632 markers with zero data, texture, and ABI faults, but its negative outer
+slot offset fed back into the native layout. The same parent changed from
+`3000` to `3191.521`, triggered `WORLD_MAP_LAYERING_REBUILD_REQUIRED`, and
+oscillated through six attaches and five detaches. Its diagnostics-enabled
+deployment backup,
+`dist/work/deployment/deploy-backups/20260905-182946-652-native-only-deploy`, is
+preserved only as rejected-candidate evidence. This is the direct reason the
+current architecture keeps both outer and inner hosts full stretch and moves
+the atlas rectangle into the Mod-owned Image Canvas slot.
+
+The previous independent viewport plus extreme-Z candidate is runtime rejected.
+It made the atlas visible, but user testing found severe lag, wrong placement,
+and delayed updates because event-tail viewport transforms could not inherit
+continuous native parent motion. That build and its technical checks are not
+acceptance evidence for this hybrid candidate.
 
 F8 may retain a valid host as `Collapsed`; travel, confirmed non-open-world
 activity, and graph mismatch detach it.
-State-delta invalidation first proves both exact attachment identity and current
-layer visibility. If the exact layer is visibly open, the current session may
-perform one bounded rebuild. If the renderer is attached to a retained but
+State-delta or geometry invalidation first proves both exact attachment identity
+and current layer visibility. If the exact layer is visibly open, the current
+session may perform the one bounded, snapshot-preserving rebuild described
+above. If the renderer is attached to a retained but
 hidden layer, the stale atlas is detached and all rebuild work is deferred until
 the next real `SetWorldMapImage` event. That event may rearm the bounded
 three-attempt readiness budget once only when its candidate serial matches the
@@ -808,8 +897,27 @@ map-open retry.
 The available healthy runtime log is bound to the prior exact 84A360B0 DLL. It
 records no renderer, ABI, F6, or UE4SS fatal error and reaches normal shutdown,
 but cannot validate the later F6 presentation, localized-overlay, or compact-
-outline source changes. Those changes require a new exact build and live test;
-the historical hash and build/deployment statuses are not advanced here.
+outline source changes. The direct-`FogAbovePanel` full-stretch-outer/Image-
+translation build, DLL `CCC6B117...AE00` from compiled source
+`B650B5FB...74EA`, passed its source/static/build and rollback-backed deployment
+checks but was subsequently runtime rejected by the pivot-drift evidence above.
+Its backup is
+`dist/work/deployment/deploy-backups/20260905-092836-495-native-only-deploy`.
+Those checks validate only rejected bytes. The later `CD41F0E1...6FBB2` /
+`433710E0...E62C` deployment and backup
+`dist/work/deployment/deploy-backups/20260905-182946-652-native-only-deploy` are
+also runtime-rejected evidence only. Current source review, static gates, Core
+`2/2`, release hygiene, and local native build pass for WM-06 DLL
+`6435E10031D90840BF0499664CF57347D7991C9C192BD3B2239ADE2324C723A1` from
+compiled source
+`0A1A4CE3EE9F3A04E4B258976CFD830654BCB778B1F9BF5715FB66242B5E5BC5`, size
+1,107,968 bytes. Rollback-backed diagnostics-enabled local developer deployment
+passes for those exact bytes. Installed identity matches the source DLL, the
+single controlling Mod entry is enabled (`mods=1`), and diagnostics use
+`debug_logging=true`. Backup:
+`dist/work/deployment/deploy-backups/20260905-202742-614-native-only-deploy`.
+Package, installer, gameplay, visual, performance, and resolution acceptance
+remain pending or `NOT_VALIDATED`.
 
 The historical 2.2.0 clean candidate was native DLL SHA-256
 `6AEFDACC1A44EF6F387456CB31FE1A6828259EF7ACDEE1D1FE13BAE10BDFA4D5`
@@ -822,12 +930,25 @@ with diagnostics enabled passed for that exact DLL. This is not Setup ownership;
 policy validation, and byte-identical re-extraction of all three public ZIPs. Live
 runtime/gameplay, F6 visual, controller, localization, exit, and performance
 acceptance remained `NOT_VALIDATED`. This historical exact-byte evidence does
-not validate 2.2.1. Current 2.2.1 source/static/build/package/installer checks
-and rollback-backed developer deployment passed for exact DLL
-`C21823088E38D2BD1635651981187AB4C01C2FFD0DCD4804CB9FFDB1899FABB9` and
-compiled source
-`DE0100B2D4DE894FA94C6911AD328F7699C55D50EC21193C688B44F7F2588BA2`;
-exact-artifact runtime acceptance remains `NOT_VALIDATED`.
+not validate 2.2.1. Earlier 2.2.1 technical checks remain bound to superseded
+candidate bytes, and the independent-viewport/extreme-Z, first-valid-parent,
+full-stretch-outer/Image-translation `CCC6B117...AE00` / `B650B5FB...74EA`, and
+outer-atlas-rectangle `CD41F0E1...6FBB2` / `433710E0...E62C` deployments are
+runtime rejected. The last candidate's backup
+`dist/work/deployment/deploy-backups/20260905-182946-652-native-only-deploy`
+remains rejected evidence only. Current WM-06 immutable-slot source
+review, static gates, Core `2/2`, release hygiene, and local native build pass
+for DLL
+`6435E100...C723A1` from compiled source `0A1A4CE3...B5E5BC5`, size 1,107,968
+bytes. Rollback-backed diagnostics-enabled local developer deployment passes for
+the exact DLL, with exact installed identity, `mods=1`, `debug_logging=true`, and
+backup `dist/work/deployment/deploy-backups/20260905-202742-614-native-only-deploy`.
+Package and installer validation pass for the exact WM-06 bytes: Setup `20/20`,
+Manual `2/2`, payload equivalence, layout, clean-target, and all three archive
+re-extractions.
+Exact-
+artifact runtime acceptance remains
+`NOT_VALIDATED`.
 
 ## Release packaging
 
@@ -878,13 +999,17 @@ The 2.2.1 release target is `dist/final-2.2.1` and contains exactly
 `DragonSwordNativeWorldRadarPostRender-v2.2.1-Installer.zip`,
 `DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-No-UE4SS.zip`,
 `DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip`,
-`release-manifest.json`, and `SHA256SUMS.txt`. Current exact-artifact 2.2.1
-Core `2/2`, static, clean native build `444/444`, Setup `20/20`, Manual `2/2`,
-payload-equivalence, manual-layout, clean-target, and three-archive byte-identical
-re-extraction gates passed. The generated manifest and `SHA256SUMS.txt` are the
-authority for Setup and ZIP hashes; they are intentionally not duplicated here.
-Rollback-backed developer deployment passed for the exact packaged DLL. This is
-not Setup ownership and does not establish gameplay acceptance. Controller,
+`release-manifest.json`, and `SHA256SUMS.txt`. The current full-stretch-host/
+inner-atlas candidate has passed Core, static, and clean native build gates and
+must repeat Setup, Manual, payload-equivalence, manual-layout, clean-target, and
+three-archive byte-identical re-extraction gates. The
+future generated manifest and `SHA256SUMS.txt` are the authority for Setup and
+ZIP hashes. Rollback-backed diagnostics-enabled local developer deployment of
+the current exact DLL passes with backup
+`dist/work/deployment/deploy-backups/20260905-202742-614-native-only-deploy`;
+this is not Setup ownership or gameplay acceptance. All rejected candidate
+deployments establish no acceptance.
+Controller,
 height visual, responsive-layout, localization-glyph, gameplay, native-icon,
 click-target, exit, and external-performance acceptance remain `NOT_VALIDATED`.
 Historical 2.1.1 results remain bound to

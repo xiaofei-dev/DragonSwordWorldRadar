@@ -1,0 +1,184 @@
+[size=6][b]DragonSword Native Map and Radar Enhancer v2.2.1[/b][/size]
+
+Adds configurable Treasure, Boss, Assault, mini-game, and Area Quest markers to the minimap and expanded world map, plus Bird Egg markers, an in-game clock, compact-radar height guidance, localization, and a responsive in-game settings panel. It uses native in-game rendering and is compatible with [url=https://www.nexusmods.com/dragonswordawakening/mods/251]DragonSword Auto Pickup[/url].
+
+[quote][b]WARNING - INCOMPATIBLE MOD[/b]
+Do not use Native Map and Radar Enhancer with the older [b]Treasure Radar Overlay[/b]. Disable or remove Treasure Radar Overlay before installing this Mod.
+Do not delete UE4SS if it is required by Auto Pickup or other Mods.[/quote]
+
+[size=4][b]What's new in v2.2.1[/b][/size]
+
+[list]
+[*]Fixes-only update for expanded-world-map stability and alignment.
+[*]Keeps the game's native icon Canvas read-only so Radar markers cannot affect native icon layout or click targets.
+[*]Moves the two Radar atlas layers to independent, click-through viewport hosts.
+[*]Updates only viewport-host transforms when the map pans, zooms, changes DPI, or changes layout, without rebuilding or reparenting the marker atlases.
+[*]Preserves the v2.2.0 feature set; no new gameplay features are added in this release.
+[/list]
+
+[size=4][b]What's new in v2.2.0[/b][/size]
+
+[list]
+[*]Restored Radar operation for DragonSword Awakening v1.0.11 and added bounded structural detection for compatible game updates. Incompatible changes fail safely instead of using an unverified address.
+[*]Added compact-radar height guidance for all 83 supported mini-games: 33 Fly, 40 Mole, and 10 Wave locations.
+[*]Added independent Treasure, Area Quest, and mini-game height-indicator switches. All three are enabled by default on a clean installation.
+[*]Improved Area Quest height guidance. The normal marker shows three white dots when the player is within the selected height band, or becomes an up/down triangle when the task is above or below the player.
+[*]Added a smaller solid mini-game triangle below the marker, colored by Fly, Mole, or Wave type and outlined for visibility.
+[*]Added a redesigned responsive F6 settings panel with language selection, Mod status, Enable/Disable/Retry, marker visibility, height controls, filter modes, and a Bug Report shortcut.
+[*]Added complete F6 localization for English, Japanese, Korean, Simplified Chinese, Traditional Chinese, French, German, Spanish (Spain), Russian, Thai, and Portuguese (Brazil).
+[*]Improved language-specific font selection, text sizing, vertical alignment, and packaged Korean and Traditional Chinese text coverage.
+[*]Removed the visible AUTO language choice. A previous automatic preference is resolved to the current game language and saved as an explicit selection.
+[*]Fixed compact Radar startup so opening the expanded world map is no longer required before minimap markers appear.
+[*]Reworked expanded-map attachment and reuse to prevent unnecessary marker-layer reconstruction, reduce dense-Treasure flicker, and preserve windowed, fullscreen, DPI, ultrawide, zoom, and aspect-ratio positioning.
+[*]Refined expanded-map marker artwork with cleaner shapes, outlines, shadows, and higher-resolution atlases.
+[*]Expanded world-map capacity to 4,096 marker slots, leaving substantial room above the current catalog.
+[*]Improved controller-opened menu suppression and hardened cleanup during game shutdown and UI transitions.
+[/list]
+
+[size=4][b]Main features[/b][/size]
+
+[list]
+[*]Displays Treasure locations with completion filtering.
+[*]Displays Boss, Assault, mini-game, and Area Quest locations.
+[*]Displays supported Bird Eggs on the compact radar.
+[*]Supports both the minimap and expanded world map.
+[*]Shows the current in-game time.
+[*]Provides compact-radar height guidance for Treasure, Area Quests, and Fly/Mole/Wave mini-games.
+[*]Provides separate RADAR and MAP visibility settings.
+[*]Provides AVAILABLE and ALL modes for Area Quests and Assaults.
+[*]Preserves visibility, height-indicator, filter-mode, and language settings.
+[*]Supports windowed, fullscreen, DPI, viewport-size, ultrawide, and zoom changes.
+[*]Uses a lightweight native in-game implementation with no external overlay window.
+[/list]
+
+[size=4][b]Height indicators[/b][/size]
+
+[list]
+[*][b]Treasure[/b] - Shows the existing category-colored arrow for the nearest eligible Treasure.
+[*][b]Area Quest[/b] - Applies to every visible Area Quest. The normal black frame displays three white dots within the selected height band. Outside the band, the frame becomes an upward or downward black triangle.
+[*][b]Mini-game[/b] - Shows a small solid up/down triangle directly below the nearest visible Fly, Mole, or Wave marker. Its color follows the mini-game type.
+[/list]
+
+Area Quest and mini-game guidance use a calibrated player-height comparison with an inclusive +/-500 neutral range. All height indicators are compact-radar only. Turning an indicator off does not hide its marker. Missing or ambiguous height data hides only the guidance shape and never hides the underlying marker.
+
+[size=4][b]Treasure marker colors and requirements[/b][/size]
+
+[list]
+[*][b]White - Regular Treasure[/b] - Standard Treasure that can normally be collected when reached.
+[*][b]Green - Mini-game or Task Reward[/b] - Complete the associated activity when required. Only some Mole chests are linked to a specific Mole task; not every Mole chest has a task requirement.
+[*][b]Orange - Treasure Map or Legendary Treasure[/b] - Open the corresponding Treasure Map before attempting to collect it.
+[*][b]Blue - Puzzle Treasure[/b] - Complete the related puzzle or interaction before collecting it.
+[/list]
+
+The Mod displays locations and availability information only. It does not bypass Treasure Map, task, puzzle, cooldown, time, or activity requirements.
+
+[size=4][b]Controls and startup[/b][/size]
+
+[list]
+[*][b]F6[/b] - Opens Radar Settings while Radar is Off, On, or Faulted.
+[*][b]F7[/b] - Activates or resynchronizes Radar after a fully loaded open-world area is ready.
+[*][b]F8[/b] - Disables Radar.
+[/list]
+
+Radar starts disabled whenever the game launches. Load a fully loaded open-world area and press F7 to activate it. Dungeons and other instanced activities are not supported. Returning to the main menu or loading another save or World disables Radar; press F7 again after loading finishes.
+
+The F6 status section shows the current state and provides Enable, Disable, or Retry without closing the page. Bug Report opens this Mod's Nexus Posts page.
+
+[size=4][b]Languages[/b][/size]
+
+F6 offers 11 explicit language choices: English, Japanese, Korean, Simplified Chinese, Traditional Chinese, French, German, Spanish (Spain), Russian, Thai, and Portuguese (Brazil).
+
+On the first F6 opening or F7 activation after upgrading, a legacy automatic preference is resolved from the current game language and saved as the matching explicit language. If the game language cannot be detected, English is used. You can select another language directly in F6 at any time.
+
+[size=4][b]Available downloads[/b][/size]
+
+[list]
+[*][b]One Click Installer (Recommended)[/b] - Installs, updates, repairs, converts, or removes the Mod.
+[*][b]Manual - Existing UE4SS[/b] - Radar only, for users with a current compatible UE4SS installation.
+[*][b]Manual - Includes UE4SS[/b] - Complete clean-install package containing Radar and the tested UE4SS runtime.
+[/list]
+
+All packages are available in the [url=https://www.nexusmods.com/dragonswordawakening/mods/254?tab=files]Files section[/url].
+
+[size=4][b]Recommended installation[/b][/size]
+
+[list=1]
+[*]Close the game.
+[*]Fully extract the Installer ZIP.
+[*]Run the Native Map and Radar Enhancer Setup executable.
+[*]Select:
+[code]DSClient-Win64-Shipping.exe[/code]
+
+[*]Review the detected Install, Update, Repair, or Uninstall action.
+[*]Start the game, load a fully loaded open-world area, and press F7.
+[/list]
+
+The game EXE hash is recorded for diagnostics only and is not used as a fixed game-version restriction. Compatible updates may be detected through bounded structural validation; incompatible changes fail safely.
+
+The installer preserves unrelated Mods and creates a verified backup when UE4SS conversion is required.
+
+[size=4][b]UE4SS requirement[/b][/size]
+
+Native Map and Radar Enhancer requires a current compatible UE4SS runtime from August 2026 or later. The tested release runtime is UE4SS v3.0.1-Beta0-g1c1a1497.
+
+The One Click Installer and Manual - Includes UE4SS package handle UE4SS automatically. Do not manually mix files from different UE4SS packages.
+
+[size=4][b]Manual installation[/b][/size]
+
+Copy the Radar Mod folder into:
+[code]Win64\ue4ss\Mods[/code]
+
+Do not overwrite an existing:
+[code]Win64\ue4ss\Mods\mods.txt[/code]
+
+Keep all entries for other Mods and add or replace only:
+[code]DragonSwordNativeWorldRadarPostRender : 1[/code]
+
+Use Manual - Includes UE4SS only for a clean installation. Use the One Click Installer if the existing setup is uncertain.
+
+[size=4][b]Settings[/b][/size]
+
+Each supported category has an independent RADAR option, and supported expanded-world-map categories also have a MAP option. Bird Eggs are compact-radar only and do not have a MAP option.
+
+Treasure, Area Quest, and mini-game height guidance have independent switches. These switches affect height guidance only, not marker visibility.
+
+[b]AREA QUEST MODE[/b]
+[list]
+[*][b]AVAILABLE[/b] - Shows unfinished Area Quests whose normal prerequisites are currently satisfied.
+[*][b]ALL[/b] - Shows applicable unfinished catalog entries while continuing to exclude confirmed completed entries.
+[/list]
+
+[b]ASSAULT MODE[/b]
+[list]
+[*][b]AVAILABLE[/b] - Uses the normal Assault availability, time, state, and cooldown rules.
+[*][b]ALL[/b] - Displays all 40 catalog locations, including currently unavailable Assaults. This is display-only and does not make them playable.
+[/list]
+
+Settings are saved automatically.
+
+[size=4][b]Uninstall[/b][/size]
+
+Recommended method: close the game, run the latest installer, and choose Uninstall.
+
+For manual removal, delete:
+[code]Win64\ue4ss\Mods\DragonSwordNativeWorldRadarPostRender[/code]
+
+Then remove only the DragonSwordNativeWorldRadarPostRender line from:
+[code]Win64\ue4ss\Mods\mods.txt[/code]
+
+Keep UE4SS, unrelated Mods, game saves, and every other mods.txt entry.
+
+[size=4][b]Known compatibility notes[/b][/size]
+
+[list]
+[*]Native Map and Radar Enhancer is compatible with DragonSword Auto Pickup.
+[*]It is not compatible with the older Treasure Radar Overlay.
+[*]Third-party font PAKs that replace the game's Common or Traditional Chinese font assets may remove required glyphs. If F6 text is missing, test without the external font PAK before reporting the issue.
+[*]Public packages keep diagnostic logging disabled by default. Enable it only while reproducing a problem.
+[/list]
+
+[size=4][b]Reporting a problem[/b][/size]
+
+Post in the [url=https://www.nexusmods.com/dragonswordawakening/mods/254?tab=posts]Posts section[/url] and include the installed package, clean install or update, other UE4SS Mods, exact reproduction steps, expected and actual behavior, resolution, aspect ratio, display mode, Windows scaling, selected language, controller or keyboard use, and a screenshot.
+
+For startup failures or crashes, include UE4SS.log. For marker, controller, language, or layout problems, enable Radar debug logging, reproduce the issue once, and include the Radar debug log.

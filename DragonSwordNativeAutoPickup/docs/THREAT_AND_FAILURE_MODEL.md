@@ -8,8 +8,11 @@
 - missing or ambiguous interaction action mapping;
 - repeated action against the same live target;
 - a second target replacing or extending an unresolved pending action;
-- an unconfirmed action retrying indefinitely or monopolizing the live
+- an unobserved dispatch retrying indefinitely or monopolizing the live
   interaction action used by manual F;
+- a broad or re-entrant UFunction observer doing reflection, logging, UObject
+  work, or state mutation inside game dispatch;
+- treating game dispatch as proof that one exact selector target was collected;
 - operating-system F9 key repeat creating more than one state transition for a
   physical press;
 - enabled state leaking across the main menu, save load, or World initialization;
@@ -26,10 +29,19 @@ The adapter resolves fresh current Pawn/Rider context, validates component Outer
 and World, uses a closed type policy with treasure type 4 excluded, resolves
 the exact live interaction action independently of its physical binding (or an
 exact manually configured Unreal key), rejects conflicting action mappings,
-confirms exact pending actor/component invalidation or an exact component-state
-transition, permits one global pending action, allows only one
-selector-represented retry after a 100 ms cooldown, quarantines the exact
-candidate after the second timeout, resets action state when the interaction
+permits one global in-flight action and registers a post observer only for the
+exact reflected `Server_RunInteractV2` UFunction. While an injection is armed,
+the observer compares the raw receiver pointer and publishes one atomic action
+token; it does not log, reflect, read a UObject, call the game, or mutate the
+state machine. EngineTick consumes the marker, releases the global slot, records
+`target_match_unproven=1` and `pickup_success_claim=0`, and applies a 750 ms
+same-Component re-entry delay. The armed record is created before injection and
+persists after the injection call returns until matching dispatch, existing
+exact weak/state confirmation, timeout, or reset. If neither dispatch nor exact
+confirmation occurs, only one selector-represented retry follows after 200 ms;
+a second no-evidence result applies a 1500 ms
+self-expiring Component backoff instead of activation-long quarantine. The
+adapter resets action state when the interaction
 owner changes inside a stable `UWorld`, applies world-settle backoff, latches F9 until
 physical release,
 disables on guarded hard faults, forces Off on main-menu/save/World
@@ -80,18 +92,32 @@ type-7 child packages. Native runtime range multiplication is compile-time
 disabled, so reflection drift cannot double-apply the selected multiplier. Root,
 physics, and hit collision components remain untouched.
 
+## Status-card isolation
+
+The optional native status card consumes completed lifecycle outcomes only. It
+does not own a hook, key callback, selector, candidate, action, retry, or
+confirmation state. Its tree is hit-test-invisible and does not call any input
+mode or cursor API. UI reflection is validated independently; construction and
+updates are guarded. A missing schema, stale weak widget, controller replacement,
+or UI exception disables and clears the renderer without changing automation.
+World travel drops every weak UI handle. Thus the residual status-card risk is
+visual failure or small game-thread presentation overhead, not a new pickup
+authority. Gameplay observation is still required to validate appearance and
+runtime cost for the exact DLL.
+
 ## Offline release evidence boundary
 
-The current 750 ms confirmation-window / 200 ms retry-cooldown 1.3.0 DLL is
+The preceding 750 ms fallback-window / 200 ms retry-delay 1.3.0 DLL is
 919,552 bytes with SHA-256
 `10F5F4D575C07FF90A7C692E6A91906B6EA5B01E50D1671F82CBB40E8DB174B2`.
 The corrected unsigned Setup is 13,001,728 bytes with SHA-256
 `2BF6109E93606175610374F08ED2D91E813043BF204736AA3260E23966F53997`.
 Static, source, core, built-artifact, installer 10/10, deterministic ZIP,
 exact-entry, and checksum gates passed for all four final archives. That evidence
-closes offline artifact-integrity and packaging threats only. It does not close
-in-process selector-resolution, deployment, gameplay, performance, or owner
-smoke-test threats; those remain pending.
+closes offline artifact-integrity and packaging threats only for that preceding
+artifact. It predates the dispatch-observer repair. The new source candidate is
+`RUNTIME_PENDING`; exact build identity, in-process observer behavior,
+deployment, gameplay, performance, and owner smoke-test threats remain open.
 
 The Setup recognizes the immediately preceding owned `38DA6C...` DLL only
 through its exact version/DLL/Lua tuple. This permits Repair without turning
@@ -113,8 +139,9 @@ prove that the selector loop caused sustained CPU stutter. It did prove 250
 injections, including 61 for one identity. Native timing ends at the injection
 call and therefore does not include downstream game interaction work. Deferred
 log-file flush I/O is also outside the EngineTick timing aggregate. Version
-1.3.0 bounds both causes through single-pending action policy and compact logs,
-but exact runtime performance remains unaccepted until measured.
+1.3.0 bounds both causes through single-in-flight policy and compact logs. The
+observer repair should release that slot on matching game dispatch, but exact
+runtime behavior and performance remain unaccepted until measured.
 
 ## Independent PAK risk
 

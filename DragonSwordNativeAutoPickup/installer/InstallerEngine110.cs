@@ -55,11 +55,11 @@ namespace DragonSwordNativeAutoPickup.Installer
         internal bool RemovedRangePak { get; set; }
     }
 
-    // Auto Pickup 1.3.0 intentionally supports one ABI only. Any other active
+    // Auto Pickup 1.3.1 intentionally supports one ABI only. Any other active
     // UE4SS layout is backed up, removed, and converted after explicit consent.
     internal static class InstallerEngine110
     {
-        private const string ProductVersion = "1.3.0";
+        private const string ProductVersion = "1.3.1";
         private const string GameFileName = "DSClient-Win64-Shipping.exe";
         private const string ModName = "DragonSwordNativeAutoPickup";
         private const string OwnershipSchema = "2";
@@ -91,8 +91,8 @@ namespace DragonSwordNativeAutoPickup.Installer
         private const string RangeX3Hash = "6BB99A1E35C06EB0284370B9D7BD2F34E90CB6DCA7479CF10A477C68EA0103E8";
         private const string RangeX5Hash = "DB9E129D8F8FCCA025864EC908C13C70F950AD779C37CF13A41164476587CECD";
         private const string RangeX10Hash = "6A1ADB7592BA0C70A17984DB3AC01348086AABE196F0FDAF914B3F52C7A395F1";
-        private const string RangeX15Hash = "16CA8F2353D40BCED8ACBBC95FE4CE8A57E304DEB76D758517E716FF43740100";
-        private const string RangeX20Hash = "C10E1B252849B1D5DE5C94F468B60841E412487055AB7115B2E73E0D50AFF9BA";
+        private const string RangeX15Hash = "F8330CEA2F127319887FD3718BC66E2825D39DFE21D635404FC7535C7FAA37EC";
+        private const string RangeX20Hash = "81214319100646CD5663940CACE3AFA8F3523F5E319AB7C4AE8D935443FB93D2";
 
         private sealed class OwnedPayloadContract
         {
@@ -751,13 +751,13 @@ namespace DragonSwordNativeAutoPickup.Installer
                 new OwnedPayloadContract { Version = "1.1.0", PluginHash = "A5CE724E1F04F40A5346BDD8ECD9C7D2FF4854FCE33942E66149256D89A9A90D", LuaHash = "D700DCFBB3B0E37EF04733172A2363DFD88C7708FEA960536AD79B553843518F" },
                 new OwnedPayloadContract { Version = "1.1.1", PluginHash = "3A2BA3B251910439E7625863EC4981A34AA692F62B136B51054349CDC4E29A92", LuaHash = "292CD605CD417986887C2DBBF32A6DB0D56B38AD360AFC2A618B02AEC29A27FC" },
                 new OwnedPayloadContract { Version = "1.2.0", PluginHash = "9AFFCD7CD29F7CEFED93B51F7A8BC1533E49FB0E5959517DF424A15F3A19FAD6", LuaHash = "62E47E954D771C9933E5CB02E8E4A8B48EFCFF5B4A3A54190E6CD270063821BF" },
-                new OwnedPayloadContract { Version = ProductVersion, PluginHash = "BF6418A9570CCD3FD8FF58E734C38666D8E591504532A5C50A25E8EA5956B188", LuaHash = "0B4A52FBA7912C7921816C665AFD872DFAB3458DEE8DE20C6460F2EAC96A7D6A" },
-                new OwnedPayloadContract { Version = ProductVersion, PluginHash = "6F64645B47A5ADC59FAAB4F663E79C1B0681BF72125E1123D686977C0A7FA5F1", LuaHash = "0B4A52FBA7912C7921816C665AFD872DFAB3458DEE8DE20C6460F2EAC96A7D6A" },
-                new OwnedPayloadContract { Version = ProductVersion, PluginHash = "4404872210939EE88D3A186CF37741D2282D0E9CB227E73226C820DC039F276F", LuaHash = "0B4A52FBA7912C7921816C665AFD872DFAB3458DEE8DE20C6460F2EAC96A7D6A" },
-                new OwnedPayloadContract { Version = ProductVersion, PluginHash = "01A6E1358FBFE0B9DB35B4ECAAB2F1F08425265F47D6B1873872AA56D9E002AC", LuaHash = "0B4A52FBA7912C7921816C665AFD872DFAB3458DEE8DE20C6460F2EAC96A7D6A" },
-                new OwnedPayloadContract { Version = ProductVersion, PluginHash = "09288CCB1E5342BCC6A6BA406AFFE4AB103EC1ACE25D62CB20AAAC2418D2101B", LuaHash = "0B4A52FBA7912C7921816C665AFD872DFAB3458DEE8DE20C6460F2EAC96A7D6A" },
-                new OwnedPayloadContract { Version = ProductVersion, PluginHash = "38DA6C417B68F702AF6DAA069F80A348187B55D28C22227537278CEE988D87A1", LuaHash = "0B4A52FBA7912C7921816C665AFD872DFAB3458DEE8DE20C6460F2EAC96A7D6A" },
-                new OwnedPayloadContract { Version = ProductVersion, PluginHash = "5490BCC44612689C23F9E735C711FC760B721D79DA1125BF694E8686B92CDA08", LuaHash = "0B4A52FBA7912C7921816C665AFD872DFAB3458DEE8DE20C6460F2EAC96A7D6A" },
+                new OwnedPayloadContract { Version = "1.3.0", PluginHash = "BF6418A9570CCD3FD8FF58E734C38666D8E591504532A5C50A25E8EA5956B188", LuaHash = "0B4A52FBA7912C7921816C665AFD872DFAB3458DEE8DE20C6460F2EAC96A7D6A" },
+                new OwnedPayloadContract { Version = "1.3.0", PluginHash = "6F64645B47A5ADC59FAAB4F663E79C1B0681BF72125E1123D686977C0A7FA5F1", LuaHash = "0B4A52FBA7912C7921816C665AFD872DFAB3458DEE8DE20C6460F2EAC96A7D6A" },
+                new OwnedPayloadContract { Version = "1.3.0", PluginHash = "4404872210939EE88D3A186CF37741D2282D0E9CB227E73226C820DC039F276F", LuaHash = "0B4A52FBA7912C7921816C665AFD872DFAB3458DEE8DE20C6460F2EAC96A7D6A" },
+                new OwnedPayloadContract { Version = "1.3.0", PluginHash = "01A6E1358FBFE0B9DB35B4ECAAB2F1F08425265F47D6B1873872AA56D9E002AC", LuaHash = "0B4A52FBA7912C7921816C665AFD872DFAB3458DEE8DE20C6460F2EAC96A7D6A" },
+                new OwnedPayloadContract { Version = "1.3.0", PluginHash = "09288CCB1E5342BCC6A6BA406AFFE4AB103EC1ACE25D62CB20AAAC2418D2101B", LuaHash = "0B4A52FBA7912C7921816C665AFD872DFAB3458DEE8DE20C6460F2EAC96A7D6A" },
+                new OwnedPayloadContract { Version = "1.3.0", PluginHash = "38DA6C417B68F702AF6DAA069F80A348187B55D28C22227537278CEE988D87A1", LuaHash = "0B4A52FBA7912C7921816C665AFD872DFAB3458DEE8DE20C6460F2EAC96A7D6A" },
+                new OwnedPayloadContract { Version = "1.3.0", PluginHash = "5490BCC44612689C23F9E735C711FC760B721D79DA1125BF694E8686B92CDA08", LuaHash = "0B4A52FBA7912C7921816C665AFD872DFAB3458DEE8DE20C6460F2EAC96A7D6A" },
                 new OwnedPayloadContract { Version = ProductVersion, PluginHash = HashBytes(ReadResource(PluginResource)), LuaHash = HashBytes(ReadResource(LuaResource)) }
             };
             return contracts.Any(contract =>
@@ -1262,8 +1262,8 @@ namespace DragonSwordNativeAutoPickup.Installer
                     throw new InvalidDataException("Embedded range PAK hash failed: " + range.FileName);
             var plugin = ReadResource(PluginResource);
             var ascii = Encoding.ASCII.GetString(plugin);
-            if (!ascii.Contains("DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_0"))
-                throw new InvalidDataException("Embedded Auto Pickup plugin is not the 1.3.0 ExperimentalNested build.");
+            if (!ascii.Contains("DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_1"))
+                throw new InvalidDataException("Embedded Auto Pickup plugin is not the 1.3.1 ExperimentalNested build.");
         }
 
         private static void ValidateZipEntry(ZipArchive archive, string name, string hash)

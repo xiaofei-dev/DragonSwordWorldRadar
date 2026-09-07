@@ -114,9 +114,6 @@ $headerCode = Remove-CppComments $rendererHeader
 $mainCode = Remove-CppComments $main
 $projectionCode = Remove-CppComments $renderProjection
 $sessionPolicyCode = Remove-CppComments $worldMapSessionPolicy
-$viewportProjection = Get-ProjectionFunction `
-    $projectionCode 'calculate_world_map_viewport_placement'
-
 $markerCapacity = Get-IntegralConstant `
     $rendererHeader 'kWorldMapUmgMarkerCapacity'
 $atlasTextureSize = Get-IntegralConstant `
@@ -134,62 +131,39 @@ $worldMapOpenVisibilityGraceMs = Get-MillisecondConstant `
 
 Assert-True ($markerCapacity -ge 4096) `
     "World-map marker capacity regressed below 4,096; found $markerCapacity."
-Assert-True ($atlasTextureSize -ge 3072) `
-    "World-map atlas texture regressed below 3,072 square; found $atlasTextureSize."
+Assert-True ($atlasTextureSize -eq 2048) `
+    "World-map atlas texture must remain exactly 2,048 square; found $atlasTextureSize."
 Assert-True ($atlasLayerCount -eq 2) `
     "World-map renderer must retain exactly two atlas layers; found $atlasLayerCount."
 Assert-True ($metadata.world_map_umg_renderer.capacity -ge 4096 `
-    -and $metadata.world_map_umg_renderer.atlas_texture_size -ge 3072 `
+    -and $metadata.world_map_umg_renderer.atlas_texture_size -eq 2048 `
     -and $metadata.world_map_umg_renderer.umg_host_count -eq 2 `
     -and $metadata.world_map_umg_renderer.umg_image_count -eq 2) `
     'Release metadata no longer describes the bounded dual-atlas renderer.'
 
-# Projection is an affine conversion between live Slate geometries. It must not
-# infer DPI or aspect ratio from a resolution table.
+# The expanded atlas is a native-Canvas child. Pan, zoom, DPI, clipping, and
+# RetainerBox behavior must therefore be inherited from the game hierarchy;
+# the renderer may not invoke the retired viewport-projection chain.
+Assert-True ($rendererCode -notmatch `
+        '\b(?:calculate_world_map_viewport_placement|world_map_viewport_transform_changed)\s*\(') `
+    'The world-map renderer returned to the delayed independent-viewport projection chain.'
 Assert-True ($projectionCode -match `
-        'struct\s+WorldMapSlateGeometry\s*\{[\s\S]*?absolute_left[\s\S]*?absolute_top[\s\S]*?local_width[\s\S]*?local_height[\s\S]*?absolute_scale_x[\s\S]*?absolute_scale_y' `
-    -and $projectionCode -match `
-        'calculate_world_map_viewport_placement\s*\([\s\S]*?native_geometry\.absolute_left[\s\S]*?native_local_atlas\.left\s*\*\s*native_geometry\.absolute_scale_x[\s\S]*?viewport_geometry\.absolute_left[\s\S]*?viewport_geometry\.absolute_scale_x' `
-    -and $projectionCode -match `
-        'native_local_atlas\.width\s*\*\s*native_geometry\.absolute_scale_x[\s\S]*?viewport_geometry\.absolute_scale_x' `
-    -and $projectionCode -match `
-        'kWorldMapViewportTransformTolerance\s*=\s*0\.5' `
-    -and $projectionCode -match `
-        'world_map_viewport_transform_changed\s*\([\s\S]*?maximum_delta\s*>\s*tolerance') `
-    'Pure viewport projection must compose native LocalToAbsolute with viewport AbsoluteToLocal and suppress sub-half-unit jitter.'
-Assert-True ($projectionCode -notmatch `
-        '\b(?:WorldMapAtlasCanvasLayout|layout_world_map_atlas_canvas|rebase_world_map_atlas_placement)\b') `
-    'The rejected native-parent slot ownership or rebase projection helper returned.'
-Assert-True ($viewportProjection -notmatch `
-        '(?i)(?:resolution|aspect)[_a-z]*\s*(?:==|>=|<=)|\b(?:1920|2560|3440|3840|8000)\b') `
-    'Viewport projection must not contain resolution, aspect-ratio, or oversized-container branches.'
-
-# The unit tests pin DPI, aspect ratio, translation, invalid geometry, and the
-# transform epsilon independently of any UE object lifecycle.
-foreach ($requiredTest in @(
-        'calculate_world_map_viewport_placement',
-        'for (const double dpi : {1.0, 1.25, 1.5})',
-        '4K viewport conversion must apply 100, 125, and 150 percent DPI exactly once',
-        '3440.0, 1440.0',
-        '2560.0, 1600.0',
-        'nonzero viewport origins',
-        'independent X and Y Slate scales and negative viewport origins',
-        'the exact native-to-viewport affine relation',
-        'a common desktop DPI transform must cancel rather than being applied twice',
-        'a common absolute desktop translation must not move the viewport-local atlas',
-        'an A-B-A live-geometry sequence must return exactly to the original viewport placement without retained drift',
-        'reconstruct the witnessed absolute atlas origin',
-        'reconstruct the witnessed absolute atlas bottom-right extent',
-        'quiet_NaN',
-        'numeric_limits<double>::infinity()',
-        'zero scale',
-        'non-positive atlas or geometry extents, non-positive native or viewport scales, and arithmetic overflow',
-        'world_map_viewport_transform_changed',
-        'exact_tolerance',
-        'above_tolerance',
-        'suppress sub-half-unit jitter')) {
-    Assert-True ($nativeTests.Contains($requiredTest)) `
-        "Native viewport regression matrix is missing: $requiredTest"
+        'retain_world_map_atlas_placement\s*\([\s\S]*?retained_geometry\.parent_width\s*-\s*current_geometry\.parent_width[\s\S]*?retained_geometry\.parent_height\s*-\s*current_geometry\.parent_height[\s\S]*?return\s+retained\s*;' `
+    -and $projectionCode -notmatch `
+        'retained\.left\s*\+\s*\(\s*current_geometry\.player_canvas_x' `
+    -and $projectionCode -notmatch `
+        'retained\.top\s*\+\s*\(\s*current_geometry\.player_canvas_y') `
+    'Same-parent placement retention must reject extent changes and never apply PlayerIcon anchor deltas.'
+foreach ($requiredPlacementTest in @(
+        'same-anchor world-map validation must preserve atlas bounds',
+        '5C632820 same-parent zoom anchors must never move the retained inner atlas slot',
+        'a 3000-to-3840 parent-local extent change must request a fresh atlas instead of scaling marker glyphs',
+        'world-map placement retention must reject invalid retained bounds or anchors',
+        'the CD41 outer-atlas regression fixture must reproduce the logged 3191.521 parent width',
+        'the first CD41-style extent drift must retain the visible payload and only the second matching successful sample may request rebuild',
+        'a cleared extent-stability sample must not reuse a prior observation to request rebuild')) {
+    Assert-True ($nativeTests.Contains($requiredPlacementTest)) `
+        "Native immutable-placement regression coverage is missing: $requiredPlacementTest"
 }
 
 # Host visibility is a four-input policy with an explicit write cache. Keep
@@ -226,19 +200,32 @@ foreach ($requiredVisibilityTest in @(
         "Native visibility-policy regression coverage is missing: $requiredVisibilityTest"
 }
 
-# The world-map atlas must be a separate viewport host. Native map widgets are
-# geometry witnesses only and are never mutated or made owners of our slots.
-Assert-True ($rendererCode -match 'UserWidget:AddToViewport' `
-    -and $rendererCode -match '\badd_to_viewport_\b') `
-    'The independent world-map host is not attached through AddToViewport.'
-Assert-True ($rendererCode -match 'WidgetLayoutLibrary:GetViewportWidgetGeometry' `
-    -and $rendererCode -match 'SlateBlueprintLibrary:LocalToAbsolute' `
-    -and $rendererCode -match 'SlateBlueprintLibrary:AbsoluteToLocal' `
-    -and $rendererCode -match 'Widget:SetAlignmentInViewport' `
-    -and $rendererCode -match 'Widget:SetPositionInViewport' `
-    -and $rendererCode -match 'Widget:SetDesiredSizeInViewport' `
-    -and $rendererCode -match 'calculate_world_map_viewport_placement') `
-    'The renderer must derive viewport placement from live Slate geometry and apply it through viewport widget APIs.'
+# The atlas hosts are full-stretch native-Canvas children. Their inner Image
+# Canvas slots own atlas placement, while the game hierarchy owns all steady-
+# state pan, zoom, DPI, clipping, and RetainerBox transforms.
+foreach ($forbiddenViewportApi in @(
+        'UserWidget:AddToViewport', 'add_to_viewport_',
+        'Widget:SetAlignmentInViewport', 'set_alignment_in_viewport_',
+        'Widget:SetPositionInViewport', 'set_position_in_viewport_',
+        'Widget:SetDesiredSizeInViewport', 'set_desired_size_in_viewport_',
+        'Widget:ForceLayoutPrepass', 'force_layout_prepass_')) {
+    Assert-True ($rendererCode -notmatch [regex]::Escape($forbiddenViewportApi)) `
+        "The native-child renderer contains a forbidden viewport/layout API: $forbiddenViewportApi"
+}
+Assert-True ($rendererCode -match `
+        'constexpr\s+std::int32_t\s+kRadarMarkerZ\s*=\s*(?:std::)?numeric_limits<std::int32_t>::max\s*\(\s*\)\s*;' `
+    -and $rendererCode -notmatch `
+        "kRadarMarkerZ\s*=\s*2'000'000'000") `
+    'Native Canvas atlas slots must use the maximum CanvasPanelSlot Z order.'
+Assert-True ($rendererCode -match 'CanvasPanel:AddChildToCanvas' `
+    -and $rendererCode -match 'CanvasPanelSlot:SetAnchors' `
+    -and $rendererCode -match 'CanvasPanelSlot:SetOffsets' `
+    -and $rendererCode -match 'CanvasPanelSlot:SetAutoSize' `
+    -and $rendererCode -match 'Widget:SetRenderTranslation' `
+    -and $rendererCode -match 'RetainerBox:RequestRender' `
+    -and $headerCode -match `
+        'native_parent_slots_\s*\{\s*\}\s*;') `
+    'The hybrid renderer is missing native Canvas ownership, fixed-slot, zero-image-translation, Retainer, or retained-slot ABI.'
 
 # Reflected FGeometry values are non-trivial UE values. Their parameter
 # containers must be initialized and destroyed through reflection rather than
@@ -264,185 +251,208 @@ foreach ($defaultCollapsedState in @(
 Assert-True (($headerCode + "`n" + $rendererCode) -notmatch `
         '\b(?:map_visible_requested_|set_map_visible)\b') `
     'The legacy single visibility-request state or setter returned.'
-Assert-True ($rendererCode -notmatch `
-        '(?:native_parent|witnessed_parent)->ProcessEvent\s*\(\s*add_child_to_canvas_' `
-    -and $rendererCode -notmatch `
-        '(?:native_parent|witnessed_parent)->ProcessEvent\s*\(\s*(?:set_slot_|remove_from_parent_)' `
-    -and $rendererCode -notmatch '\bnative_parent_slots_\b' `
-    -and $rendererCode -notmatch `
-        '\b(?:retainer|retainer_box)->ProcessEvent\s*\(' `
-    -and $rendererCode -notmatch '\brequest_retainer_render_?\b' `
-    -and $rendererCode -notmatch '\bForceLayoutPrepass\b') `
-    'The renderer must never mutate the native map parent or RetainerBox, retain native-parent slots, or force a native layout prepass.'
-Assert-True ($rendererCode -notmatch `
-        '\b(?:reproject_atlas_unsafe|rebase_world_map_atlas_placement|layout_world_map_atlas_canvas)\b' `
-    -and $rendererCode -notmatch `
-        'WorldMapLayeringRefreshResult::(?:Reparented|Reprojected)') `
-    'The old native-parent reparent/reproject lifecycle returned.'
-
-# One AddChildToCanvas call is still required to build each Mod-owned
-# host->root-panel->atlas-image graph. It must be the single looped call on our
-# root panel; any second call would necessarily reintroduce native Canvas
-# ownership or later reparenting.
-$addChildToCanvasCalls = [regex]::Matches(
-    $rendererCode, 'ProcessEvent\s*\(\s*add_child_to_canvas_')
-Assert-True ($addChildToCanvasCalls.Count -eq 1 `
+$configureFullStretchSlot = Get-FreeRendererFunction `
+    $rendererCode 'bool' 'configure_full_stretch_canvas_slot'
+$configureOverlaySlot = Get-FreeRendererFunction `
+    $rendererCode 'bool' 'configure_full_stretch_overlay_slot'
+Assert-True ($rendererCode -match `
+        'struct\s+CanvasSlotLayoutReflectionSchema[\s\S]*?anchors_parameter[\s\S]*?offsets_parameter[\s\S]*?auto_size_parameter' `
     -and $rendererCode -match `
-        'root_panels\s*\[\s*layer_index\s*\]\s*->ProcessEvent\s*\(\s*add_child_to_canvas_') `
-    'AddChildToCanvas must occur exactly once in source, inside the bounded loop for each Mod-owned root panel.'
-
-$detachUnsafe = Get-RendererFunction $rendererCode 'detach_unsafe'
-Assert-True ([regex]::Matches(
-        $rendererCode,
-        'ProcessEvent\s*\(\s*remove_from_parent_').Count -eq 1 `
-    -and $detachUnsafe -match `
-        'host->ProcessEvent\s*\(\s*remove_from_parent_') `
-    'RemoveFromParent must exist only in detach and may target only the Mod-owned viewport hosts.'
-
-$syncViewportTransform = Get-RendererFunction `
-    $rendererCode 'sync_viewport_transform_unsafe'
-$nativeIconTemplateLookup = Get-FreeRendererFunction `
-    $rendererCode 'NativeIconTemplateLookupResult' 'find_native_icon_template'
-Assert-True ($syncViewportTransform -match `
-        'calculate_world_map_viewport_placement' `
-    -and $syncViewportTransform -match `
-        'world_map_viewport_transform_changed' `
-    -and $syncViewportTransform -match `
-        'set_position_in_viewport_' `
-    -and $syncViewportTransform -match `
-        'set_desired_size_in_viewport_') `
-    'Viewport transform sync must use the pure conversion and epsilon gate before updating position and size.'
-Assert-True ($syncViewportTransform -match `
-        'remove_dpi_scale\s*=\s*false') `
-    'SetPositionInViewport must explicitly keep RemoveDPIScale=false because the live Slate conversion already applies DPI exactly once.'
-Assert-True ($syncViewportTransform -match `
-        'native_parent_\.Get\(\)' `
-    -and $syncViewportTransform -notmatch `
-        'find_native_icon_template' `
-    -and $syncViewportTransform -notmatch `
-        'ArrayIconInfo' `
-    -and $syncViewportTransform -match `
-        'classify_world_map_transform_observation_failure' `
-    -and $syncViewportTransform -match `
-        'WorldMapLayeringRefreshResult::Retained' `
-    -and $syncViewportTransform -notmatch `
-        'viewport_transform_valid_\s*=\s*false') `
-    'Transform sync must keep the attachment-verified native Canvas as its coordinate witness and retain the same-layer last verified transform across transient observation gaps.'
-$syncViewportTransformGuarded = Get-RendererFunction `
-    $rendererCode 'sync_viewport_transform'
-Assert-True ($syncViewportTransformGuarded -match `
-        'world_map_transform_failure_for_stage' `
-    -and $syncViewportTransformGuarded -match `
-        'classify_world_map_transform_observation_failure' `
-    -and $syncViewportTransformGuarded -match `
-        'world_map_transform_visibility_policy' `
-    -and $syncViewportTransformGuarded -match `
-        'WorldMapLayeringRefreshResult::Retained' `
-    -and $syncViewportTransformGuarded -match `
-        'WorldMapLayeringRefreshResult::RetryLater' `
-    -and $syncViewportTransformGuarded -match `
-        'fault_and_detach') `
-    'The guarded sync wrapper must classify the exact failed stage, reconcile transient visibility, and use one fail-closed detach path only for hard failures.'
-Assert-True ($syncViewportTransform -match `
-        'world_map_transform_visibility_policy' `
-    -and $syncViewportTransform -match `
-        'transform_ready_\s*=\s*visibility_policy\.transform_ready' `
-    -and $syncViewportTransform -match `
-        'reconcile_host_visibility_unsafe\s*\(' `
-    -and $syncViewportTransform -match `
-        'transform_ready_\s*=\s*true[\s\S]*?reconcile_host_visibility_unsafe\s*\(\s*false' `
-    -and $syncViewportTransform -notmatch `
-        '\bset_visibility\s*\(' `
-    -and $syncViewportTransform -notmatch `
-        '\b(?:content_visibility_intent_|runtime_visibility_allowed_)\s*=') `
-    'Transform sync may publish readiness and reconcile hosts, but it must not overwrite either upstream visibility intent or write hosts directly.'
-$layerMismatchGuardIndex = $syncViewportTransform.IndexOf(
-    'if (!current_layer || current_layer != retained_layer)')
-$ownedPayloadValidationIndex = $syncViewportTransform.IndexOf(
-    'validate_host_payload_unsafe')
-Assert-True ($layerMismatchGuardIndex -ge 0 `
-    -and $ownedPayloadValidationIndex -gt $layerMismatchGuardIndex) `
-    'A missing or replacement game layer must enter hidden bounded retry before exact-layer owned-payload validation.'
-Assert-True ($nativeIconTemplateLookup -match `
-        '(?s)count\s*<\s*0.*?InvalidSchema' `
-    -and $nativeIconTemplateLookup -match `
-        '(?s)count\s*==\s*0.*?NotReady' `
-    -and $nativeIconTemplateLookup -match `
-        'GetPropertyByNameInChain\(L"Panel_Point"\)' `
-    -and $nativeIconTemplateLookup -match `
-        'GetPropertyByNameInChain\(L"Slot"\)' `
-    -and $nativeIconTemplateLookup -match `
-        'GetPropertyByNameInChain\(L"Parent"\)' `
-    -and $nativeIconTemplateLookup -match `
-        'GetPropertyByNameInChain\(L"Content"\)' `
-    -and $nativeIconTemplateLookup -notmatch `
-        'read_object_property\(\s*(?:icon|slot)') `
-    'Native icon lookup must distinguish an empty/not-ready list from corrupt counts and missing or type-invalid nested widget ABI fields.'
-$positionParametersMatch = [regex]::Match(
-    $syncViewportTransform,
-    'PositionInViewportParameters\s+(?<name>[A-Za-z_]\w*)')
-Assert-True $positionParametersMatch.Success `
-    'Viewport transform sync must use a named PositionInViewportParameters value.'
-$positionParametersName = [regex]::Escape(
-    $positionParametersMatch.Groups['name'].Value)
-Assert-True ($syncViewportTransform -match `
-        "(?s)\b$positionParametersName\.remove_dpi_scale\s*=\s*false[\s\S]*?ProcessEvent\s*\(\s*set_position_in_viewport_\s*,\s*&$positionParametersName\s*\)") `
-    'RemoveDPIScale=false must be set on the exact parameter object passed to SetPositionInViewport.'
-foreach ($forbiddenSyncWork in @(
-        'build_rle_tga_atlas', 'ImportFileAsTexture2D', 'NewObject',
-        'CreateWidget', 'AddToViewport', 'AddChildToCanvas',
-        'RemoveFromParent', 'ClearChildren', 'ForceLayoutPrepass',
-        'request_retainer_render', 'StaticFindObject', 'FindAllOf',
-        'FindFirstOf', 'filesystem', 'fstream', 'ofstream')) {
-    Assert-True ($syncViewportTransform -notmatch `
-            [regex]::Escape($forbiddenSyncWork)) `
-        "Viewport transform sync contains forbidden rebuild, tree mutation, discovery, or file work: $forbiddenSyncWork"
-}
-Assert-True ($syncViewportTransform -notmatch `
-        '(?i)\b(?:GetViewportSize|GetViewportScale|resolution|aspect(?:ratio)?)\b' `
-    -and $syncViewportTransform -notmatch `
-        '\b(?:1920|2160|2560|3440|3840|8000)\b') `
-    'Viewport transform sync must consume live Slate geometry directly; resolution tables, aspect-ratio branches, and viewport-scale compensation are forbidden.'
+        'resolve_canvas_slot_layout_schema\s*\([\s\S]*?CastField<FStructProperty>[\s\S]*?CastField<FBoolProperty>' `
+    -and $configureFullStretchSlot -match `
+        'write_vector_property\s*\(\s*schema\.anchors_minimum\s*,\s*anchors_value\s*,\s*0(?:\.0+)?\s*,\s*0(?:\.0+)?\s*\)' `
+    -and $configureFullStretchSlot -match `
+        'write_vector_property\s*\(\s*schema\.anchors_maximum\s*,\s*anchors_value\s*,\s*1(?:\.0+)?\s*,\s*1(?:\.0+)?\s*\)' `
+    -and [regex]::Matches(
+        $configureFullStretchSlot,
+        'write_numeric_property\s*\(\s*schema\.offset_(?:left|top|right|bottom)\s*,\s*offsets_value\s*,\s*0(?:\.0+)?\s*\)').Count -eq 4 `
+    -and $configureFullStretchSlot -match `
+        'SetPropertyValue\s*\(\s*auto_size_value\s*,\s*false\s*\)' `
+    -and $configureFullStretchSlot -match `
+        'VectorParameters\s+alignment\s*\{\s*\{\s*0(?:\.0+)?\s*,\s*0(?:\.0+)?\s*\}\s*\}' `
+    -and $configureFullStretchSlot -notmatch `
+        '(?:set_slot_position_|set_slot_size_|set_render_translation_|set_z_order|ForceLayoutPrepass)' `
+    -and $configureOverlaySlot -match `
+        'configure_full_stretch_canvas_slot\s*\(' `
+    -and $configureOverlaySlot -match `
+        'ZOrderParameters\s+z_order\s*\{\s*kRadarMarkerZ\s*\}') `
+    'Both the cloned internal root and each native host slot must be full-stretch; the outer host additionally owns maximum Z.'
+Assert-True ($configureOverlaySlot -notmatch `
+        '(?:set_slot_position_|set_slot_size_|set_render_translation_|ForceLayoutPrepass)' `
+    -and $rendererCode -notmatch 'configure_atlas_canvas_slot') `
+    'The native host slot helper must never carry atlas coordinates, size feedback, a render transform, or a forced layout pass.'
 
 $attach = Get-RendererFunction $rendererCode 'attach_unsafe'
-Assert-True ([regex]::Matches(
-        $attach, 'ProcessEvent\s*\(\s*add_to_viewport_').Count -eq 1 `
-    -and $attach -match 'layer_index\s*<\s*kWorldMapAtlasLayerCount' `
-    -and $attach -match 'kHitTestInvisible') `
-    'Initial attachment must add every hit-test-invisible atlas host to the viewport exactly once through the bounded layer loop.'
-Assert-True ($attach -match `
-        'set_alignment_in_viewport_' `
-    -and ($attach -match `
-            '(?s)alignment[^;=]*\{\s*\{\s*0(?:\.0+)?\s*,\s*0(?:\.0+)?\s*\}\s*\}' `
-        -or $attach -match `
-            '(?s)alignment[^;=]*\{\s*\}')) `
-    'Each viewport host must use an explicit zero alignment so live placement remains a top-left affine transform.'
-Assert-True ($attach -notmatch `
-        '(?:native_parent|witnessed_parent)->ProcessEvent\s*\(\s*add_child_to_canvas_') `
-    'Initial attachment must not insert either atlas host into the game-owned native Canvas.'
-Assert-True ($rendererCode -notmatch `
-        'read_object_property\s*\(\s*(?:native_parent|witnessed_parent)\s*,\s*L"Slot"' `
-    -and $rendererCode -notmatch `
-        '(?:native_parent|witnessed_parent|retainer|retainer_box)->ProcessEvent\s*\(\s*(?:clear_children_|set_slot_|remove_from_parent_|request_retainer_render_)') `
-    'The game-owned map parent and RetainerBox must remain read-only geometry witnesses, including outside the named legacy paths.'
+$refreshNativeParent = Get-RendererFunction `
+    $rendererCode 'refresh_native_parent_unsafe'
+$refreshLayering = Get-RendererFunction $rendererCode 'refresh_layering'
+$detachUnsafe = Get-RendererFunction $rendererCode 'detach_unsafe'
+$nativeIconClassLookup = Get-FreeRendererFunction `
+    $rendererCode 'NativeIconClassLookupResult' 'find_native_icon_class_witness'
+$worldMapRenderParent = Get-FreeRendererFunction `
+    $rendererCode 'UObject*' 'resolve_world_map_render_parent'
 
-# CanvasPanelSlot setters are permitted only while constructing the Mod-owned
-# root-panel -> atlas-image graph. Keeping them out of every other renderer
-# method prevents an alias from hiding a write back into the native map tree.
-$rendererOutsideAttach = $rendererCode.Replace($attach, '')
-Assert-True ($rendererOutsideAttach -notmatch `
-        'ProcessEvent\s*\(\s*add_to_viewport_') `
-    'AddToViewport escaped initial attachment; retained hosts must never be re-added during geometry settling, suspend, or resume.'
-foreach ($slotSetter in @(
-        'set_slot_position_', 'set_slot_size_',
-        'set_slot_alignment_', 'set_slot_z_order_')) {
-    Assert-True ($rendererOutsideAttach -notmatch `
-            "ProcessEvent\s*\(\s*$([regex]::Escape($slotSetter))") `
-        "Canvas slot mutation escaped initial Mod-owned construction: $slotSetter"
-    Assert-True ($rendererOutsideAttach -notmatch `
-            "set_slot_vector\s*\([^;]*?$([regex]::Escape($slotSetter))") `
-        "Canvas slot vector mutation escaped initial Mod-owned construction: $slotSetter"
+Assert-True ($nativeIconClassLookup -match `
+        '(?s)count\s*<\s*0.*?InvalidSchema' `
+    -and $nativeIconClassLookup -match `
+        '(?s)count\s*==\s*0.*?NotReady' `
+    -and $nativeIconClassLookup -match `
+        'GetPropertyByNameInChain\(L"Panel_Point"\)' `
+    -and $nativeIconClassLookup -match `
+        'GetPropertyByNameInChain\(L"Slot"\)' `
+    -and $nativeIconClassLookup -match `
+        'GetPropertyByNameInChain\(L"Parent"\)' `
+    -and $nativeIconClassLookup -match `
+        'GetPropertyByNameInChain\(L"Content"\)' `
+    -and $nativeIconClassLookup -notmatch `
+        'read_object_property\(\s*(?:icon|slot)') `
+    'Native icon-class lookup must distinguish an empty/not-ready list from corrupt counts and missing or type-invalid nested widget ABI fields.'
+Assert-True ($worldMapRenderParent -match `
+        'read_object_property\(\s*layer\s*,\s*L"FogAbovePanel"\s*\)' `
+    -and $worldMapRenderParent -match `
+        'parent->IsA\(\s*canvas_panel_class\s*\)' `
+    -and $worldMapRenderParent -notmatch 'ArrayIconInfo') `
+    'The world-map render owner must resolve the named FogAbovePanel directly, independent of zoom-rebuilt ArrayIconInfo ordering.'
+
+# The outer native slot and cloned root are full-stretch. The Mod-owned Image
+# Canvas slot owns the parent-local atlas rectangle, while the Image itself has
+# an explicit zero render translation.
+Assert-True ($attach -match `
+        'root_panels\s*\[\s*layer_index\s*\]\s*->ProcessEvent\s*\(\s*add_child_to_canvas_' `
+    -and $attach -match `
+        'set_slot_vector\s*\(\s*atlas_image_slots\s*\[\s*layer_index\s*\]\s*,\s*set_slot_position_\s*,\s*atlas_bounds\.left\s*,\s*atlas_bounds\.top\s*\)' `
+    -and $attach -match `
+        'set_slot_vector\s*\(\s*atlas_image_slots\s*\[\s*layer_index\s*\]\s*,\s*set_slot_size_\s*,\s*atlas_bounds\.width\s*,\s*atlas_bounds\.height\s*\)' `
+    -and $attach -match `
+        'VectorParameters\s+zero_translation\s*\{\s*\{\s*0(?:\.0+)?\s*,\s*0(?:\.0+)?\s*\}\s*\}[\s\S]*?atlas_images\s*\[\s*layer_index\s*\]\s*->ProcessEvent\s*\(\s*set_render_translation_' `
+    -and $attach -match `
+        '(?:native_parent|current_parent)\s*->ProcessEvent\s*\(\s*add_child_to_canvas_' `
+    -and $attach -match `
+        'native_parent_slots_\s*\[\s*layer_index\s*\]\s*=\s*(?:native_slot|add_host\.return_value)' `
+    -and $attach -match `
+        'configure_full_stretch_overlay_slot\s*\(' `
+    -and $attach -match `
+        'configure_full_stretch_canvas_slot\s*\(\s*root_slot' `
+    -and $attach -match `
+        'resolve_world_map_render_parent\s*\(' `
+    -and $attach -match `
+        'find_native_icon_class_witness\s*\(' `
+    -and $attach -match 'kHitTestInvisible') `
+    'Initial attachment must use full-stretch outer/root slots, place the atlas through the inner Image Canvas slot, and insert each hit-test-invisible host into the named FogAbove Canvas.'
+Assert-True ($attach -match `
+        '(?s)native_parent->ProcessEvent\s*\(\s*add_child_to_canvas_.*?configure_full_stretch_overlay_slot\s*\(.*?configure_full_stretch_canvas_slot\s*\(\s*root_slot.*?set_slot_vector\s*\(\s*atlas_image_slots\s*\[\s*layer_index\s*\]\s*,\s*set_slot_position_\s*,\s*atlas_bounds\.left\s*,\s*atlas_bounds\.top\s*\).*?zero_translation.*?set_render_translation_') `
+    'After the host enters the live native Canvas, attachment must reassert outer fill, inner fill, Image Canvas-slot atlas placement, then zero Image render translation.'
+Assert-True ($rendererCode -notmatch `
+        '(?:hosts?|root_panels?)\s*(?:\[[^\]]+\])?\s*->ProcessEvent\s*\(\s*set_render_translation_' `
+    -and $rendererCode -notmatch `
+        'set_render_translation\s*\(\s*(?:hosts?|root_panels?)\b' `
+    -and [regex]::Matches(
+        $rendererCode,
+        'ProcessEvent\s*\(\s*set_render_translation_').Count -eq 1 `
+    -and $rendererCode.Replace($attach, '') -notmatch `
+        'ProcessEvent\s*\(\s*set_render_translation_') `
+    'Only explicit zero Image translations are permitted; atlas placement must never move a host/root render transform or create a second zoom pivot.'
+Assert-True ($refreshNativeParent -notmatch `
+        '(?:set_slot_position_|set_render_translation_|remove_from_parent_|add_child_to_canvas_|configure_full_stretch_(?:overlay|canvas)_slot|request_retainer_render_)') `
+    'Native-parent refresh must be observation-only; parent replacement is reported for a fresh bounded attachment rather than live-mutating retained hosts.'
+
+Assert-True ($refreshNativeParent -match `
+        'resolve_world_map_render_parent\s*\(' `
+    -and $refreshNativeParent -notmatch `
+        '(?:find_native_icon_class_witness|ArrayIconInfo)' `
+    -and $refreshNativeParent -match `
+        'validate_host_payload_unsafe\s*\(' `
+    -and $refreshNativeParent -match `
+        'retain_world_map_atlas_placement\s*\(' `
+    -and $refreshNativeParent -match `
+        'native_parent_slots_\s*\[' `
+    -and $refreshNativeParent -match `
+        'WorldMapLayeringRefreshResult::Retained' `
+    -and $refreshNativeParent -match `
+        'WorldMapLayeringRefreshResult::RebuildRequired' `
+    -and $refreshNativeParent -match `
+        'WorldMapLayeringRefreshResult::Unchanged' `
+    -and $refreshNativeParent -match `
+        'world_map_parent_extent_maximum_delta\s*\(') `
+    'Native-parent refresh must revalidate owned payload, resolve the named FogAbove Canvas without scanning zoom-rebuilt icons, retain immutable same-parent placement, observe in-place extent drift, and request a bounded rebuild when needed.'
+
+$rebuildReporter = [regex]::Match(
+    $refreshNativeParent,
+    '(?ms)^\s{4}const\s+auto\s+request_current_session_rebuild\s*=\s*\[\]\s*\([^;]*?\)\s*\{(?<body>[\s\S]*?)^\s{4}\};')
+Assert-True ($rebuildReporter.Success `
+    -and $rebuildReporter.Groups['body'].Value -match `
+        'rebuild_result\s*=\s*WorldMapLayeringRefreshResult::RebuildRequired\s*;[\s\S]*?return\s+true\s*;' `
+    -and $rebuildReporter.Groups['body'].Value -notmatch `
+        '(?:transform_ready_|reconcile_host_visibility|apply_host_visibility|set_visibility|ProcessEvent|detach)') `
+    'A rebuild observation must be report-only; it may not collapse, invalidate, detach, or repaint a still-valid payload before Main accepts the bounded rebuild.'
+Assert-True ($refreshNativeParent -match `
+        '(?s)if\s*\(\s*\*extent_delta\s*>\s*dswros::kWorldMapGeometryStabilityTolerance\s*\).*?reparent_geometry_parent_index_.*?reparent_geometry_parent_serial_.*?observe_world_map_geometry_sample\s*\(\s*reparent_geometry_sample_valid_\s*,\s*reparent_geometry_sample_\s*,\s*current_geometry\s*,\s*reparent_geometry_sample_max_delta_\s*\).*?reparent_geometry_stability_result_\s*!=\s*dswros::WorldMapGeometryStabilityResult::Stable.*?handle_transient_observation\s*\(\s*dswros::WorldMapTransformObservationFailure::\s*GeometryUnavailable\s*,\s*result\s*\).*?request_current_session_rebuild\s*\(\s*result\s*\)' `
+    -and $refreshNativeParent -match `
+        '(?s)request_current_session_rebuild\s*\(\s*result\s*\)\s*;\s*\}\s*reset_reparent_geometry_stability_sample\s*\(\s*\)') `
+    'A parent-extent drift must be stable for two matching successful samples on one parent before requesting rebuild, while a restored extent clears the pending sample.'
+
+# Every successful same-parent path must observe live geometry without any Image
+# Canvas-slot/translation, tree mutation, or Retainer render request. The
+# legacy final-restack argument is deliberately ignored: maximum Canvas Z plus
+# stable insertion order must not turn any zoom tail into write-back work.
+$unchangedReturnIndex = $refreshNativeParent.IndexOf(
+    'WorldMapLayeringRefreshResult::Unchanged')
+$liveGeometryReadIndex = $refreshNativeParent.IndexOf(
+    'read_live_widget_local_extent')
+$extentObservationIndex = $refreshNativeParent.IndexOf(
+    'world_map_parent_extent_maximum_delta')
+$firstImageTranslationIndex = $refreshNativeParent.IndexOf(
+    'set_render_translation_')
+$firstImageSlotWriteIndex = $refreshNativeParent.IndexOf(
+    'set_slot_position_')
+$firstTreeRemovalIndex = $refreshNativeParent.IndexOf(
+    'remove_from_parent_')
+$firstRetainerRequestIndex = $refreshNativeParent.IndexOf(
+    'request_retainer_render_')
+$refreshVisibilityReconcileCount = [regex]::Matches(
+    $refreshNativeParent,
+    'reconcile_host_visibility_unsafe\s*\(').Count
+Assert-True ($unchangedReturnIndex -ge 0 `
+    -and $liveGeometryReadIndex -ge 0 `
+    -and $liveGeometryReadIndex -lt $unchangedReturnIndex `
+    -and $extentObservationIndex -gt $liveGeometryReadIndex `
+    -and $extentObservationIndex -lt $unchangedReturnIndex `
+    -and $firstImageTranslationIndex -eq -1 `
+    -and $firstImageSlotWriteIndex -eq -1 `
+    -and $firstTreeRemovalIndex -eq -1 `
+    -and $firstRetainerRequestIndex -eq -1 `
+    -and $refreshVisibilityReconcileCount -eq 1 `
+    -and $refreshNativeParent -match `
+        '\(void\)restack_unchanged_parent\s*;' `
+    -and $refreshNativeParent -notmatch `
+        'if\s*\([^)]*restack_unchanged_parent' `
+    -and $refreshNativeParent -notmatch `
+        '(?:PlayerIconWidget|read_live_player_canvas_anchor)' `
+    -and $refreshNativeParent -notmatch `
+        '(?i)\b(?:GetViewportSize|GetViewportScale|calculate_world_map_viewport_placement|SetPositionInViewport|SetDesiredSizeInViewport)\b') `
+    'Same-parent samples must read only the native owner extent and perform no PlayerIcon dependency or transform/tree/Retainer/visibility writes; the sole reconcile call belongs to the transient fail-closed handler.'
+$syncNativeParent = Get-RendererFunction `
+    $rendererCode 'sync_viewport_transform'
+Assert-True ($syncNativeParent -match `
+        'return\s+refresh_layering\s*\(\s*current_layer\s*,\s*false\s*,\s*0(?:\.0+)?\s*,\s*0(?:\.0+)?\s*\)' `
+    -and $syncNativeParent -notmatch `
+        '(?:ProcessEvent|set_render_translation_|set_slot_|request_retainer_render_)') `
+    'The compatibility sync entry point must be a write-free native-parent validation pass, never a viewport transform or Retainer update.'
+foreach ($forbiddenRefreshWork in @(
+        'build_rle_tga_atlas', 'ImportFileAsTexture2D', 'NewObject',
+        'CreateWidget', 'ClearChildren', 'ForceLayoutPrepass',
+        'StaticFindObject', 'FindAllOf', 'FindFirstOf',
+        'filesystem', 'fstream', 'ofstream')) {
+    Assert-True ($refreshNativeParent -notmatch `
+            [regex]::Escape($forbiddenRefreshWork)) `
+        "Native-parent refresh contains forbidden reraster, discovery, allocation, or file work: $forbiddenRefreshWork"
 }
+
+Assert-True ($detachUnsafe -match `
+        'host->ProcessEvent\s*\(\s*remove_from_parent_' `
+    -and $rendererCode -notmatch `
+        '(?:native_parent|witnessed_parent|retainer|retainer_box)->ProcessEvent\s*\(\s*(?:clear_children_|remove_from_parent_)') `
+    'Detach may remove only Mod-owned hosts; native parent and Retainer widgets must never be cleared or removed.'
 
 $setContentIntent = Get-RendererFunction `
     $rendererCode 'set_content_visibility_intent'
@@ -490,7 +500,7 @@ $visibilityDedupeIndex = $applyHostVisibility.IndexOf(
     'world_map_host_visibility_write_required')
 $visibilityFirstHostReadIndex = $applyHostVisibility.IndexOf(
     'hosts_[index].Get()')
-$visibilityCacheResetIndex = $applyHostVisibility.LastIndexOf(
+$visibilityCacheResetIndex = $applyHostVisibility.IndexOf(
     'applied_host_visibility_.reset()')
 $visibilityWriteIndex = $applyHostVisibility.IndexOf('set_visibility(')
 $visibilityPublishIndex = $applyHostVisibility.IndexOf(
@@ -503,8 +513,19 @@ Assert-True ($visibilityDedupeIndex -ge 0 `
     -and [regex]::Matches(
         $applyHostVisibility, '\bset_visibility\s*\(').Count -eq 1 `
     -and $applyHostVisibility -match `
-        'for\s*\(\s*UObject\s*\*\s*host\s*:\s*hosts\s*\)') `
-    'A repeated target must be a no-UObject no-op; a changed target must invalidate the cache before writing both hosts and publish only after both succeed.'
+        'for\s*\(\s*UObject\s*\*\s*host\s*:\s*hosts\s*\)' `
+    -and [regex]::Matches(
+        $applyHostVisibility,
+        'ProcessEvent\s*\(\s*request_retainer_render_').Count -eq 1) `
+    'A repeated target must be a no-UObject no-op; a changed target must write both hosts, request one retained render, and publish only after all writes succeed.'
+Assert-True ([regex]::Matches(
+        $rendererCode,
+        'ProcessEvent\s*\(\s*request_retainer_render_').Count -eq 1 `
+    -and $attach -notmatch `
+        'ProcessEvent\s*\(\s*request_retainer_render_' `
+    -and $rendererCode.Replace($applyHostVisibility, '') -notmatch `
+        'ProcessEvent\s*\(\s*request_retainer_render_') `
+    'RequestRender must remain bounded to an actual visibility edge; attach and all native-parent validation paths must not repaint.'
 
 $setVisibilityHelper = Get-FreeRendererFunction `
     $rendererCode 'void' 'set_visibility'
@@ -512,10 +533,10 @@ $rendererWithoutVisibilityOwner = $rendererCode.Replace(
     $setVisibilityHelper, '').Replace($applyHostVisibility, '')
 Assert-True ([regex]::Matches(
         $rendererWithoutVisibilityOwner,
-        '\bset_visibility\s*\(').Count -eq 4 `
+        '\bset_visibility\s*\(').Count -eq 3 `
     -and [regex]::Matches(
         $attach,
-        '\bset_visibility\s*\(').Count -eq 4 `
+        '\bset_visibility\s*\(').Count -eq 3 `
     -and $rendererWithoutVisibilityOwner.Replace(
         $attach, '') -notmatch '\bset_visibility\s*\(' `
     -and $rendererWithoutVisibilityOwner -match `
@@ -524,8 +545,8 @@ Assert-True ([regex]::Matches(
         'set_visibility\s*\(\s*atlas_images\s*\[\s*layer_index\s*\]' `
     -and [regex]::Matches(
         $rendererWithoutVisibilityOwner,
-        'set_visibility\s*\(\s*hosts\s*\[\s*layer_index\s*\]\s*,\s*set_visibility_\s*,\s*kCollapsed\s*\)').Count -eq 2) `
-    'Runtime viewport-host SetVisibility writes must be confined to the idempotent two-host apply helper; direct root, image, and host collapse writes may occur only inside initial construction.'
+        'set_visibility\s*\(\s*hosts\s*\[\s*layer_index\s*\]\s*,\s*set_visibility_\s*,\s*kCollapsed\s*\)').Count -eq 1) `
+    'Runtime native-child SetVisibility writes must be confined to the idempotent two-host apply helper; direct root, image, and host collapse writes may occur only inside initial construction.'
 Assert-True ($faultAndDetach -match `
         'runtime_visibility_allowed_\s*=\s*false' `
     -and $faultAndDetach -match `
@@ -550,14 +571,14 @@ Assert-True ($attach -match `
     -and $attach -match `
         'applied_host_visibility_\.reset\s*\(\s*\)' `
     -and $attach -match `
-        'state_\s*=\s*WorldMapUmgRendererState::Attached[\s\S]*?sync_viewport_transform_unsafe' `
+        'state_\s*=\s*WorldMapUmgRendererState::Attached' `
     -and $attach -match `
-        'if\s*\(\s*!transform_synced\s*\|\|\s*sync_result\s*==\s*WorldMapLayeringRefreshResult::Faulted\s*\)' `
+        'transform_ready_\s*=\s*true' `
     -and $attach -notmatch `
         '\bcontent_visibility_intent_\s*=' `
     -and $attach -notmatch `
-        'sync_result\s*==\s*WorldMapLayeringRefreshResult::RetryLater[\s\S]*?(?:detach|return\s+false)') `
-    'Fresh attachment must reset transient visibility state, publish Attached ownership before sync, and retain its hosts when first transform proof returns RetryLater.'
+        '\bsync_viewport_transform_unsafe\s*\(') `
+    'Fresh attachment must start hidden, publish valid native-child ownership, then mark inherited transform readiness without a viewport sync.'
 
 $suspendGuarded = Get-RendererFunction $rendererCode 'suspend_guarded'
 $resumeRenderer = Get-RendererFunction `
@@ -577,13 +598,13 @@ Assert-True ($suspendGuarded -match `
         '\bcontent_visibility_intent_\s*=') `
     'F8 suspension must clear transient permission/readiness and collapse through the shared visibility owner while preserving content intent.'
 Assert-True ($resumeRenderer -match `
-        'state_\s*=\s*WorldMapUmgRendererState::Attached[\s\S]*?sync_viewport_transform_unsafe' `
+        'state_\s*=\s*WorldMapUmgRendererState::Attached[\s\S]*?refresh_native_parent_unsafe' `
     -and $resumeRenderer -match `
-        'if\s*\(\s*!transform_synced\s*\|\|\s*result\s*==\s*WorldMapLayeringRefreshResult::Faulted\s*\)' `
+        'WorldMapLayeringRefreshResult::Faulted' `
     -and $resumeRenderer -notmatch '\bset_visibility\s*\(' `
     -and $resumeRenderer -notmatch `
         '\bcontent_visibility_intent_\s*=') `
-    'F7 resume must treat RetryLater as retained Attached lifecycle success and leave visibility to the shared gates.'
+    'F7 resume must revalidate/refresh native-parent ownership and leave visibility to the shared gates.'
 Assert-True ($resetRuntimeHandles -match `
         'runtime_visibility_allowed_\s*=\s*false' `
     -and $resetRuntimeHandles -match `
@@ -604,30 +625,106 @@ foreach ($lifecyclePath in @($suspendGuarded, $resumeRenderer)) {
     }
 }
 
+$validateHostPayload = Get-RendererFunction `
+    $rendererCode 'validate_host_payload_unsafe'
 $validateHost = Get-RendererFunction $rendererCode 'validate_host_unsafe'
-Assert-True ($validateHost -notmatch `
-        'read_object_property\s*\(\s*host\s*,\s*L"Slot"' `
-    -and $validateHost -notmatch '\bnative_parent_slots_\b' `
-    -and $validateHost -notmatch '\bretainer_box_\b' `
-    -and $validateHost -notmatch '\bnative_parent_\b' `
-    -and $validateHost -notmatch `
-        'current_layer_witnesses_native_parent' `
-    -and $validateHost -match `
+Assert-True ($validateHostPayload -match `
         'read_object_property\s*\(\s*host\s*,\s*L"WidgetTree"' `
+    -and $validateHostPayload -match `
+        'read_object_property\s*\(\s*root_panel\s*,\s*L"Slot"' `
+    -and $validateHostPayload -match `
+        'read_object_property\s*\(\s*root_slot\s*,\s*L"Parent"' `
+    -and $validateHostPayload -match `
+        'read_object_property\s*\(\s*root_slot\s*,\s*L"Content"' `
+    -and $validateHostPayload -match `
+        'read_struct_object_property\s*\([\s\S]*?L"Brush"\s*,\s*L"ResourceObject"' `
+    -and $validateHostPayload -match '\bretainer_box_\b' `
+    -and $validateHostPayload -match `
+        'read_object_property\s*\(\s*current_layer\s*,\s*L"RetainerBox"') `
+    'Owned-payload validation must continue to prove each Mod widget tree and atlas texture independently of native-parent replacement.'
+Assert-True ($validateHost -match `
+        'validate_host_payload_unsafe\s*\(' `
     -and $validateHost -match `
-        'read_struct_object_property\s*\([\s\S]*?L"Brush"\s*,\s*L"ResourceObject"') `
-    'Host validation must prove only the owned widget tree and atlas payload, never transient native-parent or RetainerBox identity.'
-Assert-True ($rendererCode -notmatch `
-        'current_layer_witnesses_native_parent') `
-    'Transient native-Canvas witness identity must not be treated as Mod-owned host integrity.'
+        'resolve_world_map_render_parent\s*\(' `
+    -and $validateHost -notmatch `
+        '(?:find_native_icon_class_witness|ArrayIconInfo)' `
+    -and $validateHost -match '\bnative_parent_slots_\b' `
+    -and $validateHost -match '\bnative_parent_\b' `
+    -and $validateHost -match `
+        'read_object_property\s*\(\s*host\s*,\s*L"Slot"' `
+    -and $validateHost -match `
+        'read_object_property\s*\(\s*native_slot\s*,\s*L"Parent"' `
+    -and $validateHost -match `
+        'read_object_property\s*\(\s*native_slot\s*,\s*L"Content"') `
+    'Full host validation must prove the retained layer/Retainer, owned payload, and each neutral native Canvas slot graph.'
 
 Assert-True ([regex]::Matches(
         $rendererCode, '\bbuild_rle_tga_atlas\s*\(').Count -le 2 `
     -and [regex]::Matches(
         $rendererCode, '\bImportFileAsTexture2D\b').Count -le 2) `
-    'Atlas construction/import must remain confined to definition plus initial attachment and never service transform changes.'
+    'Atlas construction/import must remain confined to definition plus initial attachment and never service inherited transforms.'
 
-# Main owns the visible-session state machine. Retained viewport hosts must be
+# TGA identifier bytes persist the atlas fingerprint and encoded-payload
+# checksum across game restarts. Cache hits fully decode the RLE envelope; all
+# writes publish through a same-directory temporary file and atomic replace.
+$atlasFingerprint = Get-FreeRendererFunction `
+    $rendererCode 'std::uint64_t' 'atlas_input_fingerprint'
+$persistentAtlasCache = Get-FreeRendererFunction `
+    $rendererCode 'bool' 'read_persistent_atlas_cache'
+$writeAtlas = Get-FreeRendererFunction `
+    $rendererCode 'bool' 'write_rle_tga'
+$buildAtlas = Get-FreeRendererFunction `
+    $rendererCode 'AtlasBuildResult' 'build_rle_tga_atlas'
+Assert-True ($rendererCode -match `
+        "kAtlasCacheMagic\s*\{[\s\S]*?'D'\s*,\s*'S'\s*,\s*'N'\s*,\s*'W'\s*,\s*'R'\s*,\s*'A'\s*,\s*'5'\s*,\s*'2'" `
+    -and $rendererCode -match `
+        'kAtlasCacheTagBytes\s*=\s*32U' `
+    -and $persistentAtlasCache -match `
+        'header\s*\[\s*0\s*\]\s*!=\s*kAtlasCacheTagBytes' `
+    -and $persistentAtlasCache -match `
+        'fingerprint\s*!=\s*expected_fingerprint' `
+    -and $persistentAtlasCache -match `
+        'visible_count\s*!=\s*expected_visible_count' `
+    -and $persistentAtlasCache -match `
+        'expected_pixels[\s\S]*?while\s*\(\s*decoded_pixels\s*<\s*expected_pixels\s*\)' `
+    -and $persistentAtlasCache -match `
+        'packet_pixels\s*>\s*expected_pixels\s*-\s*decoded_pixels' `
+    -and $persistentAtlasCache -match `
+        'payload_checksum\s*!=\s*expected_payload_checksum' `
+    -and $persistentAtlasCache -match `
+        'payload_end[\s\S]*?==\s*file_bytes' `
+    -and $writeAtlas -match `
+        'temporary_path\s*=\s*path' `
+    -and $writeAtlas -match `
+        'std::ofstream\s+output\s*\{\s*temporary_path' `
+    -and $writeAtlas -notmatch `
+        'std::ofstream\s+output\s*\{\s*path\s*,' `
+    -and $writeAtlas -match `
+        'MoveFileExW\s*\([\s\S]*?MOVEFILE_REPLACE_EXISTING\s*\|\s*MOVEFILE_WRITE_THROUGH' `
+    -and $writeAtlas -match `
+        'if\s*\(\s*!MoveFileExW[\s\S]*?filesystem::remove\s*\(\s*temporary_path' `
+    -and $buildAtlas -match `
+        'read_persistent_atlas_cache\s*\(' `
+    -and $buildAtlas -match `
+        'cache_hit\s*=\s*true') `
+    'The renderer must fully validate revision-52 RLE payloads and atomically publish same-directory cache files before reuse.'
+Assert-True ($atlasFingerprint -match `
+        'hash_quantized_atlas_value\s*\([\s\S]*?local_positions\s*\[\s*index\s*\]\.x\s*-\s*bounds\.left' `
+    -and $atlasFingerprint -match `
+        'hash_quantized_atlas_value\s*\([\s\S]*?local_positions\s*\[\s*index\s*\]\.y\s*-\s*bounds\.top' `
+    -and $atlasFingerprint -match `
+        'hash_quantized_atlas_value\s*\(\s*hash\s*,\s*bounds\.width\s*\)' `
+    -and $atlasFingerprint -match `
+        'hash_quantized_atlas_value\s*\(\s*hash\s*,\s*bounds\.height\s*\)' `
+    -and $atlasFingerprint -notmatch `
+        '\bmarker\.id\b|hash_u64\s*\(\s*hash\s*,\s*marker_count\s*\)|bit_cast' `
+    -and $rendererCode -match `
+        'kAtlasFingerprintUnitsPerLogicalUnit\s*=\s*4096\.0' `
+    -and $rendererCode -match `
+        'llround\s*\(\s*scaled\s*\)') `
+    'Persistent atlas identity must quantize only raster-affecting layer-local geometry and ignore common translation, IDs, and unrelated marker counts.'
+
+# Main owns the visible-session state machine. Retained native-child hosts must be
 # collapsed on every uncertain or closed-map edge, suspended by F8, and fully
 # detached before travel invalidates the old world.
 $layerVisibilityGate = Get-MainMethod `
@@ -715,16 +812,16 @@ Assert-True ($applyVisibility -match `
         'set_content_visibility_intent\s*\(') `
     'Every live-layer visibility update must publish only runtime allowance through the fail-closed gate.'
 
-# Transform reconciliation is event-triggered and finite. Keep the known
+# Native-parent reconciliation is event-triggered and finite. Keep the known
 # post-open settle tail, but never turn it into a steady poll or process more
-# than one reflected geometry sample in one game-thread pass.
+# than one parent observation in one game-thread pass.
 Assert-True ($maxWorldMapServiceAttempts -eq 3 `
     -and $maxWorldMapReadinessAttempts -eq 40 `
     -and $worldMapServiceRetryDelayMs -eq 150 `
     -and $worldMapOpenVisibilityGraceMs -eq 1000 `
     -and $mainCode -match `
         'kWorldMapLayeringSettleDelays\s*\{[\s\S]*?milliseconds\s*\{\s*100\s*\}[\s\S]*?milliseconds\s*\{\s*250\s*\}[\s\S]*?milliseconds\s*\{\s*500\s*\}[\s\S]*?milliseconds\s*\{\s*1000\s*\}[\s\S]*?milliseconds\s*\{\s*1250\s*\}\s*\}\s*;') `
-    'The bounded attach retry and finite 100/250/500/1000/1250 ms transform-settle schedule changed.'
+    'The bounded attach retry and finite 100/250/500/1000/1250 ms native-parent settle schedule changed.'
 
 $armLayeringRefresh = Get-MainMethod `
     $mainCode 'arm_world_map_layering_refresh'
@@ -750,7 +847,7 @@ $mapOpenLatch = Get-MainMethod `
     $mainCode 'latch_world_map_compact_suppression'
 Assert-True ($mapOpenLatch -notmatch `
         'world_map_umg_renderer_\.(?:publish_runtime_visibility|set_content_visibility_intent)\s*\(') `
-    'Compact-map suppression must not change independent world-map host visibility.'
+    'Compact-map suppression must not directly change expanded native-child host visibility.'
 
 $captureWorldMapCandidate = Get-MainMethod `
     $mainCode 'capture_world_map_candidate_unsafe'
@@ -763,15 +860,15 @@ Assert-True ($captureWorldMapCandidate -match `
         $captureWorldMapCandidate,
         'world_map_umg_renderer_\.publish_runtime_visibility\s*\(\s*false\s*\)').Count -eq 1 `
     -and $captureWorldMapCandidate -match `
-        'if\s*\(\s*attached_layer_transform_sync\s*\)\s*\{[\s\S]*?arm_world_map_layering_refresh\s*\([\s\S]*?WorldMapLayeringTrigger::SetWorldMapImage\s*,[\s\S]*?WorldMapLayeringArmPolicy::Coalesce\s*\)') `
-    'A map-open event may collapse hosts only for a new or mismatched layer; an exact attached layer must enter the transform-only settle path without hiding.'
+        'if\s*\(\s*attached_layer_validation\s*\)\s*\{[\s\S]*?arm_world_map_layering_refresh\s*\([\s\S]*?WorldMapLayeringTrigger::SetWorldMapImage\s*,[\s\S]*?WorldMapLayeringArmPolicy::Coalesce\s*\)') `
+    'A map-open event may collapse hosts only for a new or mismatched layer; an exact attached layer must enter the native-parent settle path without hiding.'
 $sameLayerOpenSession = [regex]::Match(
     $captureWorldMapCandidate,
     '(?ms)const\s+bool\s+new_open_edge\s*=\s*dswros::world_map_open_session_started\s*\(\s*candidate_transition\s*\)\s*;\s*world_map_open_serial_\s*=\s*world_map_candidate_serial_\s*;\s*if\s*\(\s*new_open_edge\s*\)\s*\{(?<body>.*?)\}\s*if\s*\(\s*content_visible\s*&&\s*!exact_attached_layer\s*\)')
 Assert-True ($sameLayerOpenSession.Success `
     -and $sameLayerOpenSession.Groups['body'].Value -match `
-        '^\s*world_map_visible_serial_\s*=\s*0\s*;\s*world_map_open_evidence_at_\s*=\s*Clock::now\s*\(\s*\)\s*;\s*$') `
-    'A same-layer SetWorldMapImage edge must start visibility grace exactly once; duplicate open events must not reset confirmed visibility or the grace clock.'
+        '^\s*world_map_visible_serial_\s*=\s*0\s*;\s*world_map_open_evidence_at_\s*=\s*Clock::now\s*\(\s*\)\s*;\s*world_map_session_rebuild_consumed_\s*=\s*false\s*;\s*$') `
+    'A same-layer SetWorldMapImage edge must start visibility grace and a fresh one-rebuild allowance exactly once; duplicate open events must not reset either bound.'
 $sameLayerEvidenceIndex = Get-RequiredPatternIndex `
     $captureWorldMapCandidate `
     'world_map_open_serial_\s*=\s*world_map_candidate_serial_\s*;' `
@@ -969,13 +1066,13 @@ Assert-True $sameLayerReuse.Success `
     'The same-attached-layer world-map reuse branch was not found.'
 $sameLayerReuseBody = $sameLayerReuse.Groups['body'].Value
 Assert-True ($sameLayerReuseBody -match `
-        'sync_viewport_transform\s*\([\s\S]*?apply_world_map_atlas_visibility_guarded\s*\(' `
+        '(?:sync_viewport_transform|refresh_layering)\s*\([\s\S]*?apply_world_map_atlas_visibility_guarded\s*\(' `
     -and $sameLayerReuseBody -notmatch `
         '(?:publish_runtime_visibility|set_content_visibility_intent)\s*\(\s*false\s*\)' `
     -and [regex]::Matches(
         $sameLayerReuseBody,
         'arm_world_map_layering_refresh\s*\([\s\S]*?WorldMapLayeringTrigger::SetWorldMapImage\s*,[\s\S]*?WorldMapLayeringArmPolicy::Coalesce\s*\)').Count -eq 2) `
-    'The same attached layer must synchronize its live transform before reapplying gated visibility and must never hide first.'
+    'The same attached layer must validate its inherited native parent before reapplying gated visibility and must never hide first.'
 
 $menuVisibility = Get-MainMethod $mainCode 'refresh_compact_menu_state'
 Assert-True ($menuVisibility -match `
@@ -1005,19 +1102,30 @@ Assert-True ($menuVisibility -match `
 
 $layeringService = Get-MainMethod `
     $mainCode 'service_world_map_layering_refresh'
+$scheduleWorldMapRebuild = Get-MainMethod `
+    $mainCode 'schedule_world_map_geometry_or_payload_rebuild'
 Assert-True ($layeringService -match `
         'WorldMapLayeringRefreshResult::Updated[\s\S]*?WorldMapLayeringRefreshResult::Unchanged[\s\S]*?WorldMapLayeringRefreshResult::Retained[\s\S]*?apply_world_map_atlas_visibility_guarded' `
     -and $layeringService -match `
-        'if\s*\(\s*current_layer\s*\)\s*\{[\s\S]*?sync_viewport_transform\s*\([\s\S]*?\}\s*else\s*\{[\s\S]*?world_map_umg_renderer_\.publish_runtime_visibility\s*\(\s*false\s*\)' `
+        'if\s*\(\s*current_layer\s*\)\s*\{[\s\S]*?refresh_layering\s*\(\s*current_layer\s*,\s*false\s*,[\s\S]*?\}\s*else\s*\{[\s\S]*?world_map_umg_renderer_\.publish_runtime_visibility\s*\(\s*false\s*\)' `
+    -and $layeringService -match `
+        'WorldMapLayeringRefreshResult::RebuildRequired[\s\S]*?schedule_world_map_geometry_or_payload_rebuild\s*\(' `
+    -and $layeringService -match `
+        'final_retry_rebuild\s*=\s*final_attempt[\s\S]*?WorldMapLayeringRefreshResult::RetryLater[\s\S]*?schedule_rebuild\s*=\s*rebuild_required\s*\|\|\s*final_retry_rebuild' `
+    -and $layeringService -match `
+        'if\s*\(\s*schedule_rebuild\s*\)[\s\S]*?schedule_world_map_geometry_or_payload_rebuild\s*\([\s\S]*?layering_final_retry_later' `
     -and [regex]::Matches(
         $layeringService,
         'world_map_umg_renderer_\.publish_runtime_visibility\s*\(\s*false\s*\)').Count -eq 1 `
     -and $layeringService -notmatch `
         'set_content_visibility_intent\s*\(') `
-    'Successful or retained transforms may reapply the runtime gate; only a missing layer is collapsed by main, while renderer-owned RetryLater preserves the host.'
+    'Successful or retained native-parent observations may reapply the runtime gate; only a missing layer is collapsed by main, while a final renderer-owned RetryLater closes into the once-per-open rebuild path.'
 Assert-True ([regex]::Matches(
-        $layeringService, '\bsync_viewport_transform\s*\(').Count -eq 1) `
-    'One settle-service pass must perform exactly one reflected viewport-transform observation.'
+        $layeringService, '\brefresh_layering\s*\(').Count -eq 1 `
+    -and $layeringService -notmatch '\bsync_viewport_transform\s*\(' `
+    -and $layeringService -notmatch `
+        'refresh_layering\s*\(\s*current_layer\s*,\s*final_attempt') `
+    'One settle-service pass must perform exactly one native-parent refresh, always disable same-parent tree mutation, and route rebuild-required explicitly.'
 Assert-True ($layeringService -match `
         '!world_map_layering_refresh_pending_[\s\S]*?now\s*<\s*world_map_layering_refresh_due_' `
     -and $layeringService -match `
@@ -1035,19 +1143,34 @@ Assert-True ($layeringService -notmatch `
         '\b(?:while|do)\s*(?:\(|\{)' `
     -and $layeringService -notmatch `
         '(?:FindAllOf|FindFirstOf|StaticFindObject|filesystem|fstream|ofstream|AddChildToCanvas|RemoveFromParent|AddToViewport|ForceLayoutPrepass)') `
-    'The settle service must not re-arm itself, catch up overdue observations, discover objects, touch files, or mutate widget trees.'
+    'The settle service must not re-arm itself, catch up overdue observations, discover objects, touch files, or directly mutate widget trees.'
+
+Assert-True ($scheduleWorldMapRebuild -match `
+        'exact_live_attachment[\s\S]*?current_session[\s\S]*?!world_map_session_rebuild_consumed_' `
+    -and $scheduleWorldMapRebuild -match `
+        'world_map_session_rebuild_consumed_\s*=\s*true[\s\S]*?world_map_service_attempts_\s*=\s*0[\s\S]*?world_map_umg_renderer_\.begin_map_session\s*\(\s*\)' `
+    -and $scheduleWorldMapRebuild -match `
+        'WorldMapUmgRendererState::Ready[\s\S]*?world_map_renderer_session_started_\s*=\s*true[\s\S]*?world_map_readiness_attempts_\s*=\s*0[\s\S]*?world_map_session_pending_\s*=\s*true' `
+    -and [regex]::Matches(
+        $scheduleWorldMapRebuild,
+        'world_map_service_attempts_\s*=\s*0').Count -eq 1 `
+    -and $scheduleWorldMapRebuild -notmatch `
+        'world_map_marker_snapshot_built_\s*=|world_map_umg_markers_\.(?:fill|clear)|world_map_marker_count_\s*=' `
+    -and $scheduleWorldMapRebuild -notmatch `
+        '(?:publish_runtime_visibility|set_content_visibility_intent|transform_ready_|reconcile_host_visibility)') `
+    'A geometry/payload rebuild must be exact-session and once-per-open; it must spend the latch before starting one fresh three-attempt attach budget, while rejection preserves the current renderer visibility and marker snapshot.'
 
 $disable = Get-MainMethod $mainCode 'disable'
 Assert-True ($disable -match `
         'preserve_world_map_evidence_on_f8\s*\([\s\S]*?world_map_candidate_available_[\s\S]*?exact_candidate_live[\s\S]*?candidate_in_current_world[\s\S]*?world_map_candidate_has_open_evidence\s*\(\s*\)' `
     -and $disable -match `
         'world_map_umg_renderer_\.suspend\s*\(\s*\)[\s\S]*?reset_world_map_runtime\s*\(\s*preserve_world_map_candidate\s*\)') `
-    'F8 disable must synchronously collapse the independent atlas hosts while preserving exact live session evidence independently of renderer suspension success.'
+    'F8 disable must synchronously collapse the native-child atlas hosts while preserving exact live session evidence independently of renderer suspension success.'
 
 $transitionBegin = Get-MainMethod $mainCode 'transition_begin'
 Assert-True ($transitionBegin -match `
         'compact_umg_renderer_\.detach\s*\(\s*\)[\s\S]*?reset_compact_pool_runtime\s*\(\s*\)[\s\S]*?world_map_umg_renderer_\.detach\s*\(\s*\)[\s\S]*?reset_world_map_runtime\s*\(\s*false\s*\)[\s\S]*?if\s*\(\s*!enabled_\s*\)') `
-    'Travel must detach/reset both viewport renderers before the disabled early return can preserve old-world hosts.'
+    'Travel must detach/reset both renderers before the disabled early return can preserve old-world hosts.'
 
 $activationCatchUp = Get-MainMethod `
     $mainCode 'world_map_activation_catch_up_unsafe'
@@ -1085,7 +1208,82 @@ Assert-True ($resumeWorldMap -match `
         'if\s*\(\s*resumed\s*\)\s*\{[\s\S]*?apply_world_map_atlas_visibility_guarded\s*\([\s\S]*?arm_world_map_layering_refresh\s*\([\s\S]*?WorldMapLayeringTrigger::F7Resume\s*,[\s\S]*?WorldMapLayeringArmPolicy::Restart\s*\)') `
     'F7 resume must require enabled content, current candidate evidence, revalidated visible state, and a retained payload before restarting the finite settle tail.'
 Assert-True ($serviceWorldMapAtlas -match `
-        'WorldMapLayeringTrigger::Attach\s*,[\s\S]*?WorldMapLayeringArmPolicy::Restart\s*\)') `
-    'A fresh viewport attachment is a lifecycle edge and must explicitly restart the finite settle tail.'
+        'apply_world_map_atlas_visibility_guarded\s*\([\s\S]*?arm_world_map_layering_refresh\s*\(\s*Clock::now\s*\(\s*\)\s*,\s*WorldMapLayeringTrigger::Attach\s*,[\s\S]*?WorldMapLayeringArmPolicy::Restart\s*\)' `
+    -and $serviceWorldMapAtlas -notmatch `
+        'arm_world_map_layering_refresh\s*\(\s*now\s*,\s*WorldMapLayeringTrigger::Attach') `
+    'A fresh native-child attachment must start its finite settle tail from a new post-attach clock sample, after publishing initial visibility.'
 
-Write-Host 'Native world-map independent-viewport canary passed.'
+$zoomTopologyArm = Get-MainMethod $mainCode 'arm_world_map_zoom_topology'
+$zoomTopologyService = Get-MainMethod `
+    $mainCode 'service_world_map_zoom_topology'
+$zoomTopologyPost = Get-MainMethod $mainCode 'world_map_zoom_post_unsafe'
+$engineTickUnsafe = Get-MainMethod $mainCode 'engine_tick_unsafe'
+$zoomTopologyCapture = Get-RendererFunction `
+    $rendererCode 'capture_zoom_topology_unsafe'
+$zoomTopologyDebounce = Get-MillisecondConstant `
+    $mainCode 'kWorldMapZoomTopologyDebounce'
+Assert-True ($zoomTopologyDebounce -eq 1250 `
+    -and $zoomTopologyArm -match `
+        '!dsnwr::native_event_log_enabled\s*\(\s*\)[\s\S]*?cancel_world_map_zoom_topology\s*\(\s*\)[\s\S]*?return\s*;[\s\S]*?world_map_zoom_topology_pending_\s*=\s*true' `
+    -and $zoomTopologyArm -match `
+        'world_map_zoom_topology_due_\s*=\s*now\s*\+\s*kWorldMapZoomTopologyDebounce' `
+    -and $zoomTopologyArm -match `
+        'world_map_zoom_topology_serial_\s*=\s*world_map_candidate_serial_') `
+    'Zoom topology diagnostics must be disabled-cost-free and use a serial-bound 1,250 ms trailing-edge deadline.'
+Assert-True ($zoomTopologyPost -match `
+        'arm_world_map_zoom_topology\s*\(\s*now\s*\)[\s\S]*?arm_world_map_layering_refresh\s*\(') `
+    'Every accepted ZoomChanged edge must restart the independent diagnostic deadline without replacing the renderer settle path.'
+Assert-True ($zoomTopologyService -match `
+        '^\s{4}void\s+service_world_map_zoom_topology[^\{]*\{\s*if\s*\(\s*!world_map_zoom_topology_pending_\s*\)\s*\{\s*return\s*;\s*\}\s*if\s*\(\s*!dsnwr::native_event_log_enabled\s*\(\s*\)\s*\)[\s\S]*?cancel_world_map_zoom_topology\s*\(\s*\)[\s\S]*?return\s*;' `
+    -and $zoomTopologyService -match `
+        'world_map_zoom_topology_serial_\s*!=\s*world_map_candidate_serial_[\s\S]*?cancel_world_map_zoom_topology\s*\(\s*\)' `
+    -and $zoomTopologyService -match `
+        'now\s*<\s*world_map_zoom_topology_due_[\s\S]*?return\s*;' `
+    -and [regex]::Matches(
+        $zoomTopologyService,
+        'world_map_umg_renderer_\.capture_zoom_topology\s*\(').Count -eq 1 `
+    -and $zoomTopologyService -notmatch `
+        '(?:refresh_layering|sync_viewport_transform|arm_world_map_zoom_topology)\s*\(') `
+    'Topology service must cancel when diagnostics/session/serial become invalid and perform one read-only capture without refreshing or rearming rendering.'
+$topologyServiceIndex = $engineTickUnsafe.IndexOf(
+    'service_world_map_zoom_topology(now)')
+$layeringServiceIndex = $engineTickUnsafe.IndexOf(
+    'service_world_map_layering_refresh(now)')
+Assert-True ($topologyServiceIndex -ge 0 `
+    -and $layeringServiceIndex -gt $topologyServiceIndex `
+    -and $engineTickUnsafe -match `
+        'if\s*\(\s*world_map_zoom_topology_pending_\s*\)\s*\{\s*service_world_map_zoom_topology\s*\(\s*now\s*\)\s*;\s*\}') `
+    'The diagnostic service must have zero normal-tick call overhead while not pending and must execute before renderer layering refresh when armed.'
+Assert-True ($zoomTopologyCapture -match `
+        'MapOverlayOutSide[\s\S]*?RetainerBox[\s\S]*?FogUnderPanel[\s\S]*?FogAbovePanel[\s\S]*?TrackingPanel[\s\S]*?SelectedPanel' `
+    -and $zoomTopologyCapture -match `
+        'UObject\*\s+mod_host\s*=\s*hosts_\s*\[[^]]+\]\.Get\s*\(\s*\)' `
+    -and $zoomTopologyCapture -match `
+        'capture_chain\s*\(\s*mod_host\s*,\s*snapshot\.mod_host_ancestry\s*\[[^]]+\]\s*\)' `
+    -and $zoomTopologyCapture -match `
+        'UObject\*\s+mod_root\s*=\s*root_panels_\s*\[[^]]+\]\.Get\s*\(\s*\)' `
+    -and $zoomTopologyCapture -match `
+        'capture_chain\s*\(\s*mod_root\s*,\s*snapshot\.mod_root_ancestry\s*\[[^]]+\]\s*\)' `
+    -and $zoomTopologyCapture -match `
+        'UObject\*\s+mod_image\s*=\s*atlas_images_\s*\[[^]]+\]\.Get\s*\(\s*\)' `
+    -and $zoomTopologyCapture -match `
+        'capture_chain\s*\(\s*mod_image\s*,\s*snapshot\.mod_image_ancestry\s*\[[^]]+\]\s*\)' `
+    -and $zoomTopologyCapture -notmatch `
+        '(?:set_|add_child|remove_from_parent|request_retainer_render|reconcile_host_visibility|fault_and_detach)\s*\(') `
+    'Topology capture must remain a fixed, getter-only observation of named native branches and both Mod atlas layers.'
+Assert-True ($zoomTopologyService -match `
+        '"mod_host"\s*,\s*layer_index\s*,\s*topology\.mod_host_ancestry\s*\[\s*layer\s*\]' `
+    -and $zoomTopologyService -match `
+        '"mod_root"\s*,\s*layer_index\s*,\s*topology\.mod_root_ancestry\s*\[\s*layer\s*\]' `
+    -and $zoomTopologyService -match `
+        '"mod_image"\s*,\s*layer_index\s*,\s*topology\.mod_image_ancestry\s*\[\s*layer\s*\]') `
+    'Each Mod host, root, and image layer must emit its own explicit ancestry-chain record.'
+Assert-True ($mainCode -notmatch 'renderer_state_unchanged' `
+    -and $mainCode -match 'capture_call_read_only=true' `
+    -and $mainCode -match 'WORLD_MAP_ZOOM_TOPOLOGY_SUMMARY' `
+    -and $mainCode -match 'WORLD_MAP_ZOOM_TOPOLOGY_WIDGET' `
+    -and $mainCode -match 'WORLD_MAP_ZOOM_TOPOLOGY_PARENT' `
+    -and $mainCode -match 'WORLD_MAP_ZOOM_TOPOLOGY_CHAIN') `
+    'Topology diagnostics must use sample-id correlated bounded records and must not claim the renderer state was globally unchanged.'
+
+Write-Host 'Native world-map full-stretch-host inner-atlas-layout canary passed.'

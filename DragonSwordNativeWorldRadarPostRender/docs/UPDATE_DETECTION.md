@@ -106,8 +106,47 @@ not Setup ownership and does not validate runtime/gameplay behavior.
 `20/20`, Manual reports `2/2`, payload equivalence, manual layout, and clean-target
 policy validation pass, and all three public ZIPs re-extract byte-identically.
 These records remain historical 2.2.0 evidence. Version 2.2.1 changes only the
-world-map ownership boundary; its exact source, build, package, installer,
-deployment, gameplay, and performance validation remain pending.
+world-map ownership boundary. The deployed outer-atlas-rectangle DLL
+`CD41F0E1FD04AE3E06AA3EA0163EAE0019A19E6B3B7B0B9A110A907B06E6FBB2`, from
+compiled source
+`433710E06412A5BEB4F225CB7B3658024C5974AC5B26CDD94BDB09D55ED2E62C`, is
+runtime rejected. Its negative atlas-left outer slot changed the native parent
+extent from `3000x3000` to `3191.520996x3000`, causing a self-induced rebuild
+loop with 6 attaches and 5 detaches, flashing, and an empty map. The same run
+populated 1,632 markers and reported no data, texture, or ABI fault. Backup
+`dist/work/deployment/deploy-backups/20260905-182946-652-native-only-deploy`
+remains rollback evidence for those rejected bytes only.
+
+The later rejected dynamic-anchor-rebase architecture kept both outer Mod hosts and their inner
+`Panel_Point` slots full stretch with zero offsets, uses maximum Z only on the
+outer slots, and places `{atlas_left,atlas_top,atlas_width,atlas_height}` only in
+the Image Canvas slots with Image render translation `(0,0)`. It also starts the
+finite tail from a fresh post-attach clock, omits the attach-end empty Retainer
+`RequestRender`, keeps rebuild requests report-only until scheduling succeeds,
+and requires two matching successful extent observations before an extent-
+driven rebuild. Source/static gates, Core `2/2`, release hygiene, and the local
+native build pass
+at DLL `5C632820CC44065AB9FEDDA260A392B5C72655D3815F445C73CF4A50A72DD606`,
+from compiled source
+`798297BBF7F9791A9E2FFBFF4EC5894A62CC4B16B825CB6BAEBC19A398CB2585`, size
+1,110,016 bytes. Rollback-backed diagnostics-enabled local developer deployment
+passes for the exact DLL. Installed identity matches, the single controlling Mod
+entry is enabled (`mods=1`), and `debug_logging=true`; backup:
+`dist/work/deployment/deploy-backups/20260905-191717-084-native-only-deploy`.
+Package and installer remain pending; gameplay, visual, performance, and
+resolution acceptance remain `NOT_VALIDATED`.
+
+WM-06 supersedes that rejected deployment. It removes retained PlayerIcon
+rebasing, keeps same-parent/same-extent refresh observation-only, and passes
+source/static gates, Core `2/2`, release hygiene, native build, rollback-backed
+developer deployment, Setup `20/20`, Manual `2/2`, payload equivalence, layout,
+clean-target, and byte-identical re-extraction of all three ZIPs for DLL
+`6435E10031D90840BF0499664CF57347D7991C9C192BD3B2239ADE2324C723A1`
+from compiled source
+`0A1A4CE3EE9F3A04E4B258976CFD830654BCB778B1F9BF5715FB66242B5E5BC5`.
+Gameplay, visual, click-target, resolution, exit, and performance acceptance
+remain `NOT_VALIDATED`; binary publication remains blocked by the recorded
+rights and provenance reviews.
 
 ## What F7 does
 

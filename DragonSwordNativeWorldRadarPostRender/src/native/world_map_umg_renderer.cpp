@@ -16,11 +16,11 @@
 #include <Unreal/UObject.hpp>
 #include <Unreal/UObjectGlobals.hpp>
 #include <Unreal/UFunctionStructs.hpp>
+#include <Unreal/Property/FEnumProperty.hpp>
 #include "ue4ss_compat.hpp"
 #pragma warning(pop)
 
 #include <algorithm>
-#include <bit>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -29,6 +29,7 @@
 #include <fstream>
 #include <functional>
 #include <limits>
+#include <string>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -68,16 +69,6 @@ struct ZOrderParameters {
     std::int32_t value{};
 };
 
-struct AddToViewportParameters {
-    std::int32_t z_order{};
-};
-
-struct PositionInViewportParameters {
-    Vector2D position{};
-    bool remove_dpi_scale{};
-    std::array<std::byte, 7> padding{};
-};
-
 struct VisibilityParameters {
     std::uint8_t visibility{};
 };
@@ -107,8 +98,6 @@ static_assert(sizeof(ObjectReturnParameters) == 8);
 static_assert(sizeof(AddChildParameters) == 16);
 static_assert(sizeof(VectorParameters) == 16);
 static_assert(sizeof(ZOrderParameters) == 4);
-static_assert(sizeof(AddToViewportParameters) == 4);
-static_assert(sizeof(PositionInViewportParameters) == 24);
 static_assert(sizeof(VisibilityParameters) == 1);
 static_assert(sizeof(GetPositionParameters) == 16);
 static_assert(sizeof(SetBrushFromTextureParameters) == 16);
@@ -124,9 +113,9 @@ constexpr double kAssaultMarkerSize = 34.0;
 // Compact-map sizing remains independently owned by compact_umg_renderer.cpp.
 constexpr double kMiniGameMarkerSize = 32.0;
 constexpr double kAreaQuestMarkerSize = 26.0;
-// Game-native map icons can also occupy the maximum Canvas Z. Both radar
-// hosts therefore use that same maximum and are inserted after the native
-// children; background-then-foreground insertion preserves internal order.
+// This is a CanvasPanelSlot Z, not a viewport paint-layer seed. The hosts are
+// inserted after native children and share their maximum Z so the lower then
+// upper insertion order remains deterministic.
 constexpr std::int32_t kRadarMarkerZ =
     std::numeric_limits<std::int32_t>::max();
 constexpr std::int32_t kMaxNativeIconCandidates = 4096;
@@ -151,7 +140,7 @@ constexpr std::uint32_t kHammerHighlight = 0xFFF0B56FU;
 constexpr std::uint32_t kWave = 0xFF325BE0U;
 constexpr std::uint32_t kAreaQuestBubble = 0xFFEFEDE7U;
 constexpr std::uint32_t kAreaQuestDark = 0xFF232A2EU;
-constexpr std::uint64_t kAtlasStyleRevision = 50U;
+constexpr std::uint64_t kAtlasStyleRevision = 51U;
 
 enum class AtlasLayer : std::uint8_t {
     Background,
@@ -221,12 +210,11 @@ T* find(const wchar_t* path) {
         : nullptr;
 }
 
-struct NativeIconTemplate {
+struct NativeIconClassWitness {
     UClass* icon_class{};
-    UObject* parent_canvas{};
 };
 
-enum class NativeIconTemplateLookupResult : std::uint32_t {
+enum class NativeIconClassLookupResult : std::uint32_t {
     Found,
     NotReady,
     InvalidSchema,
@@ -291,11 +279,6 @@ struct GeometryReflectionSchema {
     FStructProperty* absolute_to_local_geometry{};
     FStructProperty* absolute_coordinate{};
     FStructProperty* absolute_to_local_return{};
-};
-
-struct ViewportGeometryReflectionSchema {
-    FObjectPropertyBase* world_context_object{};
-    FStructProperty* return_value{};
 };
 
 [[nodiscard]] bool resolve_geometry_reflection_schema(
@@ -367,36 +350,19 @@ struct ViewportGeometryReflectionSchema {
         && vector_struct_is_finite_schema(schema.alignment_return);
 }
 
-[[nodiscard]] bool resolve_viewport_geometry_reflection_schema(
-    UFunction* get_viewport_widget_geometry,
-    FStructProperty* expected_geometry,
-    ViewportGeometryReflectionSchema& schema) {
-    schema = {};
-    schema.world_context_object = CastField<FObjectPropertyBase>(
-        find_function_field(
-            get_viewport_widget_geometry, L"WorldContextObject"));
-    schema.return_value = CastField<FStructProperty>(
-        find_function_field(get_viewport_widget_geometry, L"ReturnValue"));
-    return function_property_fits(
-               get_viewport_widget_geometry, schema.world_context_object)
-        && function_property_fits(
-               get_viewport_widget_geometry, schema.return_value)
-        && expected_geometry && schema.return_value
-        && schema.return_value->GetStruct() == expected_geometry->GetStruct();
-}
-
-// Reads only the supplied layer's current icon array once. The selected widget
-// must still own its reflected CanvasPanelSlot, belong to the current player,
-// and derive from the native map-point widget type. No candidate survives this
-// call as a raw pointer.
-[[nodiscard]] NativeIconTemplateLookupResult find_native_icon_template(
+// Reads the supplied layer's current icon array only while creating a fresh
+// host. The selected widget must still own its reflected CanvasPanelSlot,
+// belong to the current player, and derive from the native map-point widget
+// type. Its parent is a readiness witness only: runtime rendering is anchored
+// to DLayerMap.FogAbovePanel and never follows ArrayIconInfo ordering.
+[[nodiscard]] NativeIconClassLookupResult find_native_icon_class_witness(
     UObject* layer,
     UObject* expected_owning_player,
     UClass* map_point_icon_class,
     UClass* canvas_panel_class,
     UClass* canvas_panel_slot_class,
     UFunction* get_owning_player,
-    NativeIconTemplate& result) {
+    NativeIconClassWitness& result) {
     result = {};
     auto* array_property = CastField<FArrayProperty>(
         layer ? layer->GetPropertyByNameInChain(L"ArrayIconInfo") : nullptr);
@@ -410,19 +376,19 @@ struct ViewportGeometryReflectionSchema {
             ? find_struct_field(info_property->GetStruct(), L"IconWidget")
             : nullptr);
     if (!array_property || !array_value || !info_property || !icon_property) {
-        return NativeIconTemplateLookupResult::InvalidSchema;
+        return NativeIconClassLookupResult::InvalidSchema;
     }
 
     FScriptArrayHelper icons(array_property, array_value);
     const std::int32_t count = icons.Num();
     if (count < 0) {
-        return NativeIconTemplateLookupResult::InvalidSchema;
+        return NativeIconClassLookupResult::InvalidSchema;
     }
     if (count == 0) {
-        return NativeIconTemplateLookupResult::NotReady;
+        return NativeIconClassLookupResult::NotReady;
     }
     if (count > kMaxNativeIconCandidates) {
-        return NativeIconTemplateLookupResult::InvalidSchema;
+        return NativeIconClassLookupResult::InvalidSchema;
     }
     for (std::int32_t index = 0; index < count; ++index) {
         void* info_value = icons.GetRawPtr(index);
@@ -441,13 +407,13 @@ struct ViewportGeometryReflectionSchema {
         auto* slot_property = CastField<FObjectPropertyBase>(
             icon->GetPropertyByNameInChain(L"Slot"));
         if (!point_panel_property || !slot_property) {
-            return NativeIconTemplateLookupResult::InvalidSchema;
+            return NativeIconClassLookupResult::InvalidSchema;
         }
         void* point_panel_value =
             point_panel_property->ContainerPtrToValuePtr<void>(icon);
         void* slot_value = slot_property->ContainerPtrToValuePtr<void>(icon);
         if (!point_panel_value || !slot_value) {
-            return NativeIconTemplateLookupResult::InvalidSchema;
+            return NativeIconClassLookupResult::InvalidSchema;
         }
         UObject* point_panel =
             point_panel_property->GetObjectPropertyValue(point_panel_value);
@@ -457,7 +423,7 @@ struct ViewportGeometryReflectionSchema {
         }
         if (!point_panel->IsA(canvas_panel_class)
             || !slot->IsA(canvas_panel_slot_class)) {
-            return NativeIconTemplateLookupResult::InvalidSchema;
+            return NativeIconClassLookupResult::InvalidSchema;
         }
 
         auto* parent_property = CastField<FObjectPropertyBase>(
@@ -465,14 +431,14 @@ struct ViewportGeometryReflectionSchema {
         auto* content_property = CastField<FObjectPropertyBase>(
             slot->GetPropertyByNameInChain(L"Content"));
         if (!parent_property || !content_property) {
-            return NativeIconTemplateLookupResult::InvalidSchema;
+            return NativeIconClassLookupResult::InvalidSchema;
         }
         void* parent_value =
             parent_property->ContainerPtrToValuePtr<void>(slot);
         void* content_value =
             content_property->ContainerPtrToValuePtr<void>(slot);
         if (!parent_value || !content_value) {
-            return NativeIconTemplateLookupResult::InvalidSchema;
+            return NativeIconClassLookupResult::InvalidSchema;
         }
         UObject* parent = parent_property->GetObjectPropertyValue(parent_value);
         UObject* content = content_property->GetObjectPropertyValue(content_value);
@@ -480,7 +446,7 @@ struct ViewportGeometryReflectionSchema {
             continue;
         }
         if (!parent->IsA(canvas_panel_class) || content != icon) {
-            return NativeIconTemplateLookupResult::InvalidSchema;
+            return NativeIconClassLookupResult::InvalidSchema;
         }
 
         ObjectReturnParameters owning_player{};
@@ -493,10 +459,23 @@ struct ViewportGeometryReflectionSchema {
         if (!icon_class || !icon_class->IsChildOf(map_point_icon_class)) {
             continue;
         }
-        result = {icon_class, parent};
-        return NativeIconTemplateLookupResult::Found;
+        result = {icon_class};
+        return NativeIconClassLookupResult::Found;
     }
-    return NativeIconTemplateLookupResult::NotReady;
+    return NativeIconClassLookupResult::NotReady;
+}
+
+// The game keeps FogAbovePanel as a named DLayerMap branch and gives it the
+// same transform space as the other map canvases. Zoom-driven icon rebuilds
+// change ArrayIconInfo contents and ordering, and the first valid icon can
+// belong to either FogUnderPanel or FogAbovePanel. Its current parent is not a
+// stable render-owner contract.
+[[nodiscard]] UObject* resolve_world_map_render_parent(
+    UObject* layer, UClass* canvas_panel_class) {
+    UObject* parent = read_object_property(layer, L"FogAbovePanel");
+    return parent && canvas_panel_class && parent->IsA(canvas_panel_class)
+        ? parent
+        : nullptr;
 }
 
 [[nodiscard]] bool read_numeric_value(
@@ -633,18 +612,177 @@ private:
     return true;
 }
 
-[[nodiscard]] bool write_object_property(
-    FObjectPropertyBase* property,
-    void* container,
-    UObject* value) {
+struct CanvasSlotLayoutReflectionSchema {
+    FStructProperty* anchors_parameter{};
+    FStructProperty* anchors_minimum{};
+    FStructProperty* anchors_maximum{};
+    FStructProperty* offsets_parameter{};
+    FNumericProperty* offset_left{};
+    FNumericProperty* offset_top{};
+    FNumericProperty* offset_right{};
+    FNumericProperty* offset_bottom{};
+    FBoolProperty* auto_size_parameter{};
+};
+
+[[nodiscard]] bool numeric_field_fits(
+    FStructProperty* owner, FNumericProperty* field) {
+    return owner && field && field->GetOffset_Internal() >= 0
+        && field->GetSize() > 0
+        && field->GetOffset_Internal() + field->GetSize()
+            <= owner->GetSize()
+        && (field->IsFloatingPoint() || field->IsInteger());
+}
+
+[[nodiscard]] bool resolve_canvas_slot_layout_schema(
+    UFunction* set_anchors,
+    UFunction* set_offsets,
+    UFunction* set_auto_size,
+    CanvasSlotLayoutReflectionSchema& schema) {
+    schema = {};
+    for (FProperty* property : DSNWRPR_PROPERTIES_IN_CHAIN(set_anchors)) {
+        if (property->HasAnyPropertyFlags(CPF_Parm)
+            && !property->HasAnyPropertyFlags(CPF_ReturnParm)) {
+            schema.anchors_parameter = CastField<FStructProperty>(property);
+            if (schema.anchors_parameter) {
+                break;
+            }
+        }
+    }
+    for (FProperty* property : DSNWRPR_PROPERTIES_IN_CHAIN(set_offsets)) {
+        if (property->HasAnyPropertyFlags(CPF_Parm)
+            && !property->HasAnyPropertyFlags(CPF_ReturnParm)) {
+            schema.offsets_parameter = CastField<FStructProperty>(property);
+            if (schema.offsets_parameter) {
+                break;
+            }
+        }
+    }
+    for (FProperty* property : DSNWRPR_PROPERTIES_IN_CHAIN(set_auto_size)) {
+        if (property->HasAnyPropertyFlags(CPF_Parm)
+            && !property->HasAnyPropertyFlags(CPF_ReturnParm)) {
+            schema.auto_size_parameter = CastField<FBoolProperty>(property);
+            if (schema.auto_size_parameter) {
+                break;
+            }
+        }
+    }
+    if (!function_property_fits(set_anchors, schema.anchors_parameter)
+        || !function_property_fits(set_offsets, schema.offsets_parameter)
+        || !function_property_fits(
+            set_auto_size, schema.auto_size_parameter)) {
+        return false;
+    }
+
+    UScriptStruct* anchors = schema.anchors_parameter->GetStruct();
+    schema.anchors_minimum = CastField<FStructProperty>(
+        anchors ? find_struct_field(anchors, L"Minimum") : nullptr);
+    schema.anchors_maximum = CastField<FStructProperty>(
+        anchors ? find_struct_field(anchors, L"Maximum") : nullptr);
+    UScriptStruct* offsets = schema.offsets_parameter->GetStruct();
+    schema.offset_left = CastField<FNumericProperty>(
+        offsets ? find_struct_field(offsets, L"Left") : nullptr);
+    schema.offset_top = CastField<FNumericProperty>(
+        offsets ? find_struct_field(offsets, L"Top") : nullptr);
+    schema.offset_right = CastField<FNumericProperty>(
+        offsets ? find_struct_field(offsets, L"Right") : nullptr);
+    schema.offset_bottom = CastField<FNumericProperty>(
+        offsets ? find_struct_field(offsets, L"Bottom") : nullptr);
+    return vector_struct_is_finite_schema(schema.anchors_minimum)
+        && vector_struct_is_finite_schema(schema.anchors_maximum)
+        && numeric_field_fits(schema.offsets_parameter, schema.offset_left)
+        && numeric_field_fits(schema.offsets_parameter, schema.offset_top)
+        && numeric_field_fits(schema.offsets_parameter, schema.offset_right)
+        && numeric_field_fits(schema.offsets_parameter, schema.offset_bottom);
+}
+
+[[nodiscard]] bool write_numeric_property(
+    FNumericProperty* property, void* container, double value) {
     void* address = property && container
         ? property->ContainerPtrToValuePtr<void>(container)
         : nullptr;
-    if (!property || !address || !value) {
+    if (!property || !address || !std::isfinite(value)) {
         return false;
     }
-    property->SetObjectPropertyValue(address, value);
-    return property->GetObjectPropertyValue(address) == value;
+    if (property->IsFloatingPoint()) {
+        property->SetFloatingPointPropertyValue(address, value);
+        return true;
+    }
+    if (property->IsInteger()) {
+        property->SetIntPropertyValue(
+            address, static_cast<std::int64_t>(value));
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] bool configure_full_stretch_canvas_slot(
+    UObject* slot,
+    UFunction* set_anchors,
+    UFunction* set_offsets,
+    UFunction* set_auto_size,
+    UFunction* set_alignment) {
+    if (!slot || !set_alignment) {
+        return false;
+    }
+    CanvasSlotLayoutReflectionSchema schema{};
+    GeometryCallParameters anchors_parameters(set_anchors);
+    GeometryCallParameters offsets_parameters(set_offsets);
+    GeometryCallParameters auto_size_parameters(set_auto_size);
+    if (!anchors_parameters.valid() || !offsets_parameters.valid()
+        || !auto_size_parameters.valid()
+        || !resolve_canvas_slot_layout_schema(
+            set_anchors, set_offsets, set_auto_size, schema)) {
+        return false;
+    }
+
+    void* anchors_value = schema.anchors_parameter
+        ->ContainerPtrToValuePtr<void>(anchors_parameters.data());
+    void* offsets_value = schema.offsets_parameter
+        ->ContainerPtrToValuePtr<void>(offsets_parameters.data());
+    void* auto_size_value = schema.auto_size_parameter
+        ->ContainerPtrToValuePtr<void>(auto_size_parameters.data());
+    if (!anchors_value || !offsets_value || !auto_size_value
+        || !write_vector_property(
+            schema.anchors_minimum, anchors_value, 0.0, 0.0)
+        || !write_vector_property(
+            schema.anchors_maximum, anchors_value, 1.0, 1.0)
+        || !write_numeric_property(schema.offset_left, offsets_value, 0.0)
+        || !write_numeric_property(schema.offset_top, offsets_value, 0.0)
+        || !write_numeric_property(schema.offset_right, offsets_value, 0.0)
+        || !write_numeric_property(schema.offset_bottom, offsets_value, 0.0)) {
+        return false;
+    }
+    schema.auto_size_parameter->SetPropertyValue(auto_size_value, false);
+    if (schema.auto_size_parameter->GetPropertyValue(auto_size_value)) {
+        return false;
+    }
+
+    slot->ProcessEvent(set_auto_size, auto_size_parameters.data());
+    slot->ProcessEvent(set_anchors, anchors_parameters.data());
+    slot->ProcessEvent(set_offsets, offsets_parameters.data());
+    VectorParameters alignment{{0.0, 0.0}};
+    slot->ProcessEvent(set_alignment, &alignment);
+    return true;
+}
+
+[[nodiscard]] bool configure_full_stretch_overlay_slot(
+    UObject* slot,
+    UFunction* set_anchors,
+    UFunction* set_offsets,
+    UFunction* set_auto_size,
+    UFunction* set_alignment,
+    UFunction* set_z_order) {
+    if (!slot || !set_z_order) {
+        return false;
+    }
+    if (!configure_full_stretch_canvas_slot(
+            slot, set_anchors, set_offsets, set_auto_size,
+            set_alignment)) {
+        return false;
+    }
+    ZOrderParameters z_order{kRadarMarkerZ};
+    slot->ProcessEvent(set_z_order, &z_order);
+    return true;
 }
 
 [[nodiscard]] bool copy_geometry_property(
@@ -692,6 +830,38 @@ private:
         && width > 0.0 && height > 0.0;
 }
 
+// Reads only the exact render owner's local extent. Retained-host refresh must
+// not depend on PlayerIconWidget: the game rebuilds and repositions that
+// parallel branch while zoom tiers animate, whereas FogAbovePanel remains the
+// transform owner inherited by the Mod hosts.
+[[nodiscard]] bool read_live_widget_local_extent(
+    UObject* widget,
+    UObject* slate_library,
+    UFunction* get_cached_geometry,
+    UFunction* get_slot_alignment,
+    UFunction* get_geometry_local_size,
+    UFunction* local_to_absolute,
+    UFunction* absolute_to_local,
+    double& width,
+    double& height) {
+    GeometryReflectionSchema schema{};
+    if (!widget || !slate_library
+        || !resolve_geometry_reflection_schema(
+            get_cached_geometry, get_slot_alignment,
+            get_geometry_local_size, local_to_absolute,
+            absolute_to_local, schema)) {
+        return false;
+    }
+    GeometryCallParameters geometry(get_cached_geometry);
+    if (!geometry.valid()) {
+        return false;
+    }
+    widget->ProcessEvent(get_cached_geometry, geometry.data());
+    return read_geometry_local_size(
+        slate_library, get_geometry_local_size, schema,
+        schema.cached_geometry_return, geometry.data(), width, height);
+}
+
 [[nodiscard]] bool transform_geometry_point(
     UObject* slate_library,
     UFunction* function,
@@ -718,52 +888,6 @@ private:
     slate_library->ProcessEvent(function, parameters.data());
     return read_vector_property(
         return_property, parameters.data(), output_x, output_y);
-}
-
-[[nodiscard]] bool read_slate_geometry_snapshot(
-    UObject* slate_library,
-    UFunction* get_geometry_local_size,
-    UFunction* local_to_absolute,
-    const GeometryReflectionSchema& schema,
-    FStructProperty* source_geometry_property,
-    void* source_geometry_container,
-    dswros::WorldMapSlateGeometry& snapshot) {
-    snapshot = {};
-    double width{};
-    double height{};
-    double absolute_left{};
-    double absolute_top{};
-    double absolute_right{};
-    double absolute_bottom{};
-    if (!read_geometry_local_size(
-            slate_library, get_geometry_local_size, schema,
-            source_geometry_property, source_geometry_container,
-            width, height)
-        || !transform_geometry_point(
-            slate_library, local_to_absolute,
-            schema.local_to_absolute_geometry, schema.local_coordinate,
-            schema.local_to_absolute_return,
-            source_geometry_property, source_geometry_container,
-            0.0, 0.0, absolute_left, absolute_top)
-        || !transform_geometry_point(
-            slate_library, local_to_absolute,
-            schema.local_to_absolute_geometry, schema.local_coordinate,
-            schema.local_to_absolute_return,
-            source_geometry_property, source_geometry_container,
-            width, height, absolute_right, absolute_bottom)) {
-        return false;
-    }
-    const double scale_x = (absolute_right - absolute_left) / width;
-    const double scale_y = (absolute_bottom - absolute_top) / height;
-    if (!std::isfinite(absolute_left) || !std::isfinite(absolute_top)
-        || !std::isfinite(scale_x) || !std::isfinite(scale_y)
-        || width <= 0.0 || height <= 0.0
-        || scale_x <= 0.0 || scale_y <= 0.0) {
-        return false;
-    }
-    snapshot = {
-        absolute_left, absolute_top, width, height, scale_x, scale_y};
-    return true;
 }
 
 // Converts the player icon's exact Canvas alignment pivot into the selected
@@ -871,6 +995,197 @@ private:
     return true;
 }
 
+void capture_weak_widget_identity(
+    UObject* widget, WorldMapZoomTopologyWidget& output) {
+    if (!widget) {
+        return;
+    }
+    FWeakObjectPtr identity{};
+    identity = widget;
+    output.object_index = identity.ObjectIndex;
+    output.object_serial = identity.ObjectSerialNumber;
+}
+
+[[nodiscard]] std::int16_t read_widget_enum_for_diagnostics(
+    UObject* widget, const wchar_t* property_name) {
+    FProperty* property = widget
+        ? widget->GetPropertyByNameInChain(property_name) : nullptr;
+    void* value = widget
+        ? widget->GetValuePtrByPropertyNameInChain(property_name) : nullptr;
+    FNumericProperty* numeric = CastField<FNumericProperty>(property);
+    if (auto* enum_property = CastField<FEnumProperty>(property)) {
+        numeric = enum_property->GetUnderlyingProperty();
+        if (!numeric || enum_property->GetSize() != numeric->GetSize()) {
+            return -1;
+        }
+    }
+    if (!numeric || !numeric->IsInteger() || !value
+        || (numeric->GetSize() != 1 && numeric->GetSize() != 2
+            && numeric->GetSize() != 4 && numeric->GetSize() != 8)) {
+        return -1;
+    }
+    const std::uint64_t raw = numeric->GetUnsignedIntPropertyValue(value);
+    return raw <= static_cast<std::uint64_t>(
+            std::numeric_limits<std::int16_t>::max())
+        ? static_cast<std::int16_t>(raw)
+        : static_cast<std::int16_t>(-1);
+}
+
+void classify_widget_ancestry_for_diagnostics(
+    UObject* widget,
+    UObject* map_overlay,
+    UObject* map_overlay_outside,
+    UObject* retainer_box,
+    UObject* fog_under_panel,
+    UObject* fog_above_panel,
+    UObject* tracking_panel,
+    UObject* selected_panel,
+    std::int8_t& map_overlay_depth,
+    std::int8_t& map_overlay_outside_depth,
+    std::int8_t& retainer_box_depth,
+    std::int8_t& fog_under_panel_depth,
+    std::int8_t& fog_above_panel_depth,
+    std::int8_t& tracking_panel_depth,
+    std::int8_t& selected_panel_depth) {
+    constexpr std::int32_t kMaximumParentHops = 8;
+    UObject* current = widget;
+    for (std::int32_t depth = 0;
+         current && depth <= kMaximumParentHops; ++depth) {
+        const auto recorded_depth = static_cast<std::int8_t>(depth);
+        if (map_overlay_depth < 0 && current == map_overlay) {
+            map_overlay_depth = recorded_depth;
+        }
+        if (map_overlay_outside_depth < 0
+            && current == map_overlay_outside) {
+            map_overlay_outside_depth = recorded_depth;
+        }
+        if (retainer_box_depth < 0 && current == retainer_box) {
+            retainer_box_depth = recorded_depth;
+        }
+        if (fog_under_panel_depth < 0 && current == fog_under_panel) {
+            fog_under_panel_depth = recorded_depth;
+        }
+        if (fog_above_panel_depth < 0 && current == fog_above_panel) {
+            fog_above_panel_depth = recorded_depth;
+        }
+        if (tracking_panel_depth < 0 && current == tracking_panel) {
+            tracking_panel_depth = recorded_depth;
+        }
+        if (selected_panel_depth < 0 && current == selected_panel) {
+            selected_panel_depth = recorded_depth;
+        }
+        if (depth == kMaximumParentHops) {
+            break;
+        }
+        UObject* slot = read_object_property(current, L"Slot");
+        current = read_object_property(slot, L"Parent");
+    }
+}
+
+void aggregate_native_icon_visibility_for_diagnostics(
+    UObject* icon, WorldMapZoomTopologyParent& parent) {
+    const std::int16_t visibility = read_widget_enum_for_diagnostics(
+        icon, L"Visibility");
+    if (visibility == 0 || visibility == 3 || visibility == 4) {
+        ++parent.visible_like_icon_count;
+    } else if (visibility == 1 || visibility == 2) {
+        ++parent.hidden_icon_count;
+    } else {
+        ++parent.unknown_visibility_icon_count;
+    }
+}
+
+[[nodiscard]] std::int8_t read_widget_visible_for_diagnostics(
+    UObject* widget, UFunction* function, FBoolProperty* return_property) {
+    if (!widget || !function || !return_property) {
+        return -1;
+    }
+    if (!return_property->HasAnyPropertyFlags(CPF_ReturnParm)
+        || return_property->GetSize() != 1
+        || function->GetParmsSize() <= 0
+        || static_cast<std::size_t>(function->GetParmsSize())
+            > kGeometryParameterCapacity
+        || !function_property_fits(function, return_property)) {
+        return -1;
+    }
+    GeometryCallParameters parameters(function);
+    if (!parameters.valid()) {
+        return -1;
+    }
+    widget->ProcessEvent(function, parameters.data());
+    void* value = return_property->ContainerPtrToValuePtr<void>(
+        parameters.data());
+    return value
+        ? static_cast<std::int8_t>(
+            return_property->GetPropertyValue(value) ? 1 : 0)
+        : static_cast<std::int8_t>(-1);
+}
+
+[[nodiscard]] bool read_widget_geometry_for_diagnostics(
+    UObject* widget,
+    UObject* slate_library,
+    UFunction* get_cached_geometry,
+    UFunction* get_slot_alignment,
+    UFunction* get_geometry_local_size,
+    UFunction* local_to_absolute,
+    UFunction* absolute_to_local,
+    WorldMapZoomTopologyWidget& output) {
+    if (!widget || !slate_library) {
+        return false;
+    }
+    GeometryReflectionSchema schema{};
+    if (!resolve_geometry_reflection_schema(
+            get_cached_geometry, get_slot_alignment,
+            get_geometry_local_size, local_to_absolute,
+            absolute_to_local, schema)) {
+        return false;
+    }
+    GeometryCallParameters geometry(get_cached_geometry);
+    if (!geometry.valid()) {
+        return false;
+    }
+    widget->ProcessEvent(get_cached_geometry, geometry.data());
+    if (!read_geometry_local_size(
+            slate_library, get_geometry_local_size, schema,
+            schema.cached_geometry_return, geometry.data(),
+            output.local_width, output.local_height)
+        || !transform_geometry_point(
+            slate_library, local_to_absolute,
+            schema.local_to_absolute_geometry, schema.local_coordinate,
+            schema.local_to_absolute_return,
+            schema.cached_geometry_return, geometry.data(),
+            0.0, 0.0, output.absolute_x, output.absolute_y)) {
+        return false;
+    }
+    std::array<double, 4> corner_x{};
+    std::array<double, 4> corner_y{};
+    constexpr std::array<Vector2D, 4> unit_corners{{
+        {0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}, {1.0, 1.0}}};
+    for (std::size_t index = 0; index < unit_corners.size(); ++index) {
+        if (!transform_geometry_point(
+                slate_library, local_to_absolute,
+                schema.local_to_absolute_geometry, schema.local_coordinate,
+                schema.local_to_absolute_return,
+                schema.cached_geometry_return, geometry.data(),
+                output.local_width * unit_corners[index].x,
+                output.local_height * unit_corners[index].y,
+                corner_x[index], corner_y[index])) {
+            return false;
+        }
+    }
+    output.transformed_min_x = *std::min_element(
+        corner_x.begin(), corner_x.end());
+    output.transformed_min_y = *std::min_element(
+        corner_y.begin(), corner_y.end());
+    output.transformed_max_x = *std::max_element(
+        corner_x.begin(), corner_x.end());
+    output.transformed_max_y = *std::max_element(
+        corner_y.begin(), corner_y.end());
+    output.transformed_bounds_valid = true;
+    output.geometry_valid = true;
+    return true;
+}
+
 [[nodiscard]] bool read_map_data(
     UObject* object, std::int32_t& map_id,
     double& dimensions, double& ui_size) {
@@ -901,6 +1216,34 @@ private:
     map_id = static_cast<std::int32_t>(id_value);
     return dimensions > 0.0 && dimensions < 10'000'000.0
         && ui_size > 0.0 && ui_size < 1'000'000.0;
+}
+
+[[nodiscard]] bool read_world_map_zoom_thresholds(
+    UObject* object, WorldMapZoomTopologySnapshot& snapshot) {
+    auto* info = CastField<FStructProperty>(
+        object ? object->GetPropertyByNameInChain(L"WorldMapDataInfo") : nullptr);
+    void* info_value = info
+        ? info->ContainerPtrToValuePtr<void>(object)
+        : nullptr;
+    if (!info || !info_value) {
+        return false;
+    }
+    UScriptStruct* structure = info->GetStruct();
+    return read_numeric_value(
+               find_struct_field(structure, L"WorldMapBaseZoom"),
+               info_value, snapshot.world_map_base_zoom)
+        && read_numeric_value(
+               find_struct_field(structure, L"WorldMapZoomValuePerLevel"),
+               info_value, snapshot.world_map_zoom_value_per_level)
+        && read_numeric_value(
+               find_struct_field(structure, L"WorldMapZoomMaxLevel"),
+               info_value, snapshot.world_map_zoom_max_level)
+        && read_numeric_value(
+               find_struct_field(structure, L"WorldMapHideTreasureMap"),
+               info_value, snapshot.world_map_hide_treasure_map)
+        && read_numeric_value(
+               find_struct_field(structure, L"WorldMapHideFieldBoss"),
+               info_value, snapshot.world_map_hide_field_boss);
 }
 
 [[nodiscard]] bool valid_cached_map_data(
@@ -946,24 +1289,18 @@ struct AtlasBounds {
 
 struct AtlasBuildResult {
     bool success{};
+    bool cache_hit{};
     std::size_t drawn_marker_count{};
     std::uint64_t elapsed_us{};
     std::uint64_t file_bytes{};
 };
 
-struct AtlasFileCache {
-    std::uint64_t path_hash{};
-    std::uint64_t input_fingerprint{};
-    std::uint64_t file_bytes{};
-    std::size_t visible_marker_count{};
-    bool valid{};
-};
-
-[[nodiscard]] std::array<AtlasFileCache, kWorldMapAtlasLayerCount>&
-atlas_file_caches() noexcept {
-    static std::array<AtlasFileCache, kWorldMapAtlasLayerCount> caches{};
-    return caches;
-}
+// The TGA image-id field is also the persistent cache envelope. Revision 52
+// adds a decoded-pixel checksum; revision 51 files are intentionally misses.
+constexpr std::array<std::uint8_t, 8> kAtlasCacheMagic{
+    'D', 'S', 'N', 'W', 'R', 'A', '5', '2'};
+constexpr std::uint8_t kAtlasCacheTagBytes = 32U;
+constexpr double kAtlasFingerprintUnitsPerLogicalUnit = 4096.0;
 
 void hash_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
     constexpr std::uint64_t prime = 1099511628211ULL;
@@ -971,6 +1308,46 @@ void hash_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
         hash ^= (value >> shift) & 0xFFU;
         hash *= prime;
     }
+}
+
+void hash_u32(std::uint64_t& hash, std::uint32_t value) noexcept {
+    constexpr std::uint64_t prime = 1099511628211ULL;
+    for (std::uint32_t shift = 0; shift < 32U; shift += 8U) {
+        hash ^= (value >> shift) & 0xFFU;
+        hash *= prime;
+    }
+}
+
+void hash_u8(std::uint64_t& hash, std::uint8_t value) noexcept {
+    hash ^= value;
+    hash *= 1099511628211ULL;
+}
+
+[[nodiscard]] std::int64_t quantize_atlas_fingerprint_value(
+    double value) noexcept {
+    const double scaled = value * kAtlasFingerprintUnitsPerLogicalUnit;
+    if (!std::isfinite(scaled)) {
+        return value < 0.0
+            ? std::numeric_limits<std::int64_t>::min()
+            : std::numeric_limits<std::int64_t>::max();
+    }
+    constexpr double minimum = static_cast<double>(
+        std::numeric_limits<std::int64_t>::min());
+    constexpr double maximum = static_cast<double>(
+        std::numeric_limits<std::int64_t>::max());
+    if (scaled <= minimum) {
+        return std::numeric_limits<std::int64_t>::min();
+    }
+    if (scaled >= maximum) {
+        return std::numeric_limits<std::int64_t>::max();
+    }
+    return static_cast<std::int64_t>(std::llround(scaled));
+}
+
+void hash_quantized_atlas_value(
+    std::uint64_t& hash, double value) noexcept {
+    hash_u64(hash, static_cast<std::uint64_t>(
+        quantize_atlas_fingerprint_value(value)));
 }
 
 [[nodiscard]] std::uint64_t atlas_input_fingerprint(
@@ -982,13 +1359,10 @@ void hash_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
     std::size_t& visible_marker_count) noexcept {
     std::uint64_t hash = 1469598103934665603ULL;
     hash_u64(hash, kAtlasStyleRevision);
-    hash_u64(hash, marker_count);
     hash_u64(hash, kWorldMapAtlasTextureSize);
     hash_u64(hash, static_cast<std::uint8_t>(layer));
-    hash_u64(hash, std::bit_cast<std::uint64_t>(bounds.left));
-    hash_u64(hash, std::bit_cast<std::uint64_t>(bounds.top));
-    hash_u64(hash, std::bit_cast<std::uint64_t>(bounds.width));
-    hash_u64(hash, std::bit_cast<std::uint64_t>(bounds.height));
+    hash_quantized_atlas_value(hash, bounds.width);
+    hash_quantized_atlas_value(hash, bounds.height);
     visible_marker_count = 0;
     for (std::size_t index = 0; index < marker_count; ++index) {
         const WorldMapUmgMarker& marker = markers[index];
@@ -996,13 +1370,20 @@ void hash_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
             || !marker_belongs_to_layer(marker.kind, layer)) {
             continue;
         }
-        hash_u64(hash, static_cast<std::uint64_t>(marker.id));
-        hash_u64(hash, std::bit_cast<std::uint64_t>(local_positions[index].x));
-        hash_u64(hash, std::bit_cast<std::uint64_t>(local_positions[index].y));
+        // The raster uses atlas-local coordinates. Excluding the common world-
+        // map translation keeps an identical save/category snapshot reusable
+        // after the player moves or the game restarts. Quantizing much more
+        // finely than one output pixel removes only floating-point cancellation
+        // noise; materially different glyph positions still miss the cache.
+        hash_quantized_atlas_value(
+            hash, local_positions[index].x - bounds.left);
+        hash_quantized_atlas_value(
+            hash, local_positions[index].y - bounds.top);
         hash_u64(hash, static_cast<std::uint8_t>(marker.tone));
         hash_u64(hash, static_cast<std::uint8_t>(marker.kind));
         ++visible_marker_count;
     }
+    hash_u64(hash, visible_marker_count);
     return hash;
 }
 
@@ -1759,18 +2140,153 @@ void draw_marker_glyph(
     }
 }
 
-void write_tga_pixel(std::ofstream& output, std::uint32_t pixel) {
+void write_tga_pixel(
+    std::ofstream& output,
+    std::uint32_t pixel,
+    std::uint64_t& payload_checksum) {
     const std::array<char, 4> bytes{
         static_cast<char>(pixel & 0xFFU),
         static_cast<char>((pixel >> 8U) & 0xFFU),
         static_cast<char>((pixel >> 16U) & 0xFFU),
         static_cast<char>((pixel >> 24U) & 0xFFU)};
     output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    hash_u32(payload_checksum, pixel);
+}
+
+void encode_u64_le(
+    std::array<std::uint8_t, kAtlasCacheTagBytes>& bytes,
+    std::size_t offset,
+    std::uint64_t value) noexcept {
+    for (std::size_t index = 0; index < 8U; ++index) {
+        bytes[offset + index] = static_cast<std::uint8_t>(
+            (value >> (index * 8U)) & 0xFFU);
+    }
+}
+
+[[nodiscard]] std::uint64_t decode_u64_le(
+    const std::array<std::uint8_t, kAtlasCacheTagBytes>& bytes,
+    std::size_t offset) noexcept {
+    std::uint64_t value{};
+    for (std::size_t index = 0; index < 8U; ++index) {
+        value |= static_cast<std::uint64_t>(bytes[offset + index])
+            << (index * 8U);
+    }
+    return value;
+}
+
+[[nodiscard]] bool read_tga_pixel(
+    std::ifstream& input, std::uint32_t& pixel) {
+    std::array<std::uint8_t, 4> bytes{};
+    input.read(
+        reinterpret_cast<char*>(bytes.data()),
+        static_cast<std::streamsize>(bytes.size()));
+    if (!input) {
+        return false;
+    }
+    pixel = static_cast<std::uint32_t>(bytes[0])
+        | (static_cast<std::uint32_t>(bytes[1]) << 8U)
+        | (static_cast<std::uint32_t>(bytes[2]) << 16U)
+        | (static_cast<std::uint32_t>(bytes[3]) << 24U);
+    return true;
+}
+
+[[nodiscard]] bool read_persistent_atlas_cache(
+    const std::filesystem::path& path,
+    std::uint64_t expected_fingerprint,
+    std::size_t expected_visible_count,
+    std::uint64_t& file_bytes) {
+    file_bytes = 0;
+    std::ifstream input{path, std::ios::binary};
+    if (!input) {
+        return false;
+    }
+    std::array<std::uint8_t, 18> header{};
+    input.read(
+        reinterpret_cast<char*>(header.data()),
+        static_cast<std::streamsize>(header.size()));
+    const std::uint16_t width = static_cast<std::uint16_t>(
+        header[12] | (static_cast<std::uint16_t>(header[13]) << 8U));
+    const std::uint16_t height = static_cast<std::uint16_t>(
+        header[14] | (static_cast<std::uint16_t>(header[15]) << 8U));
+    const bool reserved_header_bytes_are_zero = std::all_of(
+        header.begin() + 3, header.begin() + 12,
+        [](std::uint8_t value) { return value == 0U; });
+    if (!input || header[0] != kAtlasCacheTagBytes || header[1] != 0U
+        || header[2] != 10U || !reserved_header_bytes_are_zero
+        || width != kWorldMapAtlasTextureSize
+        || height != kWorldMapAtlasTextureSize
+        || header[16] != 32U || header[17] != 0x28U) {
+        return false;
+    }
+    std::array<std::uint8_t, kAtlasCacheTagBytes> tag{};
+    input.read(
+        reinterpret_cast<char*>(tag.data()),
+        static_cast<std::streamsize>(tag.size()));
+    if (!input || !std::equal(
+            kAtlasCacheMagic.begin(), kAtlasCacheMagic.end(), tag.begin())) {
+        return false;
+    }
+    const std::uint64_t fingerprint = decode_u64_le(tag, 8U);
+    const std::uint64_t visible_count = decode_u64_le(tag, 16U);
+    const std::uint64_t expected_payload_checksum = decode_u64_le(tag, 24U);
+    if (fingerprint != expected_fingerprint
+        || visible_count != expected_visible_count) {
+        return false;
+    }
+
+    constexpr std::uint64_t expected_pixels =
+        static_cast<std::uint64_t>(kWorldMapAtlasTextureSize)
+        * kWorldMapAtlasTextureSize;
+    std::uint64_t decoded_pixels{};
+    std::uint64_t payload_checksum = 1469598103934665603ULL;
+    while (decoded_pixels < expected_pixels) {
+        std::uint8_t packet_header{};
+        input.read(reinterpret_cast<char*>(&packet_header), 1);
+        if (!input) {
+            return false;
+        }
+        hash_u8(payload_checksum, packet_header);
+        const std::uint64_t packet_pixels =
+            static_cast<std::uint64_t>(packet_header & 0x7FU) + 1U;
+        if (packet_pixels > expected_pixels - decoded_pixels) {
+            return false;
+        }
+        if ((packet_header & 0x80U) != 0U) {
+            std::uint32_t pixel{};
+            if (!read_tga_pixel(input, pixel)) {
+                return false;
+            }
+            hash_u32(payload_checksum, pixel);
+        } else {
+            for (std::uint64_t index = 0; index < packet_pixels; ++index) {
+                std::uint32_t pixel{};
+                if (!read_tga_pixel(input, pixel)) {
+                    return false;
+                }
+                hash_u32(payload_checksum, pixel);
+            }
+        }
+        decoded_pixels += packet_pixels;
+    }
+    if (payload_checksum != expected_payload_checksum) {
+        return false;
+    }
+
+    std::error_code error;
+    file_bytes = std::filesystem::file_size(path, error);
+    if (error) {
+        return false;
+    }
+    const std::streamoff payload_end = input.tellg();
+    return payload_end >= 0
+        && static_cast<std::uint64_t>(payload_end) == file_bytes;
 }
 
 [[nodiscard]] bool write_rle_tga(
     const std::filesystem::path& path,
-    const std::vector<std::uint32_t>& pixels) {
+    const std::vector<std::uint32_t>& pixels,
+    std::uint64_t fingerprint,
+    std::size_t visible_marker_count) {
     constexpr std::size_t texture_size = kWorldMapAtlasTextureSize;
     if (pixels.size() != texture_size * texture_size) {
         return false;
@@ -1784,12 +2300,22 @@ void write_tga_pixel(std::ofstream& output, std::uint32_t pixel) {
             return false;
         }
     }
-    std::ofstream output{path, std::ios::binary | std::ios::trunc};
+    std::filesystem::path temporary_path = path;
+    temporary_path += L".tmp-";
+    temporary_path += std::to_wstring(GetCurrentProcessId());
+    temporary_path += L"-";
+    temporary_path += std::to_wstring(GetTickCount64());
+    std::filesystem::remove(temporary_path, error);
+    error.clear();
+    std::ofstream output{
+        temporary_path, std::ios::binary | std::ios::trunc};
     if (!output) {
+        std::filesystem::remove(temporary_path, error);
         return false;
     }
 
     std::array<std::uint8_t, 18> header{};
+    header[0] = kAtlasCacheTagBytes;
     header[2] = 10U;
     header[12] = static_cast<std::uint8_t>(texture_size & 0xFFU);
     header[13] = static_cast<std::uint8_t>((texture_size >> 8U) & 0xFFU);
@@ -1800,7 +2326,16 @@ void write_tga_pixel(std::ofstream& output, std::uint32_t pixel) {
     output.write(
         reinterpret_cast<const char*>(header.data()),
         static_cast<std::streamsize>(header.size()));
+    std::array<std::uint8_t, kAtlasCacheTagBytes> tag{};
+    std::copy(kAtlasCacheMagic.begin(), kAtlasCacheMagic.end(), tag.begin());
+    encode_u64_le(tag, 8U, fingerprint);
+    encode_u64_le(
+        tag, 16U, static_cast<std::uint64_t>(visible_marker_count));
+    output.write(
+        reinterpret_cast<const char*>(tag.data()),
+        static_cast<std::streamsize>(tag.size()));
 
+    std::uint64_t payload_checksum = 1469598103934665603ULL;
     for (std::size_t y = 0; y < texture_size; ++y) {
         const std::uint32_t* row = pixels.data() + y * texture_size;
         std::size_t x = 0;
@@ -1811,8 +2346,11 @@ void write_tga_pixel(std::ofstream& output, std::uint32_t pixel) {
                 ++run;
             }
             if (run >= 2U) {
-                output.put(static_cast<char>(0x80U | (run - 1U)));
-                write_tga_pixel(output, row[x]);
+                const auto packet_header = static_cast<std::uint8_t>(
+                    0x80U | (run - 1U));
+                output.put(static_cast<char>(packet_header));
+                hash_u8(payload_checksum, packet_header);
+                write_tga_pixel(output, row[x], payload_checksum);
                 x += run;
                 continue;
             }
@@ -1832,14 +2370,37 @@ void write_tga_pixel(std::ofstream& output, std::uint32_t pixel) {
                 ++x;
                 ++raw_count;
             }
-            output.put(static_cast<char>(raw_count - 1U));
+            const auto packet_header = static_cast<std::uint8_t>(
+                raw_count - 1U);
+            output.put(static_cast<char>(packet_header));
+            hash_u8(payload_checksum, packet_header);
             for (std::size_t index = 0; index < raw_count; ++index) {
-                write_tga_pixel(output, row[raw_start + index]);
+                write_tga_pixel(
+                    output, row[raw_start + index], payload_checksum);
             }
         }
     }
+    encode_u64_le(tag, 24U, payload_checksum);
+    output.seekp(
+        static_cast<std::streamoff>(header.size() + 24U),
+        std::ios::beg);
+    output.write(
+        reinterpret_cast<const char*>(tag.data() + 24U),
+        static_cast<std::streamsize>(sizeof(payload_checksum)));
     output.flush();
-    return output.good();
+    const bool flushed = output.good();
+    output.close();
+    if (!flushed || output.fail()) {
+        std::filesystem::remove(temporary_path, error);
+        return false;
+    }
+    if (!MoveFileExW(
+            temporary_path.c_str(), path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::filesystem::remove(temporary_path, error);
+        return false;
+    }
+    return true;
 }
 
 [[nodiscard]] AtlasBuildResult build_rle_tga_atlas(
@@ -1856,22 +2417,12 @@ void write_tga_pixel(std::ofstream& output, std::uint32_t pixel) {
         const std::uint64_t fingerprint = atlas_input_fingerprint(
             markers, local_positions, marker_count, bounds,
             layer, fingerprint_visible_count);
-        const std::uint64_t path_hash = static_cast<std::uint64_t>(
-            std::filesystem::hash_value(path));
-        AtlasFileCache& cache = atlas_file_caches()[
-            static_cast<std::size_t>(layer)];
-        if (cache.valid && cache.path_hash == path_hash
-            && cache.input_fingerprint == fingerprint
-            && cache.visible_marker_count == fingerprint_visible_count) {
-            std::error_code error;
-            const std::uint64_t current_bytes =
-                std::filesystem::file_size(path, error);
-            if (!error && current_bytes == cache.file_bytes
-                && current_bytes >= 18U) {
-                result.success = true;
-                result.drawn_marker_count = fingerprint_visible_count;
-                result.file_bytes = current_bytes;
-            }
+        if (read_persistent_atlas_cache(
+                path, fingerprint, fingerprint_visible_count,
+                result.file_bytes)) {
+            result.success = true;
+            result.cache_hit = true;
+            result.drawn_marker_count = fingerprint_visible_count;
         }
 
         if (!result.success) {
@@ -1904,18 +2455,12 @@ void write_tga_pixel(std::ofstream& output, std::uint32_t pixel) {
                     pixels, bounds, local_positions[index], markers[index]);
                 ++result.drawn_marker_count;
             }
-            result.success = write_rle_tga(path, pixels);
+            result.success = write_rle_tga(
+                path, pixels, fingerprint, result.drawn_marker_count);
             if (result.success) {
                 std::error_code error;
                 result.file_bytes = std::filesystem::file_size(path, error);
                 result.success = !error && result.file_bytes >= 18U;
-            }
-            if (result.success) {
-                cache.path_hash = path_hash;
-                cache.input_fingerprint = fingerprint;
-                cache.file_bytes = result.file_bytes;
-                cache.visible_marker_count = result.drawn_marker_count;
-                cache.valid = true;
             }
         }
     } catch (...) {
@@ -1974,6 +2519,7 @@ void WorldMapUmgRenderer::initialize(
     last_map_data_source_ = 0;
     atlas_build_elapsed_us_ = 0;
     atlas_file_bytes_ = 0;
+    atlas_cache_hit_count_ = 0;
     attach_elapsed_us_ = 0;
     reparent_count_ = 0;
     reproject_count_ = 0;
@@ -1996,8 +2542,6 @@ void WorldMapUmgRenderer::initialize(
         find<UObject>(L"/Script/Engine.Default__KismetRenderingLibrary");
     slate_blueprint_library_ =
         find<UObject>(L"/Script/UMG.Default__SlateBlueprintLibrary");
-    widget_layout_library_ =
-        find<UObject>(L"/Script/UMG.Default__WidgetLayoutLibrary");
 
     create_widget_ = find<UFunction>(L"/Script/UMG.WidgetBlueprintLibrary:Create");
     get_owning_player_ = find<UFunction>(L"/Script/UMG.Widget:GetOwningPlayer");
@@ -2021,22 +2565,23 @@ void WorldMapUmgRenderer::initialize(
         find<UFunction>(L"/Script/UMG.CanvasPanelSlot:SetAlignment");
     set_slot_z_order_ =
         find<UFunction>(L"/Script/UMG.CanvasPanelSlot:SetZOrder");
+    set_slot_anchors_ =
+        find<UFunction>(L"/Script/UMG.CanvasPanelSlot:SetAnchors");
+    set_slot_offsets_ =
+        find<UFunction>(L"/Script/UMG.CanvasPanelSlot:SetOffsets");
+    set_slot_auto_size_ =
+        find<UFunction>(L"/Script/UMG.CanvasPanelSlot:SetAutoSize");
     set_visibility_ = find<UFunction>(L"/Script/UMG.Widget:SetVisibility");
+    set_render_translation_ =
+        find<UFunction>(L"/Script/UMG.Widget:SetRenderTranslation");
     set_brush_from_texture_ =
         find<UFunction>(L"/Script/UMG.Image:SetBrushFromTexture");
     import_file_as_texture_ = find<UFunction>(
         L"/Script/Engine.KismetRenderingLibrary:ImportFileAsTexture2D");
     clear_children_ = find<UFunction>(L"/Script/UMG.PanelWidget:ClearChildren");
     remove_from_parent_ = find<UFunction>(L"/Script/UMG.Widget:RemoveFromParent");
-    add_to_viewport_ = find<UFunction>(L"/Script/UMG.UserWidget:AddToViewport");
-    get_viewport_widget_geometry_ = find<UFunction>(
-        L"/Script/UMG.WidgetLayoutLibrary:GetViewportWidgetGeometry");
-    set_alignment_in_viewport_ = find<UFunction>(
-        L"/Script/UMG.UserWidget:SetAlignmentInViewport");
-    set_desired_size_in_viewport_ = find<UFunction>(
-        L"/Script/UMG.UserWidget:SetDesiredSizeInViewport");
-    set_position_in_viewport_ = find<UFunction>(
-        L"/Script/UMG.UserWidget:SetPositionInViewport");
+    request_retainer_render_ =
+        find<UFunction>(L"/Script/UMG.RetainerBox:RequestRender");
 
     abi_failure_mask_ = 0;
     const auto require_parameters =
@@ -2063,10 +2608,8 @@ void WorldMapUmgRenderer::initialize(
     require_parameters(1U << 10U, import_file_as_texture_, 32);
     require_parameters(1U << 12U, clear_children_, 0);
     require_parameters(1U << 13U, remove_from_parent_, 0);
-    require_parameters(1U << 18U, add_to_viewport_, 4);
-    require_parameters(1U << 19U, set_alignment_in_viewport_, 16);
-    require_parameters(1U << 20U, set_desired_size_in_viewport_, 16);
-    require_parameters(1U << 21U, set_position_in_viewport_, 17);
+    require_parameters(1U << 18U, set_render_translation_, 16);
+    require_parameters(1U << 19U, request_retainer_render_, 0);
 
     GeometryReflectionSchema geometry_schema{};
     if (!resolve_geometry_reflection_schema(
@@ -2075,12 +2618,11 @@ void WorldMapUmgRenderer::initialize(
             absolute_to_local_, geometry_schema)) {
         abi_failure_mask_ |= 1U << 17U;
     }
-    ViewportGeometryReflectionSchema viewport_geometry_schema{};
-    if (!resolve_viewport_geometry_reflection_schema(
-            get_viewport_widget_geometry_,
-            geometry_schema.cached_geometry_return,
-            viewport_geometry_schema)) {
-        abi_failure_mask_ |= 1U << 22U;
+    CanvasSlotLayoutReflectionSchema canvas_slot_schema{};
+    if (!resolve_canvas_slot_layout_schema(
+            set_slot_anchors_, set_slot_offsets_, set_slot_auto_size_,
+            canvas_slot_schema)) {
+        abi_failure_mask_ |= 1U << 20U;
     }
 
     if (!world_map_layer_class_ || !world_map_data_class_
@@ -2089,8 +2631,7 @@ void WorldMapUmgRenderer::initialize(
         || !map_point_icon_class_ || !image_class_
         || !widget_blueprint_library_.Get()
         || !kismet_rendering_library_.Get()
-        || !slate_blueprint_library_.Get()
-        || !widget_layout_library_.Get()) {
+        || !slate_blueprint_library_.Get()) {
         abi_failure_mask_ |= 1U << 15U;
     }
     if (atlas_cache_paths_[0].empty() || atlas_cache_paths_[1].empty()) {
@@ -2195,16 +2736,54 @@ bool WorldMapUmgRenderer::detect_current_map_id_guarded(
 
 bool WorldMapUmgRenderer::validate_host_unsafe(
     UObject* current_layer) const {
+    UObject* owning_player{};
+    if (!validate_host_payload_unsafe(current_layer, owning_player)) {
+        return false;
+    }
+
+    UObject* native_parent = native_parent_.Get();
+    UObject* expected_native_parent = resolve_world_map_render_parent(
+        current_layer, canvas_panel_class_);
+    if (!native_parent || !native_parent->IsA(canvas_panel_class_)
+        || expected_native_parent != native_parent) {
+        return false;
+    }
+
+    for (std::size_t layer_index = 0;
+         layer_index < kWorldMapAtlasLayerCount; ++layer_index) {
+        UObject* host = hosts_[layer_index].Get();
+        UObject* native_slot = native_parent_slots_[layer_index].Get();
+        if (!host || !native_slot
+            || !native_slot->IsA(canvas_panel_slot_class_)
+            || read_object_property(host, L"Slot") != native_slot
+            || read_object_property(native_slot, L"Parent") != native_parent
+            || read_object_property(native_slot, L"Content") != host) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool WorldMapUmgRenderer::validate_host_payload_unsafe(
+    UObject* current_layer, UObject*& owning_player) const {
+    owning_player = nullptr;
     if (!current_layer || current_layer != layer_.Get()
         || !current_layer->IsA(world_map_layer_class_)) {
         return false;
     }
-    UObject* owning_player{};
+
+    UObject* retainer = retainer_box_.Get();
+    if (!retainer || !retainer->IsA(retainer_box_class_)
+        || read_object_property(current_layer, L"RetainerBox") != retainer) {
+        return false;
+    }
     for (std::size_t layer_index = 0;
          layer_index < kWorldMapAtlasLayerCount; ++layer_index) {
         UObject* host = hosts_[layer_index].Get();
         UObject* tree = widget_trees_[layer_index].Get();
         UObject* root_panel = root_panels_[layer_index].Get();
+        UObject* root_slot = read_object_property(root_panel, L"Slot");
+        UObject* root_slot_parent = read_object_property(root_slot, L"Parent");
         UObject* image = atlas_images_[layer_index].Get();
         UObject* image_slot = atlas_image_slots_[layer_index].Get();
         UObject* texture = atlas_textures_[layer_index].Get();
@@ -2212,6 +2791,10 @@ bool WorldMapUmgRenderer::validate_host_unsafe(
             || !tree || read_object_property(host, L"WidgetTree") != tree
             || !root_panel || !root_panel->IsA(canvas_panel_class_)
             || read_object_property(host, L"Panel_Point") != root_panel
+            || !root_slot || !root_slot->IsA(canvas_panel_slot_class_)
+            || !root_slot_parent
+            || !root_slot_parent->IsA(canvas_panel_class_)
+            || read_object_property(root_slot, L"Content") != root_panel
             || !image || !image->IsA(image_class_)
             || !image_slot || !image_slot->IsA(canvas_panel_slot_class_)
             || !texture
@@ -2222,25 +2805,6 @@ bool WorldMapUmgRenderer::validate_host_unsafe(
                    image, L"Brush", L"ResourceObject") != texture) {
             return false;
         }
-        ObjectReturnParameters host_owner{};
-        host->ProcessEvent(get_owning_player_, &host_owner);
-        if (!host_owner.return_value
-            || (owning_player && owning_player != host_owner.return_value)) {
-            return false;
-        }
-        owning_player = host_owner.return_value;
-    }
-    return owning_player != nullptr;
-}
-
-bool WorldMapUmgRenderer::validate_host_payload_unsafe(
-    UObject* current_layer, UObject*& owning_player) const {
-    owning_player = nullptr;
-    if (!validate_host_unsafe(current_layer)) {
-        return false;
-    }
-    for (const auto& host_handle : hosts_) {
-        UObject* host = host_handle.Get();
         ObjectReturnParameters owner{};
         host->ProcessEvent(get_owning_player_, &owner);
         if (!owner.return_value
@@ -2250,26 +2814,6 @@ bool WorldMapUmgRenderer::validate_host_payload_unsafe(
         owning_player = owner.return_value;
     }
     return owning_player != nullptr;
-}
-
-bool WorldMapUmgRenderer::validate_host_payload_guarded(
-    UObject* current_layer) const noexcept {
-    UObject* owning_player{};
-#if defined(_MSC_VER)
-    __try {
-        return validate_host_payload_unsafe(
-            current_layer, owning_player);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-#else
-    try {
-        return validate_host_payload_unsafe(
-            current_layer, owning_player);
-    } catch (...) {
-        return false;
-    }
-#endif
 }
 
 bool WorldMapUmgRenderer::attached_to(
@@ -2344,6 +2888,13 @@ bool WorldMapUmgRenderer::apply_host_visibility_unsafe(
             visible ? kHitTestInvisible : kCollapsed);
     }
     applied_host_visibility_ = visible;
+    UObject* retainer = retainer_box_.Get();
+    if (!retainer || !retainer->IsA(retainer_box_class_)
+        || !request_retainer_render_) {
+        applied_host_visibility_.reset();
+        return false;
+    }
+    retainer->ProcessEvent(request_retainer_render_, nullptr);
     return true;
 }
 
@@ -2398,10 +2949,12 @@ void WorldMapUmgRenderer::fault_and_detach(
     detach_guarded();
 }
 
-bool WorldMapUmgRenderer::sync_viewport_transform_unsafe(
+bool WorldMapUmgRenderer::refresh_native_parent_unsafe(
     UObject* current_layer,
+    bool restack_unchanged_parent,
     WorldMapLayeringRefreshResult& result,
     volatile dswros::WorldMapTransformSyncStage& stage) {
+    (void)restack_unchanged_parent;
     result = WorldMapLayeringRefreshResult::Faulted;
     stage = dswros::WorldMapTransformSyncStage::NativeCanvasObservation;
     UObject* retained_layer = layer_.Get();
@@ -2412,7 +2965,7 @@ bool WorldMapUmgRenderer::sync_viewport_transform_unsafe(
         const auto action =
             dswros::classify_world_map_transform_observation_failure(
                 failure, retained_layer == current_layer,
-                viewport_transform_valid_);
+                transform_ready_);
         if (action
             == dswros::WorldMapTransformObservationFailureAction::Fault) {
             return false;
@@ -2434,12 +2987,20 @@ bool WorldMapUmgRenderer::sync_viewport_transform_unsafe(
             : WorldMapLayeringRefreshResult::RetryLater;
         return true;
     };
+    const auto request_current_session_rebuild =
+        [](WorldMapLayeringRefreshResult& rebuild_result) {
+        // This function only reports what the observation proved. Main owns
+        // the once-per-session rebuild decision and, when accepted,
+        // begin_map_session() performs the detach transaction. Mutating the
+        // current hosts here would leave an otherwise valid attachment
+        // permanently Collapsed when that bounded rebuild is rejected.
+        rebuild_result = WorldMapLayeringRefreshResult::RebuildRequired;
+        return true;
+    };
 
     // A newly created or temporarily absent game layer is not evidence that
-    // the existing Mod-owned viewport payload is corrupt. Let the bounded
-    // candidate lifecycle attach the new layer without mutating either tree.
-    // This check must precede validation, whose exact-layer identity guard is
-    // intentionally a hard ownership invariant once the layer matches.
+    // the retained Mod payload is corrupt. Hide it until the exact candidate
+    // lifecycle either proves the old layer again or begins a new session.
     if (!current_layer || current_layer != retained_layer) {
         return handle_transient_observation(
             dswros::WorldMapTransformObservationFailure::NativeCanvasUnavailable,
@@ -2449,141 +3010,192 @@ bool WorldMapUmgRenderer::sync_viewport_transform_unsafe(
     stage = dswros::WorldMapTransformSyncStage::OwnedHostValidation;
     UObject* owning_player{};
     if (!validate_host_payload_unsafe(current_layer, owning_player)) {
-        return false;
+        // The live layer may rebuild its RetainerBox or release one of our old
+        // child objects without replacing DLayerMap itself. That is a session
+        // replacement, not an ABI failure. The caller owns the bounded detach
+        // and fresh attach transaction; do not turn it into a permanent fault.
+        return request_current_session_rebuild(result);
     }
 
-    stage = dswros::WorldMapTransformSyncStage::AbiValidation;
-    GeometryReflectionSchema geometry_schema{};
-    ViewportGeometryReflectionSchema viewport_schema{};
-    UObject* slate_library = slate_blueprint_library_.Get();
-    UObject* layout_library = widget_layout_library_.Get();
-    if (!slate_library || !layout_library
-        || !resolve_geometry_reflection_schema(
-            get_cached_geometry_, get_slot_alignment_,
-            get_geometry_local_size_, local_to_absolute_,
-            absolute_to_local_, geometry_schema)
-        || !resolve_viewport_geometry_reflection_schema(
-            get_viewport_widget_geometry_,
-            geometry_schema.cached_geometry_return,
-            viewport_schema)) {
-        return false;
-    }
-    GeometryCallParameters native_parameters(get_cached_geometry_);
-    GeometryCallParameters viewport_parameters(get_viewport_widget_geometry_);
-    if (!native_parameters.valid() || !viewport_parameters.valid()
-        || !write_object_property(
-            viewport_schema.world_context_object,
-            viewport_parameters.data(), current_layer)) {
-        return false;
-    }
-
-    // The native Canvas selected during attachment is the sole coordinate
-    // witness for this attached layer. Re-scanning ArrayIconInfo while the map
-    // animates can momentarily select an empty or replacement Canvas, causing
-    // A-B-A placement oscillation. Never switch witnesses during a live
-    // attachment; a real layer replacement is handled by the attach lifecycle.
     stage = dswros::WorldMapTransformSyncStage::NativeCanvasObservation;
-    UObject* observed_native_parent = native_parent_.Get();
-    if (!observed_native_parent
-        || !observed_native_parent->IsA(canvas_panel_class_)) {
+    UObject* observed_native_parent = resolve_world_map_render_parent(
+        current_layer, canvas_panel_class_);
+    if (!observed_native_parent) {
         return handle_transient_observation(
             dswros::WorldMapTransformObservationFailure::NativeCanvasUnavailable,
             result);
     }
 
+    FWeakObjectPtr observed_parent_identity{};
+    observed_parent_identity = observed_native_parent;
+    last_layering_previous_parent_index_ = native_parent_.ObjectIndex;
+    last_layering_previous_parent_serial_ =
+        native_parent_.ObjectSerialNumber;
+    last_layering_previous_parent_width_ = native_parent_width_;
+    last_layering_previous_parent_height_ = native_parent_height_;
+    last_layering_current_parent_index_ =
+        observed_parent_identity.ObjectIndex;
+    last_layering_current_parent_serial_ =
+        observed_parent_identity.ObjectSerialNumber;
+    last_layering_parent_changed_ =
+        last_layering_previous_parent_index_
+            != last_layering_current_parent_index_
+        || last_layering_previous_parent_serial_
+            != last_layering_current_parent_serial_;
+    last_layering_geometry_changed_ = false;
+    last_reparent_anchor_delta_x_ = 0.0;
+    last_reparent_anchor_delta_y_ = 0.0;
+
+    // A different FogAbovePanel is a different coordinate-space owner. Do not
+    // live-reparent retained pixels or use a changing sibling icon to guess a
+    // delta. Main owns one bounded, snapshot-preserving fresh attachment,
+    // which recomputes the atlas against the new parent's stable geometry.
+    if (last_layering_parent_changed_) {
+        last_layering_current_parent_width_ = 0.0;
+        last_layering_current_parent_height_ = 0.0;
+        reset_reparent_geometry_stability_sample();
+        return request_current_session_rebuild(result);
+    }
+
+    // Read the live parent-local geometry even when the UObject identity did
+    // not change. Resolution, window-mode, DPI, or Safe-Zone reflow can resize
+    // a Canvas in place; reusing atlas pixels authored for the old extent would
+    // move every marker. Ordinary pan/zoom changes only ancestor transforms,
+    // so this observation remains write-free and returns Unchanged below.
     stage = dswros::WorldMapTransformSyncStage::GeometryObservation;
-    observed_native_parent->ProcessEvent(
-        get_cached_geometry_, native_parameters.data());
-    layout_library->ProcessEvent(
-        get_viewport_widget_geometry_, viewport_parameters.data());
-    dswros::WorldMapSlateGeometry native_geometry{};
-    dswros::WorldMapSlateGeometry viewport_geometry{};
-    const bool geometry_ready =
-        read_slate_geometry_snapshot(
-            slate_library, get_geometry_local_size_, local_to_absolute_,
-            geometry_schema, geometry_schema.cached_geometry_return,
-            native_parameters.data(), native_geometry)
-        && read_slate_geometry_snapshot(
-            slate_library, get_geometry_local_size_, local_to_absolute_,
-            geometry_schema, viewport_schema.return_value,
-            viewport_parameters.data(), viewport_geometry);
-    const auto placement = geometry_ready
-        ? dswros::calculate_world_map_viewport_placement(
-            {atlas_left_, atlas_top_, atlas_width_, atlas_height_},
-            native_geometry, viewport_geometry)
-        : std::nullopt;
-    if (!placement) {
+    double current_parent_width{};
+    double current_parent_height{};
+    if (!read_live_widget_local_extent(
+        observed_native_parent, slate_blueprint_library_.Get(),
+        get_cached_geometry_, get_slot_alignment_,
+        get_geometry_local_size_, local_to_absolute_, absolute_to_local_,
+        current_parent_width, current_parent_height)) {
         return handle_transient_observation(
             dswros::WorldMapTransformObservationFailure::GeometryUnavailable,
             result);
     }
-    bool transform_changed = !viewport_transform_valid_;
-    if (viewport_transform_valid_) {
-        const auto changed =
-            dswros::world_map_viewport_transform_changed(
-                viewport_placement_, *placement);
-        if (!changed) {
+    last_layering_current_parent_width_ = current_parent_width;
+    last_layering_current_parent_height_ = current_parent_height;
+    const dswros::WorldMapGeometrySample retained_geometry{
+        player_canvas_anchor_x_, player_canvas_anchor_y_,
+        native_parent_width_, native_parent_height_};
+    const dswros::WorldMapGeometrySample current_geometry{
+        player_canvas_anchor_x_, player_canvas_anchor_y_,
+        current_parent_width, current_parent_height};
+    const auto geometry_delta = dswros::world_map_geometry_maximum_delta(
+        retained_geometry, current_geometry);
+    const auto extent_delta = dswros::world_map_parent_extent_maximum_delta(
+        retained_geometry, current_geometry);
+    if (!geometry_delta || !extent_delta) {
+        return handle_transient_observation(
+            dswros::WorldMapTransformObservationFailure::GeometryUnavailable,
+            result);
+    }
+    last_layering_geometry_changed_ =
+        *extent_delta > dswros::kWorldMapGeometryStabilityTolerance;
+    if (*extent_delta > dswros::kWorldMapGeometryStabilityTolerance) {
+        // Texture pixels encode the parent-local projection scale. A live
+        // extent change therefore needs a fresh atlas; stretching the retained
+        // image would also scale marker glyphs and recreate the resolution bug.
+        // Cached Slate geometry can expose a single stale frame while the map
+        // changes zoom/layout layers, so require two matching successful
+        // observations of the same new geometry and parent before spending the
+        // one rebuild. A transient unreadable frame neither qualifies nor
+        // destroys a valid in-progress sample.
+        if (reparent_geometry_parent_index_
+                != observed_parent_identity.ObjectIndex
+            || reparent_geometry_parent_serial_
+                != observed_parent_identity.ObjectSerialNumber) {
+            reset_reparent_geometry_stability_sample();
+            reparent_geometry_parent_index_ =
+                observed_parent_identity.ObjectIndex;
+            reparent_geometry_parent_serial_ =
+                observed_parent_identity.ObjectSerialNumber;
+        }
+        reparent_geometry_stability_result_ =
+            dswros::observe_world_map_geometry_sample(
+                reparent_geometry_sample_valid_,
+                reparent_geometry_sample_, current_geometry,
+                reparent_geometry_sample_max_delta_);
+        if (reparent_geometry_stability_result_
+            != dswros::WorldMapGeometryStabilityResult::Stable) {
             return handle_transient_observation(
-                dswros::WorldMapTransformObservationFailure::GeometryUnavailable,
+                dswros::WorldMapTransformObservationFailure::
+                    GeometryUnavailable,
                 result);
         }
-        transform_changed = *changed;
+        return request_current_session_rebuild(result);
     }
-    if (transform_changed) {
-        stage = dswros::WorldMapTransformSyncStage::OwnedHostApplication;
-        for (auto& host_handle : hosts_) {
-            UObject* host = host_handle.Get();
-            VectorParameters size_parameters{{
-                placement->width, placement->height}};
-            host->ProcessEvent(
-                set_desired_size_in_viewport_, &size_parameters);
-            PositionInViewportParameters position_parameters{};
-            position_parameters.position = {
-                placement->left, placement->top};
-            position_parameters.remove_dpi_scale = false;
-            host->ProcessEvent(
-                set_position_in_viewport_, &position_parameters);
+    reset_reparent_geometry_stability_sample();
+
+    const dswros::WorldMapAtlasPlacement retained_placement{
+        atlas_left_, atlas_top_, atlas_width_, atlas_height_};
+    if (!dswros::retain_world_map_atlas_placement(
+            retained_placement, retained_geometry, current_geometry)) {
+        return request_current_session_rebuild(result);
+    }
+
+    // The full-stretch host and root already inherit this exact parent's pan,
+    // zoom, clipping, visibility, and Retainer transform. PlayerIcon is a
+    // sibling witness whose cached anchor can move during animation. Validate
+    // the owned slots, but never feed an anchor-only delta back into the atlas
+    // Image slot or Retainer while parent identity and extent are unchanged.
+    stage = dswros::WorldMapTransformSyncStage::OwnedHostValidation;
+    for (std::size_t layer_index = 0;
+         layer_index < kWorldMapAtlasLayerCount; ++layer_index) {
+        UObject* host = hosts_[layer_index].Get();
+        UObject* native_slot = native_parent_slots_[layer_index].Get();
+        if (!host || !native_slot
+            || !native_slot->IsA(canvas_panel_slot_class_)
+            || read_object_property(host, L"Slot") != native_slot
+            || read_object_property(native_slot, L"Parent")
+                != observed_native_parent
+            || read_object_property(native_slot, L"Content") != host) {
+            return request_current_session_rebuild(result);
         }
     }
-    viewport_placement_ = *placement;
-    viewport_transform_valid_ = true;
-    viewport_geometry_sample_valid_ = true;
-    viewport_geometry_sample_ = {
-        native_geometry.absolute_left, native_geometry.absolute_top,
-        native_geometry.local_width, native_geometry.local_height};
     transform_ready_ = true;
-    if (!reconcile_host_visibility_unsafe(false, stage)) {
-        return false;
-    }
-    result = transform_changed
-        ? WorldMapLayeringRefreshResult::Updated
-        : WorldMapLayeringRefreshResult::Unchanged;
+    // Successful geometry validation is deliberately observation-only. Main
+    // publishes the independently computed runtime-visibility gate after this
+    // result; keeping that edge outside refresh prevents a same-parent zoom
+    // sample from repainting the Retainer or writing any owned widget state.
+    result = WorldMapLayeringRefreshResult::Unchanged;
     stage = dswros::WorldMapTransformSyncStage::None;
     return true;
 }
 
 WorldMapLayeringRefreshResult WorldMapUmgRenderer::sync_viewport_transform(
     UObject* current_layer) noexcept {
+    return refresh_layering(current_layer, false, 0.0, 0.0);
+}
+
+WorldMapLayeringRefreshResult WorldMapUmgRenderer::refresh_layering(
+    UObject* current_layer,
+    bool allow_tree_mutation,
+    double player_world_x,
+    double player_world_y) noexcept {
+    (void)player_world_x;
+    (void)player_world_y;
     if (state_ != WorldMapUmgRendererState::Attached) {
         return WorldMapLayeringRefreshResult::RetryLater;
     }
     const bool same_layer = attached_layer_matches(current_layer);
-    const bool had_valid_transform = viewport_transform_valid_;
+    const bool had_valid_transform = transform_ready_;
     WorldMapLayeringRefreshResult result{};
     volatile dswros::WorldMapTransformSyncStage stage =
         dswros::WorldMapTransformSyncStage::None;
     bool completed = false;
 #if defined(_MSC_VER)
     __try {
-        completed = sync_viewport_transform_unsafe(
-            current_layer, result, stage);
+        completed = refresh_native_parent_unsafe(
+            current_layer, allow_tree_mutation, result, stage);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         completed = false;
     }
 #else
     try {
-        completed = sync_viewport_transform_unsafe(
-            current_layer, result, stage);
+        completed = refresh_native_parent_unsafe(
+            current_layer, allow_tree_mutation, result, stage);
     } catch (...) {
         completed = false;
     }
@@ -2594,29 +3206,13 @@ WorldMapLayeringRefreshResult WorldMapUmgRenderer::sync_viewport_transform(
     }
 
     const auto failure = dswros::world_map_transform_failure_for_stage(stage);
-    const bool application_hosts_still_valid =
-        stage == dswros::WorldMapTransformSyncStage::OwnedHostApplication
-        && validate_host_payload_guarded(current_layer);
-    const auto action = stage
-            == dswros::WorldMapTransformSyncStage::OwnedHostApplication
-        ? dswros::classify_world_map_owned_host_application_failure(
-            same_layer, had_valid_transform,
-            application_hosts_still_valid)
-        : dswros::classify_world_map_transform_observation_failure(
+    const auto action =
+        dswros::classify_world_map_transform_observation_failure(
             failure, same_layer, had_valid_transform);
     const auto visibility_policy =
         dswros::world_map_transform_visibility_policy(action);
     if (visibility_policy.retain_host) {
         transform_ready_ = visibility_policy.transform_ready;
-        if (stage
-                == dswros::WorldMapTransformSyncStage::OwnedHostApplication
-            && action
-                == dswros::WorldMapTransformObservationFailureAction::RetainLastValid) {
-            // Do not issue another reflected write from the exception path.
-            // The prior placement remains authoritative and the caller's
-            // finite settle tail will converge both hosts on a later pass.
-            return WorldMapLayeringRefreshResult::Retained;
-        }
         const auto observation_stage = stage;
         if (!reconcile_host_visibility_guarded(
                 visibility_policy.force_collapsed, stage)) {
@@ -2634,15 +3230,310 @@ WorldMapLayeringRefreshResult WorldMapUmgRenderer::sync_viewport_transform(
     return WorldMapLayeringRefreshResult::Faulted;
 }
 
-WorldMapLayeringRefreshResult WorldMapUmgRenderer::refresh_layering(
+bool WorldMapUmgRenderer::capture_zoom_topology_unsafe(
     UObject* current_layer,
-    bool allow_tree_mutation,
-    double player_world_x,
-    double player_world_y) noexcept {
-    (void)allow_tree_mutation;
-    (void)player_world_x;
-    (void)player_world_y;
-    return sync_viewport_transform(current_layer);
+    WorldMapZoomTopologySnapshot& snapshot) const {
+    snapshot.capture_stage =
+        WorldMapZoomTopologyCaptureStage::InputValidation;
+    if (!current_layer || !current_layer->IsA(world_map_layer_class_)
+        || !attached_layer_matches(current_layer)) {
+        return false;
+    }
+
+    snapshot.capture_stage =
+        WorldMapZoomTopologyCaptureStage::CoreObjectObservation;
+    UObject* map_overlay = read_object_property(
+        current_layer, L"MapOverlay");
+    UObject* map_overlay_outside = read_object_property(
+        current_layer, L"MapOverlayOutSide");
+    UObject* retainer_box = read_object_property(
+        current_layer, L"RetainerBox");
+    UObject* fog_under_panel = read_object_property(
+        current_layer, L"FogUnderPanel");
+    UObject* fog_above_panel = read_object_property(
+        current_layer, L"FogAbovePanel");
+    UObject* tracking_panel = read_object_property(
+        current_layer, L"TrackingPanel");
+    UObject* selected_panel = read_object_property(
+        current_layer, L"SelectedPanel");
+    UObject* selected_native_parent = native_parent_.Get();
+    if (!map_overlay || !retainer_box || !selected_native_parent) {
+        return false;
+    }
+
+    UFunction* is_visible_function = find<UFunction>(
+        L"/Script/UMG.Widget:IsVisible");
+    auto* is_visible_return = CastField<FBoolProperty>(
+        find_function_field(is_visible_function, L"ReturnValue"));
+
+    const auto capture_widget = [this, map_overlay, map_overlay_outside,
+                                 retainer_box, is_visible_function,
+                                 is_visible_return, fog_under_panel,
+                                 fog_above_panel, tracking_panel,
+                                 selected_panel](
+        UObject* widget, WorldMapZoomTopologyWidget& output) {
+        capture_weak_widget_identity(widget, output);
+        output.visible = read_widget_visible_for_diagnostics(
+            widget, is_visible_function, is_visible_return);
+        output.visibility = read_widget_enum_for_diagnostics(
+            widget, L"Visibility");
+        output.clipping = read_widget_enum_for_diagnostics(
+            widget, L"Clipping");
+        classify_widget_ancestry_for_diagnostics(
+            widget, map_overlay, map_overlay_outside, retainer_box,
+            fog_under_panel, fog_above_panel, tracking_panel,
+            selected_panel,
+            output.map_overlay_depth,
+            output.map_overlay_outside_depth,
+            output.retainer_box_depth,
+            output.fog_under_panel_depth,
+            output.fog_above_panel_depth,
+            output.tracking_panel_depth,
+            output.selected_panel_depth);
+        output.render_scale_valid = read_nested_vector(
+            widget, L"RenderTransform", L"Scale",
+            output.render_scale_x, output.render_scale_y);
+        output.render_translation_valid = read_nested_vector(
+            widget, L"RenderTransform", L"Translation",
+            output.render_translation_x, output.render_translation_y);
+        UObject* slot = read_object_property(widget, L"Slot");
+        if (slot) {
+            FWeakObjectPtr slot_identity{};
+            slot_identity = slot;
+            output.slot_object_index = slot_identity.ObjectIndex;
+            output.slot_object_serial = slot_identity.ObjectSerialNumber;
+            UObject* slot_parent = read_object_property(slot, L"Parent");
+            if (slot_parent) {
+                FWeakObjectPtr parent_identity{};
+                parent_identity = slot_parent;
+                output.slot_parent_index = parent_identity.ObjectIndex;
+                output.slot_parent_serial =
+                    parent_identity.ObjectSerialNumber;
+            }
+            UObject* slot_content = read_object_property(slot, L"Content");
+            output.slot_content_matches = slot_content
+                ? static_cast<std::int8_t>(slot_content == widget ? 1 : 0)
+                : static_cast<std::int8_t>(-1);
+        }
+        if (slot && slot->IsA(canvas_panel_slot_class_)
+            && get_slot_position_) {
+            GetPositionParameters position{};
+            slot->ProcessEvent(get_slot_position_, &position);
+            output.slot_position_valid =
+                std::isfinite(position.return_value.x)
+                && std::isfinite(position.return_value.y);
+            if (output.slot_position_valid) {
+                output.slot_position_x = position.return_value.x;
+                output.slot_position_y = position.return_value.y;
+            }
+            if (get_slot_alignment_) {
+                GetPositionParameters alignment{};
+                slot->ProcessEvent(get_slot_alignment_, &alignment);
+                output.slot_alignment_valid =
+                    std::isfinite(alignment.return_value.x)
+                    && std::isfinite(alignment.return_value.y);
+                if (output.slot_alignment_valid) {
+                    output.slot_alignment_x = alignment.return_value.x;
+                    output.slot_alignment_y = alignment.return_value.y;
+                }
+            }
+        }
+        static_cast<void>(read_widget_geometry_for_diagnostics(
+            widget, slate_blueprint_library_.Get(),
+            get_cached_geometry_, get_slot_alignment_,
+            get_geometry_local_size_, local_to_absolute_,
+            absolute_to_local_, output));
+    };
+
+    const auto capture_chain = [&capture_widget](
+        UObject* start, WorldMapZoomTopologyChain& chain) {
+        std::array<UObject*, kWorldMapZoomTopologyChainCapacity> visited{};
+        UObject* current = start;
+        while (current && chain.count < chain.nodes.size()) {
+            for (std::uint32_t index = 0; index < chain.count; ++index) {
+                if (visited[index] == current) {
+                    chain.cycle = true;
+                    return;
+                }
+            }
+            visited[chain.count] = current;
+            capture_widget(current, chain.nodes[chain.count]);
+            ++chain.count;
+            UObject* slot = read_object_property(current, L"Slot");
+            current = read_object_property(slot, L"Parent");
+        }
+        chain.truncated = current != nullptr;
+    };
+
+    snapshot.capture_stage =
+        WorldMapZoomTopologyCaptureStage::CoreWidgetObservation;
+    capture_widget(map_overlay, snapshot.map_overlay);
+    capture_widget(map_overlay_outside, snapshot.map_overlay_outside);
+    capture_widget(retainer_box, snapshot.retainer_box);
+    capture_widget(fog_under_panel, snapshot.fog_under_panel);
+    capture_widget(fog_above_panel, snapshot.fog_above_panel);
+    capture_widget(tracking_panel, snapshot.tracking_panel);
+    capture_widget(selected_panel, snapshot.selected_panel);
+    capture_widget(
+        selected_native_parent, snapshot.selected_native_parent);
+    capture_chain(
+        selected_native_parent,
+        snapshot.selected_native_parent_ancestry);
+    for (std::size_t layer_index = 0;
+         layer_index < kWorldMapAtlasLayerCount; ++layer_index) {
+        UObject* mod_host = hosts_[layer_index].Get();
+        UObject* mod_root = root_panels_[layer_index].Get();
+        UObject* mod_image = atlas_images_[layer_index].Get();
+        capture_widget(mod_host, snapshot.mod_hosts[layer_index]);
+        capture_chain(
+            mod_host, snapshot.mod_host_ancestry[layer_index]);
+        capture_widget(mod_root, snapshot.mod_roots[layer_index]);
+        capture_chain(
+            mod_root, snapshot.mod_root_ancestry[layer_index]);
+        capture_widget(mod_image, snapshot.mod_images[layer_index]);
+        capture_chain(
+            mod_image, snapshot.mod_image_ancestry[layer_index]);
+    }
+
+    snapshot.capture_stage =
+        WorldMapZoomTopologyCaptureStage::IconSchemaObservation;
+    auto* array_property = CastField<FArrayProperty>(
+        current_layer->GetPropertyByNameInChain(L"ArrayIconInfo"));
+    void* array_value = array_property
+        ? array_property->ContainerPtrToValuePtr<void>(current_layer)
+        : nullptr;
+    auto* info_property = CastField<FStructProperty>(
+        array_property ? array_property->GetInner() : nullptr);
+    auto* icon_property = CastField<FObjectPropertyBase>(
+        info_property
+            ? find_struct_field(info_property->GetStruct(), L"IconWidget")
+            : nullptr);
+    std::array<UObject*, kWorldMapZoomTopologyParentCapacity>
+        captured_parent_objects{};
+    if (array_property && array_value && info_property && icon_property) {
+        snapshot.capture_stage =
+            WorldMapZoomTopologyCaptureStage::IconArrayObservation;
+        FScriptArrayHelper icons(array_property, array_value);
+        const std::int32_t count = icons.Num();
+        if (count >= 0 && count <= kMaxNativeIconCandidates) {
+            snapshot.icon_schema_valid = true;
+            snapshot.array_icon_count = count;
+            for (std::int32_t index = 0; index < count; ++index) {
+                void* info_value = icons.GetRawPtr(index);
+                void* icon_value = info_value
+                    ? icon_property->ContainerPtrToValuePtr<void>(info_value)
+                    : nullptr;
+                UObject* icon = icon_value
+                    ? icon_property->GetObjectPropertyValue(icon_value)
+                    : nullptr;
+                if (!icon || !icon->IsA(map_point_icon_class_)) {
+                    continue;
+                }
+                UObject* slot = read_object_property(icon, L"Slot");
+                UObject* parent = read_object_property(slot, L"Parent");
+                if (!slot || !parent
+                    || read_object_property(slot, L"Content") != icon) {
+                    continue;
+                }
+                ++snapshot.valid_icon_count;
+                FWeakObjectPtr parent_identity{};
+                parent_identity = parent;
+                std::size_t parent_index{};
+                for (; parent_index < snapshot.captured_parent_count;
+                     ++parent_index) {
+                    if (captured_parent_objects[parent_index] == parent) {
+                        ++snapshot.parents[parent_index].icon_count;
+                        aggregate_native_icon_visibility_for_diagnostics(
+                            icon, snapshot.parents[parent_index]);
+                        break;
+                    }
+                }
+                if (parent_index < snapshot.captured_parent_count) {
+                    continue;
+                }
+                if (snapshot.captured_parent_count
+                    >= snapshot.parents.size()) {
+                    snapshot.parent_summary_truncated = true;
+                    continue;
+                }
+                auto& parent_summary =
+                    snapshot.parents[snapshot.captured_parent_count];
+                parent_summary.object_index = parent_identity.ObjectIndex;
+                parent_summary.object_serial =
+                    parent_identity.ObjectSerialNumber;
+                parent_summary.icon_count = 1U;
+                parent_summary.clipping =
+                    read_widget_enum_for_diagnostics(parent, L"Clipping");
+                classify_widget_ancestry_for_diagnostics(
+                    parent, map_overlay, map_overlay_outside, retainer_box,
+                    fog_under_panel, fog_above_panel, tracking_panel,
+                    selected_panel,
+                    parent_summary.map_overlay_depth,
+                    parent_summary.map_overlay_outside_depth,
+                    parent_summary.retainer_box_depth,
+                    parent_summary.fog_under_panel_depth,
+                    parent_summary.fog_above_panel_depth,
+                    parent_summary.tracking_panel_depth,
+                    parent_summary.selected_panel_depth);
+                aggregate_native_icon_visibility_for_diagnostics(
+                    icon, parent_summary);
+                captured_parent_objects[snapshot.captured_parent_count] =
+                    parent;
+                ++snapshot.captured_parent_count;
+            }
+        }
+    }
+
+    snapshot.capture_stage =
+        WorldMapZoomTopologyCaptureStage::ParentObservation;
+    for (std::uint32_t index = 0;
+         index < snapshot.captured_parent_count; ++index) {
+        capture_widget(
+            captured_parent_objects[index],
+            snapshot.parents[index].local_widget);
+        capture_chain(
+            captured_parent_objects[index],
+            snapshot.parents[index].ancestry);
+    }
+
+    snapshot.capture_stage =
+        WorldMapZoomTopologyCaptureStage::ThresholdObservation;
+    const wchar_t* data_path = map_id_ == 100
+        ? kWorldMapData100
+        : map_id_ == 200 ? kWorldMapData200 : nullptr;
+    UObject* map_data = data_path
+        ? UObjectGlobals::StaticFindObject<UObject*>(
+            nullptr, nullptr, data_path)
+        : nullptr;
+    snapshot.zoom_thresholds_valid = map_data
+        && map_data->IsA(world_map_data_class_)
+        && read_world_map_zoom_thresholds(map_data, snapshot);
+    snapshot.capture_stage = WorldMapZoomTopologyCaptureStage::Complete;
+    snapshot.captured = true;
+    return true;
+}
+
+WorldMapZoomTopologySnapshot WorldMapUmgRenderer::capture_zoom_topology(
+    UObject* current_layer) const noexcept {
+    WorldMapZoomTopologySnapshot snapshot{};
+    bool completed{};
+#if defined(_MSC_VER)
+    __try {
+        completed = capture_zoom_topology_unsafe(current_layer, snapshot);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        completed = false;
+    }
+#else
+    try {
+        completed = capture_zoom_topology_unsafe(current_layer, snapshot);
+    } catch (...) {
+        completed = false;
+    }
+#endif
+    if (!completed) {
+        snapshot.captured = false;
+    }
+    return snapshot;
 }
 
 void WorldMapUmgRenderer::set_content_visibility_intent(
@@ -2756,6 +3647,7 @@ bool WorldMapUmgRenderer::attach_unsafe(
         ? dswros::WorldMapGeometryStabilityResult::Seeded
         : dswros::WorldMapGeometryStabilityResult::None;
     geometry_sample_max_delta_ = 0.0;
+    atlas_cache_hit_count_ = 0;
     runtime_visibility_allowed_ = false;
     transform_ready_ = false;
     applied_host_visibility_.reset();
@@ -2805,12 +3697,18 @@ bool WorldMapUmgRenderer::attach_unsafe(
         return false;
     }
 
-    NativeIconTemplate native_icon_template{};
-    if (find_native_icon_template(
+    NativeIconClassWitness native_icon_witness{};
+    if (find_native_icon_class_witness(
             current_layer, expected_owning_player,
             map_point_icon_class_, canvas_panel_class_,
             canvas_panel_slot_class_, get_owning_player_,
-            native_icon_template) != NativeIconTemplateLookupResult::Found) {
+            native_icon_witness) != NativeIconClassLookupResult::Found) {
+        last_attach_failure_ = 7;
+        return false;
+    }
+    UObject* native_parent = resolve_world_map_render_parent(
+        current_layer, canvas_panel_class_);
+    if (!native_parent) {
         last_attach_failure_ = 7;
         return false;
     }
@@ -2869,7 +3767,7 @@ bool WorldMapUmgRenderer::attach_unsafe(
     double parent_width{};
     double parent_height{};
     if (!read_live_player_canvas_anchor(
-            player_icon, native_icon_template.parent_canvas,
+            player_icon, native_parent,
             canvas_panel_class_, canvas_panel_slot_class_,
             slate_blueprint_library_.Get(), get_slot_alignment_,
             get_cached_geometry_, get_geometry_local_size_,
@@ -2939,8 +3837,7 @@ bool WorldMapUmgRenderer::attach_unsafe(
         last_attach_failure_ = 12;
         return false;
     }
-    UClass* native_icon_class = native_icon_template.icon_class;
-    UObject* native_parent = native_icon_template.parent_canvas;
+    UClass* native_icon_class = native_icon_witness.icon_class;
     UObject* blueprint_library = widget_blueprint_library_.Get();
     UObject* rendering_library = kismet_rendering_library_.Get();
     if (!native_icon_class || !native_parent
@@ -2970,6 +3867,9 @@ bool WorldMapUmgRenderer::attach_unsafe(
         const AtlasBuildResult& atlas_result = atlas_results[layer_index];
         atlas_build_elapsed_us_ += atlas_result.elapsed_us;
         atlas_file_bytes_ += atlas_result.file_bytes;
+        if (atlas_result.cache_hit) {
+            ++atlas_cache_hit_count_;
+        }
         if (!atlas_result.success) {
             last_attach_failure_ = 14;
             return false;
@@ -3008,6 +3908,20 @@ bool WorldMapUmgRenderer::attach_unsafe(
             hosts[layer_index], L"Panel_Point");
         if (!trees[layer_index] || !root_panels[layer_index]
             || !root_panels[layer_index]->IsA(canvas_panel_class_)) {
+            last_attach_failure_ = 17;
+            return false;
+        }
+        UObject* root_slot = read_object_property(
+            root_panels[layer_index], L"Slot");
+        UObject* root_slot_parent = read_object_property(root_slot, L"Parent");
+        if (!root_slot || !root_slot->IsA(canvas_panel_slot_class_)
+            || !root_slot_parent
+            || !root_slot_parent->IsA(canvas_panel_class_)
+            || read_object_property(root_slot, L"Content")
+                != root_panels[layer_index]
+            || !configure_full_stretch_canvas_slot(
+                root_slot, set_slot_anchors_, set_slot_offsets_,
+                set_slot_auto_size_, set_slot_alignment_)) {
             last_attach_failure_ = 17;
             return false;
         }
@@ -3055,7 +3969,7 @@ bool WorldMapUmgRenderer::attach_unsafe(
         }
         set_slot_vector(
             atlas_image_slots[layer_index], set_slot_position_,
-            0.0, 0.0);
+            atlas_bounds.left, atlas_bounds.top);
         set_slot_vector(
             atlas_image_slots[layer_index], set_slot_size_,
             atlas_bounds.width, atlas_bounds.height);
@@ -3064,6 +3978,10 @@ bool WorldMapUmgRenderer::attach_unsafe(
         ZOrderParameters image_z{1};
         atlas_image_slots[layer_index]->ProcessEvent(
             set_slot_z_order_, &image_z);
+        // The full-stretch host and root remain layout-neutral children of the
+        // native map Canvas. The atlas offset is already owned by this inner
+        // Canvas slot; its Image render translation is reasserted at zero only
+        // after the host enters the live tree below.
         set_visibility(
             hosts[layer_index], set_visibility_, kCollapsed);
     }
@@ -3072,8 +3990,10 @@ bool WorldMapUmgRenderer::attach_unsafe(
         return false;
     }
 
-    // Publish handles before the independent viewport hosts become live.
-    // Rollback removes only Mod-owned hosts; the native map tree is read-only.
+    // Publish every weak transaction handle before mutating the live parent.
+    // Keep every cloned UserWidget host full-stretch so it cannot change the
+    // native Canvas desired extent. The inner Image Canvas slot owns the exact
+    // parent-local atlas rectangle; Image render translation remains zero.
     layer_ = current_layer;
     retainer_box_ = retainer_box;
     native_parent_ = native_parent;
@@ -3093,13 +4013,50 @@ bool WorldMapUmgRenderer::attach_unsafe(
     applied_host_visibility_.reset();
     for (std::size_t layer_index = 0;
          layer_index < kWorldMapAtlasLayerCount; ++layer_index) {
-        AddToViewportParameters viewport_add{kRadarMarkerZ};
-        hosts[layer_index]->ProcessEvent(add_to_viewport_, &viewport_add);
-        VectorParameters alignment_parameters{{0.0, 0.0}};
-        hosts[layer_index]->ProcessEvent(
-            set_alignment_in_viewport_, &alignment_parameters);
-        set_visibility(
-            hosts[layer_index], set_visibility_, kCollapsed);
+        AddChildParameters add_host{hosts[layer_index]};
+        native_parent->ProcessEvent(add_child_to_canvas_, &add_host);
+        UObject* native_slot = add_host.return_value;
+        native_parent_slots_[layer_index] = native_slot;
+        if (!native_slot
+            || !native_slot->IsA(canvas_panel_slot_class_)
+            || !configure_full_stretch_overlay_slot(
+                native_slot, set_slot_anchors_, set_slot_offsets_,
+                set_slot_auto_size_, set_slot_alignment_,
+                set_slot_z_order_)
+            || read_object_property(hosts[layer_index], L"Slot")
+                != native_slot
+            || read_object_property(native_slot, L"Parent") != native_parent
+            || read_object_property(native_slot, L"Content")
+                != hosts[layer_index]) {
+            detach_unsafe();
+            last_attach_failure_ = 21;
+            return false;
+        }
+
+        // Reassert the cloned Blueprint's internal fill contract only after
+        // the host is in the live tree. This closes the point at which its
+        // template layout can otherwise restore a centered design-size root.
+        UObject* root_slot = read_object_property(
+            root_panels[layer_index], L"Slot");
+        UObject* root_slot_parent = read_object_property(root_slot, L"Parent");
+        if (!root_slot || !root_slot->IsA(canvas_panel_slot_class_)
+            || !root_slot_parent
+            || !root_slot_parent->IsA(canvas_panel_class_)
+            || read_object_property(root_slot, L"Content")
+                != root_panels[layer_index]
+            || !configure_full_stretch_canvas_slot(
+                root_slot, set_slot_anchors_, set_slot_offsets_,
+                set_slot_auto_size_, set_slot_alignment_)) {
+            detach_unsafe();
+            last_attach_failure_ = 21;
+            return false;
+        }
+        set_slot_vector(
+            atlas_image_slots[layer_index], set_slot_position_,
+            atlas_bounds.left, atlas_bounds.top);
+        VectorParameters zero_translation{{0.0, 0.0}};
+        atlas_images[layer_index]->ProcessEvent(
+            set_render_translation_, &zero_translation);
     }
     applied_host_visibility_ = false;
     map_id_ = data_map_id;
@@ -3113,16 +4070,11 @@ bool WorldMapUmgRenderer::attach_unsafe(
         active_markers_[index] = markers[index];
     }
     active_marker_count_ = layered_marker_count;
+    transform_ready_ = true;
     state_ = WorldMapUmgRendererState::Attached;
-    WorldMapLayeringRefreshResult sync_result{};
-    volatile dswros::WorldMapTransformSyncStage sync_stage =
-        dswros::WorldMapTransformSyncStage::None;
-    const bool transform_synced = sync_viewport_transform_unsafe(
-        current_layer, sync_result, sync_stage);
-    last_transform_sync_stage_ = sync_stage;
-    if (!transform_synced
-        || sync_result == WorldMapLayeringRefreshResult::Faulted) {
-        fault_and_detach(100);
+    if (!validate_host_unsafe(current_layer)) {
+        detach_unsafe();
+        last_attach_failure_ = 21;
         return false;
     }
     last_attach_failure_ = 0;
@@ -3208,7 +4160,8 @@ bool WorldMapUmgRenderer::resume_suspended_guarded(
         dswros::WorldMapTransformSyncStage::None;
 #if defined(_MSC_VER)
     __try {
-        if (!validate_host_unsafe(current_layer)) {
+        UObject* owning_player{};
+        if (!validate_host_payload_unsafe(current_layer, owning_player)) {
             last_attach_failure_ = 23;
             detach_unsafe();
             return false;
@@ -3217,8 +4170,8 @@ bool WorldMapUmgRenderer::resume_suspended_guarded(
         transform_ready_ = false;
         state_ = WorldMapUmgRendererState::Attached;
         WorldMapLayeringRefreshResult result{};
-        const bool transform_synced = sync_viewport_transform_unsafe(
-            current_layer, result, sync_stage);
+        const bool transform_synced = refresh_native_parent_unsafe(
+            current_layer, false, result, sync_stage);
         last_transform_sync_stage_ = sync_stage;
         if (!transform_synced
             || result == WorldMapLayeringRefreshResult::Faulted) {
@@ -3236,7 +4189,8 @@ bool WorldMapUmgRenderer::resume_suspended_guarded(
     }
 #else
     try {
-        if (!validate_host_unsafe(current_layer)) {
+        UObject* owning_player{};
+        if (!validate_host_payload_unsafe(current_layer, owning_player)) {
             last_attach_failure_ = 23;
             detach_unsafe();
             return false;
@@ -3245,8 +4199,8 @@ bool WorldMapUmgRenderer::resume_suspended_guarded(
         transform_ready_ = false;
         state_ = WorldMapUmgRendererState::Attached;
         WorldMapLayeringRefreshResult result{};
-        const bool transform_synced = sync_viewport_transform_unsafe(
-            current_layer, result, sync_stage);
+        const bool transform_synced = refresh_native_parent_unsafe(
+            current_layer, false, result, sync_stage);
         last_transform_sync_stage_ = sync_stage;
         if (!transform_synced
             || result == WorldMapLayeringRefreshResult::Faulted) {
@@ -3337,6 +4291,7 @@ void WorldMapUmgRenderer::reset_runtime_handles() noexcept {
         hosts_[layer_index] = FWeakObjectPtr{};
         widget_trees_[layer_index] = FWeakObjectPtr{};
         root_panels_[layer_index] = FWeakObjectPtr{};
+        native_parent_slots_[layer_index] = FWeakObjectPtr{};
         atlas_images_[layer_index] = FWeakObjectPtr{};
         atlas_image_slots_[layer_index] = FWeakObjectPtr{};
         atlas_textures_[layer_index] = FWeakObjectPtr{};
@@ -3360,10 +4315,6 @@ void WorldMapUmgRenderer::reset_runtime_handles() noexcept {
     atlas_top_ = 0.0;
     atlas_width_ = 0.0;
     atlas_height_ = 0.0;
-    viewport_transform_valid_ = false;
-    viewport_placement_ = {};
-    viewport_geometry_sample_valid_ = false;
-    viewport_geometry_sample_ = {};
     last_layering_parent_changed_ = false;
     last_layering_geometry_changed_ = false;
     last_layering_previous_parent_index_ = -1;

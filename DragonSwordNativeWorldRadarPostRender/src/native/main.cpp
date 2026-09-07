@@ -176,6 +176,8 @@ constexpr std::array kWorldMapLayeringSettleDelays{
     std::chrono::milliseconds{500},
     std::chrono::milliseconds{1000},
     std::chrono::milliseconds{1250}};
+constexpr auto kWorldMapZoomTopologyDebounce =
+    std::chrono::milliseconds{1250};
 constexpr auto kVisibilityHubServiceInterval =
     std::chrono::milliseconds{50};
 constexpr auto kVisibilityHubToggleDebounce =
@@ -708,6 +710,8 @@ enum class WorldMapLayeringArmPolicy : std::uint8_t {
         return "retry_later";
     case dsnwr::WorldMapLayeringRefreshResult::Retained:
         return "retained";
+    case dsnwr::WorldMapLayeringRefreshResult::RebuildRequired:
+        return "rebuild_required";
     case dsnwr::WorldMapLayeringRefreshResult::Faulted:
         return "faulted";
     case dsnwr::WorldMapLayeringRefreshResult::Unchanged:
@@ -1827,7 +1831,7 @@ public:
             append_log("DISABLED", "required native metadata or callback is unavailable");
             return;
         }
-        append_log("READY", std::format("hotkeys=F6,F7,F8 coordinate_ms=16 required_runtime_ready=true treasure_actor_hooks={}_{} encounter_death_hooks={}_{} treasure_interact_schema={} treasure_completion=local_interactor_or_exact_current_mount_rider_exact_receiver_or_nearby_nonpawn_exact_id_delayed_positive_save_confirmation_or_set_death_process world_map_hook={} world_map_zoom_hook={} world_map_visibility_provider={} object_create_listener={} compact_layer_class={} area_quest_provider={} area_quest_hooks={}_{} area_quest_end_schemas={}_{} area_quest_completion_hook={} area_quest_event_hook={} area_quest_scan=one_id_per_frame_event_driven area_quest_refresh=one_second_debounced_transactional_preserve_last_complete area_quest_completion=exact_catalog_dynamic_event_or_exact_task_actor_then_ten_second_exact_id_end_probe_then_three_bounded_positive_only_save_attempts area_quest_store=dynamic area_quest_definition_snapshot=f7_game_db_main_group_numeric_only area_quest_monster_alive=unique_bounded_assault_numeric_link area_quest_time_refresh=first_valid_and_world_hour_edge_transactional_runtime_rescan area_quest_compact=nearby_prerequisite_proven_plus_runtime_marker_z_nearest_height_band area_quest_world_map=one_shot_main_group_prerequisite_proof_plus_runtime area_quest_triggerability=fail_closed_main_group_conditions discovery=event_driven_fixed_49_weak_slots_no_enumeration_8_position_queries_per_control_tick bird_egg_discovery=exact_Bird_Egg01_C_or_Bird_Egg02_C_event_driven_fixed_512_weak_slots_no_enumeration_8_interact_component_position_queries_per_250ms bird_egg_active=nearest_16_250ms_shared_discovery_edge_exact_interact_component_or_weak_missing_400ms_debounce_minimap_only encounter_identity=exact_unique_class_player_to_current_actor_within_100m encounter_completion=exact_observed_notify_death_or_death_process_end_plus_strict_nearby_ten_second_missing_fallback encounter_end_recovery=exact_destroyed_class_player_to_current_actor world_map_runtime_delta=current_session_only_if_exact_visible_else_set_world_map_image_deferred world_map_readiness=set_world_map_image_one_shot_serial_matched_budget_rearm encounter_edges=250ms_control_1hz_scalar_49_only_at_hour_or_cooldown_edge sql=native_one_shot_per_activation_plus_event_driven_encounter_dynamic_and_exact_treasure_confirmation visibility_hub=f6_transient_native_umg_auto_apply_change_only_titlebar_bug_report_status_signal_action_keeps_open_x_close_cursor_reassert_open_only markers=treasure_boss_assault_fly_mole_wave_area_quest_bird_egg marker_capacity=80 nearest_treasure_size=22 normal_treasure_size=14 compact_encounter_sizes=30_27 compact_encounter_style=four_piece_official_reference compact_area_quest_style=translucent_charcoal_rounded_brush_thick_dark_frame_three_white_dots nearest_height=sharp_tangent_six_piece_pointer_larger_tighter clock=native_scalar_transparent_thick_seven_segment_lower_crescent_star_minute_edge render_motion=one_single_host_canvas_translation umg_projection=dpi_logical_units minimap_projection=live_scale_1hz compact_layering=single_proven_viewport_host compact_attach=event_candidate_plus_one_bounded_startup_catchup_distinct_replacement_rearm compact_transition_hide=first_invalid_position_sample world_map=map100_full_global_task_minigame_dual_atlas_capacity4096_texture3072 world_map_selection=explicit_session_linear_no_heap_no_radius world_map_encounter_sizes=44_34 world_map_encounter_style=official_reference_simplified_contrast world_map_minigame_size=32 world_map_edge_coverage=4x4_all_formal_glyphs_atlas_revision50 world_map_minigames=33_fly_40_mole_10_wave_save_filtered world_map_layering=independent_viewport_hosts_native_canvas_read_only_live_geometry_transform_sync_no_rebuild world_map_replacement=event_driven_exact_set_image_rearm_nonfatal_layer_mismatch world_map_f8=suspend_collapsed world_map_f7=exact_retained_layer_resume_outside_activity world_map_travel=detach activity_suppression=edge_detach_recreate_both_renderers main_menu=exact_title_map_owner_boundary_hard_stop_explicit_open_world_f7 world_map_metrics=category_counts_first_last_ids_atlas_us_bytes_suspend_resume_counts",
+        append_log("READY", std::format("hotkeys=F6,F7,F8 coordinate_ms=16 required_runtime_ready=true treasure_actor_hooks={}_{} encounter_death_hooks={}_{} treasure_interact_schema={} treasure_completion=local_interactor_or_exact_current_mount_rider_exact_receiver_or_nearby_nonpawn_exact_id_delayed_positive_save_confirmation_or_set_death_process world_map_hook={} world_map_zoom_hook={} world_map_visibility_provider={} object_create_listener={} compact_layer_class={} area_quest_provider={} area_quest_hooks={}_{} area_quest_end_schemas={}_{} area_quest_completion_hook={} area_quest_event_hook={} area_quest_scan=one_id_per_frame_event_driven area_quest_refresh=one_second_debounced_transactional_preserve_last_complete area_quest_completion=exact_catalog_dynamic_event_or_exact_task_actor_then_ten_second_exact_id_end_probe_then_three_bounded_positive_only_save_attempts area_quest_store=dynamic area_quest_definition_snapshot=f7_game_db_main_group_numeric_only area_quest_monster_alive=unique_bounded_assault_numeric_link area_quest_time_refresh=first_valid_and_world_hour_edge_transactional_runtime_rescan area_quest_compact=nearby_prerequisite_proven_plus_runtime_marker_z_nearest_height_band area_quest_world_map=one_shot_main_group_prerequisite_proof_plus_runtime area_quest_triggerability=fail_closed_main_group_conditions discovery=event_driven_fixed_49_weak_slots_no_enumeration_8_position_queries_per_control_tick bird_egg_discovery=exact_Bird_Egg01_C_or_Bird_Egg02_C_event_driven_fixed_512_weak_slots_no_enumeration_8_interact_component_position_queries_per_250ms bird_egg_active=nearest_16_250ms_shared_discovery_edge_exact_interact_component_or_weak_missing_400ms_debounce_minimap_only encounter_identity=exact_unique_class_player_to_current_actor_within_100m encounter_completion=exact_observed_notify_death_or_death_process_end_plus_strict_nearby_ten_second_missing_fallback encounter_end_recovery=exact_destroyed_class_player_to_current_actor world_map_runtime_delta=current_session_only_if_exact_visible_else_set_world_map_image_deferred world_map_readiness=set_world_map_image_one_shot_serial_matched_budget_rearm encounter_edges=250ms_control_1hz_scalar_49_only_at_hour_or_cooldown_edge sql=native_one_shot_per_activation_plus_event_driven_encounter_dynamic_and_exact_treasure_confirmation visibility_hub=f6_transient_native_umg_auto_apply_change_only_titlebar_bug_report_status_signal_action_keeps_open_x_close_cursor_reassert_open_only markers=treasure_boss_assault_fly_mole_wave_area_quest_bird_egg marker_capacity=80 nearest_treasure_size=22 normal_treasure_size=14 compact_encounter_sizes=30_27 compact_encounter_style=four_piece_official_reference compact_area_quest_style=translucent_charcoal_rounded_brush_thick_dark_frame_three_white_dots nearest_height=sharp_tangent_six_piece_pointer_larger_tighter clock=native_scalar_transparent_thick_seven_segment_lower_crescent_star_minute_edge render_motion=one_single_host_canvas_translation umg_projection=dpi_logical_units minimap_projection=live_scale_1hz compact_layering=single_proven_viewport_host compact_attach=event_candidate_plus_one_bounded_startup_catchup_distinct_replacement_rearm compact_transition_hide=first_invalid_position_sample world_map=map100_full_global_task_minigame_dual_atlas_capacity4096_texture2048 world_map_selection=explicit_session_linear_no_heap_no_radius world_map_encounter_sizes=44_34 world_map_encounter_style=official_reference_simplified_contrast world_map_minigame_size=32 world_map_edge_coverage=4x4_all_formal_glyphs_atlas_revision51 world_map_minigames=33_fly_40_mole_10_wave_save_filtered world_map_layering=native_children_full_stretch_hosts_inner_atlas_layout_image_zero_translation_inherited_pan_zoom_clip world_map_replacement=event_driven_exact_set_image_rearm_nonfatal_layer_mismatch world_map_f8=suspend_collapsed world_map_f7=exact_retained_layer_resume_outside_activity world_map_travel=detach activity_suppression=edge_detach_recreate_both_renderers main_menu=exact_title_map_owner_boundary_hard_stop_explicit_open_world_f7 world_map_metrics=category_counts_first_last_ids_atlas_us_bytes_cache_hits_suspend_resume_counts",
             treasure_interact_hook_registered_, treasure_death_hook_registered_,
             encounter_death_hook_registered_,
             encounter_death_process_hook_registered_,
@@ -1852,9 +1856,11 @@ public:
             "compact_menu_suppression=set_world_map_image_latch_plus_"
             "is_visible_while_latched_plus_is_game_paused_250ms "
             "controller_mapping_reads=none motion_16ms_delta=boolean_only "
-            "world_map_hosts=independent_viewport "
-            "native_canvas=read_only "
-            "geometry_sync=position_size_visibility_only no_rebuild=true");
+            "world_map_hosts=full_stretch_native_children_inner_atlas_layout "
+            "native_canvas=transform_owner same_parent_sync=validation_only "
+            "same_parent_geometry=owner_extent_only "
+            "parent_replacement=fresh_rebuild "
+            "atlas_cache=persistent_fingerprint no_rebuild_on_pan_zoom=true");
     }
 
     void NotifyUObjectCreated(
@@ -3907,10 +3913,10 @@ private:
 
     void apply_world_map_atlas_visibility_guarded(
         UWorld* current_world, UObject* current_layer) noexcept {
-        // Independent viewport hosts do not inherit the game layer's
-        // visibility. Show them only while the exact attached layer remains a
-        // visible member of the current world. The renderer adds the final
-        // geometry-valid gate before changing either host to Visible.
+        // Mod-owned native-child hosts still have their own visibility gate.
+        // Show them only while the exact attached layer remains a visible
+        // member of the current world. The renderer adds the final geometry-
+        // valid gate before changing either host to Visible.
         world_map_umg_renderer_.publish_runtime_visibility(
             world_map_atlas_visibility_allowed_guarded(
                 current_world, current_layer));
@@ -4003,12 +4009,14 @@ private:
         world_map_service_attempts_ = 0;
         world_map_serviced_serial_ = 0;
         world_map_renderer_session_started_ = false;
+        world_map_session_rebuild_consumed_ = false;
         world_map_set_image_rearm_consumed_ = false;
         world_map_layering_refresh_pending_ = false;
         world_map_layering_refresh_started_ = {};
         world_map_layering_refresh_due_ = {};
         world_map_layering_refresh_serial_ = 0;
         world_map_layering_refresh_attempt_ = 0;
+        cancel_world_map_zoom_topology();
         world_map_umg_renderer_.publish_runtime_visibility(false);
     }
 
@@ -4753,6 +4761,7 @@ private:
             world_map_session_pending_ = false;
             world_map_service_retry_after_ = {};
             world_map_layering_refresh_pending_ = false;
+            cancel_world_map_zoom_topology();
         }
     }
 
@@ -5503,6 +5512,11 @@ private:
         }
         report_compact_pool_state_change();
         report_world_map_state_change();
+        // Diagnostic trailing-edge capture is independent of the renderer's
+        // settle tail and must run first. It never calls refresh_layering().
+        if (world_map_zoom_topology_pending_) {
+            service_world_map_zoom_topology(now);
+        }
         profile_sample.world_map_layering_pending =
             world_map_layering_refresh_pending_;
         profile_stage(EngineTickProfileStage::WorldMapLayering, [this, now] {
@@ -6240,8 +6254,10 @@ private:
                 current_layer)) {
             return;
         }
+        const auto now = Clock::now();
+        arm_world_map_zoom_topology(now);
         arm_world_map_layering_refresh(
-            Clock::now(), WorldMapLayeringTrigger::ZoomChanged,
+            now, WorldMapLayeringTrigger::ZoomChanged,
             WorldMapLayeringArmPolicy::Coalesce);
     }
 
@@ -6269,7 +6285,7 @@ private:
             // This exact DLayerMap event is the authoritative map-open edge.
             // Controller navigation does not necessarily expose a mouse
             // cursor, so suppress compact paint immediately. Collapse the
-            // independent world-map hosts only for a new or mismatched layer;
+            // native-child world-map hosts only for a new or mismatched layer;
             // the exact already-attached layer remains visible while its
             // finite transform-only settle tail runs.
             if (!exact_attached_layer) {
@@ -6284,6 +6300,7 @@ private:
                 if (new_open_edge) {
                     world_map_visible_serial_ = 0;
                     world_map_open_evidence_at_ = Clock::now();
+                    world_map_session_rebuild_consumed_ = false;
                 }
                 if (content_visible && !exact_attached_layer) {
                     world_map_session_pending_ = true;
@@ -6295,7 +6312,7 @@ private:
                 candidate_transition)) {
             // A different DLayerMap is a different UMG lifetime even when an
             // allocator later reuses the same address (A -> B -> A). Retire
-            // the independent Mod hosts and every finite session budget
+            // the Mod-owned native-child hosts and every finite session budget
             // before binding the replacement. The native Canvas remains
             // read-only throughout this transition.
             world_map_umg_renderer_.detach();
@@ -6378,7 +6395,7 @@ private:
                 kWorldMapMaxServiceAttempts));
             return;
         }
-        const bool attached_layer_transform_sync = same_layer
+        const bool attached_layer_validation = same_layer
             && set_world_map_image_event
             && enabled_
             && !transition_active_
@@ -6388,10 +6405,10 @@ private:
                 == dsnwr::WorldMapUmgRendererState::Attached
             && world_map_umg_renderer_.attached_layer_matches(
                 current_layer);
-        if (attached_layer_transform_sync) {
-            // SetWorldMapImage may return before the map viewport settles.
-            // Debounce repeated events and run one finite, transform-only
-            // observation tail against the read-only native map geometry.
+        if (attached_layer_validation) {
+            // SetWorldMapImage may return before a replacement native parent
+            // settles. Debounce repeated events and run one finite read-only
+            // observation tail; inherited same-parent pan/zoom needs no write.
             arm_world_map_layering_refresh(
                 Clock::now(), WorldMapLayeringTrigger::SetWorldMapImage,
                 WorldMapLayeringArmPolicy::Coalesce);
@@ -6413,6 +6430,340 @@ private:
         // All replacement and first-bind cases return above. Reaching this
         // point means a duplicate same-layer event whose active or exhausted
         // session state must be preserved.
+    }
+
+    [[nodiscard]] bool schedule_world_map_geometry_or_payload_rebuild(
+        UObject* current_layer,
+        Clock::time_point now,
+        const char* source) noexcept {
+        const bool exact_live_attachment = current_layer
+            && world_map_candidate_available_
+            && current_layer == current_world_map_layer_guarded()
+            && world_map_umg_renderer_.state()
+                == dsnwr::WorldMapUmgRendererState::Attached
+            && world_map_umg_renderer_.attached_layer_matches(current_layer);
+        const bool current_session = enabled_ && !transition_active_
+            && !activity_suppressed_
+            && world_map_content_visibility_intent()
+            && world_map_candidate_has_open_evidence()
+            && world_map_compact_suppressed_;
+        const auto attempts_before = world_map_service_attempts_;
+        const auto readiness_before = world_map_readiness_attempts_;
+        const bool schedule = exact_live_attachment && current_session
+            && !world_map_session_rebuild_consumed_;
+
+        // Stop this observation tail regardless of the scheduling outcome.
+        // A rejected rebuild must not spin on the same terminal observation.
+        world_map_layering_refresh_pending_ = false;
+        world_map_layering_refresh_started_ = {};
+        world_map_layering_refresh_due_ = {};
+        world_map_layering_refresh_serial_ = 0;
+        world_map_layering_refresh_attempt_ = 0;
+        world_map_layering_refresh_trigger_ =
+            WorldMapLayeringTrigger::Attach;
+
+        const char* action = "skipped_invalid_session";
+        if (schedule) {
+            // Spend the once-per-open-session allowance before detaching. A
+            // rebuild owns one fresh, independently hard-bounded three-attempt
+            // geometry/attach budget because its first valid sample only seeds
+            // stability. The immutable marker snapshot stays owned by Main and
+            // is reused; the consumed latch prevents another rebuild loop.
+            world_map_session_rebuild_consumed_ = true;
+            world_map_service_attempts_ = 0;
+            world_map_umg_renderer_.begin_map_session();
+            if (world_map_umg_renderer_.state()
+                == dsnwr::WorldMapUmgRendererState::Ready) {
+                world_map_renderer_session_started_ = true;
+                world_map_readiness_attempts_ = 0;
+                world_map_service_retry_after_ = now;
+                world_map_session_pending_ = true;
+                action = "scheduled_bounded_current_session";
+            } else {
+                world_map_renderer_session_started_ = false;
+                world_map_service_retry_after_ = {};
+                world_map_session_pending_ = false;
+                action = "detach_failed_closed";
+            }
+        } else {
+            world_map_session_pending_ = false;
+            world_map_service_retry_after_ = {};
+            if (!exact_live_attachment || !current_session) {
+                action = "skipped_invalid_session";
+            } else if (world_map_session_rebuild_consumed_) {
+                action = "skipped_once_per_session_consumed";
+            }
+        }
+
+        try {
+            append_log(
+                schedule && world_map_session_pending_
+                    ? "WORLD_MAP_ATLAS_REBUILD_SCHEDULED"
+                    : "WORLD_MAP_ATLAS_REBUILD_SKIPPED",
+                std::format(
+                    "activation={} epoch={} candidate_serial={} source={} result=rebuild_requested reason=geometry_or_payload_rebuild action={} marker_snapshot_preserved={} markers={} readiness_attempts_before={} readiness_attempts_after={} initial_attach_attempts_consumed={}/{} rebuild_attach_attempts={}/{} session_pending={}",
+                    activation_, epoch_, world_map_candidate_serial_,
+                    source ? source : "unknown", action,
+                    world_map_marker_snapshot_built_,
+                    world_map_marker_count_, readiness_before,
+                    world_map_readiness_attempts_, attempts_before,
+                    kWorldMapMaxServiceAttempts,
+                    world_map_service_attempts_,
+                    kWorldMapMaxServiceAttempts,
+                    world_map_session_pending_));
+        } catch (...) {
+        }
+        return schedule && world_map_session_pending_;
+    }
+
+    void cancel_world_map_zoom_topology() noexcept {
+        world_map_zoom_topology_pending_ = false;
+        world_map_zoom_topology_due_ = {};
+        world_map_zoom_topology_serial_ = 0;
+    }
+
+    void arm_world_map_zoom_topology(Clock::time_point now) noexcept {
+        if (!dsnwr::native_event_log_enabled()) {
+            cancel_world_map_zoom_topology();
+            return;
+        }
+        world_map_zoom_topology_pending_ = true;
+        world_map_zoom_topology_due_ = now
+            + kWorldMapZoomTopologyDebounce;
+        world_map_zoom_topology_serial_ = world_map_candidate_serial_;
+    }
+
+    static const char* world_map_zoom_topology_stage_name(
+        dsnwr::WorldMapZoomTopologyCaptureStage stage) noexcept {
+        switch (stage) {
+        case dsnwr::WorldMapZoomTopologyCaptureStage::InputValidation:
+            return "input_validation";
+        case dsnwr::WorldMapZoomTopologyCaptureStage::CoreObjectObservation:
+            return "core_object_observation";
+        case dsnwr::WorldMapZoomTopologyCaptureStage::CoreWidgetObservation:
+            return "core_widget_observation";
+        case dsnwr::WorldMapZoomTopologyCaptureStage::IconSchemaObservation:
+            return "icon_schema_observation";
+        case dsnwr::WorldMapZoomTopologyCaptureStage::IconArrayObservation:
+            return "icon_array_observation";
+        case dsnwr::WorldMapZoomTopologyCaptureStage::ParentObservation:
+            return "parent_observation";
+        case dsnwr::WorldMapZoomTopologyCaptureStage::ThresholdObservation:
+            return "threshold_observation";
+        case dsnwr::WorldMapZoomTopologyCaptureStage::Complete:
+            return "complete";
+        default:
+            return "none";
+        }
+    }
+
+    void log_world_map_zoom_topology_widget(
+        std::uint64_t sample_id,
+        const char* role,
+        std::uint32_t layer_index,
+        const dsnwr::WorldMapZoomTopologyWidget& widget) {
+        append_log("WORLD_MAP_ZOOM_TOPOLOGY_WIDGET", std::format(
+            "sample_id={} role={} layer={} identity={}:{} visibility={} is_visible={} clipping={} ancestry=overlay:{}_outside:{}_retainer:{}_fog_under:{}_fog_above:{}_tracking:{}_selected:{} geometry_valid={} local={}x{} origin_abs={},{} bounds_valid={} transformed_min={},{} transformed_max={},{} render_scale_valid={} render_scale={}x{} render_translation_valid={} render_translation={},{} slot={}:{} slot_parent={}:{} slot_content_matches={} slot_position_valid={} slot_position={},{} slot_alignment_valid={} slot_alignment={},{}",
+            sample_id, role ? role : "unknown", layer_index,
+            widget.object_index, widget.object_serial, widget.visibility,
+            static_cast<std::int32_t>(widget.visible), widget.clipping,
+            static_cast<std::int32_t>(widget.map_overlay_depth),
+            static_cast<std::int32_t>(widget.map_overlay_outside_depth),
+            static_cast<std::int32_t>(widget.retainer_box_depth),
+            static_cast<std::int32_t>(widget.fog_under_panel_depth),
+            static_cast<std::int32_t>(widget.fog_above_panel_depth),
+            static_cast<std::int32_t>(widget.tracking_panel_depth),
+            static_cast<std::int32_t>(widget.selected_panel_depth),
+            widget.geometry_valid, widget.local_width, widget.local_height,
+            widget.absolute_x, widget.absolute_y,
+            widget.transformed_bounds_valid,
+            widget.transformed_min_x, widget.transformed_min_y,
+            widget.transformed_max_x, widget.transformed_max_y,
+            widget.render_scale_valid, widget.render_scale_x,
+            widget.render_scale_y, widget.render_translation_valid,
+            widget.render_translation_x, widget.render_translation_y,
+            widget.slot_object_index, widget.slot_object_serial,
+            widget.slot_parent_index, widget.slot_parent_serial,
+            static_cast<std::int32_t>(widget.slot_content_matches),
+            widget.slot_position_valid, widget.slot_position_x,
+            widget.slot_position_y, widget.slot_alignment_valid,
+            widget.slot_alignment_x, widget.slot_alignment_y));
+    }
+
+    void log_world_map_zoom_topology_chain(
+        std::uint64_t sample_id,
+        const char* role,
+        std::uint32_t parent_index,
+        const dsnwr::WorldMapZoomTopologyChain& chain) {
+        if (!dsnwr::native_event_log_enabled()) {
+            return;
+        }
+        std::string nodes;
+        nodes.reserve(chain.count * 128U);
+        for (std::uint32_t index = 0; index < chain.count; ++index) {
+            if (!nodes.empty()) {
+                nodes.push_back(';');
+            }
+            const auto& node = chain.nodes[index];
+            nodes += std::format(
+                "{}={}:{}:vis{}:eff{}:clip{}:geom{}:{}x{}@{},{}:slot{}:{}:parent{}:{}:content{}",
+                index, node.object_index, node.object_serial,
+                node.visibility, static_cast<std::int32_t>(node.visible),
+                node.clipping, node.geometry_valid,
+                node.local_width, node.local_height,
+                node.absolute_x, node.absolute_y,
+                node.slot_object_index, node.slot_object_serial,
+                node.slot_parent_index, node.slot_parent_serial,
+                static_cast<std::int32_t>(node.slot_content_matches));
+        }
+        append_log("WORLD_MAP_ZOOM_TOPOLOGY_CHAIN", std::format(
+            "sample_id={} role={} parent_index={} count={} cycle={} truncated={} nodes=[{}]",
+            sample_id, role ? role : "unknown", parent_index,
+            chain.count, chain.cycle, chain.truncated, nodes));
+    }
+
+    void service_world_map_zoom_topology(Clock::time_point now) noexcept {
+        if (!world_map_zoom_topology_pending_) {
+            return;
+        }
+        if (!dsnwr::native_event_log_enabled()) {
+            cancel_world_map_zoom_topology();
+            return;
+        }
+        if (world_map_zoom_topology_serial_
+                != world_map_candidate_serial_
+            || !enabled_ || transition_active_ || activity_suppressed_
+            || !world_map_content_visibility_intent()
+            || !world_map_candidate_has_open_evidence()
+            || !world_map_compact_suppressed_
+            || world_map_umg_renderer_.state()
+                != dsnwr::WorldMapUmgRendererState::Attached) {
+            cancel_world_map_zoom_topology();
+            return;
+        }
+        if (now < world_map_zoom_topology_due_) {
+            return;
+        }
+
+        UObject* current_layer = world_map_layer_candidate_.Get();
+        const std::uint64_t serial = world_map_zoom_topology_serial_;
+        cancel_world_map_zoom_topology();
+        if (!current_layer
+            || !world_map_umg_renderer_.attached_layer_matches(
+                current_layer)) {
+            return;
+        }
+        ++world_map_zoom_topology_sample_id_;
+        if (world_map_zoom_topology_sample_id_ == 0) {
+            ++world_map_zoom_topology_sample_id_;
+        }
+        const std::uint64_t sample_id =
+            world_map_zoom_topology_sample_id_;
+        const auto capture_started = Clock::now();
+        const auto topology =
+            world_map_umg_renderer_.capture_zoom_topology(current_layer);
+        const auto capture_elapsed_us = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                Clock::now() - capture_started).count());
+        try {
+            append_log("WORLD_MAP_ZOOM_TOPOLOGY_SUMMARY", std::format(
+                "sample_id={} activation={} epoch={} candidate_serial={} capture_call_read_only=true captured={} capture_stage={} capture_elapsed_us={} icon_schema_valid={} array_icon_count={} valid_icon_count={} captured_parent_count={} parent_summary_truncated={} zoom_thresholds_valid={} base_zoom={} zoom_value_per_level={} max_level={} hide_treasure_map={} hide_field_boss={}",
+                sample_id, activation_, epoch_, serial,
+                topology.captured,
+                world_map_zoom_topology_stage_name(topology.capture_stage),
+                capture_elapsed_us, topology.icon_schema_valid,
+                topology.array_icon_count, topology.valid_icon_count,
+                topology.captured_parent_count,
+                topology.parent_summary_truncated,
+                topology.zoom_thresholds_valid,
+                topology.world_map_base_zoom,
+                topology.world_map_zoom_value_per_level,
+                topology.world_map_zoom_max_level,
+                topology.world_map_hide_treasure_map,
+                topology.world_map_hide_field_boss));
+
+            log_world_map_zoom_topology_widget(
+                sample_id, "map_overlay", 0, topology.map_overlay);
+            log_world_map_zoom_topology_widget(
+                sample_id, "map_overlay_outside", 0,
+                topology.map_overlay_outside);
+            log_world_map_zoom_topology_widget(
+                sample_id, "retainer_box", 0, topology.retainer_box);
+            log_world_map_zoom_topology_widget(
+                sample_id, "fog_under_panel", 0,
+                topology.fog_under_panel);
+            log_world_map_zoom_topology_widget(
+                sample_id, "fog_above_panel", 0,
+                topology.fog_above_panel);
+            log_world_map_zoom_topology_widget(
+                sample_id, "tracking_panel", 0,
+                topology.tracking_panel);
+            log_world_map_zoom_topology_widget(
+                sample_id, "selected_panel", 0,
+                topology.selected_panel);
+            log_world_map_zoom_topology_widget(
+                sample_id, "selected_native_parent", 0,
+                topology.selected_native_parent);
+            log_world_map_zoom_topology_chain(
+                sample_id, "selected_native_parent", 0,
+                topology.selected_native_parent_ancestry);
+            for (std::size_t layer = 0;
+                 layer < dsnwr::kWorldMapAtlasLayerCount; ++layer) {
+                const auto layer_index = static_cast<std::uint32_t>(layer);
+                log_world_map_zoom_topology_widget(
+                    sample_id, "mod_host", layer_index,
+                    topology.mod_hosts[layer]);
+                log_world_map_zoom_topology_chain(
+                    sample_id, "mod_host", layer_index,
+                    topology.mod_host_ancestry[layer]);
+                log_world_map_zoom_topology_widget(
+                    sample_id, "mod_root", layer_index,
+                    topology.mod_roots[layer]);
+                log_world_map_zoom_topology_chain(
+                    sample_id, "mod_root", layer_index,
+                    topology.mod_root_ancestry[layer]);
+                log_world_map_zoom_topology_widget(
+                    sample_id, "mod_image", layer_index,
+                    topology.mod_images[layer]);
+                log_world_map_zoom_topology_chain(
+                    sample_id, "mod_image", layer_index,
+                    topology.mod_image_ancestry[layer]);
+            }
+            for (std::uint32_t index = 0;
+                 index < topology.captured_parent_count; ++index) {
+                const auto& parent = topology.parents[index];
+                append_log("WORLD_MAP_ZOOM_TOPOLOGY_PARENT", std::format(
+                    "sample_id={} parent_index={} identity={}:{} icons={} visible_like={} hidden_or_collapsed={} unknown_visibility={} local_visibility={} local_is_visible={} clipping={} ancestry=overlay:{}_outside:{}_retainer:{}_fog_under:{}_fog_above:{}_tracking:{}_selected:{} chain_count={} chain_cycle={} chain_truncated={}",
+                    sample_id, index, parent.object_index,
+                    parent.object_serial, parent.icon_count,
+                    parent.visible_like_icon_count,
+                    parent.hidden_icon_count,
+                    parent.unknown_visibility_icon_count,
+                    parent.local_widget.visibility,
+                    static_cast<std::int32_t>(
+                        parent.local_widget.visible),
+                    parent.clipping,
+                    static_cast<std::int32_t>(parent.map_overlay_depth),
+                    static_cast<std::int32_t>(
+                        parent.map_overlay_outside_depth),
+                    static_cast<std::int32_t>(
+                        parent.retainer_box_depth),
+                    static_cast<std::int32_t>(
+                        parent.fog_under_panel_depth),
+                    static_cast<std::int32_t>(
+                        parent.fog_above_panel_depth),
+                    static_cast<std::int32_t>(
+                        parent.tracking_panel_depth),
+                    static_cast<std::int32_t>(
+                        parent.selected_panel_depth),
+                    parent.ancestry.count, parent.ancestry.cycle,
+                    parent.ancestry.truncated));
+                log_world_map_zoom_topology_chain(
+                    sample_id, "native_parent", index,
+                    parent.ancestry);
+            }
+        } catch (...) {
+        }
     }
 
     void arm_world_map_layering_refresh(
@@ -6462,9 +6813,10 @@ private:
         }
         std::size_t attempt_index =
             world_map_layering_refresh_attempt_;
-        // Service at most one read-only geometry observation per game-thread
-        // pass. The full finite tail is retained even after an unchanged
-        // sample because map zoom and viewport layout can settle later.
+        // Service at most one native-parent validation per game-thread pass.
+        // Same-parent pan and zoom require no writes because both atlas hosts
+        // inherit the game's Canvas transform directly. Same-parent samples
+        // stay read-only; a replacement requires one bounded fresh rebuild.
         if (attempt_index >= kWorldMapLayeringSettleDelays.size()) {
             world_map_layering_refresh_pending_ = false;
             return;
@@ -6476,11 +6828,12 @@ private:
             dsnwr::WorldMapLayeringRefreshResult::RetryLater};
         if (current_layer) {
             refresh_result =
-                world_map_umg_renderer_.sync_viewport_transform(current_layer);
+                world_map_umg_renderer_.refresh_layering(
+                    current_layer, false, 0.0, 0.0);
         } else {
             // The exact weak layer no longer exists, so runtime visibility is
             // definitively false. This is distinct from a renderer-returned
-            // transform RetryLater result.
+            // validation RetryLater result.
             world_map_umg_renderer_.publish_runtime_visibility(false);
         }
         if (refresh_result == dsnwr::WorldMapLayeringRefreshResult::Updated
@@ -6491,27 +6844,41 @@ private:
             apply_world_map_atlas_visibility_guarded(
                 object_world_guarded(current_layer), current_layer);
         }
+        const bool rebuild_required = refresh_result
+            == dsnwr::WorldMapLayeringRefreshResult::RebuildRequired;
+        const bool final_retry_rebuild = final_attempt && current_layer
+            && refresh_result
+                == dsnwr::WorldMapLayeringRefreshResult::RetryLater;
+        const bool schedule_rebuild = rebuild_required
+            || final_retry_rebuild;
         const char* layering_event =
-            refresh_result == dsnwr::WorldMapLayeringRefreshResult::Updated
-            ? "WORLD_MAP_VIEWPORT_TRANSFORM_UPDATED"
+            schedule_rebuild
+            ? "WORLD_MAP_LAYERING_REBUILD_REQUIRED"
+            : refresh_result == dsnwr::WorldMapLayeringRefreshResult::Updated
+            ? "WORLD_MAP_LAYERING_UPDATED"
             : (refresh_result
                     == dsnwr::WorldMapLayeringRefreshResult::Unchanged
-                ? "WORLD_MAP_VIEWPORT_TRANSFORM_UNCHANGED"
+                ? "WORLD_MAP_LAYERING_UNCHANGED"
                 : (refresh_result
                         == dsnwr::WorldMapLayeringRefreshResult::Retained
-                    ? "WORLD_MAP_VIEWPORT_TRANSFORM_RETAINED"
+                    ? "WORLD_MAP_LAYERING_RETAINED"
                     : (refresh_result
                             == dsnwr::WorldMapLayeringRefreshResult::RetryLater
-                        ? "WORLD_MAP_VIEWPORT_TRANSFORM_DEFERRED"
-                        : "WORLD_MAP_VIEWPORT_TRANSFORM_FAILED")));
+                        ? "WORLD_MAP_LAYERING_DEFERRED"
+                        : "WORLD_MAP_LAYERING_FAILED")));
         append_log(
             layering_event,
             std::format(
-                "activation={} epoch={} candidate_serial={} result={} trigger={} reason=bounded_read_only_native_geometry_sync ownership=independent_viewport_hosts native_canvas=read_only attempt={}/{} delay_ms={} final_attempt={} state={} failure={} transform_stage={}",
+                "activation={} epoch={} candidate_serial={} result={} trigger={} reason={} ownership=full_stretch_native_children_inner_atlas_layout native_canvas=transform_owner atlas_policy=immutable_per_parent_coordinate_space refresh_layout_mutation=forbidden anchor_observation=attach_only attempt={}/{} delay_ms={} final_attempt={} state={} failure={} transform_stage={} parent_changed={} geometry_changed={} parent_previous={}:{} parent_current={}:{} extent_previous={}x{} extent_current={}x{} extent_stability={} extent_sample_max_delta={} anchor_delta={}x{} attach_map_overlay=left:{}_top:{}_zoom:{} atlas_bounds=left:{}_top:{}_width:{}_height:{}",
                 activation_, epoch_, world_map_candidate_serial_,
                 world_map_layering_result_name(refresh_result),
                 world_map_layering_trigger_name(
                     world_map_layering_refresh_trigger_),
+                rebuild_required
+                    ? "geometry_or_payload_rebuild"
+                    : final_retry_rebuild
+                    ? "final_transient_observation_rebuild"
+                    : "bounded_native_parent_validation",
                 attempt_index + 1U,
                 kWorldMapLayeringSettleDelays.size(),
                 kWorldMapLayeringSettleDelays[attempt_index].count(),
@@ -6520,7 +6887,48 @@ private:
                     world_map_umg_renderer_.state()),
                 world_map_umg_renderer_.last_attach_failure(),
                 static_cast<std::uint32_t>(
-                    world_map_umg_renderer_.last_transform_sync_stage())));
+                    world_map_umg_renderer_.last_transform_sync_stage()),
+                world_map_umg_renderer_.last_layering_parent_changed(),
+                world_map_umg_renderer_.last_layering_geometry_changed(),
+                world_map_umg_renderer_
+                    .last_layering_previous_parent_index(),
+                world_map_umg_renderer_
+                    .last_layering_previous_parent_serial(),
+                world_map_umg_renderer_
+                    .last_layering_current_parent_index(),
+                world_map_umg_renderer_
+                    .last_layering_current_parent_serial(),
+                world_map_umg_renderer_
+                    .last_layering_previous_parent_width(),
+                world_map_umg_renderer_
+                    .last_layering_previous_parent_height(),
+                world_map_umg_renderer_
+                    .last_layering_current_parent_width(),
+                world_map_umg_renderer_
+                    .last_layering_current_parent_height(),
+                dswros::world_map_geometry_stability_name(
+                    world_map_umg_renderer_
+                        .reparent_geometry_stability_result()),
+                world_map_umg_renderer_
+                    .reparent_geometry_sample_max_delta(),
+                world_map_umg_renderer_.last_reparent_anchor_delta_x(),
+                world_map_umg_renderer_.last_reparent_anchor_delta_y(),
+                world_map_umg_renderer_.map_overlay_left(),
+                world_map_umg_renderer_.map_overlay_top(),
+                world_map_umg_renderer_.map_overlay_zoom(),
+                world_map_umg_renderer_.atlas_left(),
+                world_map_umg_renderer_.atlas_top(),
+                world_map_umg_renderer_.atlas_width(),
+                world_map_umg_renderer_.atlas_height()));
+        if (schedule_rebuild) {
+            static_cast<void>(
+                schedule_world_map_geometry_or_payload_rebuild(
+                    current_layer, now,
+                    final_retry_rebuild
+                        ? "layering_final_retry_later"
+                        : "layering_observation_tail"));
+            return;
+        }
         if (refresh_result == dsnwr::WorldMapLayeringRefreshResult::Faulted) {
             world_map_layering_refresh_pending_ = false;
             return;
@@ -7657,6 +8065,7 @@ private:
         world_map_layering_refresh_attempt_ = 0;
         world_map_layering_refresh_trigger_ =
             WorldMapLayeringTrigger::Attach;
+        cancel_world_map_zoom_topology();
         world_map_umg_markers_.fill({});
         world_map_marker_count_ = 0;
         world_map_marker_snapshot_built_ = false;
@@ -7686,6 +8095,7 @@ private:
         world_map_service_attempts_ = 0;
         world_map_service_retry_after_ = {};
         world_map_renderer_session_started_ = false;
+        world_map_session_rebuild_consumed_ = false;
         world_map_layer_catch_up_attempted_ = false;
         world_map_session_pending_ =
             preserve_candidate && world_map_candidate_available_
@@ -7927,6 +8337,7 @@ private:
             world_map_service_attempts_ = 0;
             world_map_service_retry_after_ = {};
             world_map_renderer_session_started_ = false;
+            world_map_session_rebuild_consumed_ = false;
             world_map_marker_snapshot_built_ = false;
             world_map_marker_count_ = 0;
         }
@@ -8043,29 +8454,36 @@ private:
         }
 
         if (world_map_umg_renderer_.attached_to(current_layer, map_id)) {
-            const auto transform_result =
-                world_map_umg_renderer_.sync_viewport_transform(
-                    current_layer);
+            const auto layering_result =
+                world_map_umg_renderer_.refresh_layering(
+                    current_layer, false, 0.0, 0.0);
+            if (layering_result
+                == dsnwr::WorldMapLayeringRefreshResult::RebuildRequired) {
+                static_cast<void>(
+                    schedule_world_map_geometry_or_payload_rebuild(
+                        current_layer, now, "attached_reuse_validation"));
+                return;
+            }
             world_map_session_pending_ = false;
 
-            if (transform_result
+            if (layering_result
                 == dsnwr::WorldMapLayeringRefreshResult::Faulted) {
-                append_log("WORLD_MAP_VIEWPORT_TRANSFORM_FAILED",
+                append_log("WORLD_MAP_LAYERING_FAILED",
                     std::format(
-                        "activation={} epoch={} map_id={} result={} reason=same_live_layer_transform_sync retry=none transform_stage={}",
+                        "activation={} epoch={} map_id={} result={} reason=same_live_layer_validation retry=none transform_stage={}",
                         activation_, epoch_, map_id,
-                        world_map_layering_result_name(transform_result),
+                        world_map_layering_result_name(layering_result),
                         static_cast<std::uint32_t>(
                             world_map_umg_renderer_.last_transform_sync_stage())));
                 return;
             }
-            if (transform_result
+            if (layering_result
                 == dsnwr::WorldMapLayeringRefreshResult::RetryLater) {
-                append_log("WORLD_MAP_VIEWPORT_TRANSFORM_DEFERRED",
+                append_log("WORLD_MAP_LAYERING_DEFERRED",
                     std::format(
-                        "activation={} epoch={} map_id={} result={} reason=same_live_layer_transform_sync retry=bounded_settle_tail transform_stage={}",
+                        "activation={} epoch={} map_id={} result={} reason=same_live_layer_validation retry=bounded_settle_tail transform_stage={}",
                         activation_, epoch_, map_id,
-                        world_map_layering_result_name(transform_result),
+                        world_map_layering_result_name(layering_result),
                         static_cast<std::uint32_t>(
                             world_map_umg_renderer_.last_transform_sync_stage())));
                 arm_world_map_layering_refresh(
@@ -8080,26 +8498,27 @@ private:
             world_map_marker_count_ =
                 world_map_umg_renderer_.active_marker_count();
             append_log("WORLD_MAP_ATLAS_REUSED", std::format(
-                "activation={} epoch={} map_id={} markers={} first_id={} last_id={} attempt={} reason={} transform={} ownership=independent_viewport_hosts native_canvas=read_only suspends={} resumes={} atlas_build_us={} atlas_file_bytes={} attach_total_us={}",
+                "activation={} epoch={} map_id={} markers={} first_id={} last_id={} attempt={} reason={} validation={} ownership=layout_neutral_native_children native_canvas=transform_owner suspends={} resumes={} atlas_build_us={} atlas_file_bytes={} atlas_cache_hits={} attach_total_us={}",
                 activation_, epoch_, map_id, world_map_marker_count_,
                 world_map_first_marker_id_, world_map_last_marker_id_,
                 world_map_service_attempts_,
-                transform_result
+                layering_result
                         == dsnwr::WorldMapLayeringRefreshResult::Updated
-                    ? "viewport_transform_updated"
-                    : (transform_result
+                    ? "native_parent_updated"
+                    : (layering_result
                             == dsnwr::WorldMapLayeringRefreshResult::Retained
-                        ? "retained_last_verified_transform"
-                        : "retained_transform_unchanged"),
-                world_map_layering_result_name(transform_result),
+                        ? "retained_last_verified_parent"
+                        : "native_parent_unchanged"),
+                world_map_layering_result_name(layering_result),
                 world_map_umg_renderer_.suspend_count(),
                 world_map_umg_renderer_.resume_count(),
                 world_map_umg_renderer_.atlas_build_elapsed_us(),
                 world_map_umg_renderer_.atlas_file_bytes(),
+                world_map_umg_renderer_.atlas_cache_hit_count(),
                 world_map_umg_renderer_.attach_elapsed_us()));
-            // The native map can settle over several frames after opening or
-            // zooming. Keep the finite transform-only tail for both changed
-            // and unchanged samples; it never mutates the native Canvas tree.
+            // The native map can replace its icon Canvas while opening or
+            // changing zoom tier. Keep a finite validation tail; normal pan
+            // and zoom remain read-only and write-free.
             arm_world_map_layering_refresh(
                 now, WorldMapLayeringTrigger::SetWorldMapImage,
                 WorldMapLayeringArmPolicy::Coalesce);
@@ -8176,13 +8595,15 @@ private:
         world_map_service_retry_after_ = retry
             ? now + kWorldMapServiceRetryDelay : Clock::time_point{};
         if (attached) {
-            // The atlas hosts are independent viewport widgets. The finite
-            // settle tail only reads the native Canvas geometry and mirrors
-            // its viewport transform; no child insertion or rebuild occurs.
+            // Full-stretch atlas hosts cannot change the native icon Canvas
+            // extent. Their inner Image Canvas slots own the parent-local
+            // atlas rectangles and inherit pan/zoom/clipping immediately; the
+            // finite tail validates replacement/extent and never restacks
+            // same-parent hosts merely because its final observation arrived.
             apply_world_map_atlas_visibility_guarded(
                 object_world_guarded(current_layer), current_layer);
             arm_world_map_layering_refresh(
-                now, WorldMapLayeringTrigger::Attach,
+                Clock::now(), WorldMapLayeringTrigger::Attach,
                 WorldMapLayeringArmPolicy::Restart);
         }
         append_log(
@@ -8190,7 +8611,7 @@ private:
                      : (retry ? "WORLD_MAP_ATLAS_ATTACH_DEFERRED"
                               : "WORLD_MAP_ATLAS_ATTACH_FAILED"),
             std::format(
-                "activation={} epoch={} map_id={} markers={} treasures={} bosses={} assaults={} fly={} mole={} wave={} area_quests={} first_id={} last_id={} attempt={}/{} retry={} state={} failure={} abi_failures={} map_data_cache_hits={} map_data_source={} dimensions={:.3f} ui_size={:.3f} overlay_left={:.3f} overlay_top={:.3f} zoom={:.6f} player_anchor_source={} player_anchor_x={:.3f} player_anchor_y={:.3f} native_parent_width={:.3f} native_parent_height={:.3f} geometry_stability={} geometry_sample_max_delta={:.3f} paint_owner={} atlas_build_us={} atlas_file_bytes={} attach_total_us={} suspends={} resumes={} detaches={}",
+                "activation={} epoch={} map_id={} markers={} treasures={} bosses={} assaults={} fly={} mole={} wave={} area_quests={} first_id={} last_id={} attempt={}/{} retry={} state={} failure={} abi_failures={} map_data_cache_hits={} map_data_source={} dimensions={:.3f} ui_size={:.3f} overlay_left={:.3f} overlay_top={:.3f} zoom={:.6f} player_anchor_source={} player_anchor_x={:.3f} player_anchor_y={:.3f} native_parent_width={:.3f} native_parent_height={:.3f} geometry_stability={} geometry_sample_max_delta={:.3f} paint_owner={} atlas_build_us={} atlas_file_bytes={} atlas_cache_hits={} attach_total_us={} suspends={} resumes={} detaches={}",
                 activation_, epoch_, map_id, world_map_marker_count_,
                 world_map_treasure_marker_count_,
                 world_map_boss_marker_count_,
@@ -8227,6 +8648,7 @@ private:
                     world_map_umg_renderer_.paint_owner_status()),
                 world_map_umg_renderer_.atlas_build_elapsed_us(),
                 world_map_umg_renderer_.atlas_file_bytes(),
+                world_map_umg_renderer_.atlas_cache_hit_count(),
                 world_map_umg_renderer_.attach_elapsed_us(),
                 world_map_umg_renderer_.suspend_count(),
                 world_map_umg_renderer_.resume_count(),
@@ -11854,6 +12276,7 @@ private:
     Clock::time_point world_map_service_retry_after_{};
     Clock::time_point world_map_layering_refresh_started_{};
     Clock::time_point world_map_layering_refresh_due_{};
+    Clock::time_point world_map_zoom_topology_due_{};
     Clock::time_point save_reconcile_request_after_{};
     Clock::time_point treasure_save_confirmation_next_due_{};
     Clock::time_point area_quest_save_confirmation_next_due_{};
@@ -11942,6 +12365,8 @@ private:
     std::uint64_t world_map_visible_serial_{};
     std::uint64_t world_map_serviced_serial_{};
     std::uint64_t world_map_layering_refresh_serial_{};
+    std::uint64_t world_map_zoom_topology_serial_{};
+    std::uint64_t world_map_zoom_topology_sample_id_{};
     std::uint64_t compact_candidate_serial_{};
     std::int32_t world_map_listener_object_index_{-1};
     std::int32_t compact_listener_object_index_{-1};
@@ -12027,9 +12452,11 @@ private:
     bool world_map_set_image_rearm_consumed_{};
     bool save_reconciler_ready_{};
     bool world_map_renderer_session_started_{};
+    bool world_map_session_rebuild_consumed_{};
     bool world_map_marker_snapshot_built_{};
     bool world_map_layer_catch_up_attempted_{};
     bool world_map_layering_refresh_pending_{};
+    bool world_map_zoom_topology_pending_{};
     bool visibility_hub_world_map_refresh_pending_{};
     bool visibility_hub_world_map_baseline_valid_{};
     bool visibility_hub_open_pending_{};

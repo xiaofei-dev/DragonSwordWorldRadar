@@ -170,9 +170,9 @@ world_map_transform_failure_for_stage(
 
 // A live world-map layer can briefly replace its native icon Canvas while its
 // opening or zoom animation settles. That is an observation gap, not evidence
-// that the independent Mod-owned viewport hosts are corrupt. Preserve a last
-// verified transform only for the same layer; ownership and ABI failures remain
-// terminal so native game widgets are never used as a recovery target.
+// that the Mod-owned native-child hosts are corrupt. Preserve a last verified
+// transform only for the same layer; ownership and ABI failures remain terminal
+// so native game widgets are never used as a recovery target.
 [[nodiscard]] constexpr WorldMapTransformObservationFailureAction
 classify_world_map_transform_observation_failure(
     WorldMapTransformObservationFailure failure,
@@ -407,6 +407,33 @@ validate_world_map_canvas_anchor(
         return std::nullopt;
     }
     return WorldMapPoint{player_canvas_x, player_canvas_y};
+}
+
+// The atlas rectangle is authored once in the exact native parent's local
+// coordinate space. PlayerIconWidget can expose a different cached Slate
+// anchor while that same parent animates zoom; that sibling observation is not
+// a coordinate-space migration and must never move the retained atlas. A real
+// parent-extent change instead needs a fresh atlas so marker glyphs are not
+// scaled together with their positions.
+[[nodiscard]] inline std::optional<WorldMapAtlasPlacement>
+retain_world_map_atlas_placement(
+    WorldMapAtlasPlacement retained,
+    WorldMapGeometrySample retained_geometry,
+    WorldMapGeometrySample current_geometry) noexcept {
+    if (!std::isfinite(retained.left) || !std::isfinite(retained.top)
+        || !std::isfinite(retained.width) || !std::isfinite(retained.height)
+        || retained.width <= 0.0 || retained.height <= 0.0
+        || !world_map_geometry_maximum_delta(
+            retained_geometry, current_geometry)
+        || std::abs(
+            retained_geometry.parent_width - current_geometry.parent_width)
+            > kWorldMapGeometryStabilityTolerance
+        || std::abs(
+            retained_geometry.parent_height - current_geometry.parent_height)
+            > kWorldMapGeometryStabilityTolerance) {
+        return std::nullopt;
+    }
+    return retained;
 }
 
 // Calculates both raw viewport placement and the render-only correction needed
