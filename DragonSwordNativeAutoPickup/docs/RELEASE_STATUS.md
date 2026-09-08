@@ -54,7 +54,7 @@ acceptance remain RUNTIME_PENDING; offline checks cannot replace them.
 - User installation: [INSTALL.md](INSTALL.md).
 - Build contract and dated receipts: [RELEASE.md](RELEASE.md).
 - Earlier installer-only receipt: [INSTALLER_KEYS_2026_09_07.md](INSTALLER_KEYS_2026_09_07.md).
-- Public copy: [Nexus index](../assets/nexus/README.md).
+- Nexus publishing copy: local-only `assets/nexus/`, excluded from GitHub.
 - Development attempts and runtime evidence remain in their original ledgers.
 
 The preceding five release files, Setup, and native DLL were hash-verified and

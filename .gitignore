@@ -58,3 +58,26 @@ Archive/DragonSwordWorldRadar/vendor/ooz/ooz.exe
 **/*.dmp
 **/*.key
 **/CrashContext.runtime-xml
+
+# Local publishing materials, not open-source implementation inputs.
+**/assets/nexus/
+**/assets/screenshots/
+**/NEXUS_*.txt
+**/NEXUS_*.md
+
+# Extracted research reference tables/catalogs are kept locally only.
+/DragonSwordWorldDataProbe/reference/
+/DragonSwordWorldDataProbe/metadata/world-boss-catalog.json
+
+# Build caches, local configuration, and diagnostic artifacts.
+**/out/
+**/__pycache__/
+**/*.pyc
+**/*.pdb
+**/*.obj
+**/*.ilk
+**/*.bak
+**/.env
+**/.env.local
+**/.env.*.local
+**/node_modules/

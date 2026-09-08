@@ -51,7 +51,7 @@ attempt ledgers. No universal runtime-fixed claim is made.
 
 - Setup guide: [INSTALL.md](INSTALL.md).
 - Manual guide: [MANUAL_INSTALL.md](MANUAL_INSTALL.md).
-- Public copy: [Nexus index](../assets/nexus/README.md).
+- Nexus publishing copy: local-only `assets/nexus/`, excluded from GitHub.
 - Development history: [RELEASE_PLAN_2_3_0.md](RELEASE_PLAN_2_3_0.md).
 - `RELEASE.md` contains historical 2.2.1 contracts, not current build commands.
 

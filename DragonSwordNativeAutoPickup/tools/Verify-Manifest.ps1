@@ -27,8 +27,11 @@ $actual = @(Get-ChildItem -LiteralPath $projectRoot -Recurse -File -Force | Wher
     $first = $relative.Split('\')[0]
     $isGeneratedBuildRoot = $first -like 'build-*'
     $isNestedInstallerBuild = $relative -like 'installer\build\*'
+    $isLocalPublishingMaterial = $relative -like 'assets\nexus\*' -or
+        $relative -like 'assets\screenshots\*'
     $excludedRoots -notcontains $first -and
         -not $isGeneratedBuildRoot -and
+        -not $isLocalPublishingMaterial -and
         -not $isNestedInstallerBuild
 } | ForEach-Object {
     $_.FullName.Substring($projectRoot.Length).TrimStart('\').Replace('\', '/')

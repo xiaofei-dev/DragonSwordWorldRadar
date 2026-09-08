@@ -5,9 +5,8 @@ suite. It uses a monorepo layout: maintained products and research projects
 live at the repository root, retired implementations live under `Archive/`,
 and repository-wide standards live under `docs/`.
 
-The GitHub repository retains its historical `DragonSwordWorldRadar` name
-because this workspace grew from that project. The repository name no longer
-describes only one Mod.
+The GitHub repository is `xiaofei-dev/DragonSwordMods`; the historical
+`DragonSwordWorldRadar` URL redirects to it.
 
 ## Workspace layout
 
@@ -63,6 +62,12 @@ The existing public GitHub repository is the workspace remote. Source,
 first-party assets, tests, and documentation may be published there. Local
 build output, runtime evidence, extracted game files, credentials, and release
 packages remain excluded.
+
+Nexus descriptions, support-post drafts, covers, upload artwork, and gameplay
+screenshots are local-only. Extracted research reference tables and catalogs
+are also excluded. Required first-party F6 UI resources remain tracked.
+See [public source policy](docs/PUBLIC_SOURCE_POLICY.md). These exclusions
+apply to the current tree; previous Git history has not been rewritten.
 
 PostRender's bundled SQLCipher binary and generated/derived game catalogs are
 also excluded from new public commits until their recorded provenance and

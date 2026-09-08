@@ -3,7 +3,8 @@
 Native UE4SS automatic pickup for DragonSword: Awakening.
 
 Current complete package set: [Release status](docs/RELEASE_STATUS.md).
-Public-page copy: [Nexus publishing index](assets/nexus/README.md).
+Nexus copy and promotional screenshots are local-only publishing materials,
+not part of the public source checkout.
 
 ## Project status
 

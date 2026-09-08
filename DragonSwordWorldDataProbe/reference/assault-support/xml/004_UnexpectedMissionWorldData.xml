@@ -1,4 +1,0 @@
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<ns1:UnexpectedMissionWorldDataMap xmlns:ns1="http://leigient.549n.com/schema/UnexpectedMissionWorldInfo">
-	<ns1:UnexpectedMissionWorldData ns1:MapID="100" ns1:Memo="1월드" ns1:MissionCnt_Min="1" ns1:MissionCnt_Max="1" ns1:DaySwitchID="1"/>
-</ns1:UnexpectedMissionWorldDataMap>

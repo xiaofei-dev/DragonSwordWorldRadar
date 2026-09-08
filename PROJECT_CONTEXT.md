@@ -72,11 +72,15 @@ matrix row, or clear third-party redistribution rights.
 
 ## Publication boundary
 
-- The repository root is the Git root. The existing remote is the inherited
-  public `xiaofei-dev/DragonSwordWorldRadar` repository and remains the target
-  unless the owner explicitly requests a rename or replacement.
+- The repository root is the Git root. The canonical remote is
+  `xiaofei-dev/DragonSwordMods`; the old DragonSwordWorldRadar URL redirects.
 - Public commits may contain first-party source, tests, metadata,
   documentation, and first-party media.
+- As of 2026-09-08, Nexus publishing copy and artwork, gameplay screenshots,
+  and extracted research reference datasets are local-only. Keep their local
+  files while removing Git tracking; do not force-add them. Required F6 UI
+  resources are implementation assets, not promotional media. See
+  `docs/PUBLIC_SOURCE_POLICY.md` and its staged-tree check.
 - Do not commit runtime logs, build output, release archives, extracted game
   files, save data, databases, keys, credentials, or local deployment state.
 - PostRender's local `assets/vendor/sqlcipher/e_sqlcipher.dll` and

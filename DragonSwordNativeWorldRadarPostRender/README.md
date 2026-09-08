@@ -1,7 +1,8 @@
 # DragonSwordNativeWorldRadarPostRender
 
 Current complete 2.3.0 package set: [Release status](docs/RELEASE_STATUS.md).
-Public-page copy: [Nexus publishing index](assets/nexus/README.md).
+Nexus copy and promotional screenshots are local-only publishing materials,
+not part of the public source checkout.
 
 Native UE4SS C++ successor to DragonSword World Radar. It renders inside the
 game's UMG composition tree and ships no external runtime executable or Lua
@@ -799,7 +800,7 @@ The historical source, build, package, installer, deployment, gameplay, and
 publication states for 2.1.0 remain recorded independently in
 [Release](docs/RELEASE.md) and [Acceptance Checklist](docs/ACCEPTANCE_CHECKLIST.md).
 The public-report closeout and its unvalidated reporter-environment boundaries
-are recorded in [Nexus Feedback Audit for 2.0.0](docs/NEXUS_FEEDBACK_AUDIT_2_0_0.md).
+are recorded in the local-only Nexus feedback audit for 2.0.0.
 Post-2.0.0 corrective feedback and the owner matrix are recorded
 in [Runtime Feedback Audit for 2.1.0](docs/RUNTIME_FEEDBACK_AUDIT_2_1_0.md).
 The current 2.2.1 fixes-only scope and acceptance boundary are recorded in
