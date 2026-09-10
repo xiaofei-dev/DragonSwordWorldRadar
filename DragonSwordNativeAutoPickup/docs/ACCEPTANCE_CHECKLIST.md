@@ -1,5 +1,37 @@
 # Acceptance Checklist
 
+## 2026-09-08 frame-paced Debug/20x candidate
+
+- [x] Capacity saturation rejects input, retains exact retries, and automatically
+  recovers; complete core suite includes 5000 frames at a synthetic 250 Hz.
+- [x] Static gate requires zero active/post-pickup delay, one selector path,
+  atomic tick reentry guard, deferred scalar diagnostics, and no unsafe queries.
+- [x] Final DLL and exact Setup rebuilt after all diagnostic corrections.
+- [x] Transactional owned Repair, verified rollback, approved 20x PAK only,
+  byte-preserved existing config with Debug true, and unrelated mods unchanged.
+- [x] Fresh runtime READY matches frame/debug markers with diagnostics enabled.
+- [ ] Visible mounted/on-foot collection, manual interaction, rapid 20x travel,
+  and Debug Off/On comparison show no pickup stalls or action/diagnostic faults.
+
+## 2026-09-08 unreleased dispatch-accounting candidate
+
+- [x] Regression first fails against the old dispatch-reset behavior, then
+  passes with dispatch and timeout sharing the same unconfirmed-attempt budget.
+- [x] Exact confirmation clears history; different targets and reused object
+  indices with different serials remain isolated; resets and expiry recover.
+- [x] Same-poll exact confirmation is checked before dispatch consumption;
+  a matching dispatch retains the already elapsed scan due.
+- [x] Exact candidate native build/artifact identity verified; see EVIDENCE.md.
+- [x] Exact candidate Setup: 95/95 key assertions and 11/11 isolated installer
+  cases pass, without modifying the actual game installation.
+- [ ] Fresh-game test of the reported mounted conch scene: collect visibly,
+  no sustained same-target loop, and manual interaction remains functional.
+- [ ] Normal gathering, multiple yields from one target, fish/drops, rapid
+  mount changes, travel/exit, debug Off/On, and no new action-state faults.
+
+The following checked sections are historical 1.3.x implementation gates,
+not proof that this unreleased candidate resolves native prompt-list stalls.
+
 ## Feature-completeness gates
 
 - [x] One runtime-resolved native selector call per due scan and the accepted

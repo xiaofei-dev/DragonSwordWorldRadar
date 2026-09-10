@@ -1,5 +1,159 @@
 # Architecture
 
+Current source is **3.0.0 / SG-12**. All eleven languages use pinned regular-font
+pixels for settings, help, confirmations and numeric values. Reset to Defaults,
+Vote for This Mod and Feedback share the same footer font size. The 760 x 852
+reference layout retains its four settings cards; short viewports scroll the
+body while keeping the header and footer accessible. Vote opens the mod's Nexus
+page for its monthly voting action; it does not submit a vote.
+Current build and delivery evidence is tracked in [Release Status](RELEASE_STATUS.md).
+
+The historical **3.0.0 / SG-10** checkpoint was installed locally and promoted
+to `dist/final-3.0.0`. Core 7/7, clean native compilation (446 targets), all four
+source/release gates, Setup 20/20 and Manual 2/2 pass. The native receipt is
+dated `2026-09-09T16:43:53.6047126Z`; deployment is independently verified at
+`2026-09-09T16:51:20.6801835Z`, and final-package promotion at
+`2026-09-09T16:55:11.2153219Z`. SG-09 candidate packages were never promoted;
+SG-03 was backed up before the SG-10 replacement.
+See `ACCEPTANCE_CHECKLIST.md`, `RELEASE_STATUS.md` and
+`SCENE_GUIDANCE_ATTEMPT_LEDGER.md` for separate source, build, installation,
+package and owner gameplay records. Historical checkpoints retain their own
+dates and scope. No Nexus upload or game/FPS acceptance is implied.
+
+## SG-09 / 3.0.0 scene display
+
+Scene visibility occupies a third independent byte in the settings mask, with
+Treasure, Area Quest and Mini-game bits enabled by the schema. All three now
+default on for clean or missing settings; valid explicit false choices remain
+preserved when reading an existing configuration. A 250 ms numeric
+pass filters the existing treasure save snapshot, Area Quest display policy and
+83-entry Fly/Mole/Wave catalog eligibility. It retains up to the configured
+count and range: 24 points / 600 m by default, capped at 50 / 1000 m. Zero count
+or range disables Scene work. Each EngineTickPost frame receives only that
+fixed selection, updates at most 50 scalar distances with a linear pass, and
+uses the current controller's engine-provided, DPI-adjusted world-to-widget
+projection. It no longer sorts or rebuilds catalog selection every frame;
+the catalog/eligibility selection stays on its 250 ms cadence. It performs no actor
+discovery, save I/O, collision trace or new provider scan. Behind-camera,
+off-screen and crowded projections are hidden; this is not terrain occlusion.
+
+The independent UMG host retains 50 marker groups with one Image per group.
+Six shared 128-by-144 textures contain the four Treasure colors, Area Quest and
+Mini-game symbols, including each small outlined `v`. Six collapsed keeper
+Images retain these textures through reflected Brush.ResourceObject references
+in the same widget tree, including kinds that are not currently displayed.
+All six imports and ownership checks occur during bounded attachment; the
+display route neither imports textures nor repairs ownership. Marker image
+brushes change only when their kind changes. Raw UObject pointers and AddToRoot
+are not used for cross-frame texture ownership. These 50 glyph Images replace
+the earlier 600 Border pieces; groups and lazy distance labels still exist.
+Treasure and Mini-game glyphs remain approximately 18-19 reference units wide.
+Since SG-06, the Area Quest diamond body is 18% larger (approximately 22 units)
+with a 1.8-unit outline. Area Quests retain the gray diamond rails, three
+horizontal white dots and original footprint; SG-09 adds a restrained
+translucent gray-blue interior backing to separate them from rocky scenery.
+Treasure retains its horizontal lid/clasp chest and category colors; Mini-games
+retain purple crossed flags, distinct from green Mini-game reward chests. The
+small `v` follows this UI group and is not a ground/source-coordinate marker.
+Scene projection alone raises
+Treasure by 160 cm (previously 100 cm), Area Quests by 180 cm and Mini-games
+by 150 cm. Only the Treasure UI lift changes in SG-09. This lifted
+point is the icon center and focus point. Raw source XYZ, candidate distances,
+range eligibility and compact/map height calculations remain unchanged.
+
+The displayed distance first applies one offset to the true raw-anchor distance
+in meters: Treasure/Area Quest use `max(0, d - 1)`, Mole uses `max(0, d - 2)`,
+and Fly/Wave use `d`. It is then rounded to an integer meter. The lift is never
+included in this calculation; the label is guidance rather than proof that a
+game interaction is available.
+
+Public distance labels are Off, Aim Focus (default), Auto Focus and All. The
+stored values remain `off`, `central_radius`, `nearest_center` and `all`.
+Aim uses an ellipse centered on the screen: horizontal radius is 16% and
+vertical radius is 34% of the shorter viewport dimension. Eligibility is
+strictly inside the ellipse, and selection ranks visible icons by normalized
+ellipse distance, reducing the weight of vertical displacement. The same
+identity must remain selected for 120 ms before its sole label appears.
+An acquired Aim target may remain inside a 1.2-times exit ellipse. A challenger
+must continuously improve normalized center distance by over 20% and over 0.08
+for 350 ms before replacing it. Auto acquires a visible target immediately and
+uses Euclidean center distance: over 20% improvement and over 1.2% of the short
+viewport side for 500 ms. Both retain the old label during that wait. A changed
+challenger or lost advantage clears its timer; identity tracks namespace and ID
+across projection reordering. Mode changes or backward time clear all timers.
+Hidden, out-of-range, crowded or unselected targets cannot retain a label. On
+loss Auto selects another visible target immediately; Aim begins its 120 ms
+initial dwell again. Only already acquired Aim targets get the outer margin.
+Off hides only text; All labels
+all displayed icons. Stored mode tokens remain unchanged.
+
+SG-12 compares projected group positions with the last submission and writes
+every changed subpixel position through SetRenderTranslation. Marker groups
+are volatile; pixel snapping is disabled when the reflected enum is available.
+For eight or more selected markers, five engine calibration points and one real
+marker validate a frame-local perspective projection. Both depth axes and a
+radial 0.25-physical-pixel witness tolerance must pass. Unsuitable calibration,
+including orthographic views, retains native projection; engine exceptions keep
+the existing Scene fault isolation. No previous camera pose is interpolated.
+New/retained visibility margins are 52/44 pixels at screen edges and 40/32 for
+overlap separation. These stabilize thresholds without delaying coordinates.
+
+TextBlocks are created only for slots that first need a label. Integer-meter
+FText values are cached lazily in a bounded 0..1000 table;
+normal movement considers text refresh at 100 ms intervals and writes only a
+changed value. New/changed focus can update immediately, within a per-update
+cold-creation budget of four TextBlocks and eight FText values. Deferred labels
+stay pending for a later update rather than displaying a previous identity's
+distance. A text fault disables labels while preserving Scene icons. Off
+creates no new text metadata, TextBlock or FText. Live GameThread detach releases initialized
+text values; UObject/process shutdown only abandons handles and never performs
+late reflected destruction.
+
+Scene is hit-test invisible. Opening this Mod's own F6 Settings over active
+gameplay permits a live Scene preview while editing its controls. That narrow
+exception does not bypass a real game menu, pause, world map, activity or
+HUDHidden guard. Menu sampling preserves the renderer tree and its readiness;
+a genuinely suppressed menu collapses the existing host, and returning to
+gameplay reuses it. Routine menu-state sampling never detaches a valid tree.
+Disable, travel, activity/world-context reset and safe shutdown retain their
+explicit cleanup boundaries. Faults and three bounded
+attachment attempts do not alter existing renderer readiness. The Scene-off
+branch precedes initialization, selection and controller lookup. Diagnostics
+attribute scene work separately through `scene_umg_us` and the `scene_umg`
+profile metric; release defaults keep diagnostics disabled.
+
+Area Quest Scene positions come from the independent 147-row companion
+catalog, with 143 verified authored entity origins and four unavailable rows.
+The loader validates the complete file before committing it. Missing or invalid
+Scene data disables only Area Quest Scene anchors, preserving compact/map data
+and other Scene categories. No raw marker fallback invents an unavailable
+Scene position. The original Area Quest XYZ and height bands remain unchanged.
+
+Compact Boss/Assault height uses a validated single-band spawn-Z profile and
+the existing `player.z - 150` correction. The inclusive +/-500 band preserves
+the original glyph; direction changes replace it with a category-colored
+triangle. Area Quests use the same correction and margin with their existing
+selected band. Boss/Assault/Area Quest reference sizes are 35/30/25; all three
+share a 4-unit visible triangle stroke and normal frame thickness scaled only
+by display/DPI. Encounter triangles reserve another unit of dark-green outline
+per side. Cached shape state avoids rewriting unchanged marker geometry.
+
+SG-09 gameplay, visual, resolution and performance acceptance have not been
+recorded. SG-08's verified installation remains a separate historical identity.
+The Treasure lift changes only its displayed point; distance corrections and
+Auto behavior stay unchanged, and Aim retains the ellipse above. Every-frame
+projection and reduced sorting/layout work are source changes, not measured
+FPS or frame-time improvement.
+
+SG-04 remains a historical source/build checkpoint: its 12-piece glyph groups
+introduced the smaller symbols and `v`, and its Aim region was the SG-03 10%
+circle. Its nine F6 images used a 680-by-896 panel, 41 slots and 170 codepoints.
+SG-04 was not deployed or packaged. Its build evidence, the SG-03 package/
+deployment and SG-02 build/install records identify their own exact bytes.
+SG-01 is retained in the attempt ledger as the earlier two-category, fixed
+24/600, single segment-distance-label implementation; it is not the current
+3.0 rendering contract.
+
 ## Process boundary
 
 The shipped mod is one UE4SS native C++ module. Catalog loading, state
@@ -25,7 +179,8 @@ standalone hotkey file. See `RELEASE_PLAN_2_3_0.md` for the grammar and tests.
 
 - Construction loads and validates immutable catalogs into bounded native
   containers.
-- `on_unreal_init` resolves reflected metadata, initializes both renderers,
+- `on_unreal_init` resolves reflected metadata, initializes compact and
+  expanded-map renderers (Scene remains lazy until enabled),
   registers engine/actor/travel callbacks, registers the configured keys (default
   F6/F7/F8), installs interaction
   and area-task hooks, and registers one UObject creation listener.
@@ -43,18 +198,18 @@ standalone hotkey file. See `RELEASE_PLAN_2_3_0.md` for the grammar and tests.
   and eligibility state without touching either renderer. This authoritative
   drain does not require ordinary Pawn/context validity and does not recheck an
   accepted event's time window.
-- F8 then detaches compact rendering, collapses the expanded host when valid,
-  and clears activation-local state.
+- F8 then detaches compact and Scene rendering, collapses the expanded host
+  when valid, and clears activation-local state.
 - Travel begins fail closed. Before task-class mapping and atomic publication
   state are cleared, `InitGameState` pre-transition drains already published
   exact-completion bits into activation-local numeric completion latches and
-  completed quest IDs. It then detaches both renderers, clears weak candidates
+  completed quest IDs. It then detaches compact, expanded-map and Scene hosts, clears weak candidates
   and staged work, increments the epoch, and only resumes after a valid new
   context. The pre-transition drain dereferences no task actor or other UObject.
 - The exact `World /Game/Title/TitleMap/DS_Title.DS_Title` identity is a
   save-owner hard boundary, not an ordinary activity-suppression edge. Existing
-  transition-end and world-identity signals disable the radar, detach both
-  renderers, clear weak candidates, pending reconciliation/confirmation state,
+  transition-end and world-identity signals disable the radar, detach compact,
+  expanded-map and Scene hosts, clear weak candidates, pending reconciliation/confirmation state,
   runtime-opened treasures, effective encounter cooldowns, area-task state,
   clock state, and the previous save's world/context baselines. Immutable
   catalogs, user visibility masks, configured treasure exclusions, and the
@@ -381,12 +536,14 @@ The catalog contains 147 dynamic quest IDs and the nine-column
 presentation contract. Marker `X/Y/Z` retains the previously validated
 coordinate lineage, while height presentation uses an independently derived
 one- or two-band profile. Exactly 144 rows have a profile, one row has two
-  genuine task-actor bands, and three rows have no source profile. Move_Check-only
-  trigger bands are excluded. A single-band profile is used directly. For the
-  multi-band profile, authored marker Z chooses the uniquely nearest existing
-  source band; it is selection evidence only and never a synthetic height. An
-  exact-distance tie or no-source row retains its marker with neutral height
-  presentation. F7 copies numeric
+source bands, and three rows have no source profile. A Move_Check-only band is
+excluded when an alternative task-source band exists. These legacy bands are
+unchanged in 3.0.0 and do not establish a physical Scene target: the separate
+Scene catalog above requires verified entity-origin evidence. A single-band
+profile is used directly. For the multi-band profile, authored marker Z chooses
+the uniquely nearest existing source band; it is selection evidence only and
+never a synthetic height. An exact-distance tie or no-source row retains its
+marker with neutral height presentation. F7 copies numeric
 Main/Group definitions from the already loaded game table and discards every
 UObject. Supported `NONE`, ordinary `QUEST_CLEAR`, saved
 `DYNAMIC_QUEST_COMPLETE`, and uniquely linked `MONSTER_ALIVE` conditions can
@@ -500,8 +657,10 @@ already-open time window without adding an idle scan.
 
 ### Responsive F6 settings page
 
-F6 creates one transient native UMG page with independent compact and
-expanded-map category masks. It may open while Radar is Off, On, or Faulted;
+F6 creates one transient native UMG page with independent compact,
+expanded-map and Scene category masks. Scene admits only Treasure, Area Quests
+and Mini-games; Boss, Assault, clock and bird-egg Scene cells remain unavailable.
+It may open while Radar is Off, On, or Faulted;
 Bug Report and Close occupy separate top-bar controls. The status presentation
 is read-only text with a thin state-colored strip. Enable, Disable, or Retry is
 a separate action that keeps the page open, and Bug Report opens the fixed
@@ -526,10 +685,13 @@ observation, death confirmation, cooldown ownership, or provider cadence.
 It adds no timer, SQL request, object scan, retained UObject, or steady
 allocation.
 
-A real checkbox transition publishes both masks, both modes, three compact-only
-height switches, and the language preference in one result,
-dirties compact selection once, and atomically replaces
-`config/visibility.ini`. Expanded-map changes are held as one numeric dirty bit
+A real checkbox transition publishes all three masks, both modes, five
+compact-only height switches, Scene range/count/distance settings and the
+language preference in one result. Only affected render selections are dirtied.
+Checkbox/mode/language changes atomically replace `config/visibility.ini`;
+Scene range/count/distance changes apply immediately and coalesce disk writes
+behind a 300 ms quiet period, with pending values flushed on panel close.
+Expanded-map changes are held as one numeric dirty bit
 relative to the opening masks and modes while the Hub remains open. A top-right
 Close control or second F6 closes the panel and rearms an
 attached or already-open expanded-map candidate at most once through the
@@ -537,27 +699,61 @@ existing bounded gate. Returning to the opening state clears the bit and does
 not rebuild. Unchanged service
 samples do not publish or write.
 
-The startup-only visibility parser accepts at most 4 KiB. Its current format
-requires exactly one `[radar]`, `[map]`, `[modes]`, `[height_arrows]`, and
-`[interface]` section. All named category and height Boolean keys, both
-`available|all` mode keys, and one language preference must be present exactly
-once. Treasure, Area Quest, and Mole (nearest mini-game) height all default ON on a clean install;
-a valid existing configuration keeps its values.
+The startup-only visibility parser accepts at most 4 KiB. The current writer
+emits `[radar]`, `[map]`, `[scene]`, `[modes]`, `[height_arrows]` and `[interface]`
+once each. Scene has three category Booleans plus `range_meters`, `marker_limit`
+and `distance_mode`; all three categories default OFF. Treasure, Area Quest,
+Mole (nearest mini-game), Boss and Assault height default ON. The reader retains
+strict legacy schema 1-4 packed masks and the old three/five-section layouts.
+Absent Scene extensions and new Boss/Assault height keys use their defaults;
+existing explicit choices are preserved. If `[scene]` is present, its original
+Treasure and Area Quest keys remain required; the four newer keys can be absent
+only when reading an older live preference file. Public defaults and current
+serialization include the full six-section document.
 Unknown, duplicate, mixed-format, incomplete, malformed, or inconsistent-line-
 ending input falls back to safe defaults. Strict legacy schema 1-4 packed-mask
 files remain accepted for upgrades; the next real F6 change atomically
 serializes the current readable format. There is no hot polling or closed-panel
 file work.
 
-The presentation is one responsive reference card with Mod Status, Language,
-Marker Visibility, Height Indicators (Radar Only), and Filter Modes. Bug Report
-and Close remain in the top bar. Translucent section cards preserve visual
-grouping without opaque blocks, the two filter choices use equal widths, text
-and controls share corrected vertical alignment, and each interactive rectangle
-is bounded so adjacent checkbox rows do not overlap. Open-time
-layout scales by the smaller viewport ratio against 2560-by-1440, clamps to the
-available viewport with margins, divides local UMG units by the live viewport
-DPI scale, and centers the resulting physical rectangle. Exact-size text uses
+The presentation is a responsive 760-by-852 reference panel. A title bar and
+compact Language/Status utility row precede four dark-gray cards: Marker
+Visibility, Scene Guidance, Height Indicators and Filter Modes. The marker
+table has only Radar and Map columns; Scene owns three independent category
+chips. Height choices form a three-plus-two chip grid, and the two filter groups
+sit side by side. The main title uses role scale 0.80, module headings 0.62 and
+ordinary category labels 0.46. The original four cards retain their coordinates.
+A fifth footer card spans reference Y 794..844 and holds Reset to Defaults,
+Vote for This Mod and Feedback; Close stays in the title bar. Language-popup dismissal
+and modal shielding cover the footer as well. Text and hit rectangles remain
+separate. The body uses a retained ScrollBox on short viewports. A bounded 250 ms
+viewport/DPI probe runs only while F6 is open and updates the retained layout;
+the settings tree is not rebuilt. Radar/Map checks
+have a 22-by-22 visual inside a 24-by-24 hit rectangle, matching the 24-unit row
+step without overlapping adjacent hits. Clock appears after Bird Eggs; category
+bit values and map eligibility are unchanged.
+
+Scene range/count use two real reflected USlider controls; distance mode has
+four discrete choices. After explicit Yes confirmation, Reset to Defaults resets all persistent F6
+display preferences together: supported Radar/Map categories and all five height
+switches on, Scene categories on / 600 m / 24 / Aim Focus, both filters Available
+and language AUTO. It preserves the module's enabled/fault state and startup
+hotkeys. The owner publishes one preference update through the existing
+persistence path; the explicit control edge flushes pending edits even when
+controls already match the preset. No provider or save-state reset occurs.
+The confirmation introduced in SG-10 remains non-blocking and in-page for Reset, Vote and
+Feedback. Yes confirms the selected action; No or Esc dismisses only the
+confirmation and leaves preferences and external links unchanged. Vote
+opens the mod's Nexus page for the monthly mod vote; it never submits one.
+The internal `Endorse` ID remains unchanged. Feedback opens the Posts page. The modal disables background
+controls and guards the dismissal edge against the same click reaching them.
+F6, loss of focus and Travel retain whole-page cleanup semantics.
+SG-12 computes one physical layout with 16-pixel margins and divides local UMG
+units by the live DPI scale. The header and footer remain fixed; a ScrollBox
+contains the body on short screens. At 720p the controls retain reference size;
+640x360 is the minimum supported viewport. Every 250 ms while open, a viewport
+or DPI change reflows the retained tree, preserves scroll/settings and cancels
+pending confirmations before geometry changes. The native text fallback uses
 the reflected Font size with a fixed role multiplier for the title, RADAR/MAP
 headings, row labels, unavailable marker, and close glyph. After the second
 layout prepass and exact font-size readback, optional `GetDesiredSize` evidence
@@ -601,34 +797,185 @@ prepass, font size is reapplied and read back. A missing core Font/SetFont ABI
 or failed size application/readback closes F6 fail closed; missing optional
   game-font evidence does not change the language. Font work exists only on a
   real F6 opening; no closed-panel or tick scan exists. These widgets exist only
-  for the lifetime of an open page. Korean and Traditional Chinese fixed labels
-  also use generated 2x overlays from pinned DroidSansFallback. The canonical
-  `assets/ui/f6` payload contains `ko-{off,on,fault}.tga`,
-  `zh-hant-{off,on,fault}.tga`, `language-popup.tga`, and `manifest.json`. Each
-  status-specific main overlay replaces all 30 fixed main-panel text slots for
-  its language; the shared popup replaces only the Korean and Traditional-
-  Chinese names. The other nine languages continue through native game fonts.
-  These assets are regenerated against the current top-bar, status, and filter-
-  row coordinates: Bug Report `(411,17,126,26)` at role scale `0.40`, Close
-  `(559,17,94,26)`, status label/value/action `(32,142,98,24)` /
-  `(158,142,154,24)` / `(435,142,208,24)`, and filter text X `334` / `496`,
-  width `146`, Y `583` / `615`. Tight-alpha placement centers Bug Report on both
-  axes. Their base size is 32 with a one-pixel translucent stroke and
-  role-specific optical baselines. Static generation verifies that no overlay
-  slot clips. The strict verifier audits all 11 runtime blocks, covers `123/123`
-  overlay codepoints, reports minimum fit `1.000`, maximum optical-center error
-  `0.5` raster pixel, no edge alpha or slot overflow, and deterministic `8/8`
-  regeneration including the manifest. Live in-game size, weight, and alignment remain pending.
+  for the lifetime of an open page. All eleven languages use generated 2x main
+  overlays from pinned regular Droid CJK, Liberation Sans or Noto Sans Thai,
+  selected by script. The canonical `assets/ui/f6` payload contains 33
+  `<language>-{off,on,fault}.tga` main images, `language-popup.tga`,
+  `fr-language-value.tga`, `es-language-value.tga`, 11 `tooltip-<language>.tga`
+  atlases, six glass/check/chip skins, and `manifest.json`. Each
+  status-specific main overlay replaces all 44 fixed main-panel text slots for
+  its language. Header/body/footer Images share that one texture through three
+  clipped fragments. The shared popup supplies all twelve labels, including AUTO,
+  with each endonym's script font. The two retained French/Spanish name-only
+  images are fallback only: a successful main overlay suppresses them to avoid
+  double-painted text. They are 440-by-52 pixels; main and popup images are
+  1520-by-1704. Main labels use a 32-reference base times the role scale, without
+  artificial bold outlines or per-language shrinking. All three footer labels
+  use role .42: 13 reference pixels, rasterized at 26 pixels.
+
+  The retained SG-03 DLL contains intact UTF-16 `Français` and `Español
+  (España)` literals. The code passes wide text through FString/FText without
+  an ASCII conversion, and these languages share the Common font route with
+  English. This points to glyph coverage rather than lost translation text;
+  current `DS_HYFont_P.pak` presence is supporting evidence, not an in-game A/B
+  attribution. The pinned Droid fallback also lacks ç/ñ. Their image labels use
+  unmodified Liberation Sans from `tools/f6-fonts`, with its SIL OFL notice,
+  solely at build time. No new runtime font loading or scanning is introduced.
+
+  The name-only runtime path has one Image, two weak texture slots and two
+  per-open failure slots. It uses the resolved language on open/language/status
+  edges, hides only the native LanguageValue after Brush.ResourceObject readback,
+  and restores native fallback on import/apply failure or another language.
+  Detach/travel clears these handles and failure state.
+  The selected popup fill is derived from its 190-by-32 cell with a two-unit
+  inset, giving 186-by-28. The verifier binds the actual Border call and checks
+  all 12 choices at four scales (48 bounds), rather than checking hit boxes only.
+  SG-07 retains the 44 disjoint main text slots and expands each of 11 language
+  records to 74 strings: 43 main strings and 31 specific hover explanations.
+  The nine fixed-label images retain 177 required codepoints, minimum fit
+  `1.000` and maximum optical-center error `0.5` raster pixel. Eleven tooltip
+  atlases cover 1,076 required codepoints across 341 complete, measured tiles.
+  The 26 RLE TGAs and schema-3 manifest bind source text, geometry and all
+  font/generator pins. Sixty-two in-memory negative cases reject stale geometry,
+  accent/AUTO regressions, overlapping checks, missing tooltip clipping/reset,
+  incorrect topic or tile selection, row hover blocking checkbox columns,
+  lost Box-brush readback and altered raster pixels. SG-08 adds independent
+  final-pixel counterexamples for opaque stacking, excess transparency,
+  linear-white contrast failure, blue tint and duplicate native backdrops.
+  Source-derived English,
+  Simplified Chinese, popup and all-language previews are retained under root
+  `out/handoff/F6_SG07_*`; all 438 reference-font runs fit. Preview font metrics, native slider drawing and example tooltip
+  placement do not establish live game size, weight, alignment or input behavior.
+
+Six shared skin textures provide program-generated rounded glass tints,
+gradients and fine edges, without game/Apple assets or runtime blur/refraction.
+At the SG-09 checkpoint, SG-08's charcoal material changed to controlled soft blue-gray, preserving
+the 760-by-792 layout, all text, square checks,
+31 tooltip topics and 26 F6 TGAs. Accepted main/popup sheets replace their
+native background fills, avoiding a second opaque panel underneath.
+
+The final main TGA is checked after its own base/card layers are combined.
+Across 3,384 inset body samples, alpha is 216/255: 15.294% background transmission.
+Current SG-12 gap samples transmit 21.961-23.922%; tooltip reading surfaces remain 96-99% opaque.
+A separate pixel gate requires body transmission 15-18%, gaps 20-25%, restrained
+blue-gray RGB and at least 4.5:1 contrast for text RGB (247,253,255) over a white
+background composed in linear light. The SG-09 card-body minimum is 4.522:1. This
+guards static readability against byte-space blending that appears too dark;
+it does not establish the game's actual composition, tonemapping or font result.
+Current SG-12 checks cover 118 text-slot states: 44 main, the independent Vote label, two slider values and
+12 popup choices, each with inactive/active controls. All small text exceeds
+4.5:1 (SG-09 minimum 4.522:1); the large title has a separate 3:1 requirement. Utility
+buttons, the language strip and a narrow status reading plate preserve this
+contrast without making card gaps opaque.
+Historical source-derived EN/ZH day/dark/stress previews retain both sRGB-byte and linear
+assumptions under root `out/handoff/F6_SG09_*`; current footer and confirmation
+previews are under `out/handoff/F6_SG12_*`. Slider/status authored colors
+are read from the final native constants and actual setter bindings; reference
+fonts, slider brush shape and example tooltip placement still approximate play.
+Main and popup sheets are 1520 by 1704, matching the panel at 2x. Idle/active
+chip images are 444 by 60; reflected Slate Box margins `10/222,10/30` and
+scaled ImageSize preserve ten-reference-unit corner caps across chip widths.
+The reflected brush copy, numeric types/sizes, applied metrics, DrawAs=Box and
+ResourceObject readback are verified before the Image is accepted. Square
+check images are 88 by 88 at 4x. Each skin import is attempted once per opening;
+native controls and decoded sRGB Border colors remain the fallback. Textures
+retain their sRGB import path; native authored Border colors are decoded only
+at the brush-color boundary. The native status-text fallback separately
+requires at least 4.5:1 from its actual frame/panel color constants; its
+SG-09 minimum is 4.613:1 after setting the panel alpha to 0.79. Twenty-one
+focused pixel counterexamples (14 material, seven Scene backing) and two
+native status-color regressions are rejected; these do not establish gameplay.
+
+Every setting has native hover help. The 32 topics distinguish seven marker
+categories, three Scene switches, five height switches, four filter choices
+and thirteen common controls, including Vote. Both Radar/Map checkbox columns bind the actual
+category topic; its concise wording explains the displayed content. Seven
+independent transparent, hit-test-visible row-label targets
+also expose that topic, including when a packaged main-text overlay hides the
+native TextBlock. Their 420-unit width ends before the checkbox columns.
+Scene/height/filter controls bind their own topics in their actual enum order;
+unknown categories have no fabricated default topic.
+
+There are 56 distinct owner records within the unchanged 64-record pool.
+Each uses its own SizeBox/Canvas/Image widget while sharing one atlas for the
+resolved language. The 640-by-7632 atlas holds 53 tiles: 32 glass-backed hover
+tiles, seven transparent confirmation-text tiles and fourteen numeric/placeholder
+tiles. A 320-by-72
+reference SizeBox clips each hover tile using reflected SetClipping and a
+numeric vertical offset. Both dimensions remain below the 8192 texture bound.
+Hover timing and placement belong to Slate, with no hover polling,
+provider scan or per-frame file work. Language/open edges import at most once
+per attempt; failed language switching clears the old custom widget and uses
+native text. Reflected ToolTipWidget/Brush ownership keeps content alive;
+detach/travel clears weak records. Tooltip glyphs use pinned Droid CJK,
+Liberation Latin/Cyrillic and Noto Sans Thai build inputs; fonts are not runtime
+payloads. See `tools/f6-fonts/README.md` and `THIRD_PARTY_NOTICES.txt`.
+Range and count help explain their shared scope across enabled Scene categories,
+zero hiding Scene markers, and the possible performance cost of higher counts.
+Aim help describes aiming at a marker and pausing briefly; Auto describes choosing
+near the screen center with stable switching. The UI revision preserves the
++160/+180/+150 cm projection-only lifts inherited from SG-09 and does not
+recalibrate compact Treasure height. The height label is now Mini-games in each
+language; its internal `HeightMole`/`mole` identity is unchanged and still covers
+all 83 Fly/Mole/Wave points.
 Deployment creates the file only when it is absent, preserving user choices.
 
+The existing localization record holds 43 main strings plus 32 help strings
+per language. A separate seven-string record supplies Vote, confirmation
+title, three action bodies, Yes and No: 82 strings per language, 902 across
+11 languages. Main overlay slots remain 44. Required glyph coverage is 423 main,
+750 tooltip and 250 confirmation codepoints. Each confirmation body is one short
+question, without repeating button instructions. Five clipped consumers share
+the same verified language atlas; the body uses a 320-by-72 crop at 1.6 scale,
+and Vote uses a 206-by-24 crop so all 11 languages retain the full 26-pixel font
+without shrinking. F6 contains 53 TGAs plus its manifest, adding 27 main images.
+The 18-byte TGA header must establish 640-by-7632
+RGBA before import. Brush.ResourceObject readback precedes hiding native
+fallback text. Missing or stale atlases retain readable ASCII cancellation
+text and disable Yes. All seven localized strings have complete measured
+glyph/crop checks. Fourteen character tiles supply `0123456789 m-v` in 16-by-26
+crops to fifteen bounded numeric/placeholder consumers. Unknown characters or
+failed binding restore native text; numeric changes reuse the imported atlas.
+Forty-three source, manifest and pixel counterexamples are rejected, including
+synthetic bolding, shrinking, missing digits and duplicate language-name layers.
+Evidence: root `out/handoff/F6_SG12_SOURCE_PREVIEW.json`,
+`out/handoff/F6_SG12_VIEWPORT_PREVIEW.json` and
+`out/handoff/F6_SG12_NEGATIVE_VERIFICATION.json`. These are static checks,
+not gameplay or external-site acceptance.
+
 The owner services check boxes at 50 ms only while the panel is open. The
-closed path returns before current-controller lookup or any UObject access.
+closed UI path returns before current-controller lookup or any UObject access.
+The separate owner may still flush one pending Scene preference write after
+close; it does not poll the preference file.
 F6 key repeat is coalesced by a 250 ms toggle bound. Temporary reflected
 `FText` inputs are explicitly destroyed after `SetText`. Pre-transition
 cleanup removes the panel and restores input before old-world widgets can
 become stale. Restoration resolves the panel host's owning Controller first, so
 a silently replaced current Controller cannot inherit stale UI input state;
 only weak widget identities cross frames while the panel is open.
+
+With no confirmation active, Escape closes the entire F6 page even when its language popup is open or
+a slider/text control has focus. The owner samples all controls before closing,
+publishes their latest values and flushes the last slider change. Opening first
+validates the foreground `UnrealWindow` belongs to this process and installs a
+thread-local `WH_GETMESSAGE` consumer plus a `WH_CALLWNDPROC` focus observer.
+Failure rejects the page with hub failure 40
+and the Win32 error; it does not expose a panel with unguarded Escape input.
+The hook consumes only Escape for that window and its children by replacing
+the message with `WM_NULL` before `TranslateMessage`/`DispatchMessage`. Its
+callback owns only locked numeric state and makes no Unreal call. After the
+page disappears, the same press's repeats and release remain consumed; a later
+independent press returns to normal game input. The observation-only hook catches
+window deactivation, focus loss and destruction between owner ticks; it never
+consumes input. Loss of focus requests page close and clears gesture ownership,
+while retaining page-level consumption until that close is serviced. This
+covers switching away and back between ticks. Travel/context cleanup removes
+both hooks; process
+shutdown only disables atomic ingress and leaves OS teardown to remove it.
+Fifty-eight SG-10 offline routing checks verify a hidden owned window, and
+55 pure confirmation-model checks cover action/gesture state. They do not
+establish the game's actual menu behavior; that acceptance remains in the checklist.
+
 Opening establishes Game-and-UI mode before writing the cursor visible bit. The
 open-only service reads that bit and repeats the input/cursor transaction only
 after observing that gameplay hid it again; the ordinary sample is read-only.
@@ -641,8 +988,11 @@ open attempt remains terminal.
 One preallocated UMG tree contains treasure, Boss, Assault, mini-game,
 area-task, bird-egg, fixed Treasure/shared-mini-game height groups, and clock
 pieces. The nearest Treasure and nearest visible Fly/Mole/Wave marker retain
-independent Z targets, while
-every visible Area Quest evaluates height in the existing bounded 80-slot pass.
+independent Z targets, while every visible Area Quest, Boss and Assault
+evaluates height in the existing bounded 80-slot pass. Boss/Assault use a finite
+single-point band at authored spawn Z. They retain their original glyph when
+aligned or when height is unavailable; above/below states replace it with the
+category-colored triangle. Unknown height does not claim alignment.
 Treasure uses its unchanged selected treasure-category fill and six-piece full
 shafted pointer to the left of the selected chest.
 For a multi-band Area Quest, authored marker Z first selects the uniquely
@@ -658,13 +1008,18 @@ shaftless triangle is centered directly below the selected icon and takes the
 actual selected marker's kind palette. A near-black contrast outline is added
 without changing the triangle's size, position, or projection. A target more than 500 vertical units
 above the comparable player Z shows an up triangle; a target more than 500
-below shows a down triangle; the inclusive +/-500 band hides it. Treasure,
-Area Quest, and mini-game height all use comparable `playerZ - 150`; Treasure
+below shows a down triangle; the inclusive +/-500 band hides it. All five
+height categories use comparable `playerZ - 150`; Treasure
 retains its existing dead-zone behavior. The channel
 uses one of 83 trusted map-100 `NPC_Start` heights (33 Fly, 40 Mole, 10 Wave).
 If that height is unavailable, only the mini-game triangle is hidden. The persisted key
-remains `mole`. The three channels retain independent numeric target Z
-and transform state, so none suppresses or reuses another. No child widgets are allocated or laid out on
+remains `mole`. Treasure/shared-mini-game targets and per-marker Area
+Quest/Boss/Assault profiles retain independent scalar state. The three latter
+glyphs use reference sizes 35/30/25 for Boss/Assault/Area Quest and share a
+4-unit visible stroke/frame thickness; Encounter triangles add one unit of
+dark-green outline per side. Display/DPI scaling applies to both core and
+outline. No monster-origin correction is added to the existing player offset.
+No child widgets are allocated or laid out on
 the 16 ms motion path. Invalid current position, menu/cursor, and confirmed
 non-open-world activity suppression stop compact updates; open-world interiors
 remain supported.
@@ -692,13 +1047,26 @@ on a short timing window before the new layer exists. There is no steady retry
 or recurring layer lookup.
 The area-task glyph reuses one ABI-gated RoundedBox Brush and three existing dot
 pieces: a 55-percent translucent charcoal fill, thick dark frame, and solid
-white dots. This is a color-only change inside the fixed four-piece slot.
+white dots. Shape and style changes remain inside the fixed four-piece slot.
 
 The clock is numeric world time plus a presentation glyph. Its configured bands
 begin at 06:00, 12:00, 18:00, and 21:00. The sunrise, full-sun, sunset, and
 crescent-star names and boundaries are presentation policy because no
 authoritative reflected game phase enum or schedule has been proved. Weather is
 unavailable and is not queried.
+
+SG-09 places the clock in the measured vertical gap between the minimap's
+RetainerBox and DLayerQuest on the existing 1 Hz layout service. The glyph's
+visual center is 15 reference units from the group top; the 42-unit container's
+21-unit center must not substitute for it. Valid placement requires a gap of
+at least 30 reference units, finite completed geometry and screen/host fit.
+The exact main-panel owner is reached within eight ancestors and must point
+back through DLayerMiniMap; painted ancestry is bounded to 24 nodes. No global
+widget scan is added. Missing/invalid geometry uses the retained 178-reference-
+unit top offset from the minimap center. A resize defers that sample, and
+motion accumulates from the last applied position until it exceeds 0.25
+reference units. This changes presentation, not the world-time provider or
+hourly task/encounter refresh cadence.
 
 ### Runtime-only bird eggs
 
@@ -938,6 +1306,12 @@ A prior runtime-only world-map fault may be cleared only by a later explicit F7
 activation after fault-free guarded detach and valid ABI. It is not an automatic
 map-open retry.
 
+### Historical 2.2.x expanded-map validation records
+
+The following candidate identities and validation results are preserved history;
+they do not describe the 3.0.0 / SG-05 source. Current evidence
+is indexed in `SCENE_GUIDANCE_ATTEMPT_LEDGER.md`.
+
 The available healthy runtime log is bound to the prior exact 84A360B0 DLL. It
 records no renderer, ABI, F6, or UE4SS fatal error and reaches normal shutdown,
 but cannot validate the later F6 presentation, localized-overlay, or compact-
@@ -950,7 +1324,7 @@ Its backup is
 Those checks validate only rejected bytes. The later `CD41F0E1...6FBB2` /
 `433710E0...E62C` deployment and backup
 `dist/work/deployment/deploy-backups/20260905-182946-652-native-only-deploy` are
-also runtime-rejected evidence only. Current source review, static gates, Core
+also runtime-rejected evidence only. The recorded source review, static gates, Core
 `2/2`, release hygiene, and local native build pass for WM-06 DLL
 `6435E10031D90840BF0499664CF57347D7991C9C192BD3B2239ADE2324C723A1` from
 compiled source
@@ -980,7 +1354,7 @@ full-stretch-outer/Image-translation `CCC6B117...AE00` / `B650B5FB...74EA`, and
 outer-atlas-rectangle `CD41F0E1...6FBB2` / `433710E0...E62C` deployments are
 runtime rejected. The last candidate's backup
 `dist/work/deployment/deploy-backups/20260905-182946-652-native-only-deploy`
-remains rejected evidence only. Current WM-06 immutable-slot source
+remains rejected evidence only. Historical WM-06 immutable-slot source
 review, static gates, Core `2/2`, release hygiene, and local native build pass
 for DLL
 `6435E100...C723A1` from compiled source `0A1A4CE3...B5E5BC5`, size 1,107,968
@@ -995,6 +1369,87 @@ artifact runtime acceptance remains
 `NOT_VALIDATED`.
 
 ## Release packaging
+
+The current SG-10 manifest is
+`dist/work/candidates/radar-3.0.0-sg10-20260909/release-packages/release-manifest.json`,
+UTC `2026-09-09T16:53:04.9764235Z`. Its three final ZIPs contain 4/69/73 entries,
+with 65 runtime files and 61 manifest members. Setup 20/20 and Manual 2/2 pass
+with zero failures/skips; Setup/Manual runtime equivalence and three fresh ZIP
+re-extractions pass. `package-verification.json` independently verifies all
+64 payload files in each manual archive, 60 installed static files, and
+promotion at `2026-09-09T16:55:11.2153219Z`. The previous SG-03 final files are
+backed up in that candidate's `previous-final-sg03` directory.
+
+The SG-10 DLL is 1,310,208 bytes, SHA-256
+`F1203366DA7488FBFC9E8BF101598A4FC4D2E840F850D66CEC487452FEC7EB65`.
+Its candidate `deployment-verification.json` records installation at
+`2026-09-09T16:51:20.6801835Z`, matching build receipt and 34 UI files, four
+byte-preserved settings files, two unchanged AutoPickup files, and one enabled
+native Radar entry. The previous SG-09 installation is backed up at
+`dist/work/deployment/deploy-backups/20260909-095118-801-native-only-deploy`.
+The frozen build metadata and `validation-summary.json` explicitly precede
+deployment and packaging. Subsequent deployment/package receipts establish
+the completed state without rewriting those snapshots. Exact archive and
+Setup identities are in `assets/nexus/NEXUS_FILES.txt`. Gameplay remains
+`PENDING_OWNER_TEST`; no external publication is recorded.
+
+### Retained earlier package and deployment checkpoints
+
+The retained, unpromoted SG-09 candidate package manifest is
+`dist/work/candidates/radar-3.0.0-sg09-20260909/release-packages/release-manifest.json`,
+UTC `2026-09-09T15:56:21.9516109Z`. It never identified `dist/final-3.0.0`;
+that directory still held SG-03 until the later SG-10 promotion.
+Setup 20/20 and Manual 2/2 pass with no failures or skips. All 65 runtime files
+are byte-equivalent between Setup and manual packages; all three archives
+re-extract identically. Installer/Manual-No-UE4SS/Manual-With-UE4SS contain
+4/69/73 entries. The 1,299,456-byte DLL is
+`EC82CA04927ABCB3148409AEC16D6574641984E4A9F94790515D2B94F800F1BF`.
+Actual local deployment is independently verified at
+`2026-09-09T15:52:57.0256520Z` in the same candidate's
+`deployment-verification.json`: DLL, build receipt and 34 UI files match;
+four settings files and the two checked AutoPickup files remain byte-identical.
+Backup: `dist/work/deployment/deploy-backups/20260909-085255-045-native-only-deploy`.
+Packaged metadata is the explicit pre-deployment snapshot. That snapshot and
+the release builder's `NOT_PERFORMED` deployment output do not supersede the
+actual installation receipt. Gameplay remains `PENDING_OWNER_TEST`; no Nexus
+upload is recorded.
+
+The previous SG-03 package set is backed up under
+`dist/work/candidates/radar-3.0.0-sg10-20260909/previous-final-sg03`, with its own
+`release-manifest.json` and `SHA256SUMS.txt`. Its source-bound native build,
+static gates, Setup 20/20, manual installation 2/2, 39-file runtime equivalence
+and all three archive re-extractions pass. Installer/Manual-No-UE4SS/
+Manual-With-UE4SS contain 4/43/47 entries. The exact DLL is 1,194,496 bytes,
+SHA-256 `4C0B9E788E35A6E46F45B4B5AB6EFCF925B3CDB6CF9E3F3D70E86EB13A853E32`.
+
+Rollback-backed local deployment is independently verified at
+`2026-09-09T05:08:44.4698483Z`: the game was stopped, four user-owned files were
+preserved byte-for-byte, the other 35 payload files matched the package, and
+exactly one native Radar entry was enabled. The candidate's
+`installed-verification.json` identifies that checkpoint; its backup is
+`dist/work/deployment/deploy-backups/20260908-220537-090-native-only-deploy`.
+Owner gameplay approval remains pending, and no Nexus upload/publication has
+been performed. The 2.3.0 / CM-04 records remain historical and do not identify
+this package set. See `RELEASE_STATUS.md` for the publication boundary.
+
+SG-04 remains an undeployed source/build checkpoint. SG-05 was later deployed:
+`dist/work/candidates/radar-3.0.0-sg05-20260909/deployment-verification.json`
+records `2026-09-09T12:30:52.1411039Z`, DLL `C04C6E29...CC252B97`,
+17 verified UI files and four byte-preserved user files. Its backup is
+`dist/work/deployment/deploy-backups/20260909-052906-388-native-only-deploy`.
+SG-08 was subsequently deployed with owner authorization and verified at
+`2026-09-09T14:50:01.0367076Z` by its candidate `deployment-verification.json`.
+The 1,288,192-byte DLL, 34 UI asset files and build receipt match; four user
+settings files and the two checked AutoPickup files remain byte-identical.
+Backup: `dist/work/deployment/deploy-backups/20260909-074959-027-native-only-deploy`.
+This installation record supersedes the earlier build-only deployment status;
+gameplay remains `PENDING_OWNER_TEST`. SG-06/SG-07 retain separate local build
+evidence. The retained SG-03 archives contain none of these later changes.
+At that historical SG-08 checkpoint, its allowlist planned 65 runtime
+files (64 plus manifest; 61 manifest members exclude three examples) and 69/73
+entries for future manual No-UE4SS/With-UE4SS archives. SG-09 now validates those
+counts in the actual release manifest above; the older SG-08 record itself
+remains deployment/build evidence, not SG-09 package acceptance.
 
 `Build-Release.ps1` is the only supported release builder. It verifies the
 source-bound native receipt, static gates, Setup resources, isolated 20-case
@@ -1014,13 +1469,16 @@ recorded mutation on failure.
 The installer archive contains exactly the unsigned Setup executable, its
 SHA-256 sidecar, `INSTALL.md`, and `THIRD_PARTY_NOTICES.txt`. Complete
 ExperimentalNested runtime resources are embedded inside Setup: the native
-`main.dll`, build receipt, ten generated catalogs, the exact treasure override,
+`main.dll`, build receipt, eleven generated data files (including the independent
+Area Quest Scene companion), the exact treasure override,
 SQLCipher runtime, metadata, licenses/notices, and a generated package manifest. Immutable
-`visibility.example.ini` and `diagnostics.example.ini` resources supply
+`visibility.example.ini`, `diagnostics.example.ini` and `hotkeys.example.ini` resources supply
 clean-install defaults inside Setup but are not written into the installed
-target. Setup Update / Repair and developer deployment preserve all three
-validated user-owned files byte-for-byte: live `config/visibility.ini`, live
-`config/diagnostics.ini`, and `data/defaults/treasure_overrides.txt`. Neither
+target. Developer deployment preserves four validated user-owned files
+byte-for-byte: live `config/visibility.ini`, `config/diagnostics.ini`,
+`config/hotkeys.ini`, and `data/defaults/treasure_overrides.txt`. Setup likewise
+preserves settings unless the owner explicitly confirms a hotkey change in its
+Install / Update / Repair flow. F6 never writes `hotkeys.ini`. Neither
 the public archive nor installed runtime contains
 `enabled.txt`, source, external renderer, Lua loop,
 runtime data generator, retired canary, or PostRender/Present configuration.
@@ -1038,6 +1496,12 @@ The embedded Setup
 converts a structurally recognized alternate UE4SS layout transactionally,
 retains a verified conversion backup, and normalizes the one authoritative
 `mods.txt` without requiring a second installation contract.
+
+### Historical 2.2.1 package-planning snapshot
+
+This preserved planning/status snapshot applies only to 2.2.1. Later WM-06
+package results above and the 2.3.0 package records do not identify the SG-03
+3.0.0 package set described above.
 
 The 2.2.1 release target is `dist/final-2.2.1` and contains exactly
 `DragonSwordNativeWorldRadarPostRender-v2.2.1-Installer.zip`,
@@ -1062,6 +1526,8 @@ Historical 2.1.1 results remain bound to
 The prior 2.1.0 `D4EE...` package and its Setup/manual results remain historical
 evidence only. Public diagnostics default to
 `debug_logging=false` in every future resealed channel.
+
+### Current ownership and dependency boundaries
 
 Every embedded payload file is compared with its declared source hash, and
 Setup requires strict top-level existing-target identity consistent with the

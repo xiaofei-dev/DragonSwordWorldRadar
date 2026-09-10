@@ -1,5 +1,98 @@
 # Evidence
 
+## 2026-09-08 frame-paced Debug/20x candidate
+
+Supersedes the uninstalled dispatch-accounting-only candidate below for local
+testing. Preserves that correction and adds frame-paced active work, zero
+additional active/post-pickup wait, atomic EngineTick reentry exclusion, and
+recoverable pre-input retry-capacity pressure. Debug context/selector capture
+uses fixed NUL-terminated arrays, with formatting only after the decision.
+Narrow diagnostic std::exception handling preserves completed outcomes;
+guarded gameplay faults still fail closed. `diagnostic_write_failures` exposes
+diagnostic failures in PERF_AGGREGATE.
+
+Validation before deployment:
+
+- Complete strict core build/CTest passes, including 5000 synthetic 250 Hz
+  frames with repeated capacity saturation/recovery and no untrackable input.
+- Source/manifest (88 files), scalar diagnostic boundaries, physical toggle,
+  one-input selector path, package layout, and mods.txt gates pass.
+- Fresh pinned/offline native build plus final incremental rebuild passes.
+  SDK remains clean. Artifact markers verified independently of version label.
+- DLL: `out/native/frame-debug-20260908/main.dll`, 950,272 bytes,
+  SHA-256 `68F7FF81CCA6B94B195E30D3AB85E6C00D0AD64369ED3FEC5778AAAE629DE5BA`.
+- Setup: `out/installer/frame-debug-20260908/DragonSwordNativeAutoPickup-Setup-1.3.1.exe`,
+  SHA-256 `2053A07E31B3C361A5FE9F6D95634F2ADD7A8EE5451CA6E4B0D66BFB56D4042C`.
+- READY discriminators: `active_cadence=engine_tick_v1`,
+  `capacity_policy=wait_before_input`, `debug_decision_policy=deferred_scalar_v1`.
+
+The owner authorizes local deployment and Debug ON with the existing approved
+20x PAK; deployment/runtime evidence is recorded separately. No public version
+or published artifact is replaced, and default config remains Debug false.
+This does not establish that an already stuck native interaction list is fixed.
+
+Deployment/runtime startup: exact Setup passed 95/95 key assertions and 11/11
+installer fixtures. Authorized owned Repair completed at 09:22:58.620Z;
+installed DLL equals the hash above. Exactly one approved 20x PAK is installed
+(`81214319100646CD5663940CACE3AFA8F3523F5E319AB7C4AE8D935443FB93D2`),
+replacing 15x. Existing config including Debug true is byte-preserved. Strict
+ownership reinspection passes and 160 unrelated files (including Radar and
+UE4SS) retain their hashes. Exact prior Mod/config/record/logs, mods.txt and 15x
+PAK are retained under `out/rollback-frame-debug-20260908T092256001Z/`, with
+`deployment-receipt.json`. Fresh process START at 09:23:24.422Z reaches READY
+at 09:23:30.623Z with the new policy markers, `active_scan_ms=0`,
+`post_pickup_ms=0`, `debug_logging=true`. This is startup evidence, not pickup
+gameplay acceptance.
+
+## 2026-09-08 unreleased dispatch-accounting candidate
+
+Owner evidence: stuck conch prompt while mounted, also not collectible manually
+after F9 Off; owner confirmed the Mod causes the problem. Installed log review
+found 46 invocations for one exact normal-gather Component over approximately
+56 seconds. Matching dispatch does not prove a successful pickup.
+
+Code defect: dispatch erased the unconfirmed attempt count and removed its
+record after 750 ms. The same unchanged selector result therefore repeatedly
+started attempt one, bypassing the second-attempt recovery policy.
+
+Candidate scope: dispatch and timeout share the same unconfirmed attempt
+budget; first dispatch keeps 750 ms re-entry and a bounded retry opportunity,
+while a second unconfirmed outcome enters the existing 1500 ms exact-Component
+backoff. Exact target confirmation is checked before dispatch consumption; a
+matching simultaneous dispatch preserves the already elapsed next-scan due.
+There is no new target source, pickup action, game-list mutation, range PAK,
+or global delay. This is not an automatic repair of an already stuck game list.
+
+Validation:
+
+- RED: new core regression failed against the old header at the assertion that
+  dispatch without target confirmation must preserve a tracked retry.
+- GREEN: complete core suite passes, including 20 consecutive dispatch/recovery
+  cycles, both mixed outcome orders, exact confirmation, weak-identity reuse,
+  bounded retention, recovery/reset, and capacity exhaustion/recycling.
+- Source, manifest (88 files), configured hotkeys, mods.txt, package layout,
+  and guarded observer/probe-order checks pass.
+- Fresh native build from verified pinned offline dependencies passes; SDK
+  worktrees remain clean. Exact native artifact and candidate marker pass.
+- DLL: `out/native/dispatch-accounting-20260908/main.dll`, 944,640 bytes,
+  SHA-256 `143EB05B5EBA8C31FE75621C845EC42D42C2F16D8EC4B26171ADAE64A56BADA9`.
+- Runtime discriminator: `dispatch_attempt_policy=shared_unconfirmed_v1` in
+  READY. The base runtime label remains 1.3.1; use the hash and this marker,
+  not the old version label alone, to identify the unreleased candidate.
+- Isolated unsigned test Setup:
+  `out/installer/dispatch-accounting-20260908/DragonSwordNativeAutoPickup-Setup-1.3.1.exe`,
+  SHA-256 `44A454246E9208DA21DB1EC37044E49748AF12166BB5CA30787C14C43B70D095`.
+- Exact test Setup passes 95/95 key-configuration assertions and 11/11 isolated
+  installer cases, including Repair/settings preservation, stale-plan rejection,
+  ownership, rollback, range selection, and runtime-layout conversion fixtures.
+
+Published `dist/releases/1.3.1`, the game install, and all range PAKs remain
+unchanged. No GitHub push or game launch was performed. Native prompt recovery,
+manual interaction, multi-yield persistent gatherables, mounted travel, rapid
+owner changes, debug Off/On, and absence of new guarded-probe faults still need
+exact-candidate gameplay testing. Offline evidence must not be promoted to a
+claim that the user's complete pickup failure is fixed.
+
 ## 1.3.1 deferred startup-readiness correction
 
 The first installed 1.3.1 session on Steam build `25076183`, game SHA-256

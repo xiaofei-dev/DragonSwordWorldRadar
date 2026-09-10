@@ -40,6 +40,7 @@ function Assert-NotContains {
 }
 
 & (Join-Path $PSScriptRoot 'Verify-F6LocalizedTextOverlays.ps1') | Out-Null
+& (Join-Path $PSScriptRoot 'Verify-SceneMarkerAssets.ps1') | Out-Null
 
 $hotkeyMain = Read-ProjectText 'src\native\main.cpp'
 $hotkeyParser = Read-ProjectText 'include\dswros\hotkey_config.hpp'
@@ -70,9 +71,9 @@ $profile = Read-ProjectText 'metadata\installer-product-profile.json' |
     ConvertFrom-Json
 $providers = Read-ProjectText 'metadata\data-providers.json' | ConvertFrom-Json
 $version = [string]$release.version
-$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0'
+$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_3_0_0'
 
-Assert-True ($version -eq '2.3.0' `
+Assert-True ($version -eq '3.0.0' `
     -and [string]$release.runtime_label -eq $runtimeLabel `
     -and [string]$profile.product.public_version -eq $version `
     -and [string]$profile.product.runtime_label -eq $runtimeLabel) `
@@ -182,10 +183,10 @@ Assert-True ([string]$providers.release_installer.game_compatibility_policy -mat
 $engine = Read-ProjectText 'installer\InstallerEngine.cs'
 $visibilityConfig = Read-ProjectText 'config\visibility.ini'
 $visibilityParser = Read-ProjectText 'include\dswros\visibility_config.hpp'
-Assert-Contains $engine 'ProductVersion\s*=\s*"2\.3\.0"' `
+Assert-Contains $engine 'ProductVersion\s*=\s*"3\.0\.0"' `
     'Setup engine product version differs from the release identity.'
 Assert-Contains $engine `
-    'RuntimeLabel\s*=\s*"DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0"' `
+    'RuntimeLabel\s*=\s*"DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_3_0_0"' `
     'Setup engine runtime label differs from the release identity.'
 Assert-Contains $engine 'IsStructurallyValidX64Dll' `
     'Setup does not contain bounded structural UE4SS DLL validation.'
@@ -209,8 +210,17 @@ Assert-Contains $engine `
 Assert-Contains $engine 'ValidateSectionedVisibilityConfig' `
     'Setup does not validate the readable sectioned visibility format.'
 Assert-Contains $engine `
-    '"height_arrows"[\s\S]*?"treasure",\s*"area_quests",\s*"mole"' `
-    'Setup does not validate all three height-arrow preferences.'
+    '"height_arrows"[\s\S]*?"treasure",\s*"area_quests",\s*"mole",\s*"boss",\s*"assault"' `
+    'Setup does not validate all five height-arrow preferences, including Boss and Assault.'
+Assert-Contains $engine `
+    '"scene",\s*new HashSet<string>\(new\[\]\s*\{\s*"treasure",\s*"area_quests",\s*"mini_games",\s*"range_meters",\s*"marker_limit",\s*"distance_mode"\s*\}' `
+    'Setup must accept exactly three Scene categories and range/limit/distance settings.'
+Assert-Contains $engine `
+    'number\s*>\s*\(key\s*==\s*"range_meters"\s*\?\s*1000\s*:\s*50\)' `
+    'Setup must enforce the Scene range/count limits.'
+Assert-Contains $engine `
+    'value\s*!=\s*"off"\s*&&\s*value\s*!=\s*"central_radius"\s*&&\s*value\s*!=\s*"nearest_center"\s*&&\s*value\s*!=\s*"all"' `
+    'Setup must validate all four Scene distance modes.'
 Assert-Contains $engine `
     '"interface"[\s\S]*?"language"' `
     'Setup does not validate the interface-language preference.'
@@ -219,7 +229,7 @@ Assert-Contains $engine `
     'Setup does not accept exactly Auto plus the game''s 11 interface languages.'
 Assert-Contains $engine `
     'legacyLayout\s*=\s*seenSections\.SetEquals\(legacySections\)[\s\S]*?currentLayout\s*=\s*seenSections\.SetEquals\(required\.Keys\)' `
-    'Setup does not preserve complete old three-section settings while requiring five sections for the public default.'
+    'Setup does not preserve complete old three-section settings while validating the full public default.'
 Assert-Contains $engine 'strict 4 KiB size limit' `
     'Setup visibility validation is not bounded to the runtime 4 KiB limit.'
 Assert-Contains $engine '"available"' `
@@ -232,8 +242,11 @@ Assert-Contains $engine `
     'embedded public visibility default must use the readable sectioned format' `
     'Setup does not require the readable format for the embedded public default.'
 Assert-Contains $engine `
-    'enable every display category and height indicator, use available modes, and follow the game language' `
-    'Setup does not enforce the complete readable public visibility default.'
+    'requirePublicDefault[\s\S]*?StartsWith\("scene\.",\s*StringComparison.Ordinal\)[\s\S]*?!string.Equals\(pair.Value,\s*"true",\s*StringComparison.Ordinal\)' `
+    'Setup must require all Scene categories enabled in the public preset while preserving installed user preferences.'
+Assert-Contains $engine `
+    'pair.Key\s*==\s*"scene.range_meters"[\s\S]*?"600"[\s\S]*?pair.Key\s*==\s*"scene.marker_limit"[\s\S]*?"24"[\s\S]*?pair.Key\s*==\s*"scene.distance_mode"[\s\S]*?"nearest_center"' `
+    'Setup public Scene settings must default to 600 m, 24 objects and central-radius distance.'
 Assert-True ($visibilityConfig -match '(?m)^\[radar\]\r?$' `
     -and $visibilityConfig -match '(?m)^clock=true\r?$' `
     -and $visibilityConfig -match '(?m)^bird_eggs=true\r?$' `
@@ -242,22 +255,24 @@ Assert-True ($visibilityConfig -match '(?m)^\[radar\]\r?$' `
     -and $visibilityConfig -match '(?m)^area_quests=available\r?$' `
     -and $visibilityConfig -match '(?m)^assault=available\r?$' `
     -and $visibilityConfig -match `
-        '(?ms)^\[height_arrows\]\r?\n(?:#[^\r\n]*\r?\n)*treasure=true\r?\narea_quests=true\r?\nmole=true\r?$' `
+        '(?ms)^\[height_arrows\]\r?\n(?:#[^\r\n]*\r?\n)*treasure=true\r?\narea_quests=true\r?\nmole=true\r?\nboss=true\r?\nassault=true\r?$' `
+    -and $visibilityConfig -match `
+        '(?ms)^\[scene\]\r?\n(?:#[^\r\n]*\r?\n)*treasure=true\r?\narea_quests=true\r?\nmini_games=true\r?\nrange_meters=600\r?\nmarker_limit=24\r?\ndistance_mode=nearest_center\r?$' `
     -and $visibilityConfig -match `
         '(?ms)^\[interface\]\r?\n(?:#[^\r\n]*\r?\n)*language=auto\r?$' `
     -and [regex]::Matches(
-        $visibilityConfig, '(?m)^\[[a-z_]+\]\r?$').Count -eq 5) `
-    'The source public visibility default is not the complete five-section 2.2 default.'
+        $visibilityConfig, '(?m)^\[[a-z_]+\]\r?$').Count -eq 6) `
+    'The public preset must include six sections, five enabled compact height categories, and all three Scene categories enabled.'
 Assert-True ($visibilityParser -match 'kMaximumVisibilityConfigBytes\s*=\s*4096U' `
     -and $visibilityParser -match 'parse_visibility_config\(' `
     -and $visibilityParser -match 'format_visibility_config\(' `
     -and $visibilityParser -match `
-        'old_sectioned\s*=\s*seen_sections\s*==\s*0x07U' `
+        'base_sections\s*=\s*static_cast<std::uint8_t>\(\s*seen_sections\s*&\s*~0x20U\)[\s\S]*?old_sectioned\s*=\s*base_sections\s*==\s*0x07U' `
     -and $visibilityParser -match `
-        'current_sectioned\s*=\s*seen_sections\s*==\s*0x1FU' `
+        'current_sectioned\s*=\s*base_sections\s*==\s*0x1FU[\s\S]*?\(\(seen_sections\s*&\s*0x20U\)\s*!=\s*0U\s*&&\s*\(scene_keys\s*&\s*0x03U\)\s*!=\s*0x03U\)' `
     -and $visibilityParser -match `
         'VisibilityConfigFormat::LegacySchema1[\s\S]*?VisibilityConfigFormat::LegacySchema4') `
-    'The runtime parser lost its 4 KiB bound, five-section formatter, complete old three-section migration, or legacy schema 1-4 path.'
+    'The runtime parser lost its 4 KiB bound, six-section formatter, complete old three/five-section migration, required Scene keys, or legacy schema 1-4 path.'
 Assert-Contains $engine 'retainBackupAfterCommit' `
     'Setup does not distinguish temporary rollback from retained conversion backup.'
 Assert-Contains $engine 'Observed UE4SS SHA-256 \(provenance only\)' `
@@ -281,10 +296,10 @@ Assert-Contains $builder 'dist\\work\\build\\native\\main\.dll' `
     'Installer builder reads the native DLL outside dist/work.'
 Assert-Contains $builder 'dist\\work\\build\\installer' `
     'Installer builder writes outside dist/work.'
-Assert-Contains $builder '\$version\s*=\s*''2\.3\.0''' `
+Assert-Contains $builder '\$version\s*=\s*''3\.0\.0''' `
     'Installer builder version differs from the release identity.'
 Assert-Contains $builder `
-    '\$runtimeLabel\s*=\s*''DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0''' `
+    '\$runtimeLabel\s*=\s*''DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_3_0_0''' `
     'Installer builder runtime label differs from the release identity.'
 foreach ($required in @(
         'Payload.Manifest.ini',
@@ -307,7 +322,7 @@ Assert-Contains $builder 'Get-AuthenticodeSignature' `
 $releaseBuilder = Read-ProjectText 'tools\Build-Release.ps1'
 Assert-Contains $releaseBuilder 'dist\\work\\build\\native' `
     'Release builder writes the native build outside dist/work.'
-Assert-Contains $releaseBuilder '\$version\s*=\s*''2\.3\.0''' `
+Assert-Contains $releaseBuilder '\$version\s*=\s*''3\.0\.0''' `
     'Release builder version differs from the release identity.'
 Assert-Contains $releaseBuilder 'Test-Installer\.ps1' `
     'The release builder does not run the isolated installer matrix.'
@@ -453,7 +468,7 @@ Assert-True ($testMatrix -match `
     -and $integrationMatrix -match `
         '''auto'',\s*''en'',\s*''ja'',\s*''ko'',\s*''zh-hans'',\s*''zh-hant'',[\s\S]*?''fr'',\s*''de'',\s*''es-es'',\s*''ru'',\s*''th'',\s*''pt-br''' `
     -and $integrationMatrix -match `
-        'Name = ''sectioned-2\.3\.0-''\s*\+\s*\$languageId[\s\S]*?\[height_arrows\][\s\S]*?\[interface\][\s\S]*?language=\$languageId' `
+        'Name = ''sectioned-3\.0\.0-''\s*\+\s*\$languageId[\s\S]*?\[height_arrows\][\s\S]*?\[interface\][\s\S]*?language=\$languageId' `
     -and $integrationMatrix -match `
         'partial, unknown-language, incomplete, or non-canonical 2\.2 visibility config was accepted' `
     -and $integrationMatrix -match `
@@ -532,6 +547,17 @@ foreach ($requiredPath in @(
         "The public runtime payload omits or duplicates $requiredPath."
 }
 $expectedF6OverlayPaths = @(
+    'assets/ui/f6/en-fault.tga', 'assets/ui/f6/en-off.tga', 'assets/ui/f6/en-on.tga',
+    'assets/ui/f6/ja-fault.tga', 'assets/ui/f6/ja-off.tga', 'assets/ui/f6/ja-on.tga',
+    'assets/ui/f6/zh-hans-fault.tga', 'assets/ui/f6/zh-hans-off.tga', 'assets/ui/f6/zh-hans-on.tga',
+    'assets/ui/f6/fr-fault.tga', 'assets/ui/f6/fr-off.tga', 'assets/ui/f6/fr-on.tga',
+    'assets/ui/f6/de-fault.tga', 'assets/ui/f6/de-off.tga', 'assets/ui/f6/de-on.tga',
+    'assets/ui/f6/es-es-fault.tga', 'assets/ui/f6/es-es-off.tga', 'assets/ui/f6/es-es-on.tga',
+    'assets/ui/f6/ru-fault.tga', 'assets/ui/f6/ru-off.tga', 'assets/ui/f6/ru-on.tga',
+    'assets/ui/f6/th-fault.tga', 'assets/ui/f6/th-off.tga', 'assets/ui/f6/th-on.tga',
+    'assets/ui/f6/pt-br-fault.tga', 'assets/ui/f6/pt-br-off.tga', 'assets/ui/f6/pt-br-on.tga',
+    'assets/ui/f6/es-language-value.tga',
+    'assets/ui/f6/fr-language-value.tga',
     'assets/ui/f6/ko-fault.tga',
     'assets/ui/f6/ko-off.tga',
     'assets/ui/f6/ko-on.tga',
@@ -539,7 +565,24 @@ $expectedF6OverlayPaths = @(
     'assets/ui/f6/manifest.json',
     'assets/ui/f6/zh-hant-fault.tga',
     'assets/ui/f6/zh-hant-off.tga',
-    'assets/ui/f6/zh-hant-on.tga'
+    'assets/ui/f6/zh-hant-on.tga',
+    'assets/ui/f6/main-glass.tga',
+    'assets/ui/f6/popup-glass.tga',
+    'assets/ui/f6/check-active.tga',
+    'assets/ui/f6/check-idle.tga',
+    'assets/ui/f6/chip-active.tga',
+    'assets/ui/f6/chip-idle.tga',
+    'assets/ui/f6/tooltip-en.tga',
+    'assets/ui/f6/tooltip-ja.tga',
+    'assets/ui/f6/tooltip-ko.tga',
+    'assets/ui/f6/tooltip-zh-hans.tga',
+    'assets/ui/f6/tooltip-zh-hant.tga',
+    'assets/ui/f6/tooltip-fr.tga',
+    'assets/ui/f6/tooltip-de.tga',
+    'assets/ui/f6/tooltip-es-es.tga',
+    'assets/ui/f6/tooltip-ru.tga',
+    'assets/ui/f6/tooltip-th.tga',
+    'assets/ui/f6/tooltip-pt-br.tga'
 ) | Sort-Object
 $actualF6OverlayPaths = @($payload | Where-Object {
         $_.RelativePath -like 'assets/ui/f6/*'
@@ -547,6 +590,27 @@ $actualF6OverlayPaths = @($payload | Where-Object {
 Assert-True (($actualF6OverlayPaths -join '|') -eq `
         ($expectedF6OverlayPaths -join '|')) `
     'The public runtime payload does not contain the exact F6 overlay set.'
+$expectedSceneAssetPaths = @(
+    'assets/ui/scene/treasure-other.tga',
+    'assets/ui/scene/treasure-mini-game.tga',
+    'assets/ui/scene/treasure-map.tga',
+    'assets/ui/scene/treasure-puzzle.tga',
+    'assets/ui/scene/area-quest.tga',
+    'assets/ui/scene/mini-game.tga',
+    'assets/ui/scene/manifest.json'
+) | Sort-Object
+$actualSceneAssetPaths = @($payload | Where-Object {
+    $_.RelativePath -like 'assets/ui/scene/*'
+} | ForEach-Object { $_.RelativePath }) | Sort-Object
+Assert-True (($actualSceneAssetPaths -join '|') -eq ($expectedSceneAssetPaths -join '|')) `
+    'The public runtime payload must contain exactly six shared Scene glyph images and their manifest.'
+$expectedGuidePaths = @('en.tga', 'ja.tga', 'ko.tga', 'zh-hans.tga',
+    'zh-hant.tga', 'fr.tga', 'de.tga', 'es-es.tga', 'ru.tga',
+    'th.tga', 'pt-br.tga', 'manifest.json') | ForEach-Object { "assets/ui/guide/$_" } | Sort-Object
+$actualGuidePaths = @($payload | Where-Object { $_.RelativePath -like 'assets/ui/guide/*' } |
+    ForEach-Object { $_.RelativePath }) | Sort-Object
+Assert-True (($actualGuidePaths -join '|') -eq ($expectedGuidePaths -join '|')) `
+    'The in-menu Guide must include exactly eleven localized atlases and their verified manifest.'
 Assert-True (@($payload | Where-Object {
             $_.RelativePath -match `
                 '(?i)(^|/)enabled\.txt$|(^|/)runtime/(logs|diagnostics|backups)(/|$)|(^|/)config/(visibility|diagnostics|hotkeys)\.ini$'

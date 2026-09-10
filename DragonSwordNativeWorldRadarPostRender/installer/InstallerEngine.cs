@@ -81,8 +81,8 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
 
     internal static class InstallerEngine
     {
-        private const string ProductVersion = "2.3.0";
-        private const string RuntimeLabel = "DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0";
+        private const string ProductVersion = "3.0.0";
+        private const string RuntimeLabel = "DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_3_0_0";
         private const string GameFileName = "DSClient-Win64-Shipping.exe";
         private const string ModName = "DragonSwordNativeWorldRadarPostRender";
         private const string LegacyRadarName = "DragonSwordWorldRadarObjectState";
@@ -1943,7 +1943,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             if ((!ascii.Contains(ProductVersion) && !unicode.Contains(ProductVersion)) ||
                 (!ascii.Contains(RuntimeLabel) && !unicode.Contains(RuntimeLabel)))
             {
-                throw new InvalidDataException("The embedded native radar plugin lacks the 2.3.0 release identity marker.");
+                throw new InvalidDataException("The embedded native radar plugin lacks the 3.0.0 release identity marker.");
             }
         }
 
@@ -3080,9 +3080,12 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                 { "modes", new HashSet<string>(new[] {
                     "area_quests", "assault" }, StringComparer.Ordinal) },
                 { "height_arrows", new HashSet<string>(new[] {
-                    "treasure", "area_quests", "mole" }, StringComparer.Ordinal) },
+                    "treasure", "area_quests", "mole", "boss", "assault" }, StringComparer.Ordinal) },
                 { "interface", new HashSet<string>(new[] {
-                    "language" }, StringComparer.Ordinal) }
+                    "language" }, StringComparer.Ordinal) },
+                { "scene", new HashSet<string>(new[] {
+                    "treasure", "area_quests", "mini_games", "range_meters",
+                    "marker_limit", "distance_mode" }, StringComparer.Ordinal) }
             };
             var seenSections = new HashSet<string>(StringComparer.Ordinal);
             var values = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -3152,6 +3155,25 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                             qualified + " contains an unsupported language ID.");
                     }
                 }
+                else if (section == "scene" && (key == "range_meters" || key == "marker_limit"))
+                {
+                    int number;
+                    if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out number) ||
+                        number < 0 || number > (key == "range_meters" ? 1000 : 50))
+                    {
+                        throw new InvalidDataException(
+                            qualified + " must be an integer within its supported range.");
+                    }
+                }
+                else if (section == "scene" && key == "distance_mode")
+                {
+                    if (value != "off" && value != "central_radius" &&
+                        value != "nearest_center" && value != "all")
+                    {
+                        throw new InvalidDataException(
+                            qualified + " must be off, central_radius, nearest_center, or all.");
+                    }
+                }
                 else if (!string.Equals(value, "true", StringComparison.Ordinal) &&
                          !string.Equals(value, "false", StringComparison.Ordinal))
                 {
@@ -3165,12 +3187,26 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             }, StringComparer.Ordinal);
             var legacyLayout = seenSections.SetEquals(legacySections);
             var currentLayout = seenSections.SetEquals(required.Keys);
-            IEnumerable<KeyValuePair<string, HashSet<string>>> requiredForLayout = currentLayout
-                ? required
-                : required.Where(pair => legacySections.Contains(pair.Key));
-            if ((!legacyLayout && !currentLayout) ||
+            var previousSections = new HashSet<string>(legacySections, StringComparer.Ordinal)
+            {
+                "height_arrows", "interface"
+            };
+            var baseSections = new HashSet<string>(seenSections, StringComparer.Ordinal);
+            baseSections.Remove("scene");
+            var previousLayout = baseSections.SetEquals(previousSections);
+            var legacySceneLayout = seenSections.Contains("scene") &&
+                baseSections.SetEquals(legacySections);
+            // Validate preserved bytes without rewriting them. Missing Scene
+            // defaults off at runtime; absent new height flags default on.
+            // Existing height flags and interface must still be complete.
+            IEnumerable<KeyValuePair<string, HashSet<string>>> requiredForLayout =
+                required.Where(pair => seenSections.Contains(pair.Key));
+            if ((!legacyLayout && !legacySceneLayout && !previousLayout && !currentLayout) ||
                 requiredForLayout.Any(pair => pair.Value.Any(
-                    key => !values.ContainsKey(pair.Key + "." + key))))
+                    key => !values.ContainsKey(pair.Key + "." + key) &&
+                        !(!requirePublicDefault &&
+                            ((pair.Key == "height_arrows" && (key == "boss" || key == "assault")) ||
+                             (pair.Key == "scene" && key != "treasure" && key != "area_quests"))))))
             {
                 throw new InvalidDataException(
                     "visibility.ini is missing a required section or setting.");
@@ -3181,14 +3217,22 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
                     (pair.Key.StartsWith("radar.", StringComparison.Ordinal) ||
                      pair.Key.StartsWith("map.", StringComparison.Ordinal))
                         ? !string.Equals(pair.Value, "true", StringComparison.Ordinal)
-                        : pair.Key.StartsWith("modes.", StringComparison.Ordinal)
-                            ? !string.Equals(pair.Value, "available", StringComparison.Ordinal)
-                            : pair.Key.StartsWith("height_arrows.", StringComparison.Ordinal)
-                                ? !string.Equals(pair.Value, "true", StringComparison.Ordinal)
-                                    : !string.Equals(pair.Value, "auto", StringComparison.Ordinal))))
+                        : pair.Key == "scene.range_meters"
+                            ? !string.Equals(pair.Value, "600", StringComparison.Ordinal)
+                        : pair.Key == "scene.marker_limit"
+                            ? !string.Equals(pair.Value, "24", StringComparison.Ordinal)
+                        : pair.Key == "scene.distance_mode"
+                            ? !string.Equals(pair.Value, "nearest_center", StringComparison.Ordinal)
+                        : pair.Key.StartsWith("scene.", StringComparison.Ordinal)
+                            ? !string.Equals(pair.Value, "true", StringComparison.Ordinal)
+                            : pair.Key.StartsWith("modes.", StringComparison.Ordinal)
+                                ? !string.Equals(pair.Value, "available", StringComparison.Ordinal)
+                                : pair.Key.StartsWith("height_arrows.", StringComparison.Ordinal)
+                                    ? !string.Equals(pair.Value, "true", StringComparison.Ordinal)
+                                        : !string.Equals(pair.Value, "auto", StringComparison.Ordinal))))
             {
                 throw new InvalidDataException(
-                    "The embedded public visibility default must enable every display category and height indicator, use available modes, and follow the game language.");
+                    "The embedded public visibility default must enable every Radar/Map/Scene category and height indicator, use Scene range 600 and limit 24 with nearest_center distance labels, use available modes, and follow the game language.");
             }
         }
 

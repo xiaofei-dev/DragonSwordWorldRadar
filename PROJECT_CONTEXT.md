@@ -42,6 +42,22 @@ diff before making product-level changes.
 
 ## Current local release handoff
 
+As of 2026-09-10, Radar **3.0.0** is published on Nexus, as reported by the
+owner and shown in the supplied file-page screenshots. The exact local
+delivery is `radar-3.0.0-sg16-guide4-20260909`; its packages are in
+`DragonSwordNativeWorldRadarPostRender/dist/final-3.0.0/`. Remote download
+bytes were not independently compared with those local archives.
+
+AutoPickup's published release remains **1.3.1**. Its working source includes
+the separate, unreleased `frame-debug-20260908` dispatch-accounting and
+frame-paced diagnostic candidate. A main-branch source sync does not promote
+that candidate to a released binary. Range Expansion, FreeFlight, DataProbe,
+and the shared UE4SS runtime retain their existing product boundaries.
+
+See `docs/GITHUB_CLOSEOUT_2026_09_10.md` for the complete suite source handoff,
+fresh checks, and pending support reports. The following September 7 receipt
+remains historical:
+
 See `docs/RELEASE_CLOSEOUT_2026_09_07.md` and each product's
 `docs/RELEASE_STATUS.md` for AutoPickup 1.3.1 and Radar 2.3.0. These are
 complete local package sets, not authorization to publish or deploy them.

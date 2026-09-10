@@ -14,3 +14,7 @@
 *.dll binary
 *.exe binary
 *.zip binary
+
+# Preserve pinned upstream font licenses byte-for-byte, including whitespace.
+DragonSwordNativeWorldRadarPostRender/tools/f6-fonts/LICENSE_LIBERATION -text -whitespace
+DragonSwordNativeWorldRadarPostRender/tools/f6-fonts/LICENSE_NOTO_THAI -text -whitespace

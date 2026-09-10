@@ -61,6 +61,11 @@ struct VisibilityConfigSettings {
     bool map_mini_games{true};
     bool map_area_quests{true};
 
+    bool scene_treasure{true};
+    bool scene_area_quests{true};
+    bool scene_mini_games{true};
+    SceneDisplaySettings scene_settings{};
+
     VisibilityAreaQuestMode area_quest_mode{
         VisibilityAreaQuestMode::Available};
     VisibilityAssaultMode assault_mode{VisibilityAssaultMode::Available};
@@ -68,6 +73,8 @@ struct VisibilityConfigSettings {
     bool height_treasure{true};
     bool height_area_quests{true};
     bool height_mole{true};
+    bool height_boss{true};
+    bool height_assault{true};
     RadarLanguagePreference language{RadarLanguagePreference::Auto};
 };
 
@@ -162,6 +169,7 @@ namespace detail {
         Modes,
         HeightArrows,
         Interface,
+        Scene,
     };
     Section section{Section::None};
     std::uint8_t seen_sections{};
@@ -170,6 +178,7 @@ namespace detail {
     std::uint8_t mode_keys{};
     std::uint8_t height_arrow_keys{};
     std::uint8_t interface_keys{};
+    std::uint8_t scene_keys{};
     bool saw_sectioned{};
     bool saw_legacy{};
     bool saw_crlf{};
@@ -243,6 +252,9 @@ namespace detail {
             } else if (line == "[interface]") {
                 section = Section::Interface;
                 section_bit = 0x10U;
+            } else if (line == "[scene]") {
+                section = Section::Scene;
+                section_bit = 0x20U;
             } else {
                 result.status = VisibilityConfigParseStatus::InvalidSection;
                 return result;
@@ -321,6 +333,41 @@ namespace detail {
                     key_bit = 0x10U;
                     target = &result.settings.map_area_quests;
                 }
+            } else if (section == Section::Scene) {
+                key_set = &scene_keys;
+                if (key == "treasure") {
+                    key_bit = 0x01U;
+                    target = &result.settings.scene_treasure;
+                } else if (key == "area_quests") {
+                    key_bit = 0x02U;
+                    target = &result.settings.scene_area_quests;
+                } else if (key == "mini_games") {
+                    key_bit = 0x04U;
+                    target = &result.settings.scene_mini_games;
+                } else if (key == "range_meters" || key == "marker_limit") {
+                    const bool range = key == "range_meters";
+                    key_bit = range ? 0x08U : 0x10U;
+                    std::uint32_t parsed{};
+                    if (!detail::parse_u32(value, parsed)
+                        || parsed > (range ? 1000U : 50U)) {
+                        result.status = VisibilityConfigParseStatus::InvalidValue;
+                        return result;
+                    }
+                    if (range) {
+                        result.settings.scene_settings.range_meters =
+                            static_cast<std::uint16_t>(parsed);
+                    } else {
+                        result.settings.scene_settings.marker_limit =
+                            static_cast<std::uint8_t>(parsed);
+                    }
+                } else if (key == "distance_mode") {
+                    key_bit = 0x20U;
+                    if (!parse_scene_distance_mode(
+                            value, result.settings.scene_settings.distance_mode)) {
+                        result.status = VisibilityConfigParseStatus::InvalidValue;
+                        return result;
+                    }
+                }
             } else if (section == Section::Modes) {
                 key_set = &mode_keys;
                 if (key == "area_quests") {
@@ -359,6 +406,12 @@ namespace detail {
                 } else if (key == "mole") {
                     key_bit = 0x04U;
                     target = &result.settings.height_mole;
+                } else if (key == "boss") {
+                    key_bit = 0x08U;
+                    target = &result.settings.height_boss;
+                } else if (key == "assault") {
+                    key_bit = 0x10U;
+                    target = &result.settings.height_assault;
                 }
             } else if (section == Section::Interface) {
                 key_set = &interface_keys;
@@ -441,13 +494,20 @@ namespace detail {
     }
 
     if (saw_sectioned) {
-        const bool old_sectioned = seen_sections == 0x07U;
-        const bool current_sectioned = seen_sections == 0x1FU
-            && height_arrow_keys == 0x07U
+        // Scene is an optional extension of both supported sectioned formats.
+        // Once present, require both fields to avoid accepting a partial file.
+        // New height fields are individually optional for legacy preference
+        // files; their defaults do not overwrite any existing selection.
+        const std::uint8_t base_sections = static_cast<std::uint8_t>(
+            seen_sections & ~0x20U);
+        const bool old_sectioned = base_sections == 0x07U;
+        const bool current_sectioned = base_sections == 0x1FU
+            && (height_arrow_keys & 0x07U) == 0x07U
             && interface_keys == 0x01U;
         if ((!old_sectioned && !current_sectioned)
             || radar_keys != 0x7FU || map_keys != 0x1FU
-            || mode_keys != 0x03U) {
+            || mode_keys != 0x03U
+            || ((seen_sections & 0x20U) != 0U && (scene_keys & 0x03U) != 0x03U)) {
             result.status = VisibilityConfigParseStatus::MissingKey;
             return result;
         }
@@ -532,6 +592,14 @@ namespace detail {
         | (settings.map_area_quests ? 0x20U : 0U));
 }
 
+[[nodiscard]] constexpr std::uint8_t scene_visibility_mask(
+    const VisibilityConfigSettings& settings) noexcept {
+    return static_cast<std::uint8_t>(
+        (settings.scene_treasure ? 0x02U : 0U)
+        | (settings.scene_mini_games ? 0x10U : 0U)
+        | (settings.scene_area_quests ? 0x20U : 0U));
+}
+
 [[nodiscard]] inline std::string format_visibility_config(
     const VisibilityConfigSettings& settings) {
     const auto boolean = [](bool value) noexcept {
@@ -567,6 +635,21 @@ namespace detail {
     output += boolean(settings.map_mini_games);
     output += "\narea_quests=";
     output += boolean(settings.map_area_quests);
+    output += "\n\n[scene]\n";
+    output += "# Main-view guidance. Enabled categories share one marker limit. Zero range or limit hides all.\n";
+    output += "treasure=";
+    output += boolean(settings.scene_treasure);
+    output += "\narea_quests=";
+    output += boolean(settings.scene_area_quests);
+    output += "\nmini_games=";
+    output += boolean(settings.scene_mini_games);
+    const auto scene = normalize_scene_display_settings(settings.scene_settings);
+    output += "\nrange_meters=";
+    output += std::to_string(scene.range_meters);
+    output += "\nmarker_limit=";
+    output += std::to_string(scene.marker_limit);
+    output += "\ndistance_mode=";
+    output += scene_distance_mode_id(scene.distance_mode);
     output += "\n\n[modes]\n";
     output += "# available: show only currently eligible entries; all: show every unfinished entry.\n";
     output += "area_quests=";
@@ -585,6 +668,10 @@ namespace detail {
     output += boolean(settings.height_area_quests);
     output += "\nmole=";
     output += boolean(settings.height_mole);
+    output += "\nboss=";
+    output += boolean(settings.height_boss);
+    output += "\nassault=";
+    output += boolean(settings.height_assault);
     output += "\n\n[interface]\n";
     output += "# auto follows the game's text language on each F7 activation\n";
     output += "# and each actual F6 opening.\n";

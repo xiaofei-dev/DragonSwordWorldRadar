@@ -8,6 +8,8 @@ metadata, exact hashes, and gameplay evidence.
 
 | Document | Purpose |
 |---|---|
+| `GITHUB_CLOSEOUT_2026_09_10.md` | Current suite handoff: Radar 3.0, unreleased AutoPickup candidate, unchanged products, validation and source-publication boundary |
+| `PUBLIC_SOURCE_POLICY.md` | GitHub source scope and local-only Nexus materials, logs, packages and extracted data |
 | `DRAGONSWORD_MOD_INSTALLER_STANDARD.md` | Reusable design for a one-click Windows installer, UE4SS layout routing, transactional writes, configurable-input fallbacks, optional PAKs, manual-channel parity, and load control |
 | `DRAGONSWORD_MOD_RELEASE_STANDARD.md` | Common build, dual installer/manual packaging, evidence, deployment, and publication gates |
 | `INTEGRATION_STATUS.md` | Current product layout, owner acceptance, cross-Mod runtime observations, and public-source boundary |
@@ -17,12 +19,14 @@ metadata, exact hashes, and gameplay evidence.
 
 ## Reference implementation
 
-`DragonSwordNativeAutoPickup` 1.3.0 is the current reference implementation of
-this standard. Its release pipeline demonstrates exact executable selection,
+`DragonSwordNativeAutoPickup` 1.3.1 is the published reference implementation of
+this standard; its current working source also contains an unreleased candidate.
+Its release pipeline demonstrates exact executable selection,
 StableRoot and ExperimentalNested UE4SS routing, official UE4SS bootstrap,
 authoritative `mods.txt` control, semantic interaction-key discovery with an
-installer-selected fallback, independent 3x/5x/10x PAK choices, rollback,
-separate installer/manual archives, and an offline 20-case integration matrix.
+installer-selected fallback, independent 3x/5x/10x/15x/20x PAK choices, rollback,
+and separate installer/manual archives. Use its dated release status for the
+exact installer matrix and artifact identities.
 
 The implementation is a reference, not a generic binary library. Never copy
 its product name, hashes, native DLLs, game fingerprint, PAK, version, or

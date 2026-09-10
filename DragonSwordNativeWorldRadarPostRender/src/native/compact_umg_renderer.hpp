@@ -55,11 +55,13 @@ struct CompactUmgMarker {
     CompactUmgMarkerKind kind{CompactUmgMarkerKind::TreasureOther};
     bool show_height{};
     double height_angle_degrees{};
-    // Area Quest only: the fixed marker pieces own their height presentation.
+    // Area Quest/Boss/Assault: the fixed marker pieces own their height display.
     // Up to two offline-derived candidate bands are retained so a multi-stage
     // task can prove up/down direction without inventing one exact target Z.
     // When the category is enabled but no source band exists, the normal frame
-    // stays visible without dots and no direction is fabricated.
+    // stays visible without dots and no direction is fabricated. Encounters
+    // use one zero-width band at the static spawn Z; unknown or disabled height
+    // restores their normal glyph. These legacy field names serve all three.
     bool height_source_unavailable{};
     dswros::AreaQuestHeightProfile area_quest_height_profile{};
     double area_quest_comparable_player_z{};
@@ -103,7 +105,9 @@ public:
     // Reads the live game minimap scale through the cached DLayerMiniMap weak
     // root. The same low-frequency call also samples viewport geometry and
     // reflows the retained host only after a resolution, window-mode, or DPI
-    // change. Nested objects are never retained across ticks.
+    // change. Exact native minimap/task rectangles also place the clock within
+    // their visible gap at this cadence; nested map/task objects are resolved
+    // only within each call, through the attachment-time weak main-panel owner.
     [[nodiscard]] bool read_minimap_scale(double& scale) noexcept;
 
     // Low-frequency binding step. Coordinates are relative to the player anchor
@@ -125,9 +129,9 @@ public:
         CompactUmgHeightChannel channel,
         double height_angle_degrees) noexcept;
 
-    // Updates every retained trusted Area Quest marker from one copied player-Z
+    // Updates every retained trusted Area Quest/Boss/Assault marker from one player-Z
     // scalar. The fixed-slot scan performs no UObject work unless a marker
-    // crosses the task-specific vertical boundary.
+    // crosses its vertical boundary. The existing name remains API-compatible.
     void update_area_quest_height_indicators(
         double comparable_player_z) noexcept;
 
@@ -190,6 +194,9 @@ public:
     [[nodiscard]] double umg_unit_scale() const noexcept {
         return umg_unit_scale_;
     }
+    [[nodiscard]] bool clock_gap_layout_active() const noexcept {
+        return clock_gap_layout_active_;
+    }
 
 private:
     [[nodiscard]] bool attach_guarded(
@@ -241,6 +248,13 @@ private:
     [[nodiscard]] bool read_minimap_scale_unsafe(double& scale);
     [[nodiscard]] bool refresh_viewport_layout_unsafe(
         RC::Unreal::UObject* player_icon);
+    void bind_clock_owner_guarded(RC::Unreal::UObject* minimap_layer) noexcept;
+    void bind_clock_owner_unsafe(RC::Unreal::UObject* minimap_layer);
+    void refresh_clock_layout_unsafe();
+    [[nodiscard]] bool read_clock_gap_position_guarded(
+        double& left, double& top) noexcept;
+    [[nodiscard]] bool read_clock_gap_position_unsafe(
+        double& left, double& top);
     [[nodiscard]] bool resolve_minimap_scale_schema(
         RC::Unreal::UObject* map_overlay);
     void detach_guarded() noexcept;
@@ -253,6 +267,11 @@ private:
     RC::Unreal::UClass* canvas_panel_class_{};
     RC::Unreal::UClass* canvas_panel_slot_class_{};
     RC::Unreal::UClass* border_class_{};
+    RC::Unreal::UClass* clock_geometry_widget_class_{};
+    RC::Unreal::UFunction* clock_get_cached_geometry_{};
+    RC::Unreal::UFunction* clock_get_local_size_{};
+    RC::Unreal::UFunction* clock_local_to_absolute_{};
+    RC::Unreal::UFunction* clock_absolute_to_local_{};
     RC::Unreal::UFunction* create_widget_{};
     RC::Unreal::UFunction* get_owning_player_{};
     RC::Unreal::UFunction* get_viewport_size_{};
@@ -278,6 +297,8 @@ private:
     RC::Unreal::UFunction* clear_children_{};
     RC::Unreal::FWeakObjectPtr widget_blueprint_library_{};
     RC::Unreal::FWeakObjectPtr widget_layout_library_{};
+    RC::Unreal::FWeakObjectPtr clock_slate_library_{};
+    RC::Unreal::FWeakObjectPtr clock_main_panel_{};
     RC::Unreal::FWeakObjectPtr minimap_layer_{};
     RC::Unreal::FWeakObjectPtr host_{};
     RC::Unreal::FWeakObjectPtr widget_tree_{};
@@ -332,6 +353,7 @@ private:
     std::array<std::byte, kSlateBrushBytes> solid_brush_template_{};
     std::array<std::byte, kSlateBrushBytes> fly_outline_brush_template_{};
     std::array<std::byte, kSlateBrushBytes> area_quest_brush_template_{};
+    std::array<std::byte, kSlateBrushBytes> encounter_triangle_brush_template_{};
     std::array<std::byte, kSlateBrushBytes> bird_egg_brush_template_{};
     std::array<std::byte, kSlateBrushBytes> clock_phase_brush_template_{};
     bool brush_templates_ready_{};
@@ -339,6 +361,12 @@ private:
     bool clock_visible_{};
     bool clock_minute_valid_{};
     bool clock_phase_valid_{};
+    bool clock_geometry_schema_ready_{};
+    bool clock_geometry_faulted_{};
+    bool clock_geometry_defer_{};
+    bool clock_gap_layout_active_{};
+    double clock_position_x_{};
+    double clock_position_y_{};
     std::uint32_t clock_minute_{};
     std::uint8_t clock_phase_{0xFFU};
     std::array<std::array<bool, kCompactClockSegmentCount>,

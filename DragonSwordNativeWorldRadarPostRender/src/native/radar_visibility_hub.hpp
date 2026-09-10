@@ -1,11 +1,14 @@
 #pragma once
 
 #include <dswros/radar_preferences.hpp>
+#include <dswros/radar_confirmation.hpp>
+#include <dswros/hub_viewport_layout.hpp>
 
 #include <Unreal/FWeakObjectPtr.hpp>
 
 #include <array>
 #include <cstddef>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 
@@ -30,10 +33,11 @@ enum class RadarVisibilityCategory : std::uint8_t {
     Count,
 };
 
-using RadarVisibilityMaskWord = std::uint16_t;
+using RadarVisibilityMaskWord = std::uint32_t;
 
 inline constexpr std::uint8_t kRadarVisibilityAllCategories = 0x7FU;
 inline constexpr std::uint8_t kRadarVisibilityWorldCategories = 0x3EU;
+inline constexpr std::uint8_t kRadarVisibilitySceneCategories = 0x32U;
 
 [[nodiscard]] constexpr std::uint8_t radar_visibility_bit(
     RadarVisibilityCategory category) noexcept {
@@ -42,11 +46,14 @@ inline constexpr std::uint8_t kRadarVisibilityWorldCategories = 0x3EU;
 }
 
 [[nodiscard]] constexpr RadarVisibilityMaskWord pack_radar_visibility_masks(
-    std::uint8_t compact, std::uint8_t world) noexcept {
+    std::uint8_t compact, std::uint8_t world,
+    std::uint8_t scene = 0U) noexcept {
     return static_cast<RadarVisibilityMaskWord>(
         (compact & kRadarVisibilityAllCategories)
         | static_cast<RadarVisibilityMaskWord>(
-            world & kRadarVisibilityWorldCategories) << 8U);
+            world & kRadarVisibilityWorldCategories) << 8U
+        | static_cast<RadarVisibilityMaskWord>(
+            scene & kRadarVisibilitySceneCategories) << 16U);
 }
 
 [[nodiscard]] constexpr std::uint8_t compact_radar_visibility_mask(
@@ -61,10 +68,27 @@ inline constexpr std::uint8_t kRadarVisibilityWorldCategories = 0x3EU;
         (masks >> 8U) & kRadarVisibilityWorldCategories);
 }
 
+[[nodiscard]] constexpr std::uint8_t scene_radar_visibility_mask(
+    RadarVisibilityMaskWord masks) noexcept {
+    return static_cast<std::uint8_t>(
+        (masks >> 16U) & kRadarVisibilitySceneCategories);
+}
+
 inline constexpr RadarVisibilityMaskWord kDefaultRadarVisibilityMasks =
     pack_radar_visibility_masks(
         kRadarVisibilityAllCategories,
-        kRadarVisibilityWorldCategories);
+        kRadarVisibilityWorldCategories,
+        kRadarVisibilitySceneCategories);
+
+static_assert(sizeof(RadarVisibilityMaskWord) == 4U);
+static_assert(scene_radar_visibility_mask(kDefaultRadarVisibilityMasks) == kRadarVisibilitySceneCategories);
+static_assert(pack_radar_visibility_masks(0xFFU, 0xFFU, 0xFFU) == 0x323E7FU);
+static_assert(compact_radar_visibility_mask(
+    pack_radar_visibility_masks(0x40U, 0x04U, 0x20U)) == 0x40U);
+static_assert(world_radar_visibility_mask(
+    pack_radar_visibility_masks(0x40U, 0x04U, 0x20U)) == 0x04U);
+static_assert(scene_radar_visibility_mask(
+    pack_radar_visibility_masks(0x40U, 0x04U, 0x20U)) == 0x20U);
 
 enum class RadarVisibilityHubState : std::uint32_t {
     Uninitialized,
@@ -93,6 +117,7 @@ enum class RadarVisibilityHubCommand : std::uint8_t {
     EnableMod,
     DisableMod,
     OpenBugReport,
+    OpenEndorsement,
 };
 
 [[nodiscard]] constexpr RadarVisibilityHubCommand
@@ -120,7 +145,7 @@ enum class AssaultDisplayMode : std::uint8_t {
     All,
 };
 
-// One value carries both renderer masks so a UI change cannot expose a
+// One value carries all three renderer masks so a UI change cannot expose a
 // partially updated category set to the owner. The owner should publish
 // packed_masks in one game-thread transaction when action is Applied.
 struct RadarVisibilityHubResult {
@@ -135,6 +160,8 @@ struct RadarVisibilityHubResult {
     dswros::RadarLanguagePreference language{
         dswros::RadarLanguagePreference::Auto};
     RadarVisibilityHubCommand command{RadarVisibilityHubCommand::None};
+    dswros::SceneDisplaySettings scene_settings{};
+    bool global_reset_requested{};
 };
 
 class RadarVisibilityHub final {
@@ -157,14 +184,30 @@ public:
             dswros::RadarLanguagePreference::Auto,
         dswros::RadarUiLanguage detected_game_language =
             dswros::RadarUiLanguage::English,
-        RadarModStatus current_mod_status = RadarModStatus::Off) noexcept;
+        RadarModStatus current_mod_status = RadarModStatus::Off,
+        dswros::SceneDisplaySettings current_scene_settings = {}) noexcept;
 
     // Poll only while the panel is open. Closed calls return immediately and
-    // perform no UObject work. Each changed selection returns both masks in
+    // perform no UObject work. Each changed selection returns all masks in
     // one packed value without closing the panel; X closes it.
     [[nodiscard]] RadarVisibilityHubResult service_open_panel(
         RC::Unreal::UObject* current_controller,
         RadarModStatus current_mod_status) noexcept;
+
+    // Samples every control (including a slider's last drag value) before
+    // closing. Used by both F6 and the already-consumed Escape request.
+    [[nodiscard]] RadarVisibilityHubResult close(
+        RC::Unreal::UObject* current_controller,
+        RadarModStatus current_mod_status) noexcept;
+
+    // Escape dismisses an active confirmation only. F6, focus loss and Travel
+    // retain their explicit full-close path and always discard pending intent.
+    [[nodiscard]] RadarVisibilityHubResult escape(
+        RC::Unreal::UObject* current_controller,
+        RadarModStatus current_mod_status) noexcept;
+    [[nodiscard]] bool confirmation_open() const noexcept {
+        return is_open() && confirmation_.active();
+    }
 
     // Normal F8/shutdown close. Supplying the current controller allows the
     // hub to restore cursor/input state without retaining it between frames.
@@ -179,6 +222,9 @@ public:
     }
     [[nodiscard]] bool is_open() const noexcept {
         return state_ == RadarVisibilityHubState::Open;
+    }
+    [[nodiscard]] bool owns_gameplay_cursor() const noexcept {
+        return is_open() && owns_input_mode_;
     }
     [[nodiscard]] std::uint64_t open_count() const noexcept {
         return open_count_;
@@ -225,7 +271,7 @@ public:
     }
 
 private:
-    static constexpr std::size_t kColumnCount = 2;
+    static constexpr std::size_t kColumnCount = 3;
     static constexpr std::size_t kCategoryCount =
         static_cast<std::size_t>(RadarVisibilityCategory::Count);
     static constexpr std::size_t kHeightIndicatorCount =
@@ -258,6 +304,19 @@ private:
         StatusValue,
         StatusAction,
         BugReport,
+        SceneSettings,
+        SceneRange,
+        SceneLimit,
+        SceneDistance,
+        SceneDistanceOff,
+        SceneDistanceCentral,
+        SceneDistanceNearest,
+        SceneDistanceAll,
+        SceneTreasure,
+        SceneAreaQuest,
+        SceneMiniGame,
+        GlobalReset,
+        MarkerAll,
         Count,
     };
     static constexpr std::size_t kLocalizedTextCount =
@@ -271,7 +330,8 @@ private:
         dswros::HeightIndicatorMask current_height_indicators,
         dswros::RadarLanguagePreference current_language,
         dswros::RadarUiLanguage detected_game_language,
-        RadarModStatus current_mod_status) noexcept;
+        RadarModStatus current_mod_status,
+        dswros::SceneDisplaySettings current_scene_settings) noexcept;
     [[nodiscard]] RadarVisibilityHubResult open_unsafe(
         RC::Unreal::UObject* current_controller,
         RadarVisibilityMaskWord current_masks,
@@ -280,21 +340,28 @@ private:
         dswros::HeightIndicatorMask current_height_indicators,
         dswros::RadarLanguagePreference current_language,
         dswros::RadarUiLanguage detected_game_language,
-        RadarModStatus current_mod_status);
+        RadarModStatus current_mod_status,
+        dswros::SceneDisplaySettings current_scene_settings);
     [[nodiscard]] RadarVisibilityHubResult service_guarded(
         RC::Unreal::UObject* current_controller,
-        RadarModStatus current_mod_status) noexcept;
+        RadarModStatus current_mod_status, bool force_close = false,
+        bool cancel_confirmation = false) noexcept;
     [[nodiscard]] RadarVisibilityHubResult service_unsafe(
         RC::Unreal::UObject* current_controller,
-        RadarModStatus current_mod_status);
+        RadarModStatus current_mod_status, bool force_close,
+        bool cancel_confirmation);
     void detach_guarded(RC::Unreal::UObject* current_controller) noexcept;
     void detach_unsafe(RC::Unreal::UObject* current_controller);
     [[nodiscard]] bool refresh_localized_text_unsafe();
     [[nodiscard]] bool refresh_mod_status_unsafe(
         RadarModStatus current_mod_status);
     [[nodiscard]] bool set_language_popup_visibility_unsafe(bool visible);
+    void refresh_guide_unsafe();
+    void set_guide_visibility_unsafe(bool visible);
     [[nodiscard]] bool recenter_native_text_unsafe();
     [[nodiscard]] bool refresh_packaged_text_overlay_unsafe(
+        RC::Unreal::UObject* world_context);
+    [[nodiscard]] bool refresh_language_value_overlay_unsafe(
         RC::Unreal::UObject* world_context);
     [[nodiscard]] bool ensure_language_popup_overlay_unsafe(
         RC::Unreal::UObject* world_context);
@@ -312,6 +379,19 @@ private:
         RC::Unreal::UObject* text_block,
         dswros::RadarUiLanguage language) noexcept;
     void reset_runtime_handles() noexcept;
+    void bind_tooltip_unsafe(RC::Unreal::UObject* control, std::uint8_t tooltip_id,
+                             RC::Unreal::UObject* tree, double unit_scale);
+    void create_tooltip_content_unsafe(std::size_t index, RC::Unreal::UObject* tree);
+    void refresh_tooltips_unsafe();
+    [[nodiscard]] bool set_confirmation_visibility_unsafe(
+        bool visible, bool guard_background = false);
+    [[nodiscard]] bool refresh_confirmation_text_unsafe();
+    [[nodiscard]] bool refresh_numeric_text_unsafe();
+    [[nodiscard]] bool apply_viewport_layout_unsafe(
+        const dswros::HubViewportLayout& layout);
+    [[nodiscard]] bool refresh_viewport_layout_unsafe(
+        RC::Unreal::UObject* controller, bool& changed);
+    [[nodiscard]] bool configure_chip_nine_slice_unsafe(RC::Unreal::UObject* image, double unit_scale);
 
     RC::Unreal::UClass* user_widget_class_{};
     RC::Unreal::UClass* widget_class_{};
@@ -322,6 +402,36 @@ private:
     RC::Unreal::UClass* game_text_block_class_{};
     RC::Unreal::UClass* check_box_class_{};
     RC::Unreal::UClass* image_class_{};
+    RC::Unreal::UClass* slider_class_{};
+    RC::Unreal::UClass* size_box_class_{};
+    RC::Unreal::UClass* scroll_box_class_{};
+    RC::Unreal::UFunction* add_child_to_panel_{};
+    RC::Unreal::UFunction* set_scroll_offset_{};
+    RC::Unreal::UFunction* get_scroll_offset_{};
+    RC::Unreal::UFunction* set_scroll_orientation_{};
+    RC::Unreal::UFunction* set_scrollbar_visibility_{};
+    RC::Unreal::UFunction* set_tool_tip_{};
+    RC::Unreal::UFunction* set_tool_tip_text_{};
+    RC::Unreal::FProperty* tool_tip_text_property_{};
+    RC::Unreal::UFunction* set_content_{};
+    RC::Unreal::UFunction* set_width_override_{};
+    RC::Unreal::UFunction* set_height_override_{};
+    RC::Unreal::UFunction* set_clipping_{};
+    RC::Unreal::UFunction* set_image_brush_{};
+    RC::Unreal::FStructProperty* image_brush_property_{};
+    RC::Unreal::FStructProperty* set_image_brush_value_property_{};
+    RC::Unreal::FStructProperty* brush_margin_property_{};
+    RC::Unreal::FStructProperty* brush_image_size_property_{};
+    RC::Unreal::FProperty* brush_draw_as_property_{};
+    std::array<RC::Unreal::FProperty*, 6> brush_box_metrics_{};
+    bool chip_nine_slice_abi_available_{};
+    RC::Unreal::UFunction* set_slider_value_{};
+    RC::Unreal::UFunction* get_slider_value_{};
+    RC::Unreal::UFunction* set_slider_min_{};
+    RC::Unreal::UFunction* set_slider_max_{};
+    RC::Unreal::UFunction* set_slider_step_{};
+    RC::Unreal::UFunction* set_slider_bar_color_{};
+    RC::Unreal::UFunction* set_slider_handle_color_{};
     RC::Unreal::FProperty* text_block_font_property_{};
     RC::Unreal::FProperty* force_apply_language_font_property_{};
     RC::Unreal::UFunction* create_widget_{};
@@ -346,6 +456,8 @@ private:
     RC::Unreal::FStructProperty* set_font_value_property_{};
     RC::Unreal::UFunction* set_is_checked_{};
     RC::Unreal::UFunction* is_checked_{};
+    RC::Unreal::UFunction* set_is_enabled_{};
+    RC::Unreal::FProperty* set_is_enabled_value_property_{};
     RC::Unreal::UFunction* set_position_in_viewport_{};
     RC::Unreal::UFunction* set_alignment_in_viewport_{};
     RC::Unreal::UFunction* set_desired_size_in_viewport_{};
@@ -365,19 +477,72 @@ private:
     RC::Unreal::FWeakObjectPtr host_{};
     RC::Unreal::FWeakObjectPtr widget_tree_{};
     RC::Unreal::FWeakObjectPtr root_panel_{};
+    RC::Unreal::FWeakObjectPtr page_panel_{};
+    RC::Unreal::FWeakObjectPtr page_slot_{};
+    RC::Unreal::FWeakObjectPtr body_scroll_{};
+    RC::Unreal::FWeakObjectPtr settings_body_{};
+    RC::Unreal::FWeakObjectPtr body_size_{};
+    RC::Unreal::FWeakObjectPtr guide_body_{};
+    RC::Unreal::FWeakObjectPtr guide_control_{};
+    RC::Unreal::FWeakObjectPtr guide_fallback_text_{};
+    RC::Unreal::FWeakObjectPtr guide_texture_{};
+    std::array<RC::Unreal::FWeakObjectPtr, 3> guide_images_{};
+    std::array<RC::Unreal::FWeakObjectPtr, 2> guide_label_canvases_{};
+    dswros::RadarUiLanguage guide_language_{dswros::RadarUiLanguage::Count};
+    bool guide_open_{};
+    bool guide_ready_{};
+    float settings_scroll_offset_{};
+    float guide_scroll_offset_{};
+    RC::Unreal::FWeakObjectPtr body_scroll_slot_{};
+    RC::Unreal::FWeakObjectPtr footer_slot_{};
+    RC::Unreal::FWeakObjectPtr modal_slot_{};
+    RC::Unreal::FWeakObjectPtr confirmation_dim_slot_{};
+    RC::Unreal::FWeakObjectPtr confirmation_blocker_slot_{};
+    RC::Unreal::FWeakObjectPtr popup_dim_slot_{};
+    RC::Unreal::FWeakObjectPtr popup_dismiss_slot_{};
+    double authored_unit_scale_{1.0};
+    dswros::HubViewportLayout viewport_layout_{};
+    std::chrono::steady_clock::time_point viewport_check_after_{};
+    struct TooltipRecord {
+        RC::Unreal::FWeakObjectPtr control{};
+        RC::Unreal::FWeakObjectPtr content{};
+        RC::Unreal::FWeakObjectPtr image{};
+        RC::Unreal::FWeakObjectPtr image_slot{};
+        std::uint8_t id{};
+        double unit_scale{1.0};
+    };
+    static constexpr std::size_t kMaximumTooltipCount = 64;
+    std::array<TooltipRecord, kMaximumTooltipCount> tooltips_{};
+    // 51 settings targets plus the seven marker-row names share this fixed pool.
+    static_assert(58U <= kMaximumTooltipCount);
+    std::size_t tooltip_count_{};
+    RC::Unreal::FWeakObjectPtr tooltip_atlas_{};
+    dswros::RadarUiLanguage tooltip_atlas_language_{dswros::RadarUiLanguage::Count};
+    bool tooltip_atlas_attempted_{};
+    bool tooltip_widget_abi_available_{};
     RC::Unreal::FWeakObjectPtr main_text_overlay_image_{};
+    std::array<RC::Unreal::FWeakObjectPtr, 3> main_text_overlay_images_{};
     RC::Unreal::FWeakObjectPtr popup_text_overlay_image_{};
+    RC::Unreal::FWeakObjectPtr language_value_overlay_image_{};
     RC::Unreal::FWeakObjectPtr main_text_overlay_texture_{};
     RC::Unreal::FWeakObjectPtr popup_text_overlay_texture_{};
+    // French and Spanish names only. The active Image brush owns its texture;
+    // these bounded weak slots never keep an old transient tree alive.
+    std::array<RC::Unreal::FWeakObjectPtr, 2> language_value_overlay_textures_{};
+    std::array<std::uint32_t, 2> language_value_overlay_failures_{};
     using ControlHandles = std::array<
         RC::Unreal::FWeakObjectPtr, kCategoryCount>;
     std::array<ControlHandles, kColumnCount> controls_{};
     std::array<ControlHandles, kColumnCount> enabled_visuals_{};
+    std::array<RC::Unreal::FWeakObjectPtr, 2> column_all_controls_{};
+    std::array<RC::Unreal::FWeakObjectPtr, 2> column_all_visuals_{};
+    std::array<bool, 2> column_all_selected_{};
     using HeightControlHandles = std::array<
         RC::Unreal::FWeakObjectPtr, kHeightIndicatorCount>;
     HeightControlHandles height_controls_{};
     HeightControlHandles height_enabled_visuals_{};
     RC::Unreal::FWeakObjectPtr language_dropdown_control_{};
+    RC::Unreal::FWeakObjectPtr global_reset_control_{};
     RC::Unreal::FWeakObjectPtr language_popup_dismiss_control_{};
     std::array<RC::Unreal::FWeakObjectPtr, kLanguagePopupDecorationCount>
         language_popup_decorations_{};
@@ -405,7 +570,40 @@ private:
     RC::Unreal::FWeakObjectPtr mod_action_visual_{};
     RC::Unreal::FWeakObjectPtr mod_action_control_{};
     RC::Unreal::FWeakObjectPtr bug_report_control_{};
+    RC::Unreal::FWeakObjectPtr endorsement_control_{};
     RC::Unreal::FWeakObjectPtr close_control_{};
+    struct ConfirmationTextRecord {
+        RC::Unreal::FWeakObjectPtr native_text{};
+        RC::Unreal::FWeakObjectPtr canvas{};
+        RC::Unreal::FWeakObjectPtr image{};
+        RC::Unreal::FWeakObjectPtr image_slot{};
+        double scale{1.0};
+    };
+    // Endorse entry, title, body, Yes and No. Images share the tooltip atlas.
+    std::array<ConfirmationTextRecord, 5> confirmation_texts_{};
+    std::array<RC::Unreal::FWeakObjectPtr, 5> confirmation_decorations_{};
+    RC::Unreal::FWeakObjectPtr confirmation_blocker_{};
+    RC::Unreal::FWeakObjectPtr confirmation_yes_control_{};
+    RC::Unreal::FWeakObjectPtr confirmation_no_control_{};
+    dswros::RadarConfirmation confirmation_{};
+    bool confirmation_text_ready_{};
+    bool confirmation_dismiss_guard_{};
+    struct NumericTextRecord {
+        RC::Unreal::FWeakObjectPtr canvas{};
+        RC::Unreal::FWeakObjectPtr slot{};
+        RC::Unreal::FWeakObjectPtr image{};
+        RC::Unreal::FWeakObjectPtr image_slot{};
+        double authored_x{};
+        double authored_y{};
+    };
+    std::array<NumericTextRecord, 15> numeric_texts_{};
+    std::array<RC::Unreal::FWeakObjectPtr, 3> placeholder_texts_{};
+    std::array<RC::Unreal::FWeakObjectPtr, 2> scene_sliders_{};
+    std::array<RC::Unreal::FWeakObjectPtr, 2> scene_value_texts_{};
+    std::array<RC::Unreal::FWeakObjectPtr, 4> scene_distance_controls_{};
+    std::array<RC::Unreal::FWeakObjectPtr, 4> scene_distance_visuals_{};
+    dswros::SceneDisplaySettings source_scene_settings_{};
+    dswros::SceneDisplaySettings pending_scene_settings_{};
 
     struct TextLayoutRecord {
         RC::Unreal::FWeakObjectPtr widget{};
@@ -416,7 +614,7 @@ private:
         double authored_width{};
         double authored_height{};
     };
-    static constexpr std::size_t kMaximumTextLayoutRecordCount = 64;
+    static constexpr std::size_t kMaximumTextLayoutRecordCount = 80;
     std::array<TextLayoutRecord, kMaximumTextLayoutRecordCount>
         text_layout_records_{};
     std::size_t text_layout_record_count_{};

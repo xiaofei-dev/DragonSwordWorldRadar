@@ -60,6 +60,31 @@ SHA-256 is
 The full Apache License, Version 2.0 is included in
 licenses/APACHE-2.0.txt.
 
+Liberation Sans Regular (build input only)
+Digitized data copyright (c) 2010 Google Corporation.
+Copyright (c) 2012 Red Hat, Inc.
+Licensed under the SIL Open Font License, Version 1.1.
+
+French and Spanish language-picker names are rasterized using the pinned
+LiberationSans-Regular.ttf build input. The runtime contains only the resulting
+text images, not the font binary. Build-input SHA-256:
+F8ACE1F892B2BD9DC1792BA7F097FA7588F84FED48321480E04DE5390828221F.
+The font and its full license are retained in tools/f6-fonts in the source tree.
+
+Noto Sans Thai v2.002 (build input only)
+Copyright 2022 The Noto Project Authors.
+Licensed under the SIL Open Font License, Version 1.1.
+https://github.com/notofonts/thai
+
+Thai F6 hover-help images are rasterized using the unmodified Google Fonts
+NotoSansThai[wdth,wght].ttf input. Only generated pixels enter the runtime;
+the font binary is not loaded or included in runtime packages. Build-input
+SHA-256: 5A1C559BB539583C8A1FD99D1C5B9491E5E14478C9CD2BD0970D5C3096CC9EF8.
+The source input, full license, and source revision are retained in
+tools/f6-fonts and its README.md. The same F6 hover-help pipeline uses the
+Droid Sans Fallback and Liberation Sans build inputs identified above for
+the other supported languages.
+
 SQLCipher Community Edition
 Copyright (c) 2008-2026, ZETETIC, LLC
 Licensed under the SQLCipher Community Edition BSD-style license.

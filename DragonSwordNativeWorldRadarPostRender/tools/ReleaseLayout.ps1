@@ -159,7 +159,8 @@ function Get-DsnwrRuntimePayloadSpecification {
         'config/hotkeys.example.ini'
 
     foreach ($name in @(
-            'area-quests.tsv', 'assault-actors.tsv', 'assaults.lua',
+            'area-quests.tsv', 'area-quest-scene-anchors.tsv',
+            'assault-actors.tsv', 'assaults.lua',
             'boss-actors.tsv', 'bosses.lua', 'mole-anchor-candidates.tsv',
             'moles.lua', 'save_owner_pointer.cfg', 'treasure-actors.tsv',
             'treasures.lua')) {
@@ -171,17 +172,46 @@ function Get-DsnwrRuntimePayloadSpecification {
         (Join-Path $ProjectRoot 'src\data\defaults\treasure_overrides.txt') `
         'data/defaults/treasure_overrides.txt'
     foreach ($name in @(
+            'en-fault.tga', 'en-off.tga', 'en-on.tga',
+            'ja-fault.tga', 'ja-off.tga', 'ja-on.tga',
+            'zh-hans-fault.tga', 'zh-hans-off.tga', 'zh-hans-on.tga',
+            'fr-fault.tga', 'fr-off.tga', 'fr-on.tga',
+            'de-fault.tga', 'de-off.tga', 'de-on.tga',
+            'es-es-fault.tga', 'es-es-off.tga', 'es-es-on.tga',
+            'ru-fault.tga', 'ru-off.tga', 'ru-on.tga',
+            'th-fault.tga', 'th-off.tga', 'th-on.tga',
+            'pt-br-fault.tga', 'pt-br-off.tga', 'pt-br-on.tga',
             'ko-fault.tga', 'ko-off.tga', 'ko-on.tga',
-            'language-popup.tga',
+            'language-popup.tga', 'fr-language-value.tga', 'es-language-value.tga',
             'zh-hant-fault.tga', 'zh-hant-off.tga',
-            'zh-hant-on.tga', 'manifest.json')) {
+            'zh-hant-on.tga',
+            'main-glass.tga', 'popup-glass.tga',
+            'check-active.tga', 'check-idle.tga',
+            'chip-active.tga', 'chip-idle.tga',
+            'tooltip-en.tga', 'tooltip-ja.tga', 'tooltip-ko.tga',
+            'tooltip-zh-hans.tga', 'tooltip-zh-hant.tga', 'tooltip-fr.tga',
+            'tooltip-de.tga', 'tooltip-es-es.tga', 'tooltip-ru.tga',
+            'tooltip-th.tga', 'tooltip-pt-br.tga', 'manifest.json')) {
         Add-PayloadFile `
             (Join-Path $ProjectRoot "assets\ui\f6\$name") `
             "assets/ui/f6/$name"
     }
+    foreach ($name in @(
+            'treasure-other.tga', 'treasure-mini-game.tga', 'treasure-map.tga',
+            'treasure-puzzle.tga', 'area-quest.tga', 'mini-game.tga', 'manifest.json')) {
+        Add-PayloadFile `
+            (Join-Path $ProjectRoot "assets\ui\scene\$name") `
+            "assets/ui/scene/$name"
+    }
     Add-PayloadFile `
         (Join-Path $ProjectRoot 'assets\vendor\sqlcipher\e_sqlcipher.dll') `
         'vendor/sqlcipher/e_sqlcipher.dll'
+    foreach ($name in @('en.tga', 'ja.tga', 'ko.tga', 'zh-hans.tga',
+            'zh-hant.tga', 'fr.tga', 'de.tga', 'es-es.tga', 'ru.tga',
+            'th.tga', 'pt-br.tga', 'manifest.json')) {
+        Add-PayloadFile (Join-Path $ProjectRoot "assets\ui\guide\$name") `
+            "assets/ui/guide/$name"
+    }
     Add-PayloadFile (Join-Path $ProjectRoot 'metadata\release.json') `
         'metadata/release.json'
     Add-PayloadFile (Join-Path $ProjectRoot 'metadata\data-providers.json') `

@@ -15,12 +15,10 @@ Set-StrictMode -Version 2.0
 $projectRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'ReleaseLayout.ps1')
 
-$version = '2.3.0'
-$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0'
+$version = '3.0.0'
+$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_3_0_0'
 $product = 'DragonSwordNativeWorldRadarPostRender'
 $expectedTestCount = 2
-$expectedNoFileCount = 42
-$expectedWithFileCount = 46
 $expectedLoaderHashes = [ordered]@{
     'ue4ss/UE4SS.dll' =
         'F31188D59B34A812AFC32DB4B6FF0C74E1B44861D1ED7967452EE4B3B6635BE1'
@@ -300,9 +298,15 @@ function Assert-ManualPackage {
         (Join-Path $Root 'ue4ss\Mods\mods.txt'),
         [Text.UTF8Encoding]::new($false, $true))
     Assert-Equal $modsText "$product : 1`r`n" 'Packaged mods.txt differs.'
+    $runtimeSpecification = @(Get-DsnwrRuntimePayloadSpecification `
+            -ProjectRoot $projectRoot -DllPath $PluginDll `
+            -BuildReceiptPath $NativeBuildReceipt)
+    # Include the generated runtime manifest and the four manual wrapper files:
+    # README, notices, mods.txt and checksums. Config renaming is count-neutral.
+    $expectedCount = $runtimeSpecification.Count + 1 + 4
+    if ($IncludesUE4SS) { $expectedCount += $expectedLoaderHashes.Count }
     $actualCount = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -File).Count
-    Assert-Equal $actualCount `
-        $(if ($IncludesUE4SS) { $expectedWithFileCount } else { $expectedNoFileCount }) `
+    Assert-Equal $actualCount $expectedCount `
         'Manual package file count differs.'
     if ($IncludesUE4SS) {
         Assert-LoaderHashes $copyRoot

@@ -74,6 +74,7 @@ enum class AutomaticActionDecision : std::uint8_t {
     InvalidCandidate,
     Pending,
     Cooldown,
+    CapacityWait,
     FailClosed,
 };
 
@@ -81,16 +82,18 @@ struct AutomaticActionAttemptRecord {
     WeakObjectId candidate{};
     MonotonicTime retry_not_before{};
     MonotonicTime retain_until{};
-    std::uint8_t timeout_count{};
+    std::uint8_t unconfirmed_count{};
 };
 
 // Owns the complete per-activation automatic-action lifecycle. A successful
 // admission establishes the one global pending action before ProcessEvent is
 // called. Observing the game dispatch its own interaction releases that global
-// pending state and gives only the exact Component a bounded re-entry delay.
-// If no dispatch is observed, one retry is admitted; a second timeout enters a
-// time-bounded backoff instead of activation-long quarantine. Expired terminal
-// records are recycled, while active record exhaustion still fails closed.
+// pending state, but is not target-success evidence and must not erase attempts.
+// Both dispatch and timeout retain one exact-Component retry; a second
+// unconfirmed outcome enters time-bounded backoff, never activation quarantine.
+// Only exact confirmation clears that history early. Expired terminal
+// records are recycled. Saturation pauses only new identities before injection,
+// without evicting protected history or permanently disabling the activation.
 class AutomaticActionState {
 public:
     [[nodiscard]] AutomaticActionDecision inspect(
@@ -104,6 +107,16 @@ public:
         if (pending_.pending()) return AutomaticActionDecision::Pending;
         const auto* record = find_record(candidate);
         if (record && now < record->retry_not_before) return AutomaticActionDecision::Cooldown;
+        if (!record && record_size_ == records_.size()) {
+            bool reclaimable{};
+            for (std::size_t index = 0; index < record_size_; ++index) {
+                if (!record_is_retained(records_[index], now)) {
+                    reclaimable = true;
+                    break;
+                }
+            }
+            if (!reclaimable) return AutomaticActionDecision::CapacityWait;
+        }
         return AutomaticActionDecision::Ready;
     }
 
@@ -116,7 +129,7 @@ public:
         if (decision != AutomaticActionDecision::Ready) return decision;
         const auto* record = find_record(candidate);
         const auto attempt_ordinal = record
-            ? static_cast<std::uint8_t>(record->timeout_count + 1)
+            ? static_cast<std::uint8_t>(record->unconfirmed_count + 1)
             : std::uint8_t{1};
         if (attempt_ordinal > kMaximumAutomaticActionAttempts ||
             !pending_.begin(candidate, now, distance_meters, attempt_ordinal)) {
@@ -143,22 +156,31 @@ public:
             fail_closed_ = true;
             return dispatched;
         }
-        record->timeout_count = 0;
-        record->retry_not_before = now + kAutomaticActionDispatchReentryDelay;
-        record->retain_until = record->retry_not_before;
+        // Dispatch proves only that the game reached its interaction handler.
+        // Keep the attempt across re-entry, including a preceding timeout.
+        record->unconfirmed_count = dispatched->attempt_ordinal;
+        if (dispatched->attempt_ordinal >= kMaximumAutomaticActionAttempts) {
+            record->retry_not_before = now + kAutomaticActionFailureBackoff;
+            record->retain_until = record->retry_not_before;
+        } else {
+            record->retry_not_before = now + kAutomaticActionDispatchReentryDelay;
+            record->retain_until = record->retry_not_before +
+                kAutomaticActionRetryOpportunityWindow;
+        }
         return dispatched;
     }
 
     [[nodiscard]] std::optional<PendingActionEvidence> expire(MonotonicTime now) noexcept {
         auto expired = pending_.expire(now);
         if (!expired) return std::nullopt;
+        prune_rearmable_records(now);
         auto* record = find_record(expired->candidate);
         if (!record) record = append_record(expired->candidate);
         if (!record) {
             fail_closed_ = true;
             return expired;
         }
-        record->timeout_count = expired->attempt_ordinal;
+        record->unconfirmed_count = expired->attempt_ordinal;
         if (expired->attempt_ordinal >= kMaximumAutomaticActionAttempts) {
             record->retry_not_before = now + kAutomaticActionFailureBackoff;
             record->retain_until = record->retry_not_before;
@@ -195,6 +217,13 @@ public:
     }
 
 private:
+    [[nodiscard]] static bool record_is_retained(
+        const AutomaticActionAttemptRecord& record,
+        MonotonicTime now) noexcept {
+        return now < record.retry_not_before ||
+            (record.unconfirmed_count == 1 && now < record.retain_until);
+    }
+
     [[nodiscard]] AutomaticActionAttemptRecord* find_record(WeakObjectId candidate) noexcept {
         for (std::size_t index = 0; index < record_size_; ++index) {
             if (records_[index].candidate == candidate) return &records_[index];
@@ -218,10 +247,7 @@ private:
 
     void prune_rearmable_records(MonotonicTime now) noexcept {
         for (std::size_t index = 0; index < record_size_;) {
-            const auto& record = records_[index];
-            const bool first_retry_waiting = record.timeout_count == 1 &&
-                now < record.retain_until;
-            if (first_retry_waiting || now < record.retry_not_before) {
+            if (record_is_retained(records_[index], now)) {
                 ++index;
                 continue;
             }

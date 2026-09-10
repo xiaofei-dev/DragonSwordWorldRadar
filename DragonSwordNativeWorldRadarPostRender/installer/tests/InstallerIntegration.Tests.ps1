@@ -19,7 +19,7 @@ $expectedOfficialUE4SSZipHash = '4B47D4BCEDDD2F561A4E395BFA00924CCFC945AF576A2D0
 $productName = 'DragonSwordNativeWorldRadarPostRender'
 $legacyName = 'DragonSwordWorldRadarObjectState'
 $externalLegacyName = 'DragonSwordWorldRadar'
-$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0'
+$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_3_0_0'
 $expectedTestCount = 29
 
 function Resolve-RequiredLeaf {
@@ -274,7 +274,7 @@ function New-ValidFixture {
 }
 
 function Write-OwnedMetadata {
-    param([string]$ModDirectory, [string]$Name, [string]$Version = '2.3.0')
+    param([string]$ModDirectory, [string]$Name, [string]$Version = '3.0.0')
     $releasePath = Join-Path $ModDirectory 'metadata\release.json'
     if ($Name -eq $script:ProductName) {
         Write-Utf8Text -Path $releasePath `
@@ -491,7 +491,7 @@ function Test-EmbeddedResourceContract {
 
     $manifest = Get-ManifestMap
     $fixed = [ordered]@{
-        version = '2.3.0'
+        version = '3.0.0'
         runtime_label = $script:RuntimeLabel
         game_compatibility_policy = $script:GameCompatibilityPolicy
         stable_ue4ss_sha256 = $script:ExpectedStableUE4SSHash
@@ -1099,7 +1099,7 @@ Invoke-InstallerCase 'Recognized upgrade preserves both live configurations' {
         'fr', 'de', 'es-es', 'ru', 'th', 'pt-br')
     foreach ($languageId in $languageIds) {
         $recognizedVisibilityConfigs += [pscustomobject]@{
-            Name = 'sectioned-2.3.0-' + $languageId
+            Name = 'sectioned-3.0.0-' + $languageId
             Text = "[radar]`nclock=false`ntreasure=true`nboss=true`n" +
                 "assault=false`nmini_games=true`narea_quests=true`nbird_eggs=false`n`n" +
                 "[map]`ntreasure=true`nboss=false`nassault=true`nmini_games=true`n" +

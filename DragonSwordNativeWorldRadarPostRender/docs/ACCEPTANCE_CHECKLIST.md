@@ -1,9 +1,756 @@
-# DragonSword Native World Radar 2.2.1 Acceptance Checklist
+# DragonSword Native World Radar 3.0.0 Acceptance Checklist
+
+## Current Guide activity-order checks
+
+Candidate `radar-3.0.0-sg16-guide4-20260909`; version **3.0.0**.
+
+- [x] All eleven Guide atlases move the Marmot/Sudden mission labels with both corresponding icons.
+- [x] Left and right entry order matches the requested layout; other Guide cells are unchanged.
+- [x] Three height columns, 40 icons and 539 text cells remain.
+- [x] Parent DLL, compiled source and localization header are unchanged.
+- [x] New deployment verifies the native receipt and 73 UI files and preserves settings.
+- [x] Setup 20/20, Manual 2/2, payload equivalence, fresh extraction and final promotion pass.
+- [x] The five parent Guide3 final files are backed up and hash-verified.
+- [ ] Owner checks the revised activity order in-game across languages and display layouts.
+
+Manifest UTC: `2026-09-10T02:06:02.2485470Z`. The five parent final files are backed up at [dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/previous-final-guide3](../dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/previous-final-guide3/).
+
+Evidence: [deployment](../dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/deployment-verification.json), [release manifest](../dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/release-packages/release-manifest.json) and [promotion](../dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/package-verification.json).
+
+The previous Guide3 and earlier SG-16 sections below remain historical records. Their earlier activity order and ZIP hashes identify those sets. The new asset and package checks do not establish game visual/input or performance acceptance; these remain owner testing. No Nexus upload or post was performed. Finalized payload documents and metadata remain unchanged after the new package seal.
+
+## Current Guide three-column checks
+
+Candidate `radar-3.0.0-sg16-guide3-20260909`; version **3.0.0**.
+
+- [x] Eleven Guide atlases show only Above, Near level and Below: 40 icons and 539 text cells.
+- [x] Parent DLL and compiled source identity are unchanged; runtime unknown-height handling is retained.
+- [x] New deployment verifies the native receipt and 73 UI files and preserves settings.
+- [x] Setup 20/20, Manual 2/2, payload equivalence, fresh extraction and final promotion pass.
+- [x] The five parent SG-16 final files are backed up and hash-verified.
+- [ ] Owner checks the three-column Guide in-game across languages and display layouts.
+
+Manifest UTC: `2026-09-10T01:46:51.6121910Z`. The five parent final files are backed up at [dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/previous-final-sg16](../dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/previous-final-sg16/).
+
+Evidence: [deployment](../dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/deployment-verification.json), [release manifest](../dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/release-packages/release-manifest.json) and [promotion](../dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/package-verification.json).
+
+The previous SG-16 sections below are preserved historical records. Their four-column Guide description and old ZIP hashes describe that earlier set. The new asset and package checks do not establish game visual/input or performance acceptance; these remain owner testing. No Nexus upload or post was performed. Finalized payload documents and metadata remain unchanged after the new package seal.
 
 Mark an item only from evidence for the exact recorded bytes. Source, build,
 package, installation, gameplay, performance, and publication are independent.
 
-## Current 2.2.1 acceptance state
+## Current SG-16 / 3.0.0 delivery (2026-09-09)
+
+Candidate: `radar-3.0.0-sg16-20260909`. Current final packages are verified SG-16; exact identities
+and receipts are in [Release status](RELEASE_STATUS.md). These checks separate
+source/resource evidence from the owner's live game acceptance.
+
+- [x] Canonical native 446/446, Core 9/9 and all four source/release gates pass.
+- [x] Deployment verifies the same DLL/receipt and 73 UI files while preserving
+      four settings/data files and recording AutoPickup unchanged.
+- [x] Three packages pass Setup 20/20, Manual 2/2, payload equivalence and fresh
+      extraction checks: 104 runtime files and 4/108/112 ZIP entries.
+- [x] Final promotion backs up and verifies five preceding SG-15 final files.
+- [x] Frozen payload docs remain unchanged; Nexus copy has balanced BBCode,
+      valid local link targets/HTTPS syntax and three descriptions under 255 characters.
+- [ ] Owner checks independent All controls and partial selection states in-game.
+- [ ] Owner checks live Map edits, all-off and re-enabling while F6 remains open.
+- [ ] Owner checks Auto focus defaults, saved settings, first Aim acquisition
+      and stable Aim/Auto target changes during camera movement.
+- [ ] Owner checks Guide symbols, height examples, Clock, scrolling and
+      language/Scene-label layout on small, standard and ultrawide displays.
+- [ ] Owner records visual, input, Guide usability and measured performance acceptance.
+
+No Nexus upload, post or other external publication was performed.
+
+## Historical SG-15 / 3.0.0 release candidate (2026-09-09)
+
+Package candidate: `radar-3.0.0-sg15-release-20260909`. The owner has authorized
+three local packages, now verified and promoted. Setup 20/20 and Manual 2/2
+pass with 104 runtime files and 4/108/112 ZIP entries. The rebuilt release DLL
+was not redeployed; exact identities are in Release status. Prior no-package
+decisions below are historical.
+
+- [x] SG-15 runtime baseline: Core 9/9, native 446/446 and four source gates;
+      deployment verifies the DLL/receipt and all 73 UI files. Its receipt
+      remains distinct from the new package candidate.
+- [x] README and both installation guides updated and frozen for staging.
+- [x] Fresh canonical native receipt and final gates for the release candidate.
+- [x] Installer plus both manual ZIPs use the same source-bound runtime payload.
+- [x] Setup matrix, manual-copy matrix and payload equivalence pass.
+- [x] Freshly extracted ZIPs match staged files, checksums and exact topology.
+- [x] Final directory promotion preserves the previous SG-10 package evidence.
+- [x] Record archive sizes, SHA-256 hashes and final manifest in Release status.
+- [ ] Owner checks Guide/Settings switching, scroll restoration, language change,
+      confirmations, smaller/ultrawide layouts and Aim/Auto camera sweeps.
+- [ ] Owner records visual, controller and performance acceptance separately.
+
+No Nexus upload, post or other external publication is part of this request.
+
+## Historical SG-13 / 3.0.0 distance focus (2026-09-09)
+
+- [x] Core 9/9 and native clean build 446/446 match the final SG-13 source.
+- [x] Scene 382 checks: Aim 350 ms / Auto 500 ms timing, brief camera sweeps,
+      identity reordering, exit margins and target-loss behavior pass regressions.
+- [x] Local deployment at 2026-09-09T21:33:45Z verifies DLL/receipt and 61 UI
+      files, preserving all four settings/data files and AutoPickup.
+- [ ] Owner checks slow/fast left-right sweeps and deliberate target selection
+      in both modes; waiting must retain one valid old distance label.
+- [x] No release package requested; existing SG-10 ZIPs retained.
+
+## Historical SG-12-H2 / 3.0.0 hotfix (2026-09-09)
+
+- [x] Live logs bind H1's F6 rejection to ABI bit 30; read-only reflection
+      confirms that `SetScrollBarVisibility` is absent in this game.
+- [x] Preserve core ScrollBox checks, skip unavailable visual setter safely.
+- [x] Native build, final gates and installed-file verification.
+- [x] Owner confirms F6 opens; two logged openings have zero font/text failures.
+- [ ] Actual game Esc-close/reopen, scrolling and all-resolution interaction.
+
+## Historical SG-12-H1 / 3.0.0 hotfix (2026-09-09)
+
+- [x] Correct both UMG ScrollBox parameter names; native build 446/446 passes.
+- [x] Compact gate rejects both old names, with eight viewport regressions total.
+- [x] All 61 UI files remain identical to SG-12.
+- [x] Core 9/9 and all four final gates pass; deployment verified at
+      2026-09-09T20:40:45Z, with 61 matching UI files and preserved user settings.
+- [ ] Owner confirms F6 opens in game; SG-12's F6 failure is not accepted.
+
+## Historical SG-12 / 3.0.0 local revision (2026-09-09)
+
+All eleven languages use regular-font resources and concise wording. The fixed
+Reset / Vote / Feedback footer and header surround a scrolling settings body.
+Scene uses frame-local calibrated projection, native fallback, subpixel motion
+and bounded visibility hysteresis. See [Release Status](RELEASE_STATUS.md).
+
+- [x] Core 9/9, native clean build 446/446 and all four source/release gates pass.
+- [x] Scene 319, projection 39, viewport 83, clock 28, Escape 58 and confirmation
+      55 checks pass. Projection tests include a mismatched-camera counterexample.
+- [x] Eleven-language resources validate 423 main / 750 help / 250 confirmation
+      glyphs. All 43 font/resource and six viewport-source regressions are rejected.
+- [x] 53 F6 TGAs, six Scene TGAs and two manifests are verified; 61 UI files total.
+- [x] Source previews cover regular font weight, fixed footer, clipped body and
+      low-resolution layout. Numeric bounds cover 640x360 through 4K and 21:9.
+- [x] Local deployment verified at 2026-09-09T20:18:13Z: DLL, receipt and all
+      61 UI files match; four settings/data files and AutoPickup remain unchanged.
+- [ ] Owner verifies font appearance, scroll/resize, confirmation input and
+      camera-motion/performance in game.
+
+Release packages are deferred at the owner's request. Existing final ZIPs remain
+SG-10. SG-11 below was built only and superseded before deployment or packaging.
+
+## Historical SG-11 / 3.0.0 build-only revision (2026-09-09)
+
+This revision shortens all eleven languages' hover and confirmation text and
+moves Reset to Defaults, Endorse and Feedback into a separate footer. Confirmation
+semantics and runtime display behavior remain unchanged. Exact build, asset,
+deployment and package verification are tracked in [Release Status](RELEASE_STATUS.md).
+
+- [x] Core 7/7, canonical native build (446 targets), all four source/release
+      gates and the F6 resource gate pass for SG-11. The 27 retained resource
+      counterexamples are rejected.
+- [x] Source-bound previews verify the 760-by-852 panel, unchanged four settings
+      cards, footer at Y 794..844 and popup/modal coverage through the footer.
+      Main/popup images are 1520-by-1704; the 206-by-24 Endorse crop keeps the full
+      26-pixel font in all 11 languages. Glyph coverage is 180 main / 760 tooltip /
+      245 confirmation, with short help and one-question action confirmations.
+      Preview source and manifest identities match; static visual review passed.
+SG-11 deployment, packaging and game acceptance were superseded by SG-12.
+
+## Historical SG-10 / 3.0.0 local revision (2026-09-09)
+
+SG-10 adds confirmation for Endorse, Feedback and Global Restore Preset.
+SG-10 is installed and its verified three-package set occupies
+`dist/final-3.0.0`. SG-09 candidate packages were verified but never promoted;
+the previous SG-03 final files are backed up in the SG-10 candidate's
+`previous-final-sg03` directory. Gameplay and publication remain separate.
+
+- [x] Final Windows PowerShell 5.1 F6 resource/source gate passes. Main layout
+      retains 44 overlay slots and 48 scaled language-popup bounds. The main
+      record has 43 labels plus 32 help strings per language; the separate
+      confirmation record adds seven, totaling 82 x 11 = 902 strings.
+- [x] Each language atlas is 640 x 5616: 32 complete hover tiles plus seven
+      transparent confirmation-text tiles. All 352 hover and 77 confirmation
+      tiles pass source-text, glyph and exact crop checks. Required codepoints:
+      180 fixed labels, 1,087 tooltip and 391 confirmation. File inventory
+      remains 26 F6 TGAs plus manifest and six Scene TGAs plus manifest, 34 UI files.
+- [x] Actual text/control material checks pass 118 states with minimum
+      linear-white small-text contrast 4.522:1 and a separate 3:1 title
+      threshold. The native confirmation reading surface also passes 4.5:1.
+- [x] Twenty-seven SG-10 source/manifest/pixel mutants are rejected, including
+      wrong body/crop, missing No, enabled Yes without text, old 31/32-tile
+      native atlas acceptance, missing alpha and altered real text pixels.
+      Evidence: root `out/handoff/F6_SG10_NEGATIVE_VERIFICATION.json`.
+- [x] Nine source-bound previews include English/Chinese full pages and all
+      three confirmations, plus an 11-language contact sheet. Visual review
+      finds no missing text or clipping. Source hash and atlas identity match
+      `out/handoff/F6_SG10_SOURCE_PREVIEW.json`. These are static previews.
+- [x] Core passes 7/7, including Scene 313, Clock 28, Escape 58 and
+      confirmation 55 checks. Clean native compilation passes 446 targets;
+      Compact, WorldMap, PostRender and ReleaseHygiene/resource gates pass.
+      Official native receipt UTC: `2026-09-09T16:43:53.6047126Z`.
+      DLL: 1,310,208 bytes, SHA-256
+      `F1203366DA7488FBFC9E8BF101598A4FC4D2E840F850D66CEC487452FEC7EB65`.
+      Compiled-source SHA-256:
+      `C999BB82AD356F1C38421868E2A242B7BA0223A2ACD0595ED658829A9A5C380D`;
+      release-tools SHA-256:
+      `CE5E1B2F5CFE20633EAF0A5B9DB0497A90EEB905495B7A3BB791E97BF9EAD85B`.
+      Candidate `validation-summary.json` is the explicit pre-deployment
+      build snapshot and retains its original phase.
+- [x] Authorized local deployment is independently verified at
+      `2026-09-09T16:51:20.6801835Z` by candidate
+      `deployment-verification.json`: DLL/build receipt and 34 UI files match,
+      four settings files are byte-preserved, two checked AutoPickup files
+      are unchanged and one native Radar entry remains enabled. Backup:
+      `dist/work/deployment/deploy-backups/20260909-095118-801-native-only-deploy`.
+- [x] Release manifest UTC `2026-09-09T16:53:04.9764235Z` records Setup 20/20
+      and Manual 2/2 with zero failures/skips, 65 equivalent runtime files,
+      4/69/73 archive entries and three byte-identical fresh re-extractions.
+      `package-verification.json` verifies all 64 payload files per manual ZIP,
+      60 installed static files and final promotion at
+      `2026-09-09T16:55:11.2153219Z`. Exact ZIP/Setup identities are in
+      `assets/nexus/NEXUS_FILES.txt`; previous SG-03 files are backed up in
+      `dist/work/candidates/radar-3.0.0-sg10-20260909/previous-final-sg03`.
+      Subsequent deployment/package receipts supersede the frozen metadata
+      snapshot's earlier deployment/package status without changing that snapshot.
+- [ ] Owner gameplay confirms Yes performs only the selected action; No/Esc
+      cancel only, background controls do not receive the dismissal click,
+      and missing text retains a readable cancel-only fallback.
+- [ ] Owner gameplay/visual/performance acceptance and Nexus publication
+      recorded separately; none is inferred from static or package checks.
+
+## Retained SG-09 / 3.0.0 build, deployment and unpromoted packages (2026-09-09)
+
+The owner authorized all six fixes, local deployment and three replacement
+packages. SG-09 was independently verified as the installed build and a
+candidate package set. Promotion was deferred for SG-10; the final directory
+still held SG-03 at this checkpoint. Owner gameplay acceptance and Nexus
+publication are separate.
+
+- [x] PS5.1 F6 resource/source verification passes: 26 TGAs, 44 main slots,
+      48 popup bounds, 74 strings per language and 341 complete tooltip tiles.
+      No layout, language text, resource count or square-check change.
+- [x] Soft blue-gray material passes 3,384 card probes and 116 text-slot states:
+      15.294% card transmission, 22.353-23.922% gaps, 96-99% tooltip opacity.
+      Linear-white small text measures at least 4.522:1; title threshold is 3:1.
+      The native status fallback separately measures 4.613:1.
+- [x] PS5.1 Scene resource verification passes 4,058 assertions. Only the Area
+      Quest interior gains translucent gray-blue fill; its footprint, solid
+      rails/dots and lower v are preserved. All five chest/flag textures retain
+      their prior bytes. Six Scene TGAs remain.
+- [x] Twenty-one targeted pixel mutants are rejected (14 material, seven Scene),
+      plus two native status-color regressions. Evidence: root
+      `out/handoff/SG09_VISUAL_NEGATIVE_CHECKS.json` and
+      `out/handoff/SG09_NATIVE_STATUS_REGRESSION.json`.
+- [x] Fourteen source-bound EN/ZH synthetic-background previews and the Scene
+      comparison sheet are generated and visually reviewed. Their geometry and
+      native palette match source; they do not establish in-game composition,
+      target alignment or FPS. Evidence: root `out/handoff/F6_SG09_ALPHA_PREVIEW.json`
+      and `out/handoff/SCENE_SG09_SOURCE_PREVIEW.png`.
+- [x] Final Core passes 6/6, including Scene 313, Clock 28 and Escape 50 checks;
+      the clean native build passes 446 targets. Compact, WorldMap, PostRender
+      and ReleaseHygiene gates pass for the frozen SG-09 source.
+      Canonical `dist/work/build/native/native-build-receipt.json`, UTC
+      `2026-09-09T15:43:06.5903373Z`, records DLL size 1,299,456 bytes and SHA-256
+      `EC82CA04927ABCB3148409AEC16D6574641984E4A9F94790515D2B94F800F1BF`.
+      Compiled-source SHA-256:
+      `9AE2769E0D255A2AF1400123031D395E4993866264DEE919CFD4B3773458CD3B`;
+      release-tools SHA-256:
+      `83317A019F65844ADCA377E930B9F205B1A1608F0E7C09E203876875ADEB80BA`.
+- [x] SG-09 Setup matrix passes 20/20 and Manual matrix 2/2, with zero failures
+      and zero skips. Setup/Manual payloads are byte-equivalent across 65 files.
+- [x] Clock source review and 28 standalone MSVC helper checks pass: existing
+      1 Hz geometry service, RetainerBox/DLayerQuest gap, visual center 15,
+      minimum gap 30, screen/host bounds, owner depth eight with exact minimap
+      back-reference, paint depth 24, top-offset fallback 178, resize deferral
+      and accumulated 0.25-reference-unit position threshold. Actual game
+      placement remains unchecked.
+- [x] Authorized SG-09 deployment is independently verified at
+      `2026-09-09T15:52:57.0256520Z` in candidate `deployment-verification.json`.
+      The DLL above, build receipt and 34 UI assets match. Four settings files
+      retain their bytes; the two checked AutoPickup files remain unchanged.
+      Backup: `dist/work/deployment/deploy-backups/20260909-085255-045-native-only-deploy`.
+      One native entry remains enabled. Gameplay stays `PENDING_OWNER_TEST`.
+- [x] Three SG-09 packages pass re-extraction byte identity and the canonical
+      release pipeline: manifest UTC `2026-09-09T15:56:21.9516109Z`, candidate
+      `dist/work/candidates/radar-3.0.0-sg09-20260909/release-packages`.
+      Installer/Manual-No-UE4SS/Manual-With-UE4SS contain 4/69/73 entries;
+      exact ZIP sizes/hashes are retained in that candidate manifest.
+      Setup is 26,894,336 bytes, SHA-256
+      `7CC8FDEF406F693955742D6402D42D4C4D481152E22AF147A3150A11DE38480B`.
+      Packaged metadata preserves the explicit pre-deployment snapshot; the
+      subsequent installation receipt is authoritative over `NOT_PERFORMED`.
+- [ ] Owner gameplay validates the +160 cm Treasure UI lift, own-F6 live Scene
+      preview, frame-cadence projection, render translation, revised Clock
+      placement and blue-gray/quest-backing appearance. No measured FPS benefit
+      or game acceptance is claimed.
+- [ ] Nexus upload/publication is separately performed and recorded.
+
+## Retained SG-08 / 3.0.0 build and deployment checkpoint (2026-09-09)
+
+SG-08 changes Settings materials and native fallback/slider colors only:
+neutral dark gray, restrained transparency, fine edges and calmer active cyan.
+Layout, all 11 languages/31 explanations, preset behavior, catalog/height/focus
+logic and file counts stay unchanged. Treasure height remains unresolved.
+SG-08 is installed following the owner's explicit deployment request;
+SG-05/SG-06/SG-07 retain their historical evidence. The three final SG-03
+archives retain their original bytes. SG-08 has not been packaged.
+
+- [x] SG-08 deployment independently verified at `2026-09-09T14:50:01.0367076Z`:
+      candidate DLL, receipt and 34 UI assets match; four user files preserve
+      their exact bytes. AutoPickup's two DLL/config files are unchanged.
+      See `dist/work/candidates/radar-3.0.0-sg08-20260909/deployment-verification.json`
+      relative to the project root. This supersedes the earlier build-only
+      `NOT_PERFORMED` snapshot. The previous SG-05 installation and mods.txt are
+      backed up in `dist/work/deployment/deploy-backups/20260909-074959-027-native-only-deploy`.
+- [ ] Owner gameplay/visual acceptance of this installed SG-08 build.
+
+- [x] Final F6 resource/source verification passes in Windows PowerShell 5.1:
+      26 TGAs, 44 main slots, 48 popup bounds, 74 strings per language,
+      177 main and 1,076 tooltip codepoints across 341 complete tiles.
+- [x] Independent final-pixel checks cover 3,384 ordinary card-body samples,
+      all at alpha 216/255 (15.294% scene transmission). Gaps transmit
+      22.353-23.922%; tooltip reading surfaces remain 96-99% opaque.
+      Neutral tint and at least 4.5:1 text contrast under linear-light white
+      are required; card-body RGB (247,253,255) measures at least 4.662:1.
+- [x] All 116 text-slot states (44 main, two numeric values and twelve popup
+      choices, each inactive/active) pass actual layered-pixel checks. Small
+      text measures at least 4.535:1 on linear white; the large title is checked
+      against 3:1. Utility buttons/language/status reading plates prevent the
+      formerly uncovered small text from blending into a bright scene.
+- [x] All 62 in-memory regressions are rejected: the inherited 42 plus excess
+      opacity/transparency, a byte-space-readable but linear-light-unreadable
+      surface, blue tints, opaque gaps, weakened tooltip surfaces, duplicate native backdrops and
+      missing utility/text reading protection or unreadable control labels. Evidence: root `out/handoff/F6_SG08_NEGATIVE_CHECKS.json`.
+- [x] Fourteen source/asset previews cover EN/ZH, three original procedural
+      backgrounds and sRGB/linear composition, plus popup/tooltip examples.
+      DAY/DARK linear style has been reviewed. The preview JSON at root
+      `out/handoff/F6_SG08_ALPHA_PREVIEW.json` binds final hub SHA-256
+      `91EA65DB24169AAD0135B6333A030042DC69E28A75370BFB25D5B5CE1E658E01`.
+      Slider/status authored colors are parsed from final native constants and
+      actual API bindings. No user screenshot is altered or reused as a backdrop.
+      These are static readability bounds; actual game composition, tonemapping,
+      font metrics, slider brush and tooltip placement remain unverified.
+- [x] Final SG-08 Core passes 5/5; the clean native build passes 446 targets.
+      The official `dist/work/build/native/native-build-receipt.json` dated
+      `2026-09-09T14:31:08.5695045Z` records a 1,288,192-byte DLL, SHA-256
+      `5E4045E3160E00A5FA234167926E72E318EDF7F92F8A059E5AB8A832D70DD381`.
+      Compiled-source SHA-256 is
+      `2FC8A4B44415A9B5C42ED444802F1A231387A5D5DBAF9574EA9CC41A0A56D13F`;
+      release-tools SHA-256 is
+      `67B37DF590B7118308F70BA56B8D39745721F72C5F02C4ED4159C650769CE394`.
+      Compact, WorldMap, PostRender and ReleaseHygiene pass; final logs are in
+      `dist/work/candidates/radar-3.0.0-sg08-20260909`. This is local build and
+      static verification: installed SG-05 and final SG-03 archives were unchanged
+      at that pre-deployment checkpoint; the subsequent SG-08 deployment above
+      supersedes its installation status.
+- [ ] Owner gameplay, real transparency/readability across lighting and DPI,
+      input and performance are accepted after a separately authorized deployment.
+
+Future runtime/manual counts remain 65 files (64 plus manifest, whose 61 members
+exclude three examples) and 69/73 entries. No new final package or Nexus upload
+has been created; this style pass is not a Treasure-height fix.
+
+## Retained SG-07 / 3.0.0 local build checkpoint (2026-09-09)
+
+SG-07 expands setting-specific hover help; it changes no Scene coordinates,
+height thresholds, UI geometry, preset semantics or package file counts.
+The Treasure height report is still under investigation, not a verified fix.
+SG-05 remains installed, with the retained deployment identity below. SG-06 is
+a completed local build checkpoint. The three final SG-03 ZIPs retain their
+original 4/43/47 entries, sizes and hashes. SG-07 is not deployed or repackaged.
+
+- [x] Windows PowerShell 5.1 strict F6 source/resource verification passes for
+      31 tooltip topics, 74 strings per language (43 main plus 31 help), 814
+      wide literals, 44 main slots and 48 scaled popup bounds. All 26 RLE TGAs
+      retain the existing file inventory; eleven atlases are now 640-by-4464.
+- [x] Main glyph coverage remains 177 codepoints with minimum fit 1.000 and
+      maximum optical-center error 0.5 raster px. All 341 tooltip tiles cover
+      1,076 codepoints without source-text loss, clipping, split ASCII tokens
+      or detached Thai combining marks; each displays at 320 by 72 units.
+- [x] Seven marker topics bind each actual Radar/Map column's category.
+      Seven independent row-name hover targets remain available behind the
+      packaged main-text route and end before the checkbox columns. Three
+      Scene, five height and four filter choices bind their own explanations;
+      twelve common controls retain separate help. Fifty-five owners fit the
+      unchanged 64-record pool with bounded shared-atlas import/fallback.
+- [x] Help explains Treasure colors/opening conditions, 9 Bosses, 40 Assaults,
+      147 Area Quests and 83 Mini-games, completion/filter limits, loaded-only
+      Bird Eggs and the game Clock. The unchanged Mole height label explicitly
+      explains its shared 33 Fly / 40 Mole / 10 Wave coverage. It does not
+      promise an actor is loaded, a reward chest is the same activity point,
+      or that changing a filter unlocks a quest or starts an event.
+- [x] Forty-two in-memory F6 regressions are rejected, preserving all SG-06
+      failures and adding wrong category/Scene/height/filter bindings, old
+      18-topic state, disabled row hover and hover interception of checkboxes.
+      Evidence: root `out/handoff/F6_SG07_NEGATIVE_CHECKS.json`.
+- [x] Source-derived main/popup/all-language previews and complete EN/ZH
+      31-topic sheets are retained under root `out/handoff/F6_SG07_*`.
+      All 438 reference-font runs fit; the complete Chinese sheet has been
+      visually reviewed. These are source/raster checks, not in-game captures.
+- [x] Final SG-07 clean native build passes all 446 targets; Core passes 5/5.
+      The official `dist/work/build/native/native-build-receipt.json` at
+      `2026-09-09T13:59:17.4623002Z` records a 1,288,192-byte DLL, SHA-256
+      `050897A864CB2FAD699BF7A351B58949C60072C9BC648CBF72EDBEB1386637F6`.
+      Compiled-source SHA-256 is
+      `4A7689300D57F4F065AEF480CB078B420EDA752A36FF4447E17F062CC64C0481`;
+      release-tools SHA-256 is
+      `67B37DF590B7118308F70BA56B8D39745721F72C5F02C4ED4159C650769CE394`.
+- [x] Compact, WorldMap, PostRender and ReleaseHygiene gates plus the complete
+      F6 gate pass. Final Core/native/gate logs are retained under
+      `dist/work/candidates/radar-3.0.0-sg07-20260909`. These verify the current
+      local source/build; they do not change the installed SG-05 or SG-03 ZIPs.
+- [ ] Owner gameplay validates every actual hover target, language fallback,
+      viewport-edge placement, repeated opening/travel and live input/font
+      behavior after a separately authorized deployment. No measured FPS,
+      Treasure height correction or Nexus publication is claimed.
+
+The unchanged future contract is 65 runtime files: 64 payload files plus the
+manifest, whose 61 members exclude three example files. Future manual
+No-UE4SS/With-UE4SS counts remain 69/73. No new archives were generated.
+
+## Retained SG-06 / 3.0.0 local build checkpoint (2026-09-09)
+
+SG-05 is the installed baseline, verified at
+`2026-09-09T12:30:52.1411039Z` by
+`dist/work/candidates/radar-3.0.0-sg05-20260909/deployment-verification.json`.
+Its DLL SHA-256 is
+`C04C6E29D1113B183D8ED511C00BBE7482E46428B6EE53FFDA889319CC252B97`.
+SG-06 has not been deployed or repackaged. All three final ZIPs still contain
+SG-03 and retain their original 4/43/47 entries, sizes and hashes.
+
+- [x] Windows PowerShell 5.1 strict F6 resource/source gate passes for 26 RLE
+      TGAs plus manifest: nine fixed-label images, 11 tooltip atlases and six
+      procedural glass/check/chip skins. All 11 language records contain 61
+      strings; 44 main slots and 48 scaled popup bounds remain valid.
+- [x] Main glyph coverage is 177 codepoints, minimum fit 1.000 and optical-center
+      error at most 0.5 raster px. Tooltip coverage is 878 codepoints across
+      198 complete tiles; every tile fits its 320-by-72 reference rectangle
+      without truncation, source-text loss or detached Thai combining marks.
+      Font hashes and the unmodified Thai OFL license are pinned.
+- [x] Thirty-two in-memory F6 regression cases are rejected, covering the
+      previous accent/AUTO/highlight faults and new square-hit overlap,
+      Clock order, tooltip clipping/index/cleanup, failed-language fallback,
+      nine-slice brush readback, sRGB decoding and altered image pixels.
+      Evidence: root `out/handoff/F6_SG06_NEGATIVE_CHECKS.json`.
+- [x] EN/ZH, language popup and hover-help source previews were visually
+      reviewed; the all-language sheet and complex hover explanations are
+      retained under root `out/handoff/F6_SG06_*`. All 438 reference-font
+      runs fit. Preview fonts/slider appearance and sample hover position
+      remain substitutes for live game rendering.
+- [x] Source/resource review confirms 760-by-792 four-card layout, a top-level
+      Restore Preset, 22-by-22 check visuals in non-overlapping 24-by-24 hits,
+      Clock after Bird Eggs, six shared skins and reflected Box nine-slice.
+      All 18 setting explanations have an independent native owner, with one
+      shared language atlas, bounded import/fallback and no new hover polling.
+- [x] Final SG-06 clean native build passed all 446 targets. The receipt at
+      `dist/work/build/native/native-build-receipt.json` is dated
+      `2026-09-09T13:25:19.6896094Z`; DLL size is 1,251,328 bytes, SHA-256
+      `D1A521ABD1FDE80C1C7108FB06B980A7525E35412A54217AC21CDD25196C1AAC`.
+      Compiled-source SHA-256 is
+      `E24EEE9A882E1BA8E65619799A9EB0CF445B58125DD83B83A22616BCC6DB5908`;
+      release-tools SHA-256 is
+      `EA24111BE1836ACC1EB9E753D703117E0273A8012AE9F0E7D273F457457F8BA5`.
+- [x] Core suites pass 5/5. Compact, WorldMap, PostRender and ReleaseHygiene
+      gates all pass; final evidence is retained under
+      `dist/work/candidates/radar-3.0.0-sg06-20260909` in
+      `core-clean-build.log`, `native-clean-build.log` and the four gate logs.
+      The separately named first-build failure is historical. Source-preview
+      identity was refreshed after the SDK pointer-type compilation repair;
+      its hub SHA-256 is
+      `65619F746CBA0F2AA8AED9E683884F43BA37971FFBDF6328460373AD3D03EAA8`.
+- [ ] Owner gameplay, actual font/tooltip/input behavior, resolution and
+      frame-time acceptance are recorded after an authorized SG-06 deployment.
+
+The future SG-06 payload contract is 65 runtime files and 69/73 manual
+No-UE4SS/With-UE4SS entries. Those are planned allowlist counts, not freshly
+generated archives or successful installer-matrix evidence. There is no
+measured FPS claim. Nexus text remains a local draft.
+
+## Retained SG-05 / 3.0.0 build and subsequent deployment (2026-09-09)
+
+The initial SG-05 source/build checkpoint below skipped deployment; the owner
+later authorized deployment. Its verification receipt above supersedes that
+earlier skip status: four user-owned files were byte-preserved and 17 UI files
+matched. Backup: `dist/work/deployment/deploy-backups/20260909-052906-388-native-only-deploy`.
+SG-05 did not replace the three SG-03 final archives. The following source/build
+results retain their original scope; Scene-only reset is historical SG-05 behavior.
+
+- [x] F6 source/asset verification covers the 760-by-792 panel, 44 disjoint main
+      text slots and 43 strings in each of 11 languages. Nine TGAs plus manifest
+      contain 177 required codepoints: seven 1520-by-1584 full-panel images and
+      two 440-by-52 French/Spanish selected-name images.
+- [x] Windows PowerShell 5.1 strict F6 verification passes: minimum fit 1.000,
+      maximum optical-center error 0.5 px, no clipping, exact source/font pins,
+      11 x 3 x 44 language/status inventory and 48 scaled popup-cell bounds.
+      All sixteen in-memory negative regressions are rejected. English,
+      Simplified Chinese, popup and all-language source previews are recorded
+      under root `out/handoff/F6_SG05_*`; 396 native reference-font runs fit.
+      Preview fonts and native slider appearance are substitutes, not game QA.
+- [x] Source review records the two-column Radar/Map table and independent Scene
+      chips, three-plus-two Height chips and side-by-side Filter groups.
+      Restore Preset affects only Scene: categories Off / 600 m / 24 / Aim Focus;
+      other visibility, height, filter, language and hotkey preferences persist.
+- [x] Scene source uses six shared textures, 50 glyph Images and six collapsed
+      keeper Images instead of 600 Border pieces. Menu sampling preserves the
+      renderer tree. SetPosition skips displacement of at most 0.25 physical px
+      measured from the last submission, allowing small movements to accumulate.
+- [x] Eight additional in-memory Scene regression cases are rejected. These
+      static negatives supplement resource and source checks; they do not
+      establish live texture lifetime, visual or performance acceptance.
+- [x] Aim source uses normalized elliptical distance with radii 16% horizontally
+      and 34% vertically of the shorter viewport side and a 120 ms dwell. Auto
+      retains Euclidean center distance and its independent 15% switch buffer.
+      Raw XYZ, projection lifts, displayed-distance corrections and filtering
+      remain on their existing paths.
+- [x] Final SG-05 clean native build passed all 446 targets. The receipt at
+      `dist/work/candidates/radar-3.0.0-sg05-20260909/native-build-receipt.json` is dated
+      `2026-09-09T12:10:21.3873261Z`. Its DLL is 1,200,128 bytes, SHA-256
+      `C04C6E29D1113B183D8ED511C00BBE7482E46428B6EE53FFDA889319CC252B97`.
+      Compiled-source SHA-256 is
+      `16A389B6F543F0A54496FFD90ECC07DE0D7C1AE920CF5116F19F4C3E4DC9B207`;
+      release-tools SHA-256 is
+      `C65867EDC916C3727A312DC4370ED0DF39F55F461036637F11D076C590878A05`.
+- [x] Final Core suites passed 5/5, including Scene 308 checks / zero failures
+      and Esc 50 checks. Compact, WorldMap, PostRender and ReleaseHygiene gates
+      all passed. Final logs are retained under
+      `dist/work/candidates/radar-3.0.0-sg05-20260909`; `core-build.log` contains
+      the successful test run. Renamed first-attempt failure logs are historical.
+- [x] Eleven additional in-memory Compact shutdown regressions are rejected,
+      retaining the atomic-only process-shutdown and bounded Scene handle-
+      abandonment contracts. These are static checks, not gameplay acceptance.
+- [x] Subsequent SG-05 deployment is recorded by the exact verification above.
+- [ ] Owner gameplay, input, visual, resolution and performance acceptance is
+      recorded separately for those installed bytes.
+
+At the SG-05 checkpoint, the planned package contract was 48 runtime files and 52/56 manual
+No-UE4SS/With-UE4SS archive entries. These are not newly generated packages or
+successful installation-matrix results. There is no measured SG-05 FPS result.
+The retained SG-03 archive sizes, hashes and counts below remain unchanged.
+
+## Retained SG-04 / 3.0.0 source-only checkpoint (2026-09-09)
+
+The owner closed the game and explicitly requested skipping deployment because
+more changes are planned. This round covers code, native compilation and gates;
+SG-04 deployment and replacement public packages are outside this round's scope.
+At that SG-04 checkpoint, the installed DLL and three final archives remained SG-03. Their
+recorded hashes below must not be presented as SG-04 artifacts.
+
+- [x] F6 preserves all 11 languages / 42 strings and 41 main-overlay slots.
+      Nine TGA assets plus manifest cover 170 required codepoints. Popup Korean,
+      Traditional Chinese, French and Spanish names are independent of page
+      language, including English; two 560-by-54 images cover only the selected
+      French/Spanish LanguageValue, including AUTO resolution.
+- [x] PS5.1 strict asset verification passes: minimum fit 1.000, maximum optical
+      center error 0.5 px, no clipping, both pinned fonts and correct accented
+      endonym pixels. No native language name was simplified to remove accents.
+- [x] The actual selected Border is bound to a 186-by-28 rectangle inside the
+      190-by-32 cell with inset two. All 12 cells at four scales pass 48 bounds.
+      Ten negative regressions are rejected, covering the old 353-unit width,
+      missing/English-gated popup fallback, broken AUTO, premature native-text
+      hiding, missing retry reset and corrupted French/Spanish pixels in both
+      popup and selected-name assets.
+- [x] Source review records approximately 18-19-unit Scene glyph widths, an
+      open gray quest diamond with three white dots, and the small shared `v`.
+      The fixed marker pool is 12 pieces (eight glyph plus four chevron pieces).
+      Catalog positions, UI lifts, distance corrections and focus rules remain
+      unchanged; these source checks do not establish live visual acceptance.
+- [x] Final SG-04 clean native build passed all 446 targets; receipt UTC is
+      `2026-09-09T11:08:33.1000443Z`. The DLL is 1,196,032 bytes, SHA-256
+      `96485EC81471D8D4BD568177A1D18F673CA2553DA60F3047ABAC978E24F881C3`.
+      Core tests passed 5/5 and Compact, WorldMap, PostRender and ReleaseHygiene
+      gates passed, including F6 resource verification. Evidence is recorded in
+      `SCENE_GUIDANCE_ATTEMPT_LEDGER.md` and
+      `dist/work/candidates/radar-3.0.0-sg04-20260909/validation-summary.json`
+      (verified UTC `2026-09-09T11:15:33.2586503Z`). This summary also confirms
+      skipped deployment, the unchanged installed SG-03 DLL and three archives,
+      and that the game was not running; SG-04 gameplay remains unvalidated.
+- [ ] After a later authorized deployment, owner gameplay/visual/input/
+      resolution/performance results are recorded for its exact bytes.
+
+Nexus Description/FAQ and the pending changelog are local drafts for a later
+merged release. `NEXUS_FILES.txt` continues to identify the unchanged SG-03
+archives. No SG-04 deployment, package replacement or Nexus upload is claimed.
+
+## Retained SG-03 / 3.0.0 package/deployment checkpoint (2026-09-08)
+
+SG-03 supersedes the earlier developer candidate. Exact new DLL, source,
+installation and package identities belong to `SCENE_GUIDANCE_ATTEMPT_LEDGER.md`
+and `RELEASE_STATUS.md`. Three local release archives are ready and
+rollback-backed deployment is independently verified. Preparing release copy
+does not establish publication or owner gameplay acceptance.
+
+The SG-03 manifest was generated at `2026-09-09T05:00:35.6146355Z` and is now
+retained at `dist/work/candidates/radar-3.0.0-sg10-20260909/previous-final-sg03/release-manifest.json`.
+Its native DLL is **1,194,496 bytes**,
+SHA-256 `4C0B9E788E35A6E46F45B4B5AB6EFCF925B3CDB6CF9E3F3D70E86EB13A853E32`.
+`SHA256SUMS.txt` identifies the three archives; their sizes and hashes were
+independently read back during this documentation closeout.
+
+- [x] All 11 runtime languages use the four revised distance labels. English
+      is OFF / AIM FOCUS / AUTO FOCUS / ALL; Simplified Chinese is 不显示 /
+      瞄准显示 / 自动聚焦 / 全部显示. Persisted enum/string tokens are unchanged.
+- [x] Seven F6 overlay TGAs and their manifest were regenerated and verified
+      under Windows PowerShell 5.1: 41 main slots, 156 required codepoints,
+      minimum fit 1.000, maximum optical-center error 0.5 px, no clipping,
+      and unchanged 680-by-896 layout and 2x raster dimensions.
+- [x] SG-03 Core 5/5 suites, including 289 Scene model and 50 hidden-window
+      Escape checks, pass. The clean native build and all four static gates
+      pass for the finalized source and DLL; offline input checks are not game
+      input acceptance.
+- [x] Setup 20/20, manual installation 2/2, hotkey parser 177 assertions and
+      visibility parser 414 assertions pass. The three archives contain 4/43/47
+      entries respectively; all 39 runtime payload files match across packages.
+- [x] The 3.0.0 Setup/ZIP set is generated and independently validated against
+      its own release manifest and hashes, including byte-identical re-extraction.
+- [x] Rollback-backed SG-03 local deployment is independently verified at
+      `2026-09-09T05:08:44.4698483Z`: `game_running=false`, all four user-owned
+      files preserved byte-for-byte, all other 35 payload files matching the
+      package, and exactly one native enabled entry. Evidence is
+      `dist/work/candidates/radar-3.0.0-sg03-20260908/installed-verification.json`;
+      backup is `dist/work/deployment/deploy-backups/20260908-220537-090-native-only-deploy`.
+- [ ] Owner gameplay, visual, input, resolution and performance acceptance is
+      recorded for those exact bytes.
+- [ ] A publication/upload is explicitly performed and recorded.
+
+## Historical SG-02 / 3.0.0 technical evidence (2026-09-08)
+
+Exact source/build/install evidence is recorded in `SCENE_GUIDANCE_ATTEMPT_LEDGER.md`.
+This was the preceding locally deployed developer baseline. The
+recorded DLL is **1,188,352 bytes**, SHA-256
+`177E0401718F677EB9DD4C1314A94C0AE7DD13A0208B15BBAF35475934EC094B`.
+The evidence directory is `dist/work/candidates/radar-3.0.0-sg02-20260908`.
+
+- [x] Four core CTest suites passed; the final clean native build passed and
+      produced the source-bound receipt. `core-tests.log` and
+      `native-clean-build-final.log` identify these checks.
+- [x] Compact, world-map, runtime-safety and release-hygiene gates passed for
+      the deployed source; `local-deployment-final.log` records all four passes.
+- [x] Scene source reproduction retains 147 IDs, 143 available / 4 unavailable,
+      with the original map/height catalog unchanged. F6 static validation
+      covers 11 languages / 42 strings, 41-slot Korean/Traditional Chinese
+      overlays, 154 codepoints and seven pinned TGA assets.
+- [x] Current-source installer visibility parsing passed 414 assertions as
+      recorded in the SG-02 ledger; this did not build a new Setup.
+- [x] Rollback-backed local deployment and `installed-verification.json`
+      confirm the DLL, Scene anchor hash and release metadata. User visibility,
+      hotkeys, diagnostics and treasure overrides were preserved byte-for-byte;
+      diagnostics remained off at that deployment checkpoint.
+- [ ] Owner gameplay, visual, controller, resolution and performance acceptance
+      is recorded for these exact bytes.
+- [ ] A 3.0.0 public Setup/ZIP set is generated and independently validated.
+- [ ] A 3.0.0 publication/upload is performed and recorded.
+
+The final two items were not performed at that SG-02 checkpoint.
+Static/core/build/install success does not mark any gameplay check below as
+accepted or establish identity for the successor SG-03 candidate.
+
+## SG-09 owner checks for the authorized deployment
+
+- [ ] Scene Treasure/Area Quests/Mini-games each work while compact/map
+      counterparts are off. Clean defaults and absent legacy Scene keys are
+      on; explicit existing choices, including false, survive upgrades.
+- [ ] All four Treasure colors and purple Mini-game flags remain legible at
+      approximately 18-19-unit widths, alongside the SG-06 Area Quest diamond
+      body enlarged by 18% to approximately 22 units with a 1.8-unit outline.
+      Their small `v` and distances stay clear across supported resolutions/DPI
+      without looking like exact ground anchors.
+- [ ] Validate the 143 authored Area Quest Scene origins, including the corrected
+      `1110033`, reviewed `1110038` and two-band `1103061`. The four unproven IDs
+      (`1101301`, `1103108`, `1104104`, `1104203`) show no fabricated Scene point
+      while their compact/map presentation remains available.
+- [ ] The 83 Fly/Mole/Wave activity locations remain distinct from reward-chest
+      locations and obey their existing completion/eligibility policy.
+- [ ] Default 600 m / 24 and configurable limits through 1000 m / 50 behave
+      correctly; either zero setting stops Scene work. Dense clusters remain
+      bounded and do not create mirrored, stale or off-screen markers.
+- [ ] Distance Off, Aim Focus, Auto Focus and All select the expected labels.
+      Aim requires the same nearest normalized-distance target strictly inside
+      the 16% horizontal / 34% vertical ellipse for 120 ms; both radii use the
+      shorter viewport side. Leaving it immediately hides the label.
+      Auto retains a valid visible focus until another point is more than 15%
+      closer to center. Check dwell resets, mode changes and viewport edges.
+      Compare cold text creation (at most four TextBlocks/eight FText
+      values per update) and warm 100 ms changed-value refresh. Pending/faulted
+      labels must not leave stale text or suppress otherwise valid icons.
+- [ ] Projection-only lifts (+160 cm Treasure, +180 cm Area Quest, +150 cm
+      Mini-game) improve visibility without changing any catalog XYZ, raw-anchor
+      distance, range eligibility or compact/map height result. Scene distances
+      round `max(0, d - 1)` for Treasure/Area Quest, `max(0, d - 2)` for Mole,
+      and unchanged `d` for Fly/Wave. Nearby values never become negative;
+      displayed zero is not a guarantee that interaction is available.
+- [ ] Both Scene sliders update immediately, zero range/count hides Scene, and
+      values persist after 300 ms or panel close. Verify the complete 760-by-792
+      panel, all cards/chips and language modal at supported resolutions/DPI.
+- [ ] Global Restore Preset enables every supported Radar/Map category and all
+      five heights, restores Scene all On / 600 m / 24 / Aim Focus, filters
+      Available and language AUTO. Runtime Mod state and startup hotkeys stay
+      unchanged. Verify pending edits persist even if controls already match.
+- [ ] A new/missing Scene configuration defaults to all three categories On;
+      existing explicit false choices survive upgrades until the owner resets.
+- [ ] Square check visuals and hits do not overlap adjacent rows; Clock is
+      last. Glass chips keep circular corners at narrow/wide widths and DPI.
+      Soft blue-gray surfaces visibly transmit the scene while labels remain
+      readable in bright/dark gameplay; validate actual tone mapping and final
+      composition. Missing skins retain readable native blue-gray controls.
+      Source sRGB/linear previews do not establish these in-game results.
+- [ ] Hover every setting and all seven category row names in all 11 languages:
+      each column/category, Scene switch, height and filter choice shows its
+      specific topic among all 31; row-label targets never block checkboxes.
+      Verify complete text, correct tiles and stable viewport-edge placement.
+      Range means 0..1000 m, not a 1000 m projection lift. Missing atlas,
+      language switching, repeated open/close and travel must not show an old
+      language, corrupt brush, blank retained custom tooltip or leaked owner.
+- [ ] Escape closes the entire F6 page with language popup open, slider dragging
+      or control focus, retains the last values, and does not open the game's
+      menu with the same press/repeat/release. A subsequent independent Escape
+      press works normally. Verify loss of focus, travel and reopening; blocked
+      hook setup must refuse the panel instead of permitting passthrough.
+- [ ] AUTO remains the first language option and stays persisted; F6/F7 refresh
+      the displayed game language. Manual choices remain fixed. Settings,
+      Enable and Disable respect the configured hotkeys without F6 rewriting
+      the separate `hotkeys.ini` file.
+- [ ] Every language highlight remains within its own cell. In an English page,
+      Français and Español (España) retain ç/ñ in the popup; selecting either
+      language and AUTO resolving to it retain the complete main-card name.
+      Verify repeated open/close, language/status changes and missing-resource
+      fallback without duplicate labels, stale names or missing native text.
+- [ ] Opened treasures/completed quests disappear; camera turns and close
+      clusters do not produce stale or mirrored markers.
+- [ ] Own F6 Settings previews Scene changes over active gameplay. Real game
+      menus, pause, expanded map, controller menus, activities and HUDHidden
+      retain suppression; travel, F8/F7 and title/save transitions still hide
+      or rebuild the host correctly without stealing input.
+- [ ] Routine menu-state samples do not detach or rebuild Scene; hidden-menu
+      transitions reuse its tree. Texture kinds remain valid across category
+      changes, garbage collection and reopening; six imports belong to attach
+      only. Genuine world/disable/fault cleanup still releases the tree.
+- [ ] Slow camera motion accumulates from the last submitted group position
+      and updates once displacement exceeds 0.25 physical pixels; unchanged
+      positions skip render-translation writes without leaving stale focus or
+      distance labels. Projection follows each EngineTickPost frame; catalog
+      selection remains at 250 ms and no per-frame candidate sort is added.
+- [ ] The Clock glyph visually centers between the minimap and quest tracker
+      with a usable gap. Resize, hidden/stale geometry, insufficient gap and
+      owner changes keep the bounded fallback and do not overlap other HUD.
+- [ ] Boss/Assault/Area Quest compact sizes 35/30/25 and shared 4-unit visible
+      triangle/frame stroke remain consistent after display/DPI scaling, with
+      category colors and Encounter dark-green outlines preserved.
+- [ ] Boss/Assault above/below triangles and aligned original glyphs use the
+      authored spawn Z, `player.z - 150` and the shared inclusive +/-500 margin.
+      Test both boundary crossings, unknown source and independent height
+      switches; no added monster-center offset or unrelated height change.
+- [ ] Dense-scene frame-time comparison records disabled and default-enabled
+      Scene costs without assuming source work reductions equal higher FPS.
+
+These are owner gameplay checks, not claims established by compilation.
+SG-09 deployment and packaging are independently verified as recorded above.
+That success and the historical SG-08 installation/older builds do not establish
+SG-09 gameplay, visual, resolution, controller or performance acceptance.
+Within the named historical sections,
+"current" refers to that section's recorded candidate, not today's baseline.
+
+## Historical 2.2.1 acceptance state
 
 - [x] Source identity is `2.2.1` and runtime label is
       `DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1` in every compiled,
@@ -592,6 +1339,16 @@ Status: `GAMEPLAY_ACCEPTED = NOT_VALIDATED_FOR_2_1_1`
 Status: `INSTALLED_ARTIFACT_HASH = NOT_RECORDED_FOR_2_1_1`
 
 ## Publication
+
+The retained SG-03 3.0.0 checkpoint has three generated, verified local packages
+and a verified historical local deployment. SG-05 and SG-08 were subsequently
+deployed; SG-06/SG-07 retain separate local build evidence. SG-09 local
+deployment and three replacement packages are independently verified.
+Owner gameplay approval and
+Nexus publication remain separate; no upload/publication record has been created. The historical
+workspace-source authorization below does not clear the distinct unresolved
+binary/derived-data publication boundaries; the current release manifest
+retains `BLOCKED_PENDING_RIGHTS_AND_SOURCE_PROVENANCE_REVIEW`.
 
 - [ ] Unreal Engine/UEPseudo authorization and license compatibility cleared.
 - [ ] Exact `e_sqlcipher.dll` source/build provenance cleared.

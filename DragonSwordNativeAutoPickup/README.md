@@ -48,7 +48,28 @@ create another transition until release. The exact 1.3.1 offline source, build,
 installer, and package gates pass; deployment and gameplay acceptance remain
 `RUNTIME_PENDING` and are separate evidence classes.
 
-## Behavior
+## Unreleased source candidate
+
+The working source includes a separate, unreleased correction for repeated
+interaction dispatch without target confirmation. The published 1.3.1 package
+facts above and its release artifacts remain unchanged. This candidate keeps a
+shared two-attempt budget for dispatches and timeouts on the same exact
+Component; dispatch no longer resets that budget as though pickup succeeded.
+The exact target-state probe runs before dispatch consumption, so confirmation
+wins when both signals are present in the same poll.
+
+The candidate also removes the extra 25 ms active/post-pickup waits: there is
+still at most one input per EngineTick and one globally pending action. Empty
+scans retain 33 ms spacing. Full retry-record capacity waits before injection
+and recovers on expiry. Debug context/selector messages are formatted only
+after the pickup decision, with no extra gameplay queries.
+
+This addresses the source-level unbounded repeated-dispatch path. It does not
+yet prove that the owner's reported conch/manual-interaction blockage is fully
+fixed, nor does it repair an already stuck game interaction state. Exact
+candidate deployment and gameplay validation remain separate from core tests.
+
+## Current source behavior
 
 - Resolves the native interaction selector once per process from the reflected
   `Server_RunInteractV2` virtual path and the reflected `SetInteractUIV2`
@@ -62,14 +83,20 @@ installer, and package gates pass; deployment and gameplay acceptance remain
   restricted to raw receiver comparison and one atomic marker. EngineTick owns
   all state transition and logging work.
 - Treats dispatch as input-route evidence only, never target-level pickup proof.
-  The same Component has a 750 ms re-entry delay while other candidates may
-  proceed after the global slot is released.
+  A first unconfirmed dispatch releases the global slot and retains a 750 ms
+  same-Component re-entry delay, followed by a 1500 ms retry opportunity. If the
+  selector presents that identity during this opportunity, it is attempt two,
+  not a fresh first attempt; unused retry records then expire.
 - Retains exact Actor/Component invalidation or exact Component state change as
-  alternate terminal evidence inside the same 750 ms fallback window.
-- Allows at most one retry after a 200 ms delay when no dispatch is observed.
-  A second no-dispatch result applies a 1500 ms expiring backoff, not an
-  activation-long quarantine. Both delays belong only to the exact Component;
-  they never pause the global scanner for other selector results.
+  confirmation evidence inside the 750 ms fallback window. This probe runs
+  before consuming a dispatch marker, so same-poll confirmation clears the
+  attempt history instead of recording another unconfirmed dispatch.
+- Retains the 200 ms retry delay after a first no-dispatch timeout. A second
+  unconfirmed result, whether dispatch or timeout and including mixed outcomes,
+  applies a 1500 ms expiring Component backoff. After that backoff a fresh
+  first-attempt cycle is permitted; there is no activation-long quarantine.
+  These delays never keep the global injection slot occupied for other selector
+  results. They do not override which single target the game selector returns.
 - Treats an interaction-owner identity change inside the same `UWorld` as a
   travel/context reset, clears pending attempts, and enforces a new 1500 ms
   settle interval before resuming.

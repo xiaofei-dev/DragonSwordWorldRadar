@@ -10,8 +10,8 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$version = '2.3.0'
-$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0'
+$version = '3.0.0'
+$runtimeLabel = 'DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_3_0_0'
 $product = 'DragonSwordNativeWorldRadarPostRender'
 $experimentalVersion = 'v3.0.1-Beta0-g1c1a1497'
 $setupName = "$product-Setup-$version.exe"
@@ -396,9 +396,13 @@ function New-ManualStage {
     if ($IncludeUE4SS) { $expectedRoot += 'dwmapi.dll' }
     Assert-RootEntries $Stage $expectedRoot 'Manual stage'
     Assert-EnglishTextTree $Stage
-    # The exact runtime payload now includes seven F6 localized-text TGAs and
-    # their source-bound manifest in both manual channels.
-    $expectedCount = if ($IncludeUE4SS) { 46 } else { 42 }
+    $runtimeSpecification = @(Get-DsnwrRuntimePayloadSpecification `
+            -ProjectRoot $projectRoot -DllPath $Plugin `
+            -BuildReceiptPath $BuildReceipt)
+    # Runtime adds its generated package manifest. Manual archives add README,
+    # notices, mods.txt and checksums; renaming the three defaults adds no files.
+    $expectedCount = $runtimeSpecification.Count + 1 + 4
+    if ($IncludeUE4SS) { $expectedCount += $expectedExperimentalHashes.Count }
     $actualCount = @(Get-ChildItem -LiteralPath $Stage -Recurse -Force -File).Count
     if ($actualCount -ne $expectedCount) {
         throw "Manual stage file count differs. Expected=$expectedCount Actual=$actualCount"

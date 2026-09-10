@@ -1,6 +1,8 @@
 #include "compact_umg_renderer.hpp"
 
 #include <dswros/compact_render_model.hpp>
+#include <dswros/compact_clock_layout.hpp>
+#include <dswros/encounter_height.hpp>
 #include <dswros/render_projection.hpp>
 
 #pragma warning(push)
@@ -15,6 +17,7 @@
 #include <Unreal/UObject.hpp>
 #include <Unreal/UObjectGlobals.hpp>
 #include <Unreal/UFunctionStructs.hpp>
+#include <Unreal/Property/FEnumProperty.hpp>
 #include "ue4ss_compat.hpp"
 #pragma warning(pop)
 
@@ -154,7 +157,10 @@ constexpr double kReferenceMiniGameTriangleOutlineWidth = 2.4;
 constexpr double kReferenceMiniGameTriangleClearance = 1.5;
 constexpr double kAreaQuestMarkerTriangleHalfWidth = 0.48;
 constexpr double kAreaQuestMarkerTriangleHalfHeight = 0.52;
-constexpr double kAreaQuestMarkerTriangleStroke = 0.16;
+// Boss, Assault and Area Quest retain distinct icon extents, but share one
+// visible stroke in reference units. Only the display/DPI scale changes it.
+constexpr double kBandMarkerReferenceStroke = 4.0;
+constexpr double kEncounterTriangleReferenceOutline = 1.0;
 constexpr double kReferenceHeightGroupHalfSize =
     kReferenceHeightLength + kReferenceHeightHeadHalfWidth
         + kReferenceHeightOutlineWidth * 0.5;
@@ -202,7 +208,11 @@ constexpr LinearColor kOfficialPale{216.0F / 255.0F, 246.0F / 255.0F,
 constexpr LinearColor kOfficialGreenDark{21.0F / 255.0F, 60.0F / 255.0F,
                                          62.0F / 255.0F, 1.0F};
 constexpr LinearColor kOfficialCyan{85.0F / 255.0F, 237.0F / 255.0F,
-                                     228.0F / 255.0F, 1.0F};
+                                      228.0F / 255.0F, 1.0F};
+static_assert(dswros::is_encounter_height_marker(CompactUmgMarkerKind::Boss));
+static_assert(dswros::is_encounter_height_marker(CompactUmgMarkerKind::Assault));
+static_assert(!dswros::is_encounter_height_marker(CompactUmgMarkerKind::AreaQuest));
+static_assert(!dswros::is_encounter_height_marker(CompactUmgMarkerKind::TreasureOther));
 constexpr LinearColor kAreaQuestBackdrop{8.0F / 255.0F, 12.0F / 255.0F,
                                           18.0F / 255.0F, 0.55F};
 constexpr LinearColor kBirdEggShell{1.0F, 244.0F / 255.0F,
@@ -273,7 +283,8 @@ struct MarkerPieceStyle {
 }
 
 [[nodiscard]] MarkerPieceStyle marker_piece_style(
-    CompactUmgMarkerKind kind, std::size_t piece) noexcept {
+    CompactUmgMarkerKind kind, std::size_t piece,
+    double reference_size) noexcept {
     if (kind <= CompactUmgMarkerKind::TreasurePuzzle) {
         const LinearColor fill = treasure_color(kind);
 
@@ -284,18 +295,23 @@ struct MarkerPieceStyle {
         default: return {0.18, 0.30, 0.0, 0.13, 0.0, kOutline};
         }
     }
+    const double encounter_inner_extent = std::max(
+        0.0, 0.98 - 2.0 * kBandMarkerReferenceStroke
+            / std::max(1.0, reference_size));
     switch (kind) {
     case CompactUmgMarkerKind::Boss:
         switch (piece) {
         case 0: return {0.98, 0.98, 0.0, 0.0, 45.0, kOfficialWhite};
-        case 1: return {0.72, 0.72, 0.0, 0.0, 45.0, kOfficialGreenDark};
+        case 1: return {encounter_inner_extent, encounter_inner_extent,
+                       0.0, 0.0, 45.0, kOfficialGreenDark};
         case 2: return {0.48, 0.14, -0.12, -0.02, 38.0, kOfficialWhite};
         default: return {0.48, 0.14, 0.12, -0.02, -38.0, kOfficialWhite};
         }
     case CompactUmgMarkerKind::Assault:
         switch (piece) {
         case 0: return {0.98, 0.98, 0.0, 0.0, 45.0, kOfficialPale};
-        case 1: return {0.72, 0.72, 0.0, 0.0, 45.0, kOfficialGreenDark};
+        case 1: return {encounter_inner_extent, encounter_inner_extent,
+                       0.0, 0.0, 45.0, kOfficialGreenDark};
         case 2: return {0.15, 0.48, 0.0, -0.10, 0.0, kOfficialCyan};
         default: return {0.18, 0.18, 0.0, 0.28, 0.0, kOfficialCyan};
         }
@@ -374,7 +390,7 @@ void write_brush_float(
 }
 
 void configure_area_quest_outline_brush(
-    std::array<std::byte, 208>& brush) noexcept {
+    std::array<std::byte, 208>& brush, double umg_unit_scale) noexcept {
     // Current pinned game ABI: FSlateBrush is 0xD0 bytes. A RoundedBox brush
     // gives the task marker a true frame without adding any UMG widgets.
     brush[0x11] = std::byte{4}; // ESlateBrushDrawType::RoundedBox
@@ -388,7 +404,8 @@ void configure_area_quest_outline_brush(
     write_brush_float(brush, 0x78, kOutline.blue);
     write_brush_float(brush, 0x7C, 1.0F);
     brush[0x80] = std::byte{0}; // UseColor_Specified
-    write_brush_float(brush, 0x84, 2.75F);
+    write_brush_float(brush, 0x84,
+        static_cast<float>(kBandMarkerReferenceStroke * umg_unit_scale));
     brush[0x88] = std::byte{0}; // FixedRadius
     brush[0x89] = std::byte{0};
 }
@@ -405,6 +422,22 @@ void configure_fly_outline_brush(
     write_brush_float(brush, 0x7C, kFlyOutline.alpha);
     brush[0x80] = std::byte{0}; // UseColor_Specified
     write_brush_float(brush, 0x84, 1.25F);
+    brush[0x88] = std::byte{0}; // FixedRadius
+    brush[0x89] = std::byte{0};
+}
+
+void configure_encounter_triangle_brush(
+    std::array<std::byte, 208>& brush, double umg_unit_scale) noexcept {
+    // Each of the three retained edge widgets gets a dark-green Slate outline.
+    // The category tint supplies the bright inner edge without extra widgets.
+    brush[0x11] = std::byte{4}; // ESlateBrushDrawType::RoundedBox
+    write_brush_float(brush, 0x70, kOfficialGreenDark.red);
+    write_brush_float(brush, 0x74, kOfficialGreenDark.green);
+    write_brush_float(brush, 0x78, kOfficialGreenDark.blue);
+    write_brush_float(brush, 0x7C, kOfficialGreenDark.alpha);
+    brush[0x80] = std::byte{0}; // UseColor_Specified
+    write_brush_float(brush, 0x84,
+        static_cast<float>(kEncounterTriangleReferenceOutline * umg_unit_scale));
     brush[0x88] = std::byte{0}; // FixedRadius
     brush[0x89] = std::byte{0};
 }
@@ -547,9 +580,455 @@ void set_line_geometry(
     }
     return std::max(0.0, right_extent);
 }
+constexpr std::size_t kGeometryParameterCapacity = 256;
+
+[[nodiscard]] FProperty* find_struct_field(
+    UScriptStruct* structure, const wchar_t* name) {
+    if (!structure || !name) {
+        return nullptr;
+    }
+    for (FProperty* property : DSNWRPR_PROPERTIES_IN_CHAIN(structure)) {
+        if (property->GetName() == name) {
+            return property;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] FProperty* find_function_field(
+    UFunction* function, const wchar_t* name) {
+    if (!function || !name) {
+        return nullptr;
+    }
+    for (FProperty* property : DSNWRPR_PROPERTIES_IN_CHAIN(function)) {
+        if (property->GetName() == name) {
+            return property;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] bool function_property_fits(
+    UFunction* function, FProperty* property) {
+    if (!function || !property || property->GetOffset_Internal() < 0
+        || property->GetSize() <= 0) {
+        return false;
+    }
+    const auto parameter_bytes = static_cast<std::size_t>(
+        function->GetParmsSize());
+    return parameter_bytes > 0
+        && parameter_bytes <= kGeometryParameterCapacity
+        && static_cast<std::size_t>(
+               property->GetOffset_Internal() + property->GetSize())
+            <= parameter_bytes;
+}
+
+[[nodiscard]] bool vector_struct_is_finite_schema(
+    FStructProperty* property) {
+    if (!property || property->GetSize() <= 0) {
+        return false;
+    }
+    UScriptStruct* structure = property->GetStruct();
+    auto* x = CastField<FNumericProperty>(
+        structure ? find_struct_field(structure, L"X") : nullptr);
+    auto* y = CastField<FNumericProperty>(
+        structure ? find_struct_field(structure, L"Y") : nullptr);
+    const auto field_fits = [property](FNumericProperty* field) {
+        return field && field->IsFloatingPoint()
+            && field->GetOffset_Internal() >= 0
+            && field->GetSize() > 0
+            && field->GetOffset_Internal() + field->GetSize()
+                <= property->GetSize();
+    };
+    return field_fits(x) && field_fits(y);
+}
+
+[[nodiscard]] bool geometry_function_parameters_fit(
+    UFunction* function, std::size_t expected_count) {
+    if (!function) return false;
+    std::size_t count{}, returns{};
+    for (FProperty* property : DSNWRPR_PROPERTIES_IN_CHAIN(function)) {
+        if (!property->HasAnyPropertyFlags(CPF_Parm)) continue;
+        if (!function_property_fits(function, property)) return false;
+        ++count;
+        if (property->HasAnyPropertyFlags(CPF_ReturnParm)) ++returns;
+    }
+    return count == expected_count && returns == 1;
+}
+
+struct GeometryReflectionSchema {
+    FStructProperty* cached_geometry_return{};
+    FStructProperty* local_size_geometry{};
+    FStructProperty* local_size_return{};
+    FStructProperty* local_to_absolute_geometry{};
+    FStructProperty* local_coordinate{};
+    FStructProperty* local_to_absolute_return{};
+    FStructProperty* absolute_to_local_geometry{};
+    FStructProperty* absolute_coordinate{};
+    FStructProperty* absolute_to_local_return{};
+};
+
+[[nodiscard]] bool resolve_geometry_reflection_schema(
+    UFunction* get_cached_geometry,
+    UFunction* get_geometry_local_size,
+    UFunction* local_to_absolute,
+    UFunction* absolute_to_local,
+    GeometryReflectionSchema& schema) {
+    schema = {};
+    schema.cached_geometry_return = CastField<FStructProperty>(
+        find_function_field(get_cached_geometry, L"ReturnValue"));
+    schema.local_size_geometry = CastField<FStructProperty>(
+        find_function_field(get_geometry_local_size, L"Geometry"));
+    schema.local_size_return = CastField<FStructProperty>(
+        find_function_field(get_geometry_local_size, L"ReturnValue"));
+    schema.local_to_absolute_geometry = CastField<FStructProperty>(
+        find_function_field(local_to_absolute, L"Geometry"));
+    schema.local_coordinate = CastField<FStructProperty>(
+        find_function_field(local_to_absolute, L"LocalCoordinate"));
+    schema.local_to_absolute_return = CastField<FStructProperty>(
+        find_function_field(local_to_absolute, L"ReturnValue"));
+    schema.absolute_to_local_geometry = CastField<FStructProperty>(
+        find_function_field(absolute_to_local, L"Geometry"));
+    schema.absolute_coordinate = CastField<FStructProperty>(
+        find_function_field(absolute_to_local, L"AbsoluteCoordinate"));
+    schema.absolute_to_local_return = CastField<FStructProperty>(
+        find_function_field(absolute_to_local, L"ReturnValue"));
+
+    const bool properties_fit =
+        geometry_function_parameters_fit(get_cached_geometry, 1)
+        && geometry_function_parameters_fit(get_geometry_local_size, 2)
+        && geometry_function_parameters_fit(local_to_absolute, 3)
+        && geometry_function_parameters_fit(absolute_to_local, 3)
+        && function_property_fits(
+            get_cached_geometry, schema.cached_geometry_return)
+        && function_property_fits(
+            get_geometry_local_size, schema.local_size_geometry)
+        && function_property_fits(
+            get_geometry_local_size, schema.local_size_return)
+        && function_property_fits(
+            local_to_absolute, schema.local_to_absolute_geometry)
+        && function_property_fits(
+            local_to_absolute, schema.local_coordinate)
+        && function_property_fits(
+            local_to_absolute, schema.local_to_absolute_return)
+        && function_property_fits(
+            absolute_to_local, schema.absolute_to_local_geometry)
+        && function_property_fits(
+            absolute_to_local, schema.absolute_coordinate)
+        && function_property_fits(
+            absolute_to_local, schema.absolute_to_local_return);
+    if (!properties_fit) {
+        return false;
+    }
+
+    UScriptStruct* geometry = schema.cached_geometry_return->GetStruct();
+    UScriptStruct* vector = schema.local_size_return->GetStruct();
+    return geometry
+        && geometry == schema.local_size_geometry->GetStruct()
+        && geometry == schema.local_to_absolute_geometry->GetStruct()
+        && geometry == schema.absolute_to_local_geometry->GetStruct()
+        && vector
+        && vector == schema.local_size_return->GetStruct()
+        && vector == schema.local_coordinate->GetStruct()
+        && vector == schema.local_to_absolute_return->GetStruct()
+        && vector == schema.absolute_coordinate->GetStruct()
+        && vector == schema.absolute_to_local_return->GetStruct()
+        && vector_struct_is_finite_schema(schema.local_size_return);
+}
+
+[[nodiscard]] bool read_numeric_value(
+    FProperty* property, void* container, double& value) {
+    auto* numeric = CastField<FNumericProperty>(property);
+    void* address = numeric && container
+        ? numeric->ContainerPtrToValuePtr<void>(container)
+        : nullptr;
+    if (!numeric || !address) {
+        return false;
+    }
+    if (numeric->IsFloatingPoint()) {
+        value = numeric->GetFloatingPointPropertyValue(address);
+        return std::isfinite(value);
+    }
+    if (numeric->IsInteger()) {
+        value = static_cast<double>(numeric->GetSignedIntPropertyValue(address));
+        return std::isfinite(value);
+    }
+    return false;
+}
+
+struct alignas(std::max_align_t) GeometryParameterBuffer {
+    std::array<std::byte, kGeometryParameterCapacity> bytes{};
+};
+
+// ProcessEvent callers own the reflected parameter storage. Initialize and
+// destroy every parameter property so FGeometry remains safe even if a future
+// engine build changes it from plain data to a non-trivial script struct.
+class GeometryCallParameters final {
+public:
+    explicit GeometryCallParameters(UFunction* function) noexcept
+        : function_(function) {
+        if (!function_ || function_->GetParmsSize() < 0
+            || static_cast<std::size_t>(function_->GetParmsSize())
+                > buffer_.bytes.size()) {
+            function_ = nullptr;
+            return;
+        }
+        for (FProperty* property : DSNWRPR_PROPERTIES_IN_CHAIN(function_)) {
+            if (property->HasAnyPropertyFlags(CPF_Parm)) {
+                property->InitializeValue_InContainer(buffer_.bytes.data());
+            }
+        }
+    }
+
+    ~GeometryCallParameters() {
+        if (!function_) {
+            return;
+        }
+        for (FProperty* property : DSNWRPR_PROPERTIES_IN_CHAIN(function_)) {
+            if (property->HasAnyPropertyFlags(CPF_Parm)) {
+                property->DestroyValue_InContainer(buffer_.bytes.data());
+            }
+        }
+    }
+
+    GeometryCallParameters(const GeometryCallParameters&) = delete;
+    GeometryCallParameters& operator=(const GeometryCallParameters&) = delete;
+
+    [[nodiscard]] bool valid() const noexcept { return function_ != nullptr; }
+    [[nodiscard]] void* data() noexcept { return buffer_.bytes.data(); }
+
+private:
+    UFunction* function_{};
+    GeometryParameterBuffer buffer_{};
+};
+
+[[nodiscard]] bool read_vector_property(
+    FStructProperty* property,
+    void* container,
+    double& x,
+    double& y) {
+    void* vector_value = property && container
+        ? property->ContainerPtrToValuePtr<void>(container)
+        : nullptr;
+    UScriptStruct* structure = property ? property->GetStruct() : nullptr;
+    return vector_value && structure
+        && read_numeric_value(
+            find_struct_field(structure, L"X"), vector_value, x)
+        && read_numeric_value(
+            find_struct_field(structure, L"Y"), vector_value, y);
+}
+
+[[nodiscard]] bool write_vector_property(
+    FStructProperty* property,
+    void* container,
+    double x,
+    double y) {
+    if (!property || !container || !std::isfinite(x) || !std::isfinite(y)) {
+        return false;
+    }
+    void* vector_value = property->ContainerPtrToValuePtr<void>(container);
+    UScriptStruct* structure = property->GetStruct();
+    auto* x_property = CastField<FNumericProperty>(
+        structure ? find_struct_field(structure, L"X") : nullptr);
+    auto* y_property = CastField<FNumericProperty>(
+        structure ? find_struct_field(structure, L"Y") : nullptr);
+    void* x_value = x_property && vector_value
+        ? x_property->ContainerPtrToValuePtr<void>(vector_value)
+        : nullptr;
+    void* y_value = y_property && vector_value
+        ? y_property->ContainerPtrToValuePtr<void>(vector_value)
+        : nullptr;
+    if (!x_property || !y_property || !x_value || !y_value
+        || !x_property->IsFloatingPoint()
+        || !y_property->IsFloatingPoint()) {
+        return false;
+    }
+    x_property->SetFloatingPointPropertyValue(x_value, x);
+    y_property->SetFloatingPointPropertyValue(y_value, y);
+    return true;
+}
+
+[[nodiscard]] bool copy_geometry_property(
+    FStructProperty* destination_property,
+    void* destination_container,
+    FStructProperty* source_property,
+    void* source_container) {
+    if (!destination_property || !destination_container
+        || !source_property || !source_container
+        || destination_property->GetStruct() != source_property->GetStruct()) {
+        return false;
+    }
+    void* destination = destination_property
+        ->ContainerPtrToValuePtr<void>(destination_container);
+    const void* source = source_property
+        ->ContainerPtrToValuePtr<void>(source_container);
+    if (!destination || !source) {
+        return false;
+    }
+    destination_property->CopyCompleteValue(destination, source);
+    return true;
+}
+
+[[nodiscard]] bool read_geometry_local_size(
+    UObject* slate_library,
+    UFunction* get_geometry_local_size,
+    const GeometryReflectionSchema& schema,
+    FStructProperty* source_geometry_property,
+    void* source_geometry_container,
+    double& width,
+    double& height) {
+    GeometryCallParameters parameters(get_geometry_local_size);
+    if (!parameters.valid()) {
+        return false;
+    }
+    if (!copy_geometry_property(
+            schema.local_size_geometry, parameters.data(),
+            source_geometry_property, source_geometry_container)) {
+        return false;
+    }
+    slate_library->ProcessEvent(
+        get_geometry_local_size, parameters.data());
+    return read_vector_property(
+            schema.local_size_return, parameters.data(), width, height)
+        && width > 0.0 && height > 0.0;
+}
+
+[[nodiscard]] bool transform_geometry_point(
+    UObject* slate_library,
+    UFunction* function,
+    FStructProperty* geometry_property,
+    FStructProperty* coordinate_property,
+    FStructProperty* return_property,
+    FStructProperty* source_geometry_property,
+    void* source_geometry_container,
+    double input_x,
+    double input_y,
+    double& output_x,
+    double& output_y) {
+    GeometryCallParameters parameters(function);
+    if (!parameters.valid()) {
+        return false;
+    }
+    if (!copy_geometry_property(
+            geometry_property, parameters.data(),
+            source_geometry_property, source_geometry_container)
+        || !write_vector_property(
+            coordinate_property, parameters.data(), input_x, input_y)) {
+        return false;
+    }
+    slate_library->ProcessEvent(function, parameters.data());
+    return read_vector_property(
+        return_property, parameters.data(), output_x, output_y);
+}
+
+// Exact named ownership and a bounded paint chain, matching the main HUD
+// witness. Never enumerate WidgetTree or global objects for clock placement.
+[[nodiscard]] UObject* read_clock_owned_object(UObject* object, const wchar_t* name) {
+    auto* property = object ? CastField<FObjectPropertyBase>(
+        object->GetPropertyByNameInChain(name)) : nullptr;
+    return property && property->GetSize() == sizeof(void*)
+        ? property->GetObjectPropertyValue(property->ContainerPtrToValuePtr<void>(object))
+        : nullptr;
+}
+
+[[nodiscard]] bool clock_widget_paints_to_owner(
+    UObject* widget, UObject* main_panel, UClass* widget_class) {
+    if (!widget || !main_panel || !widget_class || !main_panel->GetWorld()) return false;
+    const auto* world = main_panel->GetWorld();
+    std::array<UObject*, 24> visited{};
+    UObject* node = widget;
+    for (std::size_t depth = 0; node && depth < visited.size(); ++depth) {
+        if (!node->IsA(widget_class) || node->GetWorld() != world
+            || std::find(visited.begin(), visited.begin() + depth, node)
+                != visited.begin() + depth) return false;
+        visited[depth] = node;
+        FProperty* visibility = node->GetPropertyByNameInChain(L"Visibility");
+        auto* numeric = CastField<FNumericProperty>(visibility);
+        if (!numeric) {
+            auto* enumeration = CastField<FEnumProperty>(visibility);
+            numeric = enumeration ? enumeration->GetUnderlyingProperty() : nullptr;
+        }
+        if (!visibility || visibility->GetSize() != 1
+            || !numeric || !numeric->IsInteger() || numeric->GetSize() != 1) return false;
+        const auto value = numeric->GetUnsignedIntPropertyValue(
+            visibility->ContainerPtrToValuePtr<void>(node));
+        auto* opacity = CastField<FNumericProperty>(
+            node->GetPropertyByNameInChain(L"RenderOpacity"));
+        if (value > 4 || value == 1 || value == 2 || !opacity
+            || !opacity->IsFloatingPoint() || opacity->GetSize() != sizeof(float)) return false;
+        const double alpha = opacity->GetFloatingPointPropertyValue(
+            opacity->ContainerPtrToValuePtr<void>(node));
+        if (!std::isfinite(alpha) || alpha <= 0.0 || alpha > 1.0) return false;
+        if (node == main_panel) return true;
+        UObject* slot = read_clock_owned_object(node, L"Slot");
+        UObject* parent = read_clock_owned_object(slot, L"Parent");
+        if (parent && read_clock_owned_object(slot, L"Content") == node) {
+            node = parent;
+            continue;
+        }
+        UObject* tree = node->GetOuterPrivate();
+        UObject* tree_owner = tree ? tree->GetOuterPrivate() : nullptr;
+        if (tree && tree_owner && read_clock_owned_object(tree, L"RootWidget") == node
+            && read_clock_owned_object(tree_owner, L"WidgetTree") == tree) {
+            node = tree_owner;
+            continue;
+        }
+        return false;
+    }
+    return false;
+}
+
+// Three corners prove the native widgets remain axis-aligned. Convert through
+// both complete geometries so DPI, safe zone and host render scale occur once.
+// Rotated/skewed/reversed or zero-sized inputs keep the established fallback.
+[[nodiscard]] bool read_clock_widget_rect(
+    UObject* widget, UObject* slate_library,
+    UFunction* get_cached_geometry, UFunction* get_local_size,
+    UFunction* local_to_absolute, UFunction* absolute_to_local,
+    const GeometryReflectionSchema& schema, void* root_geometry,
+    dswros::CompactClockRect& rect) {
+    GeometryCallParameters geometry(get_cached_geometry);
+    if (!geometry.valid()) return false;
+    widget->ProcessEvent(get_cached_geometry, geometry.data());
+    double width{}, height{};
+    if (!read_geometry_local_size(slate_library, get_local_size, schema,
+            schema.cached_geometry_return, geometry.data(), width, height)) return false;
+    std::array<Vector2D, 3> corners{{{0, 0}, {width, 0}, {0, height}}};
+    for (auto& point : corners) {
+        double absolute_x{}, absolute_y{};
+        if (!transform_geometry_point(slate_library, local_to_absolute,
+                schema.local_to_absolute_geometry, schema.local_coordinate,
+                schema.local_to_absolute_return, schema.cached_geometry_return,
+                geometry.data(), point.x, point.y, absolute_x, absolute_y)
+            || !transform_geometry_point(slate_library, absolute_to_local,
+                schema.absolute_to_local_geometry, schema.absolute_coordinate,
+                schema.absolute_to_local_return, schema.cached_geometry_return,
+                root_geometry, absolute_x, absolute_y, point.x, point.y)) return false;
+    }
+    constexpr double kAxisTolerance = 1.0e-3;
+    if (std::abs(corners[0].y - corners[1].y) > kAxisTolerance
+        || std::abs(corners[0].x - corners[2].x) > kAxisTolerance) return false;
+    rect = {corners[0].x, corners[0].y, corners[1].x, corners[2].y};
+    return dswros::valid_compact_clock_rect(rect);
+}
+
 } // namespace
 
 void CompactUmgRenderer::initialize() noexcept {
+    // Optional geometry ABI: a missing/schema-mismatched function keeps the
+    // established clock position and cannot disable the compact renderer.
+    clock_geometry_widget_class_ = find<UClass>(L"/Script/UMG.Widget");
+    clock_slate_library_ = find<UObject>(L"/Script/UMG.Default__SlateBlueprintLibrary");
+    clock_get_cached_geometry_ = find<UFunction>(L"/Script/UMG.Widget:GetCachedGeometry");
+    clock_get_local_size_ = find<UFunction>(L"/Script/UMG.SlateBlueprintLibrary:GetLocalSize");
+    clock_local_to_absolute_ = find<UFunction>(L"/Script/UMG.SlateBlueprintLibrary:LocalToAbsolute");
+    clock_absolute_to_local_ = find<UFunction>(L"/Script/UMG.SlateBlueprintLibrary:AbsoluteToLocal");
+    GeometryReflectionSchema clock_schema{};
+    clock_geometry_schema_ready_ = clock_geometry_widget_class_
+        && clock_slate_library_.Get()
+        && resolve_geometry_reflection_schema(
+            clock_get_cached_geometry_, clock_get_local_size_,
+            clock_local_to_absolute_, clock_absolute_to_local_, clock_schema);
     canvas_panel_class_ = find<UClass>(L"/Script/UMG.CanvasPanel");
     canvas_panel_slot_class_ =
         find<UClass>(L"/Script/UMG.CanvasPanelSlot");
@@ -887,7 +1366,10 @@ bool CompactUmgRenderer::attach_unsafe(
                     fly_outline_brush_template_);
                 area_quest_brush_template_ = solid_brush_template_;
                 configure_area_quest_outline_brush(
-                    area_quest_brush_template_);
+                    area_quest_brush_template_, umg_unit_scale_);
+                encounter_triangle_brush_template_ = solid_brush_template_;
+                configure_encounter_triangle_brush(
+                    encounter_triangle_brush_template_, umg_unit_scale_);
                 bird_egg_brush_template_ = solid_brush_template_;
                 configure_bird_egg_oval_brush(
                     bird_egg_brush_template_);
@@ -1067,8 +1549,13 @@ bool CompactUmgRenderer::attach_unsafe(
         height_group_slots[channel] = height_group_slot;
     }
 
-    constexpr double kClockReferenceWidth = 116.0;
-    constexpr double kClockReferenceHeight = 42.0;
+    constexpr double kClockReferenceWidth = dswros::kCompactClockReferenceWidth;
+    constexpr double kClockReferenceHeight = dswros::kCompactClockReferenceHeight;
+    // First-frame/unsupported-geometry fallback. The existing one-hertz layout
+    // service replaces this only after both live HUD rectangles prove a gap.
+    constexpr double kClockReferenceTop = kReferenceMarkerExtent + 8.0;
+    static_assert(kClockReferenceTop + kClockReferenceHeight
+                  <= kReferenceHostHalfSize);
     constexpr std::array<double, kCompactClockDigitCount>
         kClockDigitLeft{{7.0, 21.0, 45.0, 59.0}};
     constexpr std::array<std::array<double, 4>, kCompactClockSegmentCount>
@@ -1098,7 +1585,9 @@ bool CompactUmgRenderer::attach_unsafe(
     set_slot_vector(
         clock_group_slot, set_slot_position_,
         local_center - kClockReferenceWidth * 0.5 * umg_unit_scale_,
-        local_center + 178.0 * umg_unit_scale_);
+        local_center + kClockReferenceTop * umg_unit_scale_);
+    clock_position_x_ = local_center - kClockReferenceWidth * 0.5 * umg_unit_scale_;
+    clock_position_y_ = local_center + kClockReferenceTop * umg_unit_scale_;
     set_slot_vector(
         clock_group_slot, set_slot_size_,
         kClockReferenceWidth * umg_unit_scale_,
@@ -1309,6 +1798,7 @@ bool CompactUmgRenderer::attach_unsafe(
     active_marker_count_ = 0;
     ++attach_count_;
     state_ = CompactUmgRendererState::Attached;
+    bind_clock_owner_guarded(layer);
     return true;
 }
 
@@ -1351,6 +1841,7 @@ bool CompactUmgRenderer::read_minimap_scale_unsafe(double& scale) {
             read_object_property(layer_map, L"PlayerIconWidget")) {
         static_cast<void>(refresh_viewport_layout_unsafe(player_icon));
     }
+    refresh_clock_layout_unsafe();
     if ((!render_transform_property_ || !scale_property_ || !scale_x_property_)
         && !resolve_minimap_scale_schema(map_overlay)) {
         return false;
@@ -1373,6 +1864,123 @@ bool CompactUmgRenderer::read_minimap_scale_unsafe(double& scale) {
     }
     scale = value;
     return true;
+}
+
+void CompactUmgRenderer::bind_clock_owner_guarded(UObject* minimap_layer) noexcept {
+#if defined(_MSC_VER)
+    __try { bind_clock_owner_unsafe(minimap_layer); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { clock_geometry_faulted_ = true; }
+#else
+    try { bind_clock_owner_unsafe(minimap_layer); }
+    catch (...) { clock_geometry_faulted_ = true; }
+#endif
+}
+
+void CompactUmgRenderer::bind_clock_owner_unsafe(UObject* minimap_layer) {
+    clock_main_panel_ = FWeakObjectPtr{};
+    if (!clock_geometry_schema_ready_ || !minimap_layer
+        || !minimap_layer->GetWorld()) return;
+    UObject* owner = minimap_layer;
+    for (std::size_t depth = 0; owner && depth < 8; ++depth) {
+        if (read_clock_owned_object(owner, L"DLayerMiniMap") == minimap_layer) {
+            if (owner->GetWorld() == minimap_layer->GetWorld()
+                && owner->IsA(clock_geometry_widget_class_)) clock_main_panel_ = owner;
+            return;
+        }
+        owner = owner->GetOuterPrivate();
+    }
+}
+
+bool CompactUmgRenderer::read_clock_gap_position_guarded(
+    double& left, double& top) noexcept {
+#if defined(_MSC_VER)
+    __try { return read_clock_gap_position_unsafe(left, top); }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        clock_geometry_faulted_ = true;
+        return false;
+    }
+#else
+    try { return read_clock_gap_position_unsafe(left, top); }
+    catch (...) {
+        clock_geometry_faulted_ = true;
+        return false;
+    }
+#endif
+}
+
+bool CompactUmgRenderer::read_clock_gap_position_unsafe(double& left, double& top) {
+    UObject* layer = minimap_layer_.Get();
+    UObject* main_panel = clock_main_panel_.Get();
+    UObject* fixed_root = host_root_panel_.Get();
+    UObject* slate_library = clock_slate_library_.Get();
+    if (!layer || !main_panel || !fixed_root || !slate_library
+        || !layer->GetWorld() || layer->GetWorld() != main_panel->GetWorld()
+        || fixed_root->GetWorld() != layer->GetWorld()
+        || read_clock_owned_object(main_panel, L"DLayerMiniMap") != layer) return false;
+    // RetainerBox is the minimap's fixed clipping surface. MapOverlay carries
+    // zoom transforms and must never stand in for its visible screen boundary.
+    UObject* map = read_clock_owned_object(layer, L"LayerMap");
+    UObject* minimap_clip = read_clock_owned_object(map, L"RetainerBox");
+    UObject* quest = read_clock_owned_object(main_panel, L"DLayerQuest");
+    if (!clock_widget_paints_to_owner(minimap_clip, main_panel, clock_geometry_widget_class_)
+        || !clock_widget_paints_to_owner(quest, main_panel, clock_geometry_widget_class_)) return false;
+    GeometryReflectionSchema schema{};
+    if (!resolve_geometry_reflection_schema(clock_get_cached_geometry_,
+            clock_get_local_size_, clock_local_to_absolute_, clock_absolute_to_local_, schema)) return false;
+    GeometryCallParameters root_geometry(clock_get_cached_geometry_);
+    if (!root_geometry.valid()) return false;
+    fixed_root->ProcessEvent(clock_get_cached_geometry_, root_geometry.data());
+    double width{}, height{};
+    if (!read_geometry_local_size(slate_library, clock_get_local_size_, schema,
+            schema.cached_geometry_return, root_geometry.data(), width, height)) return false;
+    const double host_extent = kReferenceHostHalfSize * 2.0 * umg_unit_scale_;
+    if (std::abs(width - host_extent) > 0.5 * umg_unit_scale_
+        || std::abs(height - host_extent) > 0.5 * umg_unit_scale_) return false;
+    dswros::CompactClockRect minimap_rect{}, quest_rect{};
+    if (!read_clock_widget_rect(minimap_clip, slate_library,
+            clock_get_cached_geometry_, clock_get_local_size_, clock_local_to_absolute_,
+            clock_absolute_to_local_, schema, root_geometry.data(), minimap_rect)
+        || !read_clock_widget_rect(quest, slate_library,
+            clock_get_cached_geometry_, clock_get_local_size_, clock_local_to_absolute_,
+            clock_absolute_to_local_, schema, root_geometry.data(), quest_rect)) return false;
+    const double pixels_per_local = viewport_dpi_scale_ * host_render_scale_;
+    if (!std::isfinite(pixels_per_local) || pixels_per_local <= 0.0) return false;
+    const dswros::CompactClockRect usable_host{
+        std::max(0.0, -host_origin_x_ / pixels_per_local),
+        std::max(0.0, -host_origin_y_ / pixels_per_local),
+        std::min(width, (viewport_width_ - host_origin_x_) / pixels_per_local),
+        std::min(height, (viewport_height_ - host_origin_y_) / pixels_per_local)};
+    const auto position = dswros::calculate_compact_clock_gap_position(
+        minimap_rect, quest_rect, usable_host, umg_unit_scale_);
+    if (!position) return false;
+    left = position->left;
+    top = position->top;
+    return true;
+}
+
+void CompactUmgRenderer::refresh_clock_layout_unsafe() {
+    // Called only by the existing low-frequency minimap-scale/layout service.
+    // Suppressed hosts have stale cached Slate geometry; do not reflect them.
+    if (menu_suppressed_ || state_ != CompactUmgRendererState::Attached) return;
+    const double centre = kReferenceHostHalfSize * umg_unit_scale_;
+    double left = centre - dswros::kCompactClockReferenceWidth * 0.5 * umg_unit_scale_;
+    double top = centre + (kReferenceMarkerExtent + 8.0) * umg_unit_scale_;
+    clock_gap_layout_active_ = false;
+    if (clock_geometry_defer_) {
+        clock_geometry_defer_ = false;
+    } else if (clock_geometry_schema_ready_ && !clock_geometry_faulted_) {
+        clock_gap_layout_active_ = read_clock_gap_position_guarded(left, top);
+    }
+    if (!dswros::compact_clock_position_changed(
+            {clock_position_x_, clock_position_y_}, {left, top}, umg_unit_scale_)) return;
+    UObject* slot = clock_group_slot_.Get();
+    if (!slot || !slot->IsA(canvas_panel_slot_class_)
+        || read_clock_owned_object(slot, L"Content") != clock_group_.Get()
+        || read_clock_owned_object(slot, L"Parent") != host_root_panel_.Get()) return;
+    set_slot_vector(slot, set_slot_position_, left, top);
+    // Retain the last APPLIED position so repeated sub-threshold deltas accrue.
+    clock_position_x_ = left;
+    clock_position_y_ = top;
 }
 
 bool CompactUmgRenderer::refresh_viewport_layout_unsafe(
@@ -1443,6 +2051,8 @@ bool CompactUmgRenderer::refresh_viewport_layout_unsafe(
     host_origin_x_ = layout->host_origin_x;
     host_origin_y_ = layout->host_origin_y;
     host_render_scale_ = layout->host_render_scale;
+    // GetCachedGeometry still describes the preceding Slate paint this tick.
+    clock_geometry_defer_ = true;
     return true;
 }
 
@@ -1614,7 +2224,11 @@ bool CompactUmgRenderer::rebind_unsafe(
             <= static_cast<std::uint8_t>(CompactUmgMarkerKind::BirdEgg);
         const bool area_quest_marker = marker.kind
             == CompactUmgMarkerKind::AreaQuest;
+        const bool encounter_marker =
+            dswros::is_encounter_height_marker(marker.kind);
+        const bool band_height_marker = area_quest_marker || encounter_marker;
         const bool height_input_valid = !marker.show_height
+            || encounter_marker // Invalid encounter height preserves its glyph.
             || (area_quest_marker
                 ? dswros::area_quest_height_profile_valid(
                     marker.area_quest_height_profile)
@@ -1623,6 +2237,7 @@ bool CompactUmgRenderer::rebind_unsafe(
                 : std::isfinite(marker.height_angle_degrees));
         const bool unavailable_state_valid =
             !marker.height_source_unavailable
+            || encounter_marker
             || (area_quest_marker && !marker.show_height);
         const bool valid = requested && kind_valid
             && std::isfinite(marker.normalized_x)
@@ -1661,7 +2276,7 @@ bool CompactUmgRenderer::rebind_unsafe(
         for (std::size_t piece = 0;
              piece < kCompactUmgMarkerPieceCount; ++piece) {
             const MarkerPieceStyle style =
-                marker_piece_style(marker.kind, piece);
+                marker_piece_style(marker.kind, piece, reference_size);
             set_marker_piece_geometry(
                 slots[piece], set_slot_position_, set_slot_size_, style,
                 x, y, scaled_size);
@@ -1693,8 +2308,14 @@ bool CompactUmgRenderer::rebind_unsafe(
             }
             marker_visible_[index] = true;
         }
-        if (marker.kind == CompactUmgMarkerKind::AreaQuest) {
-            const auto shape = marker.show_height
+        if (band_height_marker) {
+            const auto shape = encounter_marker
+                ? (marker.show_height && !marker.height_source_unavailable
+                    ? dswros::encounter_height_indicator_shape(
+                        marker.area_quest_height_profile,
+                        marker.area_quest_comparable_player_z)
+                    : dswros::AreaQuestHeightIndicatorShape::Unavailable)
+                : marker.show_height
                 ? dswros::area_quest_height_indicator_shape(
                     marker.area_quest_height_profile,
                     marker.area_quest_comparable_player_z)
@@ -1705,7 +2326,7 @@ bool CompactUmgRenderer::rebind_unsafe(
             const bool directional = shape
                     == dswros::AreaQuestHeightIndicatorShape::Above
                 || shape == dswros::AreaQuestHeightIndicatorShape::Below;
-            if ((directional
+            if ((style_changed || directional
                     || area_quest_marker_shape_codes_[index] != shape_code)
                 && !configure_area_quest_marker_shape_unsafe(
                     index, shape_code, x, y, scaled_size)) {
@@ -1718,7 +2339,10 @@ bool CompactUmgRenderer::rebind_unsafe(
             area_quest_height_profiles_[index] = marker.show_height
                 ? marker.area_quest_height_profile
                 : dswros::AreaQuestHeightProfile{};
-            area_quest_height_active_[index] = marker.show_height;
+            area_quest_height_active_[index] = marker.show_height
+                && !marker.height_source_unavailable
+                && (!encounter_marker || dswros::encounter_height_profile_valid(
+                    marker.area_quest_height_profile));
         } else {
             area_quest_marker_shape_codes_[index] = 0xFFU;
             area_quest_marker_center_x_[index] = 0.0;
@@ -1970,13 +2594,14 @@ bool CompactUmgRenderer::update_area_quest_height_indicators_unsafe(
     if (!std::isfinite(comparable_player_z)) {
         return false;
     }
-    const auto area_quest_kind = static_cast<std::uint8_t>(
-        CompactUmgMarkerKind::AreaQuest);
     const std::size_t count = std::min(
         active_marker_count_, kCompactUmgMarkerCapacity);
     for (std::size_t index = 0; index < count; ++index) {
+        const auto kind = static_cast<CompactUmgMarkerKind>(
+            marker_kind_codes_[index]);
         if (!area_quest_height_active_[index]
-            || marker_kind_codes_[index] != area_quest_kind) {
+            || (kind != CompactUmgMarkerKind::AreaQuest
+                && !dswros::is_encounter_height_marker(kind))) {
             continue;
         }
         const dswros::AreaQuestHeightProfile& height_profile =
@@ -2429,6 +3054,12 @@ bool CompactUmgRenderer::configure_area_quest_marker_shape_unsafe(
     }
     const auto shape = static_cast<
         dswros::AreaQuestHeightIndicatorShape>(shape_code);
+    const auto kind = static_cast<CompactUmgMarkerKind>(
+        marker_kind_codes_[marker_index]);
+    const bool encounter_marker = dswros::is_encounter_height_marker(kind);
+    if (kind != CompactUmgMarkerKind::AreaQuest && !encounter_marker) {
+        return false;
+    }
     if (!brush_templates_ready_ || !set_brush_
         || !set_brush_color_ || !set_visibility_
         || !set_slot_position_ || !set_slot_size_ || !set_render_angle_) {
@@ -2452,12 +3083,12 @@ bool CompactUmgRenderer::configure_area_quest_marker_shape_unsafe(
         for (std::size_t piece = 0;
              piece < kCompactUmgMarkerPieceCount; ++piece) {
             const MarkerPieceStyle style = marker_piece_style(
-                CompactUmgMarkerKind::AreaQuest, piece);
+                kind, piece, marker_reference_sizes_[marker_index]);
             set_marker_piece_geometry(
                 slots[piece], set_slot_position_, set_slot_size_, style,
                 center_x, center_y, scaled_size);
             set_brush(
-                pieces[piece], set_brush_, piece == 0U
+                pieces[piece], set_brush_, !encounter_marker && piece == 0U
                     ? area_quest_brush_template_ : solid_brush_template_);
             set_brush_color(
                 pieces[piece], set_brush_color_, style.color);
@@ -2465,7 +3096,7 @@ bool CompactUmgRenderer::configure_area_quest_marker_shape_unsafe(
                 pieces[piece], set_render_angle_, style.angle_degrees);
             set_visibility(
                 pieces[piece], set_visibility_,
-                piece == 0U || show_alignment_dots
+                encounter_marker || piece == 0U || show_alignment_dots
                     ? kVisible : kCollapsed);
         }
         return true;
@@ -2477,9 +3108,8 @@ bool CompactUmgRenderer::configure_area_quest_marker_shape_unsafe(
         * kAreaQuestMarkerTriangleHalfWidth;
     const double half_height = scaled_size
         * kAreaQuestMarkerTriangleHalfHeight;
-    // Reuse the task marker itself. Directional states replace the original
-    // black frame and three dots in place; they must not create or imitate a
-    // separate Treasure-style pointer beside the task marker.
+    // Reuse the marker itself. Directional states replace the normal glyph in
+    // place; no separate Treasure-style pointer or additional widget is needed.
     const double apex_y = center_y + (above ? -half_height : half_height);
     const double base_y = center_y + (above ? half_height : -half_height);
     const std::array<LineSegment, 3> triangle{{
@@ -2490,13 +3120,19 @@ bool CompactUmgRenderer::configure_area_quest_marker_shape_unsafe(
         {{center_x + half_width, base_y},
          {center_x - half_width, base_y}},
     }};
-    const double stroke = std::max(
-        2.0 * umg_unit_scale_,
-        scaled_size * kAreaQuestMarkerTriangleStroke);
+    // Slate's dark outline is inside the edge widget. Reserve its two sides
+    // explicitly so the Boss/Assault category-colored core stays as thick as
+    // the Area Quest stroke, regardless of the marker's reference size.
+    const double stroke = (kBandMarkerReferenceStroke
+        + (encounter_marker ? 2.0 * kEncounterTriangleReferenceOutline : 0.0))
+        * umg_unit_scale_;
     for (std::size_t edge = 0; edge < triangle.size(); ++edge) {
         const LineSegment& segment = triangle[edge];
-        set_brush(pieces[edge], set_brush_, solid_brush_template_);
-        set_brush_color(pieces[edge], set_brush_color_, kOutline);
+        set_brush(pieces[edge], set_brush_, encounter_marker
+            ? encounter_triangle_brush_template_ : solid_brush_template_);
+        set_brush_color(pieces[edge], set_brush_color_, encounter_marker
+            ? (kind == CompactUmgMarkerKind::Boss ? kOfficialWhite : kOfficialCyan)
+            : kOutline);
         set_line_geometry(
             slots[edge], set_slot_position_, set_slot_size_,
             segment.start.x, segment.start.y,
@@ -2567,6 +3203,12 @@ void CompactUmgRenderer::detach_unsafe() {
 
 void CompactUmgRenderer::reset_runtime_handles() noexcept {
     minimap_layer_ = FWeakObjectPtr{};
+    clock_main_panel_ = FWeakObjectPtr{};
+    clock_geometry_faulted_ = false;
+    clock_geometry_defer_ = false;
+    clock_gap_layout_active_ = false;
+    clock_position_x_ = 0.0;
+    clock_position_y_ = 0.0;
     host_ = FWeakObjectPtr{};
     widget_tree_ = FWeakObjectPtr{};
     root_panel_ = FWeakObjectPtr{};

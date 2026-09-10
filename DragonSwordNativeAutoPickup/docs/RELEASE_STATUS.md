@@ -1,5 +1,10 @@
 # AutoPickup 1.3.1 - Current Local Release
 
+An unreleased native test candidate, `frame-debug-20260908`, is tracked in
+`EVIDENCE.md`. It is not included in the published archives listed here. Use
+its exact DLL hash and READY markers when reviewing local Debug/20x tests;
+the runtime version label alone remains 1.3.1 and does not distinguish it.
+
 Date: 2026-09-07. Scope: complete package refresh with unified Setup key editing
 and documentation. No native source changes were introduced by this refresh.
 

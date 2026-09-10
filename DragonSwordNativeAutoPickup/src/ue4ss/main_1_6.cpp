@@ -96,11 +96,11 @@ constexpr std::string_view kSelectorResolutionPolicy =
     "runtime_reflection_dual_caller_rel32_consensus_fail_closed";
 constexpr std::size_t kReflectedExecDecodeLimit = 96;
 constexpr auto kPulseInterval = std::chrono::milliseconds{25};
-constexpr auto kActiveScanInterval = std::chrono::milliseconds{25};
+constexpr auto kActiveScanInterval = std::chrono::milliseconds{0};
 constexpr auto kIdleScanInterval = std::chrono::milliseconds{33};
 constexpr auto kTransientBackoff = std::chrono::milliseconds{500};
 constexpr auto kFaultBackoff = std::chrono::milliseconds{1000};
-constexpr auto kPostPickupCooldown = std::chrono::milliseconds{25};
+constexpr auto kPostPickupCooldown = std::chrono::milliseconds{0};
 constexpr auto kWorldSettleDelay = std::chrono::milliseconds{1500};
 constexpr auto kReadinessProbeInterval = std::chrono::milliseconds{250};
 constexpr auto kRuntimeInitializationRetryInterval = std::chrono::milliseconds{250};
@@ -1082,6 +1082,9 @@ public:
                                   "hotkey_source=UE4SS_configured_keydown_with_atomic_physical_edge "
                                   "pending_action_policy=one_until_game_dispatch bounded_retry=1 max_attempts={} "
                                   "dispatch_observer=Server_RunInteractV2_post activation_quarantine=0 "
+                                  "dispatch_attempt_policy=shared_unconfirmed_v1 "
+                                  "active_cadence=engine_tick_v1 capacity_policy=wait_before_input "
+                                  "debug_decision_policy=deferred_scalar_v1 "
                                   "drop_item_range_multiplier={} drop_item_range_begin_play={} "
                                   "object_scans=0 cross_world_object_cache=0 target_field_access=0 "
                                   "direct_RPC=0 SendInput=0",
@@ -1184,6 +1187,7 @@ public:
                                           "debug_context_emitted={} debug_context_suppressed={} "
                                           "debug_selector_emitted={} debug_selector_suppressed={} "
                                           "debug_deferred_emitted={} debug_deferred_suppressed={} "
+                                          "diagnostic_write_failures={} "
                                           "logger_messages_dequeued={} logger_queue_peak={} logger_dropped={} "
                                           "logger_failed={} object_scans=0 cross_world_object_cache=0",
                                           key_events_received_.load(), key_events_coalesced_.load(),
@@ -1209,6 +1213,7 @@ public:
                                           debug_context_emitted_.load(), debug_context_suppressed_.load(),
                                           debug_selector_emitted_.load(), debug_selector_suppressed_.load(),
                                           debug_deferred_emitted_.load(), debug_deferred_suppressed_.load(),
+                                          diagnostic_write_failures_.load(),
                                           logger_messages_dequeued_.load(), logger_.peak_queue_size(),
                                           logger_.dropped_messages(), logger_.failed_messages()));
                 logger_.write(dsnap::LogAudience::Debug, "PERF_TIMING",
@@ -2422,6 +2427,12 @@ private:
 
     void engine_tick_post(UEngine* engine) noexcept {
         if (shutting_down_.load(std::memory_order_acquire)) return;
+        // Do not let a nested tick consume dispatch state while the outer
+        // tick is still inside ProcessEvent. Cadence is not a reentry guard.
+        if (engine_tick_active_.test_and_set(std::memory_order_acquire)) return;
+        ScopeExit tick_entry_guard{[this]() noexcept {
+            engine_tick_active_.clear(std::memory_order_release);
+        }};
         const auto tick_sequence = next_tick_sequence_.fetch_add(1, std::memory_order_relaxed) + 1;
         logger_.set_tick_sequence(tick_sequence);
         if (runtime_initialization_state_ == RuntimeInitializationState::Pending) {
@@ -2443,7 +2454,12 @@ private:
             maybe_log_slow_tick(tick_started, tick_stage_timings);
         }};
         const auto now = Clock::now();
-        if (next_pulse_due_ != Clock::time_point{} && now < next_pulse_due_) return;
+        // Enabled work is frame-paced. The one-pending-action gate below still
+        // prevents another input until the previous dispatch/confirmation.
+        // Off-state maintenance keeps its bounded pulse; empty scans keep their
+        // independent idle due-time. Debug is deliberately not a scheduling input.
+        if (!automation_enabled_.load(std::memory_order_acquire) &&
+            next_pulse_due_ != Clock::time_point{} && now < next_pulse_due_) return;
         if (configuration_result_.value.debug_logging && last_pulse_at_ != Clock::time_point{}) {
             const auto gap_us = std::chrono::duration_cast<std::chrono::microseconds>(
                 now - last_pulse_at_).count();
@@ -2586,7 +2602,8 @@ private:
 
         const auto request_id = next_request_id_.fetch_add(1, std::memory_order_relaxed) + 1;
         ++automatic_scans_;
-        start_window(request_id, now);
+        // Start the attempt budget after unrelated pulse/toggle diagnostics.
+        start_window(request_id, Clock::now());
 
         ++window_samples_;
         const auto attempt_started = Clock::now();
@@ -2718,6 +2735,43 @@ private:
                               bool* selector_called,
                               bool* selector_faulted,
                               StageTimings* timing) {
+        // Capture only owned scalar diagnostics before either ProcessEvent
+        // boundary. Formatting/enqueue must happen after the action decision,
+        // otherwise Debug logging can consume the guarded selector window.
+        struct DeferredContextDiagnostic {
+            bool emit{};
+            bool resolved{};
+            bool mounted{};
+            std::uint64_t pawn_identity{};
+            std::uint64_t owner_identity{};
+            std::uint64_t receiver_identity{};
+            std::uint32_t activation_event{};
+            std::array<char, 128> reason{};
+            std::array<char, 128> receiver_source{};
+        } context_diagnostic{};
+        struct DeferredSelectorDiagnostic {
+            bool emit{};
+            bool actor_is_drop_item{};
+            bool component_is_interactable{};
+            bool relation_matches{};
+            bool target_type_supported{};
+            std::uint64_t actor_identity{};
+            std::uint64_t component_identity{};
+            std::uint64_t outer_identity{};
+            std::uint64_t receiver_identity{};
+            int state_value{};
+            int type_value{};
+            std::uint32_t activation_event{};
+            std::array<char, 128> receiver_source{};
+        } selector_diagnostic{};
+        const auto copy_diagnostic_token = [](std::string_view token) noexcept {
+            std::array<char, 128> copied{};
+            const auto count = std::min(token.size(), copied.size() - 1);
+            if (count != 0) std::copy_n(token.data(), count, copied.data());
+            return copied;
+        };
+
+        const auto run_pickup_decision = [&]() -> bool {
         const auto reject = [reason](const char* value) {
             if (reason) *reason = value;
             return false;
@@ -2760,16 +2814,13 @@ private:
                             kMaxPlayerContextDebugEventsPerActivation) {
                             ++context_debug_events_this_activation_;
                             ++debug_context_emitted_;
-                            logger_.write(dsnap::LogAudience::Debug, "PLAYER_CONTEXT_CHANGED",
-                                          std::format("request_id={} resolved={} reason={} pawn=0x{:X} "
-                                                      "interaction_owner=0x{:X} receiver=0x{:X} "
-                                                      "receiver_source={} mounted={} scalar_only=1 "
-                                                      "change_only=1 activation_event={}/{}",
-                                                      request_id, context_resolved, context_reason_view,
-                                                      pawn_identity, owner_identity, receiver_identity,
-                                                      receiver_source_view, context.mounted,
-                                                      context_debug_events_this_activation_,
-                                                      kMaxPlayerContextDebugEventsPerActivation));
+                            context_diagnostic = DeferredContextDiagnostic{
+                                true, context_resolved, context.mounted,
+                                pawn_identity, owner_identity, receiver_identity,
+                                context_debug_events_this_activation_,
+                                copy_diagnostic_token(context_reason_view),
+                                copy_diagnostic_token(receiver_source_view),
+                            };
                         } else {
                             ++debug_context_suppressed_;
                         }
@@ -2869,19 +2920,14 @@ private:
                 const auto receiver_identity = context.interaction_receiver
                     ? pack_weak_identity(FWeakObjectPtr{context.interaction_receiver})
                     : 0;
-                logger_.write(dsnap::LogAudience::Debug, "SELECTOR_PAIR_OBSERVED",
-                              std::format("actor=0x{:X} component=0x{:X} component_outer=0x{:X} "
-                                          "receiver=0x{:X} receiver_source={} actor_is_drop_item={} "
-                                          "component_is_interactable={} relation_matches={} interactable={} "
-                                          "interact_type={} target_type_supported={} target_field_access=0 "
-                                          "scalar_only=1 change_only=1 activation_event={}/{}",
-                                          observed_actor_identity, observed_component_identity,
-                                          outer_identity, receiver_identity, context.receiver_source,
-                                          actor_is_drop_item, component_is_interactable,
-                                          component_outer == selected.actor, observed_state_value,
-                                          observed_type_value, target_type_supported,
-                                          selector_debug_events_this_activation_,
-                                          kMaxSelectorDebugEventsPerActivation));
+                selector_diagnostic = DeferredSelectorDiagnostic{
+                    true, actor_is_drop_item, component_is_interactable,
+                    component_outer == selected.actor, target_type_supported,
+                    observed_actor_identity, observed_component_identity,
+                    outer_identity, receiver_identity, observed_state_value,
+                    observed_type_value, selector_debug_events_this_activation_,
+                    copy_diagnostic_token(context.receiver_source ? context.receiver_source : "none"),
+                };
             } else {
                 ++debug_selector_suppressed_;
             }
@@ -2922,6 +2968,12 @@ private:
             ++action_cooldown_hits_;
             if (retry_no_candidate) *retry_no_candidate = true;
             return reject("action_component_cooldown");
+        }
+        if (preflight_decision == dsnap::AutomaticActionDecision::CapacityWait) {
+            // Ordinary record pressure must not inject an untrackable action
+            // or permanently disable pickup. Idle cadence retries on expiry.
+            if (retry_no_candidate) *retry_no_candidate = true;
+            return reject("action_record_capacity_wait");
         }
         if (preflight_decision == dsnap::AutomaticActionDecision::Pending) {
             return reject("action_state_pending_invariant");
@@ -3057,17 +3109,22 @@ private:
         injection_scope.finish();
         ++enhanced_input_injections_;
         ++action_invocations_;
-        // Debug diagnostics below this point use only pre-captured scalars and
-        // enqueue after the interaction injection has returned. They must not
-        // make additional gameplay ProcessEvent calls or delay the injection.
-        emit_selected_distance_diagnostic(invocation_activation_id, invocation_action_id,
-                                          invocation_request_id, actor_identity,
-                                          component_identity);
         const bool pending_unchanged = action_activation_id_ == invocation_activation_id &&
             pending_action_id_ == invocation_action_id &&
             pending_request_id_ == invocation_request_id && automatic_action_.pending() &&
             automatic_action_.pending_candidate() == component_object_id;
         if (pending_unchanged) pending_action_invoked_ = true;
+        if (!pending_unchanged) ++action_lifecycle_cancellations_;
+        if (reason) *reason = pending_unchanged
+            ? "interaction_action_injected"
+            : "interaction_action_injected_lifecycle_cancelled";
+        // POST_INJECTION_DIAGNOSTIC_ONLY_TRY: gameplay outcome and pending
+        // ownership are final before any fallible scalar formatting/enqueue.
+        // Never include ProcessEvent, UObject reads, or state transitions here.
+        try {
+        emit_selected_distance_diagnostic(invocation_activation_id, invocation_action_id,
+                                          invocation_request_id, actor_identity,
+                                          component_identity);
         logger_.write(dsnap::LogAudience::User, "PICKUP_ACTION_INVOKED",
                       std::format("activation_id={} action_id={} request_id={} actor=0x{:X} component=0x{:X} "
                                   "receiver=0x{:X} receiver_source={} mounted={} interact_type={} "
@@ -3100,17 +3157,61 @@ private:
                                       injection_foreground.matched, action_record_size_snapshot));
         }
         if (!pending_unchanged) {
-            ++action_lifecycle_cancellations_;
             logger_.write(dsnap::LogAudience::User, "PICKUP_ACTION_CANCELLED",
                           std::format("activation_id={} action_id={} request_id={} actor=0x{:X} component=0x{:X} "
                                       "reason=lifecycle_changed_during_injection terminal=1",
                                       invocation_activation_id, invocation_action_id, invocation_request_id,
                                       actor_identity, component_identity));
         }
-        if (reason) *reason = pending_unchanged
-            ? "interaction_action_injected"
-            : "interaction_action_injected_lifecycle_cancelled";
+        } catch (const std::exception&) {
+            ++diagnostic_write_failures_;
+        }
         return true;
+        };
+
+        const bool decision_result = run_pickup_decision();
+        // DEFERRED_PICKUP_DIAGNOSTICS_SCALAR_ONLY: both success and ordinary
+        // rejection arrive here after the decision. No gameplay object survives
+        // in either value-captured snapshot; a diagnostic fault cannot cause a
+        // second invocation or change a previously checked window deadline.
+        // POST_DECISION_DIAGNOSTIC_ONLY_TRY: include snapshot value-copy
+        // allocations as well as formatting/enqueue, never the gameplay lambda.
+        try {
+        const auto emit_context_diagnostic = [this, request_id, snapshot = context_diagnostic]() {
+            if (!snapshot.emit) return;
+            logger_.write(dsnap::LogAudience::Debug, "PLAYER_CONTEXT_CHANGED",
+                          std::format("request_id={} resolved={} reason={} pawn=0x{:X} "
+                                      "interaction_owner=0x{:X} receiver=0x{:X} "
+                                      "receiver_source={} mounted={} scalar_only=1 "
+                                      "change_only=1 activation_event={}/{} decision_complete=1",
+                                      request_id, snapshot.resolved, snapshot.reason.data(),
+                                      snapshot.pawn_identity, snapshot.owner_identity,
+                                      snapshot.receiver_identity, snapshot.receiver_source.data(),
+                                      snapshot.mounted, snapshot.activation_event,
+                                      kMaxPlayerContextDebugEventsPerActivation));
+        };
+        const auto emit_selector_diagnostic = [this, snapshot = selector_diagnostic]() {
+            if (!snapshot.emit) return;
+            logger_.write(dsnap::LogAudience::Debug, "SELECTOR_PAIR_OBSERVED",
+                          std::format("actor=0x{:X} component=0x{:X} component_outer=0x{:X} "
+                                      "receiver=0x{:X} receiver_source={} actor_is_drop_item={} "
+                                      "component_is_interactable={} relation_matches={} interactable={} "
+                                      "interact_type={} target_type_supported={} target_field_access=0 "
+                                      "scalar_only=1 change_only=1 activation_event={}/{} decision_complete=1",
+                                      snapshot.actor_identity, snapshot.component_identity,
+                                      snapshot.outer_identity, snapshot.receiver_identity,
+                                      snapshot.receiver_source.data(), snapshot.actor_is_drop_item,
+                                      snapshot.component_is_interactable, snapshot.relation_matches,
+                                      snapshot.state_value, snapshot.type_value,
+                                      snapshot.target_type_supported, snapshot.activation_event,
+                                      kMaxSelectorDebugEventsPerActivation));
+        };
+        emit_context_diagnostic();
+        emit_selector_diagnostic();
+        } catch (const std::exception&) {
+            ++diagnostic_write_failures_;
+        }
+        return decision_result;
     }
 
     static bool invoke_pickup_guarded(NativeAutoPickup* self,
@@ -3340,51 +3441,8 @@ private:
         const auto pending_attempt = automatic_action_.pending_attempt();
         const auto observed_action_id =
             dispatch_observed_action_id_.exchange(0, std::memory_order_acq_rel);
-        if (observed_action_id != 0) {
-            if (observed_action_id == pending_action_id_) {
-                const auto dispatched = automatic_action_.observe_dispatch(pending_candidate, now);
-                if (!dispatched) {
-                    disable_for_action_fault("dispatch_observer_identity_mismatch");
-                    return;
-                }
-                ++action_dispatch_observations_;
-                action_record_size_visible_.store(
-                    automatic_action_.record_size(), std::memory_order_release);
-                const auto next_scan_delay_ms =
-                    next_auto_scan_due_ == Clock::time_point{} || now >= next_auto_scan_due_
-                    ? std::int64_t{0}
-                    : std::chrono::duration_cast<std::chrono::milliseconds>(
-                          next_auto_scan_due_ - now).count();
-                if (configuration_result_.value.debug_logging) {
-                    logger_.write(dsnap::LogAudience::Debug, "PICKUP_DISPATCH_OBSERVED",
-                                  std::format(
-                                      "activation_id={} action_id={} request_id={} "
-                                      "actor=0x{:X} component=0x{:X} receiver=0x{:X} "
-                                      "interact_type={} signal=game_Server_RunInteractV2_post "
-                                      "target_match_unproven=1 pickup_success_claim=0 "
-                                      "terminal_for_injection=1 same_component_reentry_ms={} "
-                                      "elapsed_pulse_satisfies_post_pickup=1 next_scan_ms={}",
-                                      action_activation_id_, pending_action_id_, pending_request_id_,
-                                      pending_actor_identity_, pending_component_identity_,
-                                      pending_receiver_address_.load(std::memory_order_acquire),
-                                      pending_interact_type_,
-                                      dsnap::kAutomaticActionDispatchReentryDelay.count(),
-                                      next_scan_delay_ms));
-                }
-                clear_pending_runtime_state();
-                if (automatic_action_.fail_closed()) {
-                    disable_for_action_fault("action_record_capacity_exhausted");
-                }
-                return;
-            }
-            ++dispatch_marker_mismatches_;
-            if (configuration_result_.value.debug_logging) {
-                logger_.write(dsnap::LogAudience::Debug, "DISPATCH_MARKER_IGNORED",
-                              std::format("observed_action_id={} pending_action_id={} "
-                                          "scheduler_effect=none",
-                                          observed_action_id, pending_action_id_));
-            }
-        }
+        // Probe real target evidence before the dispatch branch discards the
+        // weak handles. A dispatch alone is not a successful pickup.
         bool actor_faulted{};
         auto* actor = weak_get_guarded(pending_actor_, &actor_faulted);
         if (actor_faulted) {
@@ -3408,9 +3466,24 @@ private:
             ++confirmations_;
             action_record_size_visible_.store(
                 automatic_action_.record_size(), std::memory_order_release);
+            const bool matching_dispatch = observed_action_id == pending_action_id_;
+            if (matching_dispatch) {
+                ++action_dispatch_observations_;
+                // Preserve the already elapsed dispatch-path due. Proving
+                // pickup in this poll must not add another wait.
+            } else {
+                if (observed_action_id != 0) ++dispatch_marker_mismatches_;
+                next_auto_scan_due_ = now + kPostPickupCooldown;
+            }
+            const auto next_scan_delay_ms =
+                next_auto_scan_due_ == Clock::time_point{} || now >= next_auto_scan_due_
+                ? std::int64_t{0}
+                : std::chrono::duration_cast<std::chrono::milliseconds>(
+                      next_auto_scan_due_ - now).count();
             logger_.write(dsnap::LogAudience::User, "PICKUP_CONFIRMED",
                           std::format("activation_id={} action_id={} request_id={} signal={} "
-                                      "actor=0x{:X} component=0x{:X} interact_type={} terminal=1 next_scan_ms={}",
+                                      "actor=0x{:X} component=0x{:X} interact_type={} terminal=1 "
+                                      "next_scan_ms={} dispatch_observed={} attempt_history_cleared=1",
                                       action_activation_id_, pending_action_id_, pending_request_id_,
                                       !actor ? "exact_actor_weak_identity_invalidated" :
                                           (component_probe == PendingComponentProbe::Invalidated
@@ -3418,10 +3491,59 @@ private:
                                               : "exact_component_interactable_state_changed"),
                                       pending_actor_identity_,
                                       pending_component_identity_, pending_interact_type_,
-                                      kPostPickupCooldown.count()));
+                                      next_scan_delay_ms, matching_dispatch));
             clear_pending_runtime_state();
-            next_auto_scan_due_ = now + kPostPickupCooldown;
             return;
+        }
+        if (observed_action_id != 0) {
+            if (observed_action_id == pending_action_id_) {
+                const auto dispatched = automatic_action_.observe_dispatch(pending_candidate, now);
+                if (!dispatched) {
+                    disable_for_action_fault("dispatch_observer_identity_mismatch");
+                    return;
+                }
+                ++action_dispatch_observations_;
+                action_record_size_visible_.store(
+                    automatic_action_.record_size(), std::memory_order_release);
+                const auto next_scan_delay_ms =
+                    next_auto_scan_due_ == Clock::time_point{} || now >= next_auto_scan_due_
+                    ? std::int64_t{0}
+                    : std::chrono::duration_cast<std::chrono::milliseconds>(
+                          next_auto_scan_due_ - now).count();
+                if (configuration_result_.value.debug_logging) {
+                    logger_.write(dsnap::LogAudience::Debug, "PICKUP_DISPATCH_OBSERVED",
+                                  std::format(
+                                      "activation_id={} action_id={} request_id={} "
+                                      "actor=0x{:X} component=0x{:X} receiver=0x{:X} "
+                                      "interact_type={} signal=game_Server_RunInteractV2_post "
+                                      "target_match_unproven=1 pickup_success_claim=0 "
+                                      "terminal_for_injection=1 same_component_reentry_ms={} "
+                                      "elapsed_pulse_satisfies_post_pickup=1 next_scan_ms={} "
+                                      "attempt={}/{} retry_counter_preserved=1 recovery_backoff={}",
+                                      action_activation_id_, pending_action_id_, pending_request_id_,
+                                      pending_actor_identity_, pending_component_identity_,
+                                      pending_receiver_address_.load(std::memory_order_acquire),
+                                      pending_interact_type_,
+                                      (pending_attempt >= dsnap::kMaximumAutomaticActionAttempts
+                                          ? dsnap::kAutomaticActionFailureBackoff
+                                          : dsnap::kAutomaticActionDispatchReentryDelay).count(),
+                                      next_scan_delay_ms, pending_attempt,
+                                      dsnap::kMaximumAutomaticActionAttempts,
+                                      pending_attempt >= dsnap::kMaximumAutomaticActionAttempts));
+                }
+                clear_pending_runtime_state();
+                if (automatic_action_.fail_closed()) {
+                    disable_for_action_fault("action_record_capacity_exhausted");
+                }
+                return;
+            }
+            ++dispatch_marker_mismatches_;
+            if (configuration_result_.value.debug_logging) {
+                logger_.write(dsnap::LogAudience::Debug, "DISPATCH_MARKER_IGNORED",
+                              std::format("observed_action_id={} pending_action_id={} "
+                                          "scheduler_effect=none",
+                                          observed_action_id, pending_action_id_));
+            }
         }
         const auto expired = automatic_action_.expire(now);
         if (!expired) return;
@@ -3653,6 +3775,7 @@ private:
     Clock::time_point runtime_initialization_started_at_{};
     Clock::time_point runtime_initialization_deadline_{};
     Clock::time_point next_runtime_initialization_attempt_{};
+    std::atomic_flag engine_tick_active_ = ATOMIC_FLAG_INIT;
     Clock::time_point next_pulse_due_{};
     Clock::time_point next_perf_log_{};
     Clock::time_point last_slow_tick_log_{};
@@ -3707,6 +3830,7 @@ private:
     std::atomic<std::uint64_t> debug_selector_suppressed_{};
     std::atomic<std::uint64_t> debug_deferred_emitted_{};
     std::atomic<std::uint64_t> debug_deferred_suppressed_{};
+    std::atomic<std::uint64_t> diagnostic_write_failures_{};
     std::atomic<std::uint64_t> logger_messages_dequeued_{};
     AtomicTiming pulse_gap_timing_{};
     AtomicTiming pulse_work_timing_{};

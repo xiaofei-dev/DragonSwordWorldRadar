@@ -4,7 +4,7 @@
 
 DragonSwordWorldDataProbe is a modular research and diagnostics framework for DragonSword Awakening. It gathers build-pinned static data, bounded runtime observations, and post-exit evidence used to understand treasures, Assault/UnexpectedMission content, and other game systems.
 
-It is not the production Radar. Findings from this project must be validated before they are promoted into `DragonSwordWorldRadar` behavior.
+It is not the production Radar. Findings from this project must be validated before they are promoted into `DragonSwordNativeWorldRadarPostRender` behavior. The old `DragonSwordWorldRadar` implementation is archived.
 
 Use this file as the first orientation document when continuing the project in a new chat.
 

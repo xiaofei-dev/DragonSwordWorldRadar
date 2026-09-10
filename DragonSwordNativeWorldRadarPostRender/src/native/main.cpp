@@ -1,14 +1,17 @@
 #include <dswros/area_quest_visibility.hpp>
 #include <dswros/compact_menu_state.hpp>
 #include <dswros/compact_render_model.hpp>
+#include <dswros/encounter_height.hpp>
 #include <dswros/object_state.hpp>
 #include <dswros/hotkey_config.hpp>
 #include <dswros/visibility_config.hpp>
 #include <dswros/world_map_session_policy.hpp>
 #include "compact_umg_renderer.hpp"
+#include "hub_escape_input.hpp"
 #include "native_event_log.hpp"
 #include "native_save_reconciler.hpp"
 #include "radar_visibility_hub.hpp"
+#include "scene_umg_renderer.hpp"
 #include "world_map_umg_renderer.hpp"
 
 #pragma warning(push)
@@ -96,9 +99,9 @@ static_assert(Input::Key::F6 == dswros::HotkeySettings{}.settings
     && Input::Key::F24 == *dswros::parse_radar_hotkey("F24")
     && Input::Key::NUM_NINE == *dswros::parse_radar_hotkey("NUM9"));
 
-constexpr auto kVersion = STR("2.3.0");
+constexpr auto kVersion = STR("3.0.0");
 constexpr std::string_view kRuntimeLabel =
-    "DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0";
+    "DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_3_0_0";
 constexpr auto kLocationFunction = STR("/Script/Engine.Actor:K2_GetActorLocation");
 constexpr auto kIsHiddenFunction = STR("/Script/Engine.Actor:IsHidden");
 constexpr auto kTreasureInteractFunction =
@@ -199,6 +202,10 @@ constexpr auto kVisibilityHubOpenPendingLifetime =
     std::chrono::seconds{15};
 constexpr wchar_t kBugReportUrl[] =
     L"https://www.nexusmods.com/dragonswordawakening/mods/254?tab=posts";
+// The retained internal command name predates the explicit Vote label. Open
+// this mod's page; monthly voting is completed by the player on Nexus Mods.
+constexpr wchar_t kEndorsementUrl[] =
+    L"https://www.nexusmods.com/dragonswordawakening/mods/254";
 constexpr std::uint32_t kCompactMaxAttachAttempts = 3U;
 constexpr double kCompactRebindDistance = 1000.0;
 constexpr auto kCompactRebindInterval = std::chrono::seconds{5};
@@ -302,6 +309,7 @@ std::filesystem::path game_pak_mod_directory() {
     } while (false)
 
 struct RadarVisibilitySettings {
+    dswros::SceneDisplaySettings scene_settings{};
     dsnwr::RadarVisibilityMaskWord masks{
         dsnwr::kDefaultRadarVisibilityMasks};
     dsnwr::AreaQuestDisplayMode area_quest_mode{
@@ -328,6 +336,7 @@ enum class EngineTickProfileStage : std::size_t {
     Encounter,
     BirdEgg,
     ObservedObjects,
+    SceneUmg,
     Count,
 };
 
@@ -400,7 +409,8 @@ struct EngineTickProfileMetric {
         }
         result.masks = dsnwr::pack_radar_visibility_masks(
             dswros::compact_visibility_mask(parsed.settings),
-            dswros::world_visibility_mask(parsed.settings));
+            dswros::world_visibility_mask(parsed.settings),
+            dswros::scene_visibility_mask(parsed.settings));
         result.area_quest_mode = parsed.settings.area_quest_mode
                 == dswros::VisibilityAreaQuestMode::All
             ? dsnwr::AreaQuestDisplayMode::AllUnfinished
@@ -415,8 +425,13 @@ struct EngineTickProfileMetric {
             | (parsed.settings.height_area_quests
                 ? dswros::kHeightIndicatorAreaQuest : 0U)
             | (parsed.settings.height_mole
-                ? dswros::kHeightIndicatorMole : 0U));
+                ? dswros::kHeightIndicatorMole : 0U)
+            | (parsed.settings.height_boss
+                ? dswros::kHeightIndicatorBoss : 0U)
+            | (parsed.settings.height_assault
+                ? dswros::kHeightIndicatorAssault : 0U));
         result.language = parsed.settings.language;
+        result.scene_settings = parsed.settings.scene_settings;
     } catch (...) {
         result.config_status = dswros::VisibilityConfigParseStatus::Empty;
     }
@@ -429,12 +444,15 @@ struct EngineTickProfileMetric {
     dsnwr::AreaQuestDisplayMode area_quest_mode,
     dsnwr::AssaultDisplayMode assault_mode,
     dswros::HeightIndicatorMask height_indicators,
-    dswros::RadarLanguagePreference language) noexcept {
+    dswros::RadarLanguagePreference language,
+    dswros::SceneDisplaySettings scene_settings) noexcept {
     try {
         const std::uint8_t compact =
             dsnwr::compact_radar_visibility_mask(masks);
         const std::uint8_t world =
             dsnwr::world_radar_visibility_mask(masks);
+        const std::uint8_t scene =
+            dsnwr::scene_radar_visibility_mask(masks);
         dswros::VisibilityConfigSettings settings{};
         settings.radar_clock = (compact & 0x01U) != 0U;
         settings.radar_treasure = (compact & 0x02U) != 0U;
@@ -448,6 +466,10 @@ struct EngineTickProfileMetric {
         settings.map_assault = (world & 0x08U) != 0U;
         settings.map_mini_games = (world & 0x10U) != 0U;
         settings.map_area_quests = (world & 0x20U) != 0U;
+        settings.scene_treasure = (scene & 0x02U) != 0U;
+        settings.scene_mini_games = (scene & 0x10U) != 0U;
+        settings.scene_area_quests = (scene & 0x20U) != 0U;
+        settings.scene_settings = scene_settings;
         settings.area_quest_mode = area_quest_mode
                 == dsnwr::AreaQuestDisplayMode::AllUnfinished
             ? dswros::VisibilityAreaQuestMode::All
@@ -464,6 +486,12 @@ struct EngineTickProfileMetric {
         settings.height_mole = dswros::height_indicator_enabled(
             height_indicators,
             dswros::HeightIndicatorCategory::Mole);
+        settings.height_boss = dswros::height_indicator_enabled(
+            height_indicators,
+            dswros::HeightIndicatorCategory::Boss);
+        settings.height_assault = dswros::height_indicator_enabled(
+            height_indicators,
+            dswros::HeightIndicatorCategory::Assault);
         settings.language = language;
         const std::string contents =
             dswros::format_visibility_config(settings);
@@ -532,6 +560,8 @@ struct AreaQuestSpec {
     std::int64_t id{};
     dswros::Position position{};
     dswros::AreaQuestHeightProfile height_profile{};
+    dswros::Position scene_position{};
+    bool scene_source_available{};
 };
 
 struct AreaQuestHeightDiagnosticSelection {
@@ -1212,6 +1242,49 @@ std::vector<AreaQuestSpec> load_area_quest_catalog(
     return result;
 }
 
+void load_area_quest_scene_anchors(
+    const std::filesystem::path& path, std::vector<AreaQuestSpec>& quests) {
+    if (std::filesystem::file_size(path) > 64U * 1024U)
+        throw std::runtime_error{"area quest scene catalog exceeds size bound"};
+    std::ifstream input{path};
+    std::string line;
+    if (!std::getline(input, line)
+        || line != "Id\tX\tY\tZ\tSourceAvailable")
+        throw std::runtime_error{"area quest scene catalog header is invalid"};
+    // Stage and validate the entire companion file before updating any quest.
+    auto staged = quests;
+    std::unordered_set<std::int64_t> seen;
+    while (std::getline(input, line)) {
+        const auto fields = split_tab(line);
+        if (fields.size() != 5U || (fields[4] != "0" && fields[4] != "1"))
+            throw std::runtime_error{"area quest scene catalog row is malformed"};
+        std::size_t parsed{};
+        const auto id = std::stoll(fields[0], &parsed);
+        if (parsed != fields[0].size() || !seen.insert(id).second)
+            throw std::runtime_error{"area quest scene catalog ID is invalid"};
+        auto quest = std::find_if(staged.begin(), staged.end(),
+            [id](const AreaQuestSpec& value) { return value.id == id; });
+        if (quest == staged.end())
+            throw std::runtime_error{"area quest scene catalog ID is unknown"};
+        dswros::Position position{};
+        const std::array coordinates{&position.x, &position.y, &position.z};
+        for (std::size_t index = 0; index < coordinates.size(); ++index) {
+            *coordinates[index] = std::stod(fields[index + 1U], &parsed);
+            if (parsed != fields[index + 1U].size()
+                || !std::isfinite(*coordinates[index]))
+                throw std::runtime_error{"area quest scene coordinate is invalid"};
+        }
+        const bool available = fields[4] == "1";
+        if (!available && (position.x != 0.0 || position.y != 0.0 || position.z != 0.0))
+            throw std::runtime_error{"unavailable scene anchor must be zero"};
+        quest->scene_position = position;
+        quest->scene_source_available = available;
+    }
+    if (seen.size() != kExpectedAreaQuestCount || !input.eof())
+        throw std::runtime_error{"area quest scene catalog count is invalid"};
+    quests = std::move(staged);
+}
+
 class NativeObjectState final : public CppUserModBase,
                                 public FUObjectCreateListener {
 public:
@@ -1251,6 +1324,7 @@ public:
         area_quest_display_mode_ = visibility.area_quest_mode;
         assault_display_mode_ = visibility.assault_mode;
         height_indicator_mask_ = visibility.height_indicators;
+        scene_display_settings_ = visibility.scene_settings;
         language_preference_ = visibility.language;
         active_ui_language_ = dswros::resolve_radar_ui_language(
             language_preference_, detected_game_language_);
@@ -1297,6 +1371,15 @@ public:
             mini_game_catalog_ = std::move(mini_game_catalog);
             mini_game_eligibility_.fill(0);
             area_quest_catalog_ = std::move(area_quest_catalog);
+            // A missing or malformed scene-only catalog must not disable the
+            // established compact/map renderers or other scene categories.
+            try {
+                load_area_quest_scene_anchors(directory / "data" / "generated"
+                    / "area-quest-scene-anchors.tsv", area_quest_catalog_);
+            } catch (...) {
+                append_log("SCENE_ANCHOR_CATALOG_UNAVAILABLE",
+                    "area_quest_scene=disabled compact_and_map=preserved");
+            }
             area_quest_eligibility_.fill(0);
             area_quest_world_map_eligibility_.fill(0);
             area_quest_save_completion_.fill(0);
@@ -1319,7 +1402,7 @@ public:
             append_log("SAVE_RECONCILE_DISABLED", "worker_initialization_failed");
         }
         append_log("START", std::format(
-            "version=2.3.0 runtime_label={} treasure_catalog={} compact_catalog={} world_map_capacity={} encounter_catalog={} mini_game_catalog={} area_quest_catalog={} area_quest_height_catalog=actor_position_data_144_profiles_1_multiband_3_missing_move_check_trigger_filtered mini_game_height_catalog=actor_position_data_exact_npc_start_83_trusted ignored_treasures={} bird_egg_classes=2 bird_egg_candidate_capacity={} bird_egg_active_capacity={} bird_egg_position_budget={} bird_egg_active_interval_ms=250 bird_egg_active_schedule=shared_discovery_edge bird_egg_missing_debounce_ms=400 bird_egg_availability=owned_interact_component_exact_state bird_egg_world_map=false save_reconciler={} main_menu_owner_boundary=exact_title_map_requires_explicit_open_world_f7 compact_menu_suppression=cursor_or_world_map_visible_or_game_paused shared_probe_ms=250 edge_logging_only runtime_diagnostics=startup_config_once config_debug_logging={} log_schema=2 visibility_config_status={} visibility_config_format={} visibility_config_read=startup_once compact_visibility_mask={} world_visibility_mask={} area_quest_mode={} assault_mode={} height_mask={} language_preference={}",
+            "version=3.0.0 runtime_label={} treasure_catalog={} compact_catalog={} world_map_capacity={} encounter_catalog={} mini_game_catalog={} area_quest_catalog={} area_quest_height_catalog=actor_position_data_144_profiles_1_multiband_3_missing_move_check_trigger_filtered mini_game_height_catalog=actor_position_data_exact_npc_start_83_trusted ignored_treasures={} bird_egg_classes=2 bird_egg_candidate_capacity={} bird_egg_active_capacity={} bird_egg_position_budget={} bird_egg_active_interval_ms=250 bird_egg_active_schedule=shared_discovery_edge bird_egg_missing_debounce_ms=400 bird_egg_availability=owned_interact_component_exact_state bird_egg_world_map=false save_reconciler={} main_menu_owner_boundary=exact_title_map_requires_explicit_open_world_f7 compact_menu_suppression=cursor_or_world_map_visible_or_game_paused shared_probe_ms=250 edge_logging_only runtime_diagnostics=startup_config_once config_debug_logging={} log_schema=2 visibility_config_status={} visibility_config_format={} visibility_config_read=startup_once compact_visibility_mask={} world_visibility_mask={} area_quest_mode={} assault_mode={} height_mask={} language_preference={}",
             kRuntimeLabel, tracker_.catalog_count(), render_catalog_size_,
             dsnwr::kWorldMapUmgMarkerCapacity, encounter_catalog_.size(),
             mini_game_catalog_.size(), area_quest_catalog_.size(),
@@ -1359,6 +1442,11 @@ public:
         const DWORD known_game_thread =
             game_thread_id_.load(std::memory_order_acquire);
         const bool process_shutdown = process_shutdown_in_progress();
+        if (process_shutdown) {
+            dsnwr::hub_escape_input::abandon_for_process_shutdown();
+        } else {
+            dsnwr::hub_escape_input::reset();
+        }
         const bool live_game_thread_cleanup =
             known_game_thread != 0
             && known_game_thread == GetCurrentThreadId()
@@ -1403,6 +1491,7 @@ public:
             0, std::memory_order_release);
         visibility_hub_.detach();
         compact_umg_renderer_.detach();
+        reset_scene_runtime();
         world_map_umg_renderer_.detach();
         save_reconciler_.shutdown();
         append_log(
@@ -1884,7 +1973,7 @@ public:
             task_complete_hook_registered_,
             quest_event_trigger_hook_registered_));
         append_log(
-            "READY_2_3_0",
+            "READY_3_0_0",
             "area_quest_height=actor_position_data_144_profiles_1_multiband_3_missing_marker_z_selects_unique_nearest_band_move_check_trigger_filtered "
             "area_quest_pointer=black_outline_white_fill_shaftless_chevron "
             "compact_menu_suppression=set_world_map_image_latch_plus_"
@@ -1951,6 +2040,7 @@ public:
     }
 
     void OnUObjectArrayShutdown() override {
+        dsnwr::hub_escape_input::reset();
         shutting_down_.store(true, std::memory_order_release);
         required_runtime_ready_.store(false, std::memory_order_release);
         auto* expected = this;
@@ -1963,6 +2053,7 @@ public:
         unregister_object_create_listener(true);
         wait_for_object_create_listener_callbacks();
         if (!shutdown_started_.exchange(true, std::memory_order_acq_rel)) {
+            scene_umg_renderer_.abandon_runtime_handles();
             save_reconciler_.shutdown();
             append_log(
                 "SHUTDOWN_COMPLETE",
@@ -4755,6 +4846,12 @@ private:
                 & dsnwr::radar_visibility_bit(category)) != 0;
     }
 
+    [[nodiscard]] bool scene_visibility_enabled(
+        dsnwr::RadarVisibilityCategory category) const noexcept {
+        return (dsnwr::scene_radar_visibility_mask(visibility_masks_)
+                & dsnwr::radar_visibility_bit(category)) != 0;
+    }
+
     [[nodiscard]] bool world_map_content_visibility_intent() const noexcept {
         return dsnwr::world_radar_visibility_mask(visibility_masks_) != 0U;
     }
@@ -4788,7 +4885,15 @@ private:
 
     void apply_visibility_hub_result(
         const dsnwr::RadarVisibilityHubResult& result) noexcept {
-        if (result.action != dsnwr::RadarVisibilityHubAction::Applied
+        if (result.action == dsnwr::RadarVisibilityHubAction::Applied
+            && result.global_reset_requested && scene_settings_persist_pending_) {
+            // The controls may already equal the preset while their last
+            // slider edit is still queued. An explicit reset flushes that
+            // pending edit even when sampling reports no value change.
+            scene_settings_persist_after_ = {};
+        }
+        if ((result.action != dsnwr::RadarVisibilityHubAction::Applied
+             && result.action != dsnwr::RadarVisibilityHubAction::Closed)
             || !result.changed) {
             return;
         }
@@ -4797,6 +4902,7 @@ private:
         const auto previous_assault_mode = assault_display_mode_;
         const auto previous_height_indicators = height_indicator_mask_;
         const auto previous_language = language_preference_;
+        const auto previous_scene_settings = scene_display_settings_;
         visibility_masks_ = result.packed_masks;
         const bool world_mask_changed =
             dsnwr::world_radar_visibility_mask(previous)
@@ -4809,10 +4915,32 @@ private:
         height_indicator_mask_ = static_cast<dswros::HeightIndicatorMask>(
             result.height_indicators & dswros::kHeightIndicatorAll);
         language_preference_ = result.language;
+        scene_display_settings_ = dswros::normalize_scene_display_settings(
+            result.scene_settings);
         active_ui_language_ = dswros::resolve_radar_ui_language(
             language_preference_, detected_game_language_);
         const bool area_quest_mode_changed =
             previous_area_quest_mode != area_quest_display_mode_;
+        const bool scene_settings_changed =
+            previous_scene_settings.range_meters != scene_display_settings_.range_meters
+            || previous_scene_settings.marker_limit != scene_display_settings_.marker_limit
+            || previous_scene_settings.distance_mode != scene_display_settings_.distance_mode;
+        if (dsnwr::scene_radar_visibility_mask(previous)
+                != dsnwr::scene_radar_visibility_mask(visibility_masks_)
+            || area_quest_mode_changed
+            || scene_settings_changed) {
+            // A settings edit invalidates numeric selection, not its retained
+            // UMG tree. Keep shared textures and refresh the numeric list on
+            // the next visual frame so the open settings page previews edits.
+            // An all-off/zero preset still collapses immediately.
+            scene_selection_ = {};
+            scene_marker_count_ = 0;
+            scene_refresh_after_ = {};
+            if (scene_initialized_) {
+                scene_umg_renderer_.set_display_settings(scene_display_settings_);
+                scene_umg_renderer_.set_menu_suppressed(scene_render_suppressed());
+            }
+        }
         const bool assault_mode_changed =
             previous_assault_mode != assault_display_mode_;
         const bool height_indicators_changed =
@@ -4849,10 +4977,10 @@ private:
         }
         if (world_changed) {
             if (visibility_hub_.is_open()) {
-                // Hub controls still persist and update compact selection on
-                // every real edge. Coalesce the expensive expanded-map atlas
-                // rebuild until the Hub closes so rapid selection changes
-                // cannot cause one 80-100 ms rebuild per click.
+                // Keep the open map preview live. A short bounded window folds
+                // adjacent control edges into one atlas rebuild without waiting
+                // for F6 to close. Returning to the displayed baseline cancels it.
+                const bool already_pending = visibility_hub_world_map_refresh_pending_;
                 visibility_hub_world_map_refresh_pending_ =
                     !visibility_hub_world_map_baseline_valid_
                     || visibility_hub_world_map_baseline_mask_
@@ -4862,15 +4990,37 @@ private:
                         != area_quest_display_mode_
                     || visibility_hub_world_map_baseline_assault_mode_
                         != assault_display_mode_;
+                if (visibility_hub_world_map_refresh_pending_ && !already_pending) {
+                    visibility_hub_world_map_refresh_after_ = Clock::now()
+                        + std::chrono::milliseconds{100};
+                }
+                if (!world_map_content_visibility_intent()) {
+                    flush_visibility_hub_world_map_refresh("all_disabled");
+                }
             } else {
                 refresh_world_map_after_visibility_hub_change();
             }
         }
-        const bool persisted = persist_visibility_settings(
-            mod_directory() / "config" / "visibility.ini",
-            visibility_masks_, area_quest_display_mode_,
-            assault_display_mode_, height_indicator_mask_,
-            language_preference_);
+        // Apply slider values immediately, but coalesce disk writes while
+        // dragging. Closing the panel flushes on the same control tick.
+        bool persisted{};
+        if (scene_settings_changed) {
+            scene_settings_persist_pending_ = true;
+            scene_settings_persist_after_ = Clock::now()
+                + std::chrono::milliseconds{300};
+            if (result.global_reset_requested) {
+                // An explicit preset action is one complete edit, not a
+                // dragged slider sample. Flush it on this control edge.
+                scene_settings_persist_after_ = {};
+            }
+        } else {
+            persisted = persist_visibility_settings(
+                mod_directory() / "config" / "visibility.ini",
+                visibility_masks_, area_quest_display_mode_,
+                assault_display_mode_, height_indicator_mask_,
+                language_preference_, scene_display_settings_);
+            if (persisted) scene_settings_persist_pending_ = false;
+        }
         try {
             append_log("VISIBILITY_HUB_APPLIED", std::format(
                 "activation={} epoch={} compact_mask={} world_mask={} area_quest_mode={} assault_mode={} height_mask={} language_preference={} active_language={} area_quest_mode_changed={} assault_mode_changed={} height_changed={} language_changed={} compact_changed={} world_changed={} persisted={} world_map_refresh={}",
@@ -4897,7 +5047,7 @@ private:
                 persisted,
                 world_changed
                     && visibility_hub_world_map_refresh_pending_
-                    ? "deferred_until_close"
+                    ? "live_preview_pending"
                     : world_changed
                         && world_map_umg_renderer_.state()
                             == dsnwr::WorldMapUmgRendererState::Ready
@@ -4909,6 +5059,7 @@ private:
 
     void refresh_world_map_after_visibility_hub_change() noexcept {
         visibility_hub_world_map_refresh_pending_ = false;
+        visibility_hub_world_map_refresh_after_ = {};
         world_map_marker_snapshot_built_ = false;
         if (!world_map_content_visibility_intent()) {
             world_map_session_pending_ = false;
@@ -4955,6 +5106,9 @@ private:
         }
         const bool can_refresh = enabled_ && !transition_active_;
         refresh_world_map_after_visibility_hub_change();
+        if (visibility_hub_.is_open()) {
+            establish_visibility_hub_baseline();
+        }
         try {
             append_log("VISIBILITY_HUB_WORLD_MAP_REFRESH", std::format(
                 "activation={} epoch={} reason={} action={}",
@@ -5095,6 +5249,9 @@ private:
             apply_visibility_hub_result(result);
         } else if (result.action
                    == dsnwr::RadarVisibilityHubAction::Closed) {
+            // Escape/F6/X first sample final slider/control state, then close.
+            // Publish that last sample before flushing persistence/map work.
+            apply_visibility_hub_result(result);
             flush_visibility_hub_world_map_refresh(close_reason);
             append_log("VISIBILITY_HUB_CLOSED", std::format(
                 "activation={} epoch={} reason={}", activation_, epoch_,
@@ -5102,7 +5259,7 @@ private:
         } else if (result.action
                    == dsnwr::RadarVisibilityHubAction::Rejected) {
             append_log("VISIBILITY_HUB_REJECTED", std::format(
-                "activation={} epoch={} failure={} state={} abi_failures={} font_abi_details={} font_source={} font_fallback_reason={} text_runtime_failure={} text_overlay_active={} text_overlay_failure={}",
+                    "activation={} epoch={} failure={} state={} abi_failures={} font_abi_details={} font_source={} font_fallback_reason={} text_runtime_failure={} text_overlay_active={} text_overlay_failure={} escape_input_error={}",
                 activation_, epoch_, result.failure,
                 static_cast<std::uint32_t>(visibility_hub_.state()),
                 visibility_hub_.abi_failure_mask(),
@@ -5111,21 +5268,25 @@ private:
                 visibility_hub_.font_fallback_reason(),
                 visibility_hub_.text_runtime_failure(),
                 visibility_hub_.text_overlay_active(),
-                visibility_hub_.text_overlay_failure()));
+                visibility_hub_.text_overlay_failure(),
+                dsnwr::hub_escape_input::last_error()));
         }
 
-        if (result.command
-            == dsnwr::RadarVisibilityHubCommand::OpenBugReport) {
+        if (result.command == dsnwr::RadarVisibilityHubCommand::OpenBugReport
+            || result.command == dsnwr::RadarVisibilityHubCommand::OpenEndorsement) {
             // Restore the game's cursor/input policy and release the transient
             // UMG tree before invoking the fixed external destination.
+            const bool endorsement = result.command
+                == dsnwr::RadarVisibilityHubCommand::OpenEndorsement;
+            const wchar_t* destination = endorsement ? kEndorsementUrl : kBugReportUrl;
             visibility_hub_.detach(current_controller);
-            flush_visibility_hub_world_map_refresh("bug_report");
+            flush_visibility_hub_world_map_refresh(endorsement ? "endorsement" : "bug_report");
             visibility_hub_service_after_ = {};
             visibility_hub_world_map_baseline_valid_ = false;
             const auto shell_result = reinterpret_cast<INT_PTR>(ShellExecuteW(
-                nullptr, L"open", kBugReportUrl, nullptr, nullptr,
+                nullptr, L"open", destination, nullptr, nullptr,
                 SW_SHOWNORMAL));
-            append_log("BUG_REPORT_OPEN", std::format(
+            append_log(endorsement ? "ENDORSEMENT_OPEN" : "BUG_REPORT_OPEN", std::format(
                 "activation={} epoch={} launched={} shell_result={}",
                 activation_, epoch_, shell_result > 32, shell_result));
         } else if (result.command
@@ -5193,7 +5354,7 @@ private:
             controller, visibility_masks_, area_quest_display_mode_,
             assault_display_mode_, height_indicator_mask_,
             language_preference_, detected_game_language_,
-            current_mod_status);
+            current_mod_status, scene_display_settings_);
         visibility_hub_open_pending_ = false;
         visibility_hub_service_after_ = now;
         if (result.action == dsnwr::RadarVisibilityHubAction::Opened) {
@@ -5239,22 +5400,19 @@ private:
                     current_player_controller_for_visibility_hub(engine);
                 if (!controller) {
                     // The transient current-controller probe may disappear
-                    // before the host's own controller. Detach through the
-                    // retained host owner so GameOnly input and the previous
-                    // cursor state are restored instead of merely dropping
-                    // the weak handles.
-                    visibility_hub_.detach();
-                    flush_visibility_hub_world_map_refresh(
-                        "f6_close_controller_missing");
-                    append_log("VISIBILITY_HUB_CLOSED", std::format(
-                        "activation={} epoch={} reason=f6_controller_missing",
-                        activation_, epoch_));
+                    // before the host's own controller. Close resolves that
+                    // owner, samples the final controls and restores its input.
+                    const auto result = visibility_hub_.close(
+                        nullptr, radar_mod_status());
+                    handle_visibility_hub_result(
+                        engine, nullptr, result, "f6_controller_missing");
                 } else {
                     const auto result = visibility_hub_.toggle(
                         controller, visibility_masks_,
                         area_quest_display_mode_, assault_display_mode_,
                         height_indicator_mask_, language_preference_,
-                        detected_game_language_, radar_mod_status());
+                        detected_game_language_, radar_mod_status(),
+                        scene_display_settings_);
                     handle_visibility_hub_result(
                         engine, controller, result, "f6_toggle");
                 }
@@ -5284,6 +5442,24 @@ private:
         open_visibility_hub_when_ready(engine, now);
     }
 
+    void service_visibility_hub_escape_request(UEngine* engine) noexcept {
+        // Runs even after UMG closes so the same Escape press's repeat and
+        // release stay consumed. With no hook installed this is one atomic read.
+        dsnwr::hub_escape_input::service();
+        const auto reason = dsnwr::hub_escape_input::take_close_reason();
+        if (reason != dswros::EscapeCloseReason::None) {
+            if (visibility_hub_.is_open()) {
+                UObject* controller = current_player_controller_for_visibility_hub(engine);
+                const auto result = reason == dswros::EscapeCloseReason::FocusLost
+                    ? visibility_hub_.close(controller, radar_mod_status())
+                    : visibility_hub_.escape(controller, radar_mod_status());
+                handle_visibility_hub_result(engine, controller, result,
+                    reason == dswros::EscapeCloseReason::FocusLost ? "focus_lost" : "escape");
+                visibility_hub_open_pending_ = false;
+            }
+        }
+    }
+
     void service_visibility_hub(
         UEngine* engine, Clock::time_point now) noexcept {
         if (!visibility_hub_.is_open()
@@ -5298,6 +5474,23 @@ private:
             controller, radar_mod_status());
         handle_visibility_hub_result(
             engine, controller, result, "x_close");
+        if (visibility_hub_.is_open()
+            && visibility_hub_world_map_refresh_pending_
+            && now >= visibility_hub_world_map_refresh_after_) {
+            flush_visibility_hub_world_map_refresh("live_preview");
+        }
+    }
+
+    void flush_pending_scene_settings(Clock::time_point now) noexcept {
+        if (!scene_settings_persist_pending_
+            || (visibility_hub_.is_open() && now < scene_settings_persist_after_))
+            return;
+        const bool saved = persist_visibility_settings(
+            mod_directory() / "config" / "visibility.ini",
+            visibility_masks_, area_quest_display_mode_, assault_display_mode_,
+            height_indicator_mask_, language_preference_, scene_display_settings_);
+        scene_settings_persist_pending_ = false;
+        append_log("SCENE_SETTINGS_SAVED", saved ? "saved=true" : "saved=false");
     }
 
     [[nodiscard]] static std::uint64_t profile_elapsed_us(
@@ -5435,7 +5628,9 @@ private:
         // before the runtime-ready gate so OFF/FAULT status and settings remain
         // reachable at the title screen and during bounded loading waits.
         service_visibility_hub_toggle_request(engine, now);
+        service_visibility_hub_escape_request(engine);
         service_visibility_hub(engine, now);
+        flush_pending_scene_settings(now);
         if (!required_runtime_ready_.load(std::memory_order_acquire)) {
             f8_requests_.store(0, std::memory_order_release);
             if (f7_requests_.exchange(0, std::memory_order_acq_rel) != 0) {
@@ -5595,6 +5790,13 @@ private:
                     [this, engine, now] { update_compact_pool(engine, now); });
             }
         }
+        // Camera projection follows every completed engine frame, independently
+        // of the 16 ms player/control sample. Catalog selection remains 250 ms;
+        // only the bounded selected list and render transforms update here.
+        if (dsnwr::scene_radar_visibility_mask(visibility_masks_) != 0) {
+            profile_stage(EngineTickProfileStage::SceneUmg,
+                [this, engine, now] { service_scene_guidance(engine, now); });
+        }
         if (position_valid_ && now >= next_discovery_) {
             next_discovery_ = now + kDiscoveryInterval;
             profile_sample.discovery_called = true;
@@ -5727,6 +5929,7 @@ private:
         }
         compact_umg_renderer_.begin_activation();
         reset_compact_pool_runtime();
+        reset_scene_runtime();
         world_map_umg_renderer_.begin_activation();
         if (world_map_umg_renderer_.state()
                 == dsnwr::WorldMapUmgRendererState::Suspended
@@ -5882,6 +6085,7 @@ private:
         }
         compact_umg_renderer_.detach();
         reset_compact_pool_runtime();
+        reset_scene_runtime();
         UObject* retained_world_map_layer =
             current_world_map_layer_guarded();
         const bool exact_candidate_live = world_map_candidate_available_
@@ -6013,6 +6217,7 @@ private:
         // treasure IDs, and the UObject creation listener remain intact.
         disable();
         visibility_hub_.detach();
+        dsnwr::hub_escape_input::reset();
         visibility_hub_world_map_refresh_pending_ = false;
         visibility_hub_world_map_baseline_valid_ = false;
         visibility_hub_service_after_ = {};
@@ -8177,6 +8382,12 @@ private:
     }
 
     [[nodiscard]] bool collect_world_map_marker_snapshot() noexcept {
+        if (visibility_hub_.is_open() && visibility_hub_world_map_refresh_pending_) {
+            // A runtime/map edge consumed the intermediate UI choices before
+            // their coalesced flush. The old display baseline can no longer
+            // cancel a later return to those choices.
+            visibility_hub_world_map_baseline_valid_ = false;
+        }
         world_map_umg_markers_.fill({});
         world_map_marker_count_ = 0;
         world_map_first_marker_id_ = 0;
@@ -8689,6 +8900,8 @@ private:
             game_paused_,
             activity_suppressed_,
             native_minimap_paint_ == dswros::NativeMinimapPaint::Hidden,
+            visibility_hub_.owns_gameplay_cursor()
+                && native_minimap_paint_ == dswros::NativeMinimapPaint::Visible,
         });
     }
 
@@ -8696,6 +8909,179 @@ private:
         if (!enabled_ || transition_active_) return;
         const bool suppressed = compact_render_suppressed();
         compact_umg_renderer_.set_menu_suppressed(suppressed);
+        if (scene_initialized_) {
+            scene_umg_renderer_.set_menu_suppressed(
+                scene_render_suppressed());
+        }
+    }
+
+    [[nodiscard]] bool scene_render_suppressed() const noexcept {
+        return !enabled_ || transition_active_
+            || dswros::compact_render_suppressed({
+                dsnwr::scene_radar_visibility_mask(visibility_masks_) != 0,
+                position_valid_, mouse_cursor_visible_, world_map_compact_suppressed_,
+                game_paused_, activity_suppressed_,
+                native_minimap_paint_ == dswros::NativeMinimapPaint::Hidden,
+                visibility_hub_.owns_gameplay_cursor()
+                    && native_minimap_paint_ == dswros::NativeMinimapPaint::Visible,
+            })
+            || scene_display_settings_.range_meters == 0
+            || scene_display_settings_.marker_limit == 0
+            || dsnwr::scene_radar_visibility_mask(visibility_masks_) == 0;
+    }
+
+    void reset_scene_runtime() noexcept {
+        if (scene_initialized_) scene_umg_renderer_.detach();
+        scene_selection_ = {};
+        scene_marker_count_ = 0;
+        scene_refresh_after_ = {};
+        scene_attach_after_ = {};
+        scene_attach_attempts_ = 0;
+        scene_service_faulted_ = false;
+    }
+
+    void rebuild_scene_candidates() noexcept {
+        // These are the existing numeric catalog and save/task eligibility
+        // snapshots. A bounded 250 ms pass performs no UObject discovery.
+        std::size_t count = 0;
+        if (treasure_eligibility_ready_ && scene_visibility_enabled(
+                dsnwr::RadarVisibilityCategory::Treasure)) {
+            for (std::size_t index = 0; index < render_catalog_size_; ++index) {
+                const auto& entry = render_catalog_entries_[index];
+                if (!compact_eligibility_[index] || !entry.has_z
+                    || entry.map_id != dswros::CompactRenderModel::kCompactMapId)
+                    continue;
+                dsnwr::SceneUmgMarkerKind kind =
+                    dsnwr::SceneUmgMarkerKind::TreasureOther;
+                switch (entry.kind) {
+                case dswros::CompactTreasureKind::MiniGame:
+                    kind = dsnwr::SceneUmgMarkerKind::TreasureMiniGame; break;
+                case dswros::CompactTreasureKind::Map:
+                    kind = dsnwr::SceneUmgMarkerKind::TreasureMap; break;
+                case dswros::CompactTreasureKind::Puzzle:
+                    kind = dsnwr::SceneUmgMarkerKind::TreasurePuzzle; break;
+                default: break;
+                }
+                scene_candidates_[count++] = {entry.id, kind, entry.position};
+            }
+        }
+        if (area_quest_state_ready_ && scene_visibility_enabled(
+                dsnwr::RadarVisibilityCategory::AreaQuests)) {
+            for (std::size_t index = 0; index < area_quest_catalog_.size();
+                 ++index) {
+                const auto& quest = area_quest_catalog_[index];
+                if (!quest.scene_source_available
+                    || !area_quest_visible_for_selected_mode(index)) continue;
+                scene_candidates_[count++] = {
+                    quest.id, dsnwr::SceneUmgMarkerKind::AreaQuest,
+                    quest.scene_position};
+            }
+        }
+        if (scene_visibility_enabled(dsnwr::RadarVisibilityCategory::MiniGames)) {
+            for (std::size_t index = 0; index < mini_game_catalog_.size(); ++index) {
+                const auto& game = mini_game_catalog_[index];
+                if (mini_game_eligibility_[index] == 0
+                    || game.map_id != dswros::CompactRenderModel::kCompactMapId)
+                    continue;
+                const auto subtype = game.kind == MiniGameKind::Mole
+                    ? dswros::SceneMiniGameKind::Mole
+                    : game.kind == MiniGameKind::Wave
+                        ? dswros::SceneMiniGameKind::Wave
+                        : dswros::SceneMiniGameKind::Fly;
+                scene_candidates_[count++] = {
+                    game.id, dsnwr::SceneUmgMarkerKind::MiniGame, game.position, subtype};
+            }
+        }
+        scene_selection_ = dswros::select_scene_markers(
+            player_, {scene_candidates_.data(), count}, scene_selection_,
+            scene_display_settings_);
+        scene_marker_count_ = scene_selection_.count;
+        for (std::size_t index = 0; index < scene_marker_count_; ++index)
+            scene_markers_[index] = scene_selection_.values[index].marker;
+    }
+
+    void service_scene_guidance(UEngine* engine, Clock::time_point now) noexcept {
+        // Off returns before controller lookup, projection, selection or UMG.
+        if (dsnwr::scene_radar_visibility_mask(visibility_masks_) == 0
+            || scene_display_settings_.range_meters == 0
+            || scene_display_settings_.marker_limit == 0
+            || scene_service_faulted_) return;
+#if defined(_MSC_VER)
+        __try { service_scene_guidance_unsafe(engine, now); }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            scene_service_faulted_ = true;
+            scene_umg_renderer_.detach();
+        }
+#else
+        try { service_scene_guidance_unsafe(engine, now); }
+        catch (...) {
+            scene_service_faulted_ = true;
+            scene_umg_renderer_.detach();
+        }
+#endif
+        report_scene_guidance_state();
+    }
+
+    void report_scene_guidance_state() noexcept {
+        const auto state = static_cast<std::uint32_t>(scene_umg_renderer_.state());
+        const auto failure = scene_umg_renderer_.last_failure();
+        const auto text_failure = scene_umg_renderer_.last_text_failure();
+        if (state != scene_reported_state_ || failure != scene_reported_failure_
+            || text_failure != scene_reported_text_failure_) {
+            scene_reported_state_ = state;
+            scene_reported_failure_ = failure;
+            scene_reported_text_failure_ = text_failure;
+            try {
+                append_log("SCENE_GUIDANCE_STATE", std::format(
+                    "candidate=SG-12 activation={} epoch={} state={} failure={} text_failure={} attempts={}/3 mask={} selected={} active={} projections={} faults={} service_fault={} position_updates={} position_reuses={} glyph_binds={} texture_imports={} batch_frames={} batch_fallbacks={} runtime_acceptance=pending",
+                    activation_, epoch_, state, failure, text_failure, scene_attach_attempts_,
+                    static_cast<std::uint32_t>(
+                        dsnwr::scene_radar_visibility_mask(visibility_masks_)),
+                    scene_marker_count_, scene_umg_renderer_.active_marker_count(),
+                    scene_umg_renderer_.projection_count(),
+                    scene_umg_renderer_.fault_count(), scene_service_faulted_,
+                    scene_umg_renderer_.position_update_count(),
+                    scene_umg_renderer_.position_reuse_count(),
+                    scene_umg_renderer_.glyph_bind_count(),
+                    scene_umg_renderer_.texture_import_count(),
+                    scene_umg_renderer_.batch_frame_count(),
+                    scene_umg_renderer_.batch_fallback_count()));
+            } catch (...) {
+            }
+        }
+    }
+
+    void service_scene_guidance_unsafe(UEngine* engine, Clock::time_point now) {
+        if (scene_render_suppressed() || !catalog_ready_) {
+            if (scene_initialized_) scene_umg_renderer_.set_menu_suppressed(true);
+            return;
+        }
+        if (!scene_initialized_) {
+            scene_umg_renderer_.initialize(mod_directory() / "assets" / "ui" / "scene");
+            scene_initialized_ = true;
+        }
+        scene_umg_renderer_.set_display_settings(scene_display_settings_);
+        UObject* controller = current_player_controller(engine);
+        if (!controller) {
+            scene_umg_renderer_.set_menu_suppressed(true);
+            return;
+        }
+        const auto state = scene_umg_renderer_.state();
+        if (state != dsnwr::SceneUmgRendererState::Attached
+            && state != dsnwr::SceneUmgRendererState::Suppressed) {
+            if (scene_attach_attempts_ >= 3 || now < scene_attach_after_) return;
+            ++scene_attach_attempts_;
+            scene_attach_after_ = now + std::chrono::seconds{2};
+            scene_umg_renderer_.begin_activation();
+            if (!scene_umg_renderer_.attach_once(controller)) return;
+        }
+        if (now >= scene_refresh_after_) {
+            scene_refresh_after_ = now + std::chrono::milliseconds{250};
+            rebuild_scene_candidates();
+        }
+        scene_umg_renderer_.set_menu_suppressed(false);
+        scene_umg_renderer_.update(controller, player_,
+            {scene_markers_.data(), scene_marker_count_});
     }
 
     void reset_compact_pool_runtime() noexcept {
@@ -9074,10 +9460,25 @@ private:
                 encounter_candidates[index].catalog_index];
             append_static(
                 spec.position,
-                spec.kind == EncounterKind::Boss ? 30.0 : 27.0,
+                spec.kind == EncounterKind::Boss ? 35.0 : 30.0,
                 spec.kind == EncounterKind::Boss
                     ? dsnwr::CompactUmgMarkerKind::Boss
                     : dsnwr::CompactUmgMarkerKind::Assault);
+            auto& marker = compact_umg_markers_[output_count - 1U];
+            const bool height_enabled = dswros::height_indicator_enabled(
+                height_indicator_mask_,
+                spec.kind == EncounterKind::Boss
+                    ? dswros::HeightIndicatorCategory::Boss
+                    : dswros::HeightIndicatorCategory::Assault);
+            marker.area_quest_height_profile =
+                dswros::encounter_spawn_height_profile(spec.position.z);
+            marker.show_height = height_enabled
+                && dswros::encounter_height_profile_valid(
+                    marker.area_quest_height_profile);
+            marker.height_source_unavailable = height_enabled
+                && !marker.show_height;
+            marker.area_quest_comparable_player_z =
+                dswros::CompactRenderModel::comparable_player_z(player_.z);
         }
         const bool area_quest_height_enabled =
             dswros::height_indicator_enabled(
@@ -9119,7 +9520,7 @@ private:
                 std::clamp(
                     (spec.position.y - player_.y) / compact_render_radius_,
                     -1.0, 1.0),
-                28.0,
+                25.0,
                 dsnwr::CompactUmgMarkerKind::AreaQuest,
                 show_height,
                 0.0,
@@ -9418,7 +9819,13 @@ private:
             }
             if (dswros::height_indicator_enabled(
                     height_indicator_mask_,
-                    dswros::HeightIndicatorCategory::AreaQuest)) {
+                    dswros::HeightIndicatorCategory::AreaQuest)
+                || dswros::height_indicator_enabled(
+                    height_indicator_mask_,
+                    dswros::HeightIndicatorCategory::Boss)
+                || dswros::height_indicator_enabled(
+                    height_indicator_mask_,
+                    dswros::HeightIndicatorCategory::Assault)) {
                 compact_umg_renderer_.update_area_quest_height_indicators(
                     dswros::CompactRenderModel::comparable_player_z(
                         player_.z));
@@ -10315,6 +10722,8 @@ private:
         // down before either disabled/runtime-unavailable branch so no old
         // world widget or input-mode ownership survives travel.
         visibility_hub_.detach();
+        dsnwr::hub_escape_input::reset();
+        reset_scene_runtime();
         visibility_hub_world_map_refresh_pending_ = false;
         visibility_hub_world_map_baseline_valid_ = false;
         visibility_hub_service_after_ = {};
@@ -10892,6 +11301,7 @@ private:
             // open-world identity returns.
             compact_umg_renderer_.detach();
             reset_compact_pool_runtime();
+            reset_scene_runtime();
             reset_bird_egg_active_visibility();
             world_map_umg_renderer_.detach();
             reset_world_map_runtime(false);
@@ -10901,6 +11311,7 @@ private:
             // no recurring discovery or per-frame cost.
             compact_umg_renderer_.begin_activation();
             reset_compact_pool_runtime();
+            reset_scene_runtime();
             world_map_umg_renderer_.begin_activation();
             reset_world_map_runtime(false);
             world_map_activation_catch_up();
@@ -12484,6 +12895,9 @@ private:
         dswros::kDefaultHeightIndicatorMask};
     dswros::RadarLanguagePreference language_preference_{
         dswros::RadarLanguagePreference::Auto};
+    dswros::SceneDisplaySettings scene_display_settings_{};
+    Clock::time_point scene_settings_persist_after_{};
+    bool scene_settings_persist_pending_{};
     dswros::RadarUiLanguage detected_game_language_{
         dswros::RadarUiLanguage::English};
     dswros::RadarUiLanguage active_ui_language_{
@@ -12588,6 +13002,7 @@ private:
     Clock::time_point area_quest_rescan_deadline_{};
     Clock::time_point area_quest_task_class_map_retry_after_{};
     Clock::time_point visibility_hub_service_after_{};
+    Clock::time_point visibility_hub_world_map_refresh_after_{};
     Clock::time_point visibility_hub_toggle_after_{};
     Clock::time_point visibility_hub_open_retry_after_{};
     Clock::time_point visibility_hub_open_pending_until_{};
@@ -12805,6 +13220,22 @@ private:
     bool engine_tick_fault_cleanup_failed_{};
     DWORD engine_tick_fault_code_{};
     dsnwr::CompactUmgRenderer compact_umg_renderer_{};
+    dsnwr::SceneUmgRenderer scene_umg_renderer_{};
+    std::array<dsnwr::SceneUmgMarker,
+               kMaximumTreasureCatalogEntries + kExpectedAreaQuestCount
+                   + kExpectedMiniGameCount>
+        scene_candidates_{};
+    dsnwr::SceneUmgMarkerArray scene_markers_{};
+    dswros::SceneSelection scene_selection_{};
+    std::size_t scene_marker_count_{};
+    Clock::time_point scene_refresh_after_{};
+    Clock::time_point scene_attach_after_{};
+    std::uint32_t scene_attach_attempts_{};
+    bool scene_initialized_{};
+    bool scene_service_faulted_{};
+    std::uint32_t scene_reported_state_{0xFFFFFFFFU};
+    std::uint32_t scene_reported_failure_{0xFFFFFFFFU};
+    std::uint32_t scene_reported_text_failure_{0xFFFFFFFFU};
     dsnwr::WorldMapUmgRenderer world_map_umg_renderer_{};
     dsnwr::RadarVisibilityHub visibility_hub_{};
     dsnwr::NativeSaveReconciler save_reconciler_{};

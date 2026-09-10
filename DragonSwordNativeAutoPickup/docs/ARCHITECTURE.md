@@ -101,23 +101,51 @@ address and, on a match, publishes only the action token through an atomic
 marker. It performs no logging, formatting, reflection, UObject dereference,
 state-machine mutation, or game call. EngineTick consumes the marker, clears
 the global in-flight slot, emits `PICKUP_DISPATCH_OBSERVED`, and gives that exact
-Component a 750 ms re-entry delay. Other selector-presented candidates can then
+Component a 750 ms first-dispatch re-entry delay. Other selector-presented candidates can then
 advance. The observation proves only that the injected action reached the
 game's interaction dispatch; it does not prove that the selector-returned target
 was chosen or collected. Logs therefore carry `target_match_unproven=1` and
 `pickup_success_claim=0`.
 
-Existing exact Actor/Component invalidation or exact Component state-change
-evidence remains an alternate terminal path inside the same fallback window.
+The unreleased 2026-09-08 candidate checks existing exact Actor/Component
+invalidation or exact Component state-change evidence before consuming dispatch.
+When both are present in one poll, exact confirmation clears attempt history
+and the already elapsed dispatch scan deadline is preserved. No new game call
+or discovery method is added by this ordering change.
+
+An unconfirmed dispatch now preserves its attempt ordinal rather than resetting
+it. The first dispatch retains one retry opportunity for 1500 ms after the
+750 ms re-entry delay. Re-presenting that same exact Component during the
+opportunity is attempt two, even when dispatch and timeout outcomes alternate.
 When neither matching dispatch nor exact confirmation arrives, the 750 ms
 fallback window expires.
 The game must present the same exact identity again after a 200 ms delay before
-one retry is admitted. A second no-dispatch result applies a 1500 ms self-
+one retry is admitted. A second unconfirmed result applies a 1500 ms self-
 expiring Component backoff. There is no activation-long timeout quarantine and
 no 500 ms quarantine scan loop. Context reset still clears pending and attempt
 records. Neither timeout writes a global scan deadline: after clearing the
 in-flight record, that same EngineTick may process a different selector result
 while the exact Component record remains cooled.
+
+The follow-on frame-paced candidate removes the 25 ms enabled pulse/active
+scan/post-confirmation delay, not the one-global-pending policy. A scope-bound
+atomic EngineTick entry guard rejects nested ticks during ProcessEvent. There
+are no batches or catch-up loops: at most one input per outer EngineTick.
+Empty scans and capacity pressure retain 33 ms spacing; per-Component retry
+and world/owner settle rules remain unchanged.
+
+At 128 protected records, an unknown candidate returns `CapacityWait` before
+action mapping/subsystem resolution. Existing record owners can retry. Both
+read-only admission and mutation recognize expiry; no live retry record is
+evicted and saturation does not permanently disable the Mod.
+
+Context/selector debug snapshots are bounded scalars, formatted only after
+the decision. Post-injection diagnostic exceptions cannot rewrite the completed
+outcome; actual guarded gameplay faults still fail closed. Debug remains off
+in public defaults and introduces no extra location/UObject query.
+
+These candidates repair retry accounting and scheduling. They do not clear native
+interaction lists or prove that an already stuck manual pickup is restored.
 
 The selector result must prove `InteractableValue=2`, matching component Outer
 and World, and one closed target category: NormalGather 2, Animal 5, or

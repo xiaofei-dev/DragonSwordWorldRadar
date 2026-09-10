@@ -8,7 +8,7 @@
 
 namespace dsnwr {
 
-inline constexpr std::size_t kNativeEngineTickProfileStageCount = 9U;
+inline constexpr std::size_t kNativeEngineTickProfileStageCount = 10U;
 
 struct NativeEngineTickProfileSample final {
     std::uint64_t activation{};

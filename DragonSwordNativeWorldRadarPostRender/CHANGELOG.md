@@ -1,6 +1,175 @@
 # Changelog
 
-## 2.3.0 (Unreleased)
+## 3.0.0 (Local release candidate)
+
+### Guide refinement: activity entry order
+
+Candidate `radar-3.0.0-sg16-guide4-20260909`; version **3.0.0**.
+
+- Swap Marmot mini-game and Sudden mission entries, moving each label and both icons together.
+- Left: Flying mini-game, Wave mini-game, Marmot mini-game, Bird eggs.
+- Right: Sudden mission, World boss, Area quest.
+- Apply the same order in all eleven languages; retain the three height columns and runtime behavior.
+
+The canonical release pipeline reran Core 9/9 and all four source/release gates successfully while reusing the verified native binary; no new native compilation is claimed. New deployment was verified at `2026-09-10T02:04:37.4453785Z`; the same DLL, native receipt and all 73 UI files match the new candidate. Four settings/data files were preserved, with 2 AutoPickup files recorded unchanged. Setup 20/20 and Manual 2/2 pass with no failures/skips, 104 equivalent runtime files and 4/108/112 ZIP entries. The final set was promoted at `2026-09-10T02:06:49.3883924Z`.
+
+Manifest UTC: `2026-09-10T02:06:02.2485470Z`. The five parent final files are backed up at [dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/previous-final-guide3](dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/previous-final-guide3/).
+
+Evidence: [deployment](dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/deployment-verification.json), [release manifest](dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/release-packages/release-manifest.json) and [promotion](dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/package-verification.json).
+
+The previous Guide3 and earlier SG-16 sections below remain historical records. Their earlier activity order and ZIP hashes identify those sets. The new asset and package checks do not establish game visual/input or performance acceptance; these remain owner testing. No Nexus upload or post was performed. Finalized payload documents and metadata remain unchanged after the new package seal.
+
+### Guide refinement: three height columns
+
+Candidate `radar-3.0.0-sg16-guide3-20260909`; version **3.0.0**.
+
+- Remove the Unknown display column from Guide; keep Above, Near level and Below.
+- Retain real unknown-height behavior and all existing runtime settings.
+- Refresh all eleven Guide atlases and align README/Nexus help with the three-column reference.
+
+The canonical release pipeline reran Core 9/9 and all four source/release gates successfully while reusing the verified native binary; no new native compilation is claimed. New deployment was verified at `2026-09-10T01:45:25.9749727Z`; the same DLL, native receipt and all 73 UI files match the new candidate. Four settings/data files were preserved, with 2 AutoPickup files recorded unchanged. Setup 20/20 and Manual 2/2 pass with no failures/skips, 104 equivalent runtime files and 4/108/112 ZIP entries. The final set was promoted at `2026-09-10T01:47:39.7016800Z`.
+
+Manifest UTC: `2026-09-10T01:46:51.6121910Z`. The five parent final files are backed up at [dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/previous-final-sg16](dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/previous-final-sg16/).
+
+Evidence: [deployment](dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/deployment-verification.json), [release manifest](dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/release-packages/release-manifest.json) and [promotion](dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/package-verification.json).
+
+The previous SG-16 sections below are preserved historical records. Their four-column Guide description and old ZIP hashes describe that earlier set. The new asset and package checks do not establish game visual/input or performance acceptance; these remain owner testing. No Nexus upload or post was performed. Finalized payload documents and metadata remain unchanged after the new package seal.
+
+### SG-16 settings and Guide refinement
+
+- Add independent All controls for supported Radar/Map categories. Refresh
+  changes on an open world map after a bounded 100 ms merge; all-off hides
+  immediately. Keep intervening runtime snapshots from invalidating a later
+  checkbox change back to its previous value.
+- Use Auto focus for new settings and Reset to defaults; updates preserve
+  explicit saved choices. First Aim acquisition is 100 ms, with the existing
+  350/500 ms Aim/Auto replacement buffers retained.
+- Clarify green mini-game reward chests and the flying, marmot and wave types.
+  Compact Guide's treasure examples and place activity entries in two columns
+  with separate Radar/Map symbols.
+- Show all supported height states and Clock, align Scene labels, and give each
+  distance mode its own row.
+- Verify native 446/446, Core 9/9, four gates, the local DLL/receipt/73 UI
+  deployment and three packages. Setup 20/20 and Manual 2/2 pass with 104
+  equivalent runtime files and 4/108/112 ZIP entries. Release status records
+  exact identities. Game acceptance remains owner testing; no external upload.
+
+### Retained SG-15 feature and delivery baseline
+
+- Add Guide beside Close in F6, with icon meanings in all eleven languages.
+  Show Radar and Map activity symbols side by side, explain the four treasure
+  colors, height arrows, Scene symbols and distance-label modes, and use
+  localized activity names instead of internal mini-game identifiers.
+- Keep separate Guide and Settings scroll positions while F6 is open, with
+  the same fixed header/footer and responsive layout. Missing guide artwork
+  disables only Guide. SG-15 passes Core 9/9, native build 446/446 and all four
+  deployment gates; the installed DLL, receipt and 73 UI files are verified.
+  The three local release packages pass Setup 20/20, Manual 2/2, payload
+  equivalence and fresh extraction checks. Release status records final archive
+  identities and promotion; game acceptance remains owner testing.
+- Refine Settings typography with natural label capitalization and shared font
+  baselines. Reference-pixel sizes are 22 for the title, 16 for sections, 14 for
+  body text and slider values, 13 for buttons and all footer actions, and 12 for
+  small annotations.
+- Reduce scene interference behind settings text with quieter blue-gray reading
+  surfaces. Replace the oversized confirmation with a compact 380×184 rounded
+  card, retaining its short question and existing Yes/No behavior.
+- Remove obsolete AUTO references from all eleven language-selection help texts;
+  the first option follows the game language. Retain the SG-13 distance-switching
+  buffer and SG-12-H2 menu compatibility checks.
+- Stabilize distance labels during camera sweeps: Aim waits 350 ms and Auto
+  waits 500 ms before switching to a clearly better target, keeping the current
+  distance visible while waiting. Add an exit margin for an acquired Aim target.
+- Fix F6 failing to open after the scrolling-menu update: validate the UMG
+  ScrollBox parameter names and tolerate the game's missing optional scrollbar
+  appearance setter before initializing settings.
+- Unify page text, hover help, confirmations and value glyphs across all eleven
+  languages. Keep equal-sized regular text for all three footer actions.
+- Label the Nexus action Vote for This Mod, meaning Mod of the Month voting.
+  Confirmation opens the mod page; the player completes the vote on Nexus.
+- Keep the settings header and footer visible while the body scrolls on short
+  displays. Update layout after viewport or DPI changes without rebuilding the
+  page, preserving current settings and scroll position.
+- Reduce scene projection overhead with frame-local calibration and native
+  fallback. Keep changed subpixel translations, volatile marker painting and
+  stable edge/overlap thresholds; do not interpolate from an older camera pose.
+- Rewrite hover help and confirmation prompts in all eleven languages with
+  concise, natural wording. Use Reset to Defaults and label the shared Mini-game
+  height switch for all activities it covers.
+- Move Reset to Defaults, Vote for This Mod and Feedback to their own footer row.
+  Preserve the four settings cards; Guide and Close remain in the header.
+- Add confirmation before Reset to Defaults, Vote for This Mod and Feedback. No or Esc cancels
+  only the pending action, with no preset change or website launch. Vote opens
+  the mod homepage; Feedback opens Posts. Both leave the action on Nexus to the user.
+- Keep confirmation input separate from settings underneath it. Repeated Esc
+  does not close the settings page after cancelling; loss of app focus still closes
+  the entire settings page and clears the pending action.
+- Soften settings into blue-gray with subtle transparency and thin
+  rounded edges. Keep small-text reading surfaces deeper, including utility
+  controls and tooltips; no live blur or refraction is added.
+- Refine settings with dark rounded surfaces, consistent highlights, square
+  Radar/Map checkboxes and correct sRGB-to-linear native brush colors.
+- Reset all display settings from Reset to Defaults in the footer;
+  enable all three Scene categories by default while preserving saved choices.
+  Keep module power and startup hotkeys unchanged.
+- Add 32 setting-specific explanations in all 11 languages, including each
+  marker category, Scene and height switch, both filter choices, and shared Scene
+  range/count costs and Aim versus Auto behavior. Marker names also support hover.
+  Use native hover ownership without per-frame pointer polling.
+- Enlarge only the Area Quest body by 18%, strengthen its gray outline and add
+  translucent backing behind its three dots. Keep all direction tips unchanged.
+- Put Clock below Bird Eggs in settings and center its visible digits in the
+  measured gap between minimap and quests at the existing one-hertz layout rate;
+  retain a bounded fallback when native geometry is unavailable.
+- Keep Radar visible for live F6 setting previews while the settings page owns
+  the gameplay cursor and the native HUD is visible. Retain all real menu,
+  pause, map, activity and hidden-HUD suppression.
+- Project Scene markers each engine frame; retain 250 ms catalog selection,
+  refresh at most 50 preselected distances without sorting and use render
+  translation instead of moving Canvas slots on every frame.
+- Rebuild the settings popup with larger section headings, compact utility
+  controls and four separate cards. Keep Radar/Map in the marker table and move
+  the three Scene switches to a horizontal row in Scene guidance directly below.
+- Set the Scene defaults to all on, 600 m, 24 markers and Aim Focus.
+- Reduce Scene UI work with six shared glyph textures, one Image per marker,
+  retained render translations and pool reuse while editing settings.
+  In-game performance comparison remains pending.
+- Keep Scene symbols compact, with approximately 18-19-unit filled bodies and a
+  22-unit open task body for perceptual balance, plus a common
+  downward direction tip. Tasks use gray open diamonds with three dots; chests
+  retain a clear lid/clasp, and mini-games keep purple crossed flags.
+- Fix the language selector's highlight extending into adjacent cells. Preserve
+  complete French/Spanish names in both the popup and selected-name card using
+  verified glyph images, including the game-language option and native-text fallback.
+- Raise only the display projection (Treasure 1.6 m, Area Quest 1.8 m, Mini-game
+  1.5 m), preserving raw coordinates, selection distance and minimap heights.
+- Correct displayed Treasure/Area distances by -1 m and Mole by -2 m, clamping
+  to zero before rounding; Fly/Wave retain original distances.
+- Rename the center modes to Aim focus and Auto focus. Aim requires a 120 ms
+  same-target dwell inside a wider vertical ellipse (X16% / Y34% of the short
+  side), with normalized ranking; Auto retains Euclidean ranking. SG-13 adds
+  the switching delay and spatial advantage described above.
+- Consume Esc while Radar Settings owns the page, including popup/slider focus;
+  save final slider values and retain the same press's repeat/release guard.
+  Restore normal Esc after release, and clean up on focus/lifecycle changes.
+- Add independent Scene Treasure, Area Quest, and Mini-game guidance with small
+  category glyphs. Treasure keeps its colors; tasks use gray open diamonds and all
+  83 mini-games use purple crossed flags.
+- Correct 143 Area Quest scene anchors to verified whole entity XYZ positions.
+  Hide four unconfirmed scene anchors while preserving minimap/map behavior.
+- Add shared range (0-1000 m) and count (0-50) sliders for enabled Scene categories
+  only, plus Off / Aim Focus / Auto Focus / All distance modes.
+  Single-target modes use actual visible markers with dwell or buffered changes.
+- Add Boss/Assault compact up/down triangles using the shared height offset and
+  aligned band. Set Boss/Assault/Area sizes to 35/30/25 and unify stroke widths.
+- Rework F6 section spacing, responsive bounds and all 11 translations. Correct
+  the inner-frame line crossing filter rows; coalesce slider configuration writes.
+- Preserve existing user configuration on local upgrade. Build, package and
+  gameplay/visual/performance acceptance remain separate. Current release
+  evidence is in docs/RELEASE_STATUS.md; prior candidate receipts retain their
+  original identities.
+
+## 2.3.0 (Historical local package)
 
 - Add configurable Settings, Enable, and Disable keys in `config/hotkeys.ini`,
   with the same supported key families as AutoPickup and unchanged F6/F7/F8 defaults.

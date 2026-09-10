@@ -1,8 +1,112 @@
 {
   "schema_version": 5,
-  "candidate_version": "2.3.0",
-  "hotkey_configuration": "config/hotkeys.ini; settings_hotkey=F6, enable_hotkey=F7, disable_hotkey=F8. Bounded startup-only 4 KiB parse, distinct keys required, invalid or missing file falls back to all defaults. No runtime config watcher; restart after edits. Setup preserves valid existing bytes and rejects invalid user configuration before mutation. See docs/RELEASE_PLAN_2_3_0.md.",
-  "candidate_scope": "WM-07 flight attachment and persistent follow-game language. Exact 2.3.0 validation is tracked in docs/RELEASE_PLAN_2_3_0.md; historical WM-06 and 2.2.1 receipts are not acceptance for this candidate. No new controller-menu suppression is implemented.",
+  "candidate_version": "3.0.0",
+  "hotkey_configuration": "config/hotkeys.ini; settings_hotkey=F6, enable_hotkey=F7, disable_hotkey=F8. Bounded startup-only 4 KiB parse, distinct keys required, invalid or missing file falls back to all defaults. No runtime config watcher; restart after edits. Setup preserves valid existing bytes and rejects invalid user configuration before mutation. See docs/RELEASE_PLAN_3_0_0.md.",
+  "candidate_id": "radar-3.0.0-sg16-guide4-20260909",
+  "candidate_scope": "Guide-only layout revision: swap the complete Marmot mini-game and Sudden mission entries, including both Radar/Map icons and labels, in all eleven languages. All runtime behavior is unchanged.",
+  "scene_guidance": {
+    "candidate_id": "radar-3.0.0-sg16-20260909",
+    "scope": "SG-12 Scene presentation and projection only; raw catalogs, eligibility, range anchors and compact/world-map coordinates remain unchanged.",
+    "glyphs": {
+      "area_quest": "Existing gray open diamond, three dots and lower v with a restrained translucent blue-gray interior backing; footprint and solid glyph pixels preserved",
+      "treasure": "small horizontal lid/clasp chest using the four existing category colors",
+      "mini_game": "small purple crossed flags shared by Fly/Mole/Wave",
+      "distance_text": "unchanged smaller native TextBlock labels",
+      "reference_width_units": "Area Quest approximately 22; Treasure 18; crossed flags approximately 18.576",
+      "chevron": "small outlined v below the glyph, following the existing lifted UI group without relocating catalog or projection anchors",
+      "source_geometry": "Same Area Quest outer footprint, rails, three dots, lower v, 32x36 group, 16x16 anchor and six 128x144 sprite contract; only interior backing pixels change",
+      "shared_sprite_textures": 6,
+      "retained_marker_images": 50,
+      "hidden_texture_holders": 6,
+      "sprite_pixels": {
+        "width": 128,
+        "height": 144
+      },
+      "area_quest_sprite_sha256": "8308D1016DC3D19850C51147D66B163A422A70CB217C51CF953B5D1BFF846943"
+    },
+    "projection_z_lift_cm": {
+      "area_quest": 180,
+      "treasure": 160,
+      "mini_game": 150
+    },
+    "display_distance_subtract_meters": {
+      "area_quest": 1,
+      "treasure": 1,
+      "mole": 2,
+      "fly": 0,
+      "wave": 0
+    },
+    "display_distance_order": "Authored-anchor distance minus subtype offset; clamp to zero; round to whole meters. Display-lifted XYZ never changes distance or range selection.",
+    "mini_game_identity": "SceneMarker carries explicit None/Fly/Mole/Wave subtype; reward TreasureMiniGame remains a Treasure and never receives the Mole-only correction.",
+    "aim": {
+      "config_value": "central_radius",
+      "same_target_dwell_ms": 100,
+      "maximum_labels": 1,
+      "horizontal_short_side_radius_fraction": 0.16,
+      "vertical_short_side_radius_fraction": 0.34,
+      "rank_metric": "(dx/radius_x)^2 + (dy/radius_y)^2",
+      "region": "strictly inside ellipse; boundary excluded",
+      "replacement_dwell_ms": 350,
+      "acquired_exit_radius_multiplier": 1.2,
+      "challenger_must_be_more_than_fraction_closer": 0.2,
+      "minimum_linear_advantage": 0.08
+    },
+    "auto": {
+      "config_value": "nearest_center",
+      "challenger_must_be_more_than_fraction_closer": 0.2,
+      "maximum_labels": 1,
+      "rank_metric": "Euclidean screen-center distance",
+      "replacement_dwell_ms": 500,
+      "minimum_linear_advantage_short_side_fraction": 0.012
+    },
+    "focus_validity": "Only currently displayed eligible targets. Acquired Aim target may remain inside a 1.2-times exit ellipse. Hidden/removed targets lose labels immediately; valid incumbents retain their label during replacement dwell.",
+    "range_meters": {
+      "default": 600,
+      "minimum": 0,
+      "maximum": 1000
+    },
+    "shared_marker_limit": {
+      "default": 24,
+      "minimum": 0,
+      "maximum": 50
+    },
+    "zero_policy": "A zero range or marker limit hides Scene; distance Off hides labels only.",
+    "engine_boundary": "Scene projection runs once on every existing EngineTickPost callback outside the shared 16 ms player-position cadence gate. The existing full-catalog nearest selection remains at 250 ms. Each frame refreshes actual distance and validity only for the already selected list of at most 50 markers in linear time, preserving its order instead of sorting again.",
+    "acceptance": "PREPACKAGING_SOURCE_AND_BUILD_SNAPSHOT",
+    "rendering_cost_policy": "Scene updates every existing EngineTickPost frame. Eight or more selected markers use five engine calibration points checking both depth axes, plus one actual retained-marker witness within a radial 0.25 physical-pixel tolerance. Calibration is frame-local; no previous camera pose is reused or interpolated. Unsupported, orthographic, missing-camera or mismatched calibration uses native per-marker projection. Exceptional engine faults retain the existing Scene isolation path. Moving groups use volatile painting and disable pixel snapping when the reflected engine enum is available. Every changed subpixel render translation is submitted; unchanged positions reuse state. Edge margins are 52 pixels for new / 44 for retained markers, overlap spacing 40 / 32. Catalog selection remains 250 ms and selected-distance refresh is bounded to 50 points. No measured FPS or latency improvement is claimed.",
+    "default_category_switches": {
+      "treasure": true,
+      "area_quests": true,
+      "mini_games": true,
+      "existing_explicit_false_preserved": true
+    },
+    "f6_preview_policy": "F6-owned cursor preview is limited to the settings Hub actually owning its input mode and the native HUD remaining visible. Scene may preview current settings while that owned menu is open; the existing enable, readiness, world/travel, activity, native-menu and HUD guards remain authoritative. Other cursor ownership never grants this exception. Scene creates no new input hook.",
+    "predeployment_build_snapshot": {
+      "candidate_id": "radar-3.0.0-sg16-20260909",
+      "snapshot_type": "PREPACKAGING_SOURCE_AND_BUILD_SNAPSHOT",
+      "scope": "SG16 adds independent All controls for Radar and Map, live open-map settings preview with bounded 100 ms coalescing and immediate all-off, Auto focus public defaults, 100 ms initial Aim acquisition with existing 350/500 ms replacement stability, and a compact two-column localized Guide with precise mini-game reward terminology, complete Radar height states, game clock help, aligned Scene legends and four distance rows.",
+      "source": "PASS_FOUR_SOURCE_GATES",
+      "build": "PASS_CANONICAL_NATIVE_446_OF_446",
+      "core": "PASS_9_OF_9",
+      "installer": "SEE_FINAL_RELEASE_MANIFEST",
+      "package": "OWNER_AUTHORIZED_LOCAL_RELEASE",
+      "subsequent_package_evidence": "dist/final-3.0.0/release-manifest.json",
+      "subsequent_deployment_evidence": "dist/work/candidates/radar-3.0.0-sg16-20260909/deployment-verification.json",
+      "deployment": "OWNER_AUTHORIZED_PENDING_VERIFICATION",
+      "gameplay": "PENDING_OWNER_ACCEPTANCE",
+      "game_acceptance": "PENDING_OWNER_TEST",
+      "visual": "PENDING_OWNER_ACCEPTANCE",
+      "controller": "PENDING_OWNER_ACCEPTANCE",
+      "performance": "NO_MEASURED_FPS_CLAIM",
+      "publication": "NOT_PERFORMED",
+      "compiled_source_sha256": "8B5E73BEF70C4960C322CCDC1EE0172155B0D101D09B7D27F5D8ED63634D6793",
+      "native_main_dll_sha256": "92F0D10860E991BE090565EAD247D3C8731FF9A5C0E08CB65056C3E65BE0BE30",
+      "native_main_dll_size_bytes": 1325056,
+      "native_build_created_utc": "2026-09-10T00:08:45.8205296Z",
+      "release_tools_sha256": "AC44E446C30BF0400D3E8B40BFFB7036A711F00618CFFD1737145209B05AFF7F"
+    },
+    "default_distance_mode": "nearest_center"
+  },
   "runtime_owner": "DragonSwordNativeWorldRadarPostRender native main.dll",
   "runtime_boundary": "Native UMG only; no external executable, Lua renderer, motion bridge, diagnostic shared mapping, or connected PostRender/Present canary.",
   "generation_runtime_shipped": false,
@@ -12,7 +116,7 @@
   "encounter_availability_policy": "The ordinary disappearance and strict Destroyed fallbacks pass the current time-window and future-cooldown gates at their final write. Exact NetMulticastNotifyDeath and schema-validated NetMulticastSetDeathProcess End events pass current availability before publishing a catalog bit; ordinary consumption does not recheck that accepted event's time window. A live actor return clears the missing sequence and requests only the existing compact rebind; effective availability changes reuse the existing fixed 49-bit visibility edge and deferred next-map-session atlas policy.",
   "encounter_death_handoff_policy": "An accepted exact NotifyDeath or DeathProcess End event sets one bit in one of two fixed 49-bit atomic masks. Ordinary consumption runs only in the existing 250 ms control service and requires enabled, non-transitioning, non-suppressed context with valid player position. Successful or deduplicated application clears that bit from both masks; an apply exception retains it without erasing unrelated or newly published bits. F7, disable, travel, and activity-suppression boundaries may settle pending cooldown and eligibility numerically without renderer mutation before reset. Only safe live-GameThread finalization and the TitleMap owner boundary may hard-clear the masks. True process teardown closes ingress and returns; UObjectArray shutdown does not clear them. No new poll, timer, scan, SQL query, dynamic queue, or steady work is introduced.",
   "world_map_runtime_delta_policy": "Rebuild in the current session only when the exact retained DLayerMap attachment is visibly open. An attached but hidden layer is retired and defers atlas work until the next exact SetWorldMapImage event. The matching serviced candidate serial may rearm the bounded three-attempt readiness budget once per layer, including after three early map_id probes exhausted before the renderer published a retryable failure; repeated same-layer delivery cannot replenish work after that one rearm.",
-  "compact_viewport_reflow_policy": "Reuse the existing one-hertz minimap-scale service for two scalar viewport size/DPI queries. Mutate retained host scale, position, and layout only on a real geometry edge; add no 16 ms work, timer, enumeration, or allocation.",
+  "compact_viewport_reflow_policy": "Compact Radar retains its one-hertz viewport/clock layout service. F6 settings reflow is separate and checks its viewport every 250 ms only while open.",
   "compact_menu_suppression_policy": "The exact DLayerMap SetWorldMapImage event latches compact suppression for controller or keyboard navigation. A validated GameplayStatics IsGamePaused sample shares the existing 250 ms activity edge, and the map layer IsVisible property is read only during bounded catch-up or while the latch is active. No controller mapping is read, no timer or scan is added, and the 16 ms motion path reads Boolean suppression state only.",
   "world_map_projection_anchor": "The exact current game-native icon Canvas owns two Mod-created hit-test-invisible atlas hosts. Each outer Canvas slot and inner Panel_Point slot is full-stretch with zero offsets; only each locally sized 2048 Image Canvas slot owns the attach-time atlas left, top, width, and height, and Image RenderTranslation remains zero. PlayerIconWidget is read only during a fresh attachment to author that parent-coordinate-space placement. A retained refresh never observes PlayerIcon and reads only the exact FogAbovePanel local extent. When weak parent identity and extent are unchanged, the Image slots remain immutable and refresh performs no layout, transform, visibility, widget-tree, or Retainer mutation. Parent replacement or two-sample stable same-parent extent drift reports RebuildRequired; Main may schedule at most one fresh bounded attachment per open-map session. Initial attach and rebuild each retain an independent three-attempt readiness budget. No AddToViewport host, desktop-resolution input, centered fallback, new poll, per-frame projection path, authored 3000/8000 geometry, or dynamic PlayerIcon rebase is published.",
   "save_callback_limits": {
@@ -31,7 +135,11 @@
       "actor_record_count": 1692,
       "map_100_record_count": 1506,
       "confirmed_absent_render_only_id": 11230106,
-      "confirmed_absent_render_only_coordinates": [182813, 162051, 3150],
+      "confirmed_absent_render_only_coordinates": [
+        182813,
+        162051,
+        3150
+      ],
       "confirmed_absent_policy": "keep the immutable source record and suppress exactly this ID through the reviewed default override; the build fails if the render/Actor difference changes",
       "runtime_completion": "treasure-only exact DsAnimationProp.NetMultiExecuteInteractProp receiver hook gated by a fresh local Pawn or the exact callback-local Rider of that current mounted Pawn for a same-World nearby mount-only treasure, plus ObjectID/class/3D validation, exact SetDeathProcess, and positively observed BeginPlay/EndPlay disappearance fallbacks; every other rejected nearby non-Pawn event may queue only its exact catalog ID for two bounded positive-only save confirmations; ordinary treasure interaction never arms an area-quest completion witness",
       "runtime_delta_policy": "only a real eligibility 1-to-0 transition dirties compact selection; a changed map-100 treasure or linked mini-game entry rebuilds immediately only when the exact retained layer is visibly open, while a hidden or detached layer is retired until the next exact SetWorldMapImage edge; duplicate runtime IDs return before generated-catalog matching and cause no additional invalidation or rebuild",
@@ -96,9 +204,15 @@
       "height_selection": "sort matching records deterministically, cluster candidate PosZ values into bands separated by gaps greater than 250 Unreal units, and exclude a Move_Check-only trigger band when a real task-actor band exists",
       "height_profile_count": 144,
       "height_multi_band_count": 1,
-      "height_multi_band_ids": [1103061],
+      "height_multi_band_ids": [
+        1103061
+      ],
       "height_no_source_count": 3,
-      "height_no_source_ids": [1103108, 1104104, 1104203],
+      "height_no_source_ids": [
+        1103108,
+        1104104,
+        1104203
+      ],
       "height_failure_policy": "no-source rows retain their original render XYZ but set HeightBandCount=0, so the marker remains visible with neutral no-dots/no-direction height presentation; marker Z is never a fallback",
       "availability_owner": "native one-shot save snapshot, reflected Main/Group definitions, first-valid-hour and displayed-hour-edge refreshes, and bounded runtime quest-state scans",
       "completion_identity_owner": "runtime TaskActorClassContainer.DynamicQuestTaskList reflection plus exact catalog QuestID events from native ETSendQuestEventTrigger",
@@ -200,7 +314,7 @@
   },
   "visibility_hub": {
     "hotkey": "F6",
-    "implementation": "transient localized native UMG panel with weak widget identities, responsive reference geometry, viewport/DPI fit scaling, translucent section cards, aligned text, equal-width filter choices, bounded non-overlapping hit regions, and no retained player controller",
+    "implementation": "SG-12 keeps restrained blue-gray translucent cards and square Radar/Map checks. The fixed header is 98 reference units and footer 58; the intervening four-card body scrolls on short displays. Minimum supported viewport is 640x360. At 720p the main controls keep reference size; 21:9 adds side margins without stretching. While open, viewport/DPI checks run every 250 ms and update the retained tree without texture reimports, preserving settings and scroll position. Resize cancels pending confirmations before changing geometry. Invalid dimensions follow normal final-setting sampling and close. Numeric layout tests cover 83 cases; game input/composition remains unverified.",
     "text_vertical_centering": "Source lifecycle centering covers initial open, language changes, status changes, and popup visibility changes. An exact-font TextBlock accepts GetDesiredSize only when ReturnValue has the same known Vector2D struct identity as the validated viewport-size return, then shrinks to the measured line height around its authored vertical center. Render-scale fallback retains its authored slot geometry and uses the existing pivot instead of desired-size recentering. Unavailable, mismatched, faulting, non-finite, non-positive, or oversized evidence preserves authored geometry. Reflow is edge-only and changes no per-frame path, radar or world-map geometry, or checkbox/button hit region. Live F6 visual acceptance remains NOT_VALIDATED.",
     "compact_categories": [
       "clock",
@@ -218,26 +332,63 @@
       "mini_games",
       "area_quests"
     ],
+    "scene_categories": [
+      "treasure",
+      "area_quests",
+      "mini_games"
+    ],
     "mini_game_scope": "Fly, Mole, and Wave share one presentation category",
     "bird_egg_scope": "Bird_Egg01_C and Bird_Egg02_C share one compact-only category; the world-map control is unavailable",
-    "height_arrow_controls": "three independent compact-radar controls, all enabled by default on a clean configuration while valid existing choices are preserved; Treasure controls its nearest retained arrow; Fly, Mole, and Wave share one nearest-mini-game arrow; Area Quest controls every visible marker. All three channels compare target Z with the same calibrated player root, playerZ minus 150. Mini-games hide inside an inclusive plus or minus 500 band. A valid multi-band Area Quest profile is first collapsed to the unique source band nearest the catalog marker's authored Z, then uses the same inclusive plus or minus 500 alignment margin; missing profiles and exact nearest-band ties remain neutral. No control hides markers or mutates gameplay state",
-    "language_control": "The popup exposes eleven explicit game UI languages plus AUTO (Game Language) in its twelfth cell. AUTO stays persisted; actual F6 opening and F7 activation detect once before resolving the display language. Manual selections remain authoritative. Failed detection retains the last valid language, with English only before the first valid sample. Existing game-font routing, Korean/Traditional Chinese overlays, and bounded font acquisition remain unchanged.",
-    "font_control": "the first real F6 opening performs one bounded loaded-Font enumeration for exact Common, TC, JP, and TH game system-font names. Languages with proven game-font coverage use the matching cached family. The canonical assets/ui/f6 payload contains six status-specific Korean and Traditional Chinese 2x main overlays, one shared language-popup.tga overlay, and its manifest. Each main overlay replaces all 30 fixed main-panel text slots, while the popup replaces only the two affected language names; the other nine languages remain on native game fonts. The overlays are generated from pinned DroidSansFallback at a 32-pixel reference base with one-pixel translucent stroke and role-specific optical baseline correction, replace only text pixels, and reuse the existing UMG layout, controls, hit targets, scale, and state. Missing optional font evidence never rejects F6, and no steady font scan or runtime filesystem generation is added",
-    "mod_status_control": "F6 opens while Radar is Off, On, or Faulted. The top bar contains Bug Report and Close. Mod Status is read-only text with a thin state-colored strip; a separate Enable, Disable, or Retry action keeps the page open, and Enable retains the loaded-playable-world guard",
-    "bug_report_control": "one-shot fixed URL https://www.nexusmods.com/dragonswordawakening/mods/254?tab=posts",
-    "data_boundary": "two packed numeric presentation masks, two display modes, one three-bit height-arrow mask, and one bounded language preference; the Hub does not mutate catalogs, save data, cooldowns, quest states, completion latches, or provider schedules",
+    "height_arrow_controls": "Five independent compact-radar controls: Treasure, Area Quest, Mini-games, Boss and Assault, all enabled on clean defaults while explicit existing choices are preserved. Treasure retains its nearest six-piece left pointer; The legacy mole key controls the nearest Fly/Mole/Wave below-icon triangle; Area Quest controls each visible task marker; Boss and Assault control every retained encounter marker. All compare against playerZ minus 150. Mini-game and Area Quest/Boss/Assault alignment uses the shared inclusive +/-500 interval. Area Quests select their unique nearest authored height band; encounters use finite single-point authored spawn Z with no extra monster-origin offset. Aligned encounters restore the original glyph; unknown encounters preserve it without claiming alignment. Boss/Assault/Area sizes are 35/30/25 with a shared 4-reference-unit visible frame/triangle core; encounter triangles reserve another 1-unit dark-green outline per side, all scaled by display/DPI. Switches hide no markers and mutate no gameplay state.",
+    "language_control": "AUTO (Game Language) is the first popup option, followed by eleven explicit game UI languages. AUTO stays persisted; each actual F6 opening and F7 activation samples the game language once. Manual choices remain authoritative until AUTO is selected. Invalid detection retains the last valid language, using English only before the first valid sample. The selector shows the resolved language and the popup highlights AUTO while following.",
+    "font_control": "All eleven languages use pinned regular-font raster resources for 44 main slots in three status states, twelve language-popup choices, hover help, confirmations and numeric glyphs. Shared roles keep equal reference sizes; all three footer actions use 13 reference units / 26 raster pixels. There are 53 F6 TGAs: 33 main pages, one popup, two endonym value images, eleven 640x7632 atlases and six skins. Required glyph coverage is 423 main, 750 tooltip and 250 confirmation codepoints. Main/popup sheets are 1520x1704. Successful import and brush readback precede native-text hiding; main-page fallback remains native regular text, while missing confirmation resources remain cancel-only. No per-frame font discovery or runtime font generation is added.",
+    "mod_status_control": "F6 remains available while Radar is Off, On or in Error. The header contains title/Close and language/status controls; Reset, Vote and Feedback live in the footer.",
+    "bug_report_control": "Feedback asks before opening the fixed mod 254 Posts URL; the player submits the report on Nexus.",
+    "data_boundary": "Three packed numeric presentation masks, two display modes, one five-bit height-arrow mask, Scene range/count/distance settings and one bounded language preference; no catalog, save, cooldown, quest-state, completion-latch or provider-schedule mutation.",
     "area_quest_mode": "AVAILABLE preserves prerequisite-proven visibility; ALL displays catalog tasks not excluded by saved or exact runtime completion, while a current active repeatable cycle remains visible",
     "assault_mode": "AVAILABLE preserves save readiness, the authored Assault time window, defeat state, and future cooldown; ALL displays all 40 static Assault records without those live filters, while actual completion/cooldown authority remains unchanged; Boss and area-quest selection are unchanged",
     "open_service_interval_ms": 50,
-    "closed_state_policy": "no UObject access, reflection, allocation, polling, or file I/O",
-    "apply_policy": "publish both masks, both display modes, the height-arrow mask, and language preference in one game-thread transaction and perform one atomic config-file replacement only when a real selection changes; height-arrow and language-only changes do not rebuild the expanded-map atlas",
-    "close_policy": "the top-bar Close control or a second F6 closes without another mask publication",
+    "closed_state_policy": "Closed UMG performs no UObject/reflection work. Without a retained Escape press, hooks are removed and native input service returns after an atomic ingress check. Only an already-consumed press tail can temporarily remain until release or focus cleanup. The owner may flush one pending Scene preference write; no configuration hot polling.",
+    "apply_policy": "Publish masks, filter modes, five height controls, Scene settings and language in one game-thread transaction on change; a global reset also publishes its explicit reset flag if values already match. Ordinary preference changes persist atomically; dragged Scene changes retain a 300 ms debounce. A global preset makes pending writes immediately due, while Esc/F6/Close sample final controls and flush pending values. Unchanged samples without pending work do not write. Only a real expanded-map visibility change can request its existing coalesced map rebuild.",
+    "close_policy": "When a confirmation is active, Esc cancels only that modal and keeps F6 open. Its held/repeat/release tail remains consumed. A second F6, forced page close or focus loss closes the whole page and clears pending confirmation without dispatching it; focus loss takes priority over Escape. Without a confirmation, Esc, Close and a second F6 sample final controls, including the slider's last drag value, then close F6 and flush changed settings. Null current-controller probes during close/cancel resolve the host owner, while actual controller replacement fails closed. Travel and teardown clear pending intent and weak records. Source/isolated input tests are separate from game acceptance.",
+    "escape_input_policy": "F6 opens only after verifying the foreground UnrealWindow, current-process ownership and nonzero thread, then installing hooks on that one local window thread. WH_GETMESSAGE changes owned-window/child Escape key, repeat, release and character messages to WM_NULL before TranslateMessage/DispatchMessage; WH_CALLWNDPROC only observes owner focus, activation and destruction. The consumed press remains owned after UMG closes through key-up; the next independent press resumes normal routing. Synchronous focus loss requests full close and clears the held gesture while retaining protection until actual UMG removal. Travel, owner destruction and teardown clear state; process shutdown disables ingress without Unreal access. Hook failure rejects opening with failure 40. No global/low-level keyboard hook, synthetic input, UObject call or object scan occurs in this module. Other keys and other windows remain outside the filter scope.",
     "cursor_policy": "set Game-and-UI mode before showing the cursor; during open-only 50 ms service reassert only after observing that gameplay hid it",
     "config_path": "config/visibility.ini",
-    "config_schema": "current: at most 4096 bytes with complete readable [radar], [map], [modes], [height_arrows], and [interface] sections; named category and height values are true or false, both mode values are available or all, and interface.language is one canonical supported ID. The prior exact three-section readable form and strict legacy schema 1-4 packed-mask documents remain accepted and migrate to all three height controls enabled, AUTO language, and legacy assault_mode=current as AVAILABLE",
+    "config_schema": "Startup-only config/visibility.ini, at most 4096 bytes. Current serialization/public defaults contain six complete sections: [radar], [map], [scene], [modes], [height_arrows], [interface]. Scene treasure, area_quests and mini_games default true; range_meters=600 (0..1000), marker_limit=24 (0..50), distance_mode=nearest_center (off/central_radius/nearest_center/all). Either zero numeric setting suppresses Scene; distance off suppresses labels only. All five height keys treasure/area_quests/mole/boss/assault default true. Interface language defaults auto and remains persisted. The reader preserves strict legacy packed schema 1-4 and old three/five-section files; absent new fields use defaults while existing explicit choices survive. A present legacy Scene section still requires its original treasure and area_quests keys. Unknown, duplicate, malformed or incomplete required legacy input fails closed. No hot polling; F6 never rewrites hotkeys.ini.",
     "config_read_policy": "once during native startup; no hot polling; duplicate, mixed-format, unknown, incomplete, malformed, or inconsistent-line-ending input falls back to safe defaults",
-    "config_write_policy": "only on a real category, mode, height-arrow, or language change via temporary-file atomic replacement in current five-section readable format",
-    "deployment_policy": "preserve an existing user config file"
+    "config_write_policy": "Current six-section readable format; real option changes use temporary-file atomic replacement, with a 300 ms debounce for Scene range/count/distance changes and a pending-write flush on close.",
+    "deployment_policy": "preserve an existing user config file",
+    "tooltip_policy": "Native UWidget:SetToolTip manages 32 short help topics across 56 owners in the bounded 64-record pool. Eleven shared 640x7632 atlases contain 32 help, seven confirmation and fourteen numeric/symbol tiles each, totaling 583 tiles. Language edges replace the atlas; steady hover does not import or discover resources. Confirmation crops and numeric crops share the same regular-font pixels. Resize updates retained tooltip geometry as well as the page. Missing confirmation resources disable Yes; close/travel clear weak ownership.",
+    "skin_policy": "SG-12 keeps restrained blue-gray translucent cards and square Radar/Map checks. The fixed header is 98 reference units and footer 58; the intervening four-card body scrolls on short displays. Minimum supported viewport is 640x360. At 720p the main controls keep reference size; 21:9 adds side margins without stretching. While open, viewport/DPI checks run every 250 ms and update the retained tree without texture reimports, preserving settings and scroll position. Resize cancels pending confirmations before changing geometry. Invalid dimensions follow normal final-setting sampling and close. Numeric layout tests cover 83 cases; game input/composition remains unverified.",
+    "global_preset": "Bottom-row Reset to Defaults first opens a Yes/No confirmation. Only confirmed Yes restores all legal Radar/Map/Scene categories on, all five height choices on, both filters to Available, Scene 600 m/24/Aim and language AUTO. No or Esc closes only the confirmation with unchanged source settings. Confirmed restoration uses normal final-control sampling and one atomic global_reset_requested result; pending Scene writes flush even if values already match, while unchanged controls with no pending writes cause no write. Radar running state, startup hotkeys, saves and gameplay state are unchanged.",
+    "display_row_order": [
+      "treasure",
+      "boss",
+      "assault",
+      "mini_games",
+      "area_quests",
+      "bird_eggs",
+      "clock"
+    ],
+    "scene_preview_policy": "F6-owned cursor preview is limited to the settings Hub actually owning its input mode and the native HUD remaining visible. Scene may preview current settings while that owned menu is open; the existing enable, readiness, world/travel, activity, native-menu and HUD guards remain authoritative. Other cursor ownership never grants this exception. Scene creates no new input hook.",
+    "endorse_control": "The internal Endorse command opens the mod page after confirmation. Visible wording is Vote for This Mod, referring to Mod of the Month voting. The player completes the action on Nexus.",
+    "confirmation_contract": "Reset to Defaults, Vote for This Mod and Feedback each ask one localized question. Yes consumes the armed intent once before resetting display preferences or opening the fixed Nexus home/Posts URL. No or Esc cancels only the modal; focus loss closes the whole page. Background input remains blocked through dismissal and resize. Voting means Mod of the Month voting, distinct from endorsement; opening the mod page never submits a vote or feedback.",
+    "language_simplification": "SG-12 standardizes regular fonts and concise wording in all eleven languages. Reset to Defaults, Vote for This Mod and Feedback share a fixed footer. The 760x852 reference panel scrolls its four-card body on short displays and reflows the retained tree after viewport/DPI changes. Scene uses current-frame calibrated projection with native fallback, changed subpixel translations and visibility hysteresis. Existing catalogs, height rules, distance corrections and display defaults remain. Local deployment is authorized; release packages are deferred until owner testing.",
+    "footer_layout": {
+      "reference_panel": [
+        760,
+        852
+      ],
+      "buttons": [
+        "Reset to Defaults",
+        "Vote for This Mod",
+        "Feedback"
+      ],
+      "status": "SG12_LAYOUT_RETAINED_H2_OPTIONAL_SCROLLBAR_FIX_LIVE_TEST_PENDING"
+    },
+    "sg12_h1_opening_fix": "SG-12-H1 fixes F6 failing to open in deployed SG-12. The two reflected UScrollBox parameter names are corrected to NewOrientation and NewScrollBarVisibility; type, offset and size checks remain. Two negative source checks cover these names, bringing the Hub regression suite from six to eight. All 61 UI files match SG-12 byte-for-byte. Local deployment only; release packages remain deferred until owner testing.",
+    "sg12_h2_opening_fix": "SG-12-H2 addresses the remaining F6 opening failure observed after H1. Live H1 diagnostics report the ScrollBox ABI failure bit (1073741824), and a live UE4SS reflection probe confirms that /Script/UMG.ScrollBox:SetScrollBarVisibility is absent in this game. H2 treats that visual setter as optional: validate it independently when present, clear it when absent or incompatible, and call it only when valid. Required ScrollBox, layout and content ABI checks remain strict. Two additional negative cases bring the Hub suite from eight to ten. All 61 UI files and other behavior are retained. Local deployment only; no new release packages.",
+    "world_map_preview": "100 ms bounded coalescing while F6 is open; baseline cancellation; immediate all-off; close flushes any pending edit."
   },
   "runtime_localization": {
     "supported_game_languages": [
@@ -274,8 +425,9 @@
     "read_schedule": "exactly once on each F7 and once immediately before each actual F6 open; no frame, steady timer, or ordinary closed-panel polling",
     "failure_policy": "Missing or invalid primary provider tries bounded Kismet fallback. Missing, invalid, unsupported, or failed samples retain the last valid detection; English is used only before any valid sample. Failure does not persist a fallback preference.",
     "manual_policy": "Manual selections persist and remain authoritative. Selecting AUTO enables persistent following; detection never overwrites the preference.",
-    "font_provider": "on the first real F6 open, enumerate loaded Font objects once and cache exact DsCompositFont_CommonSystem, DsCompositFont_TCSystem, DsCompositFont_JPSystem, and DsCompositFont_THSystem weak identities; copy the complete live FSlateFontInfo, replace only FontObject, verify readback, and disable DTextBlock automatic font replacement after success. The checked-in canonical assets/ui/f6 payload supplies six status-specific Korean and Traditional Chinese main overlays covering all 30 fixed main-panel text slots plus one shared popup overlay covering only the two affected language names; the other nine languages continue through native game fonts. Missing optional game-font evidence still falls back without rejecting F6",
-    "runtime_cost": "localized strings are fixed compile-time tables; changing language updates the transient open F6 panel only and adds no recurring work"
+    "font_provider": "All eleven languages use pinned regular-font raster resources for 44 main slots in three status states, twelve language-popup choices, hover help, confirmations and numeric glyphs. Shared roles keep equal reference sizes; all three footer actions use 13 reference units / 26 raster pixels. There are 53 F6 TGAs: 33 main pages, one popup, two endonym value images, eleven 640x7632 atlases and six skins. Required glyph coverage is 423 main, 750 tooltip and 250 confirmation codepoints. Main/popup sheets are 1520x1704. Successful import and brush readback precede native-text hiding; main-page fallback remains native regular text, while missing confirmation resources remain cancel-only. No per-frame font discovery or runtime font generation is added.",
+    "runtime_cost": "localized strings are fixed compile-time tables; changing language updates the transient open F6 panel only and adds no recurring work",
+    "tooltip_policy": "Native UWidget:SetToolTip manages 32 short help topics across 56 owners in the bounded 64-record pool. Eleven shared 640x7632 atlases contain 32 help, seven confirmation and fourteen numeric/symbol tiles each, totaling 583 tiles. Language edges replace the atlas; steady hover does not import or discover resources. Confirmation crops and numeric crops share the same regular-font pixels. Resize updates retained tooltip geometry as well as the page. Missing confirmation resources disable Yes; close/travel clear weak ownership."
   },
   "runtime_diagnostics": {
     "enabled_by_default": false,
@@ -295,11 +447,11 @@
     "retained_previous_files": 1,
     "disabled_policy": "no log directory creation, rollover, formatting, mutex acquisition, or file work after the startup decision; existing historical logs are preserved",
     "deployment_policy": "the installer-only default is false and is never left in the installed Mod; preserve an existing live user file, copy the false internal default to diagnostics.ini on a clean install, and keep the installed gameplay-test copy explicitly enabled without changing the release default",
-    "runtime_acceptance": "For 2.3.0 use release_acceptance in metadata/release.json and docs/RELEASE_PLAN_2_3_0.md; prior exact-byte evidence below is historical.",
+    "runtime_acceptance": "For 3.0.0 use release_acceptance in metadata/release.json and docs/RELEASE_PLAN_3_0_0.md; prior exact-byte evidence below is historical.",
     "historical_2_2_1_runtime_acceptance": "Historical 2.2.0 and superseded 2.2.1 evidence remains bound to its recorded bytes and is not current WM-06 evidence. Version 2.2.1 WM-06 is a fixes-only candidate whose full-stretch hosts remain children of the exact native icon Canvas while locally sized Image slots own immutable attach-time atlas rectangles. Exact source, build, package, Setup 20/20, Manual 2/2, payload-equivalence, layout, clean-target, archive-reextraction, and rollback-backed developer-local deployment validation passed for DLL 6435E10031D90840BF0499664CF57347D7991C9C192BD3B2239ADE2324C723A1 and compiled source 0A1A4CE3EE9F3A04E4B258976CFD830654BCB778B1F9BF5715FB66242B5E5BC5. Gameplay, native-icon stability, click-target alignment, F6 visual behavior, controller behavior, localization, resolution, exit, and performance remain NOT_VALIDATED."
   },
   "release_installer": {
-    "entrypoint": "DragonSwordNativeWorldRadarPostRender-Setup-2.3.0.exe",
+    "entrypoint": "DragonSwordNativeWorldRadarPostRender-Setup-3.0.0.exe",
     "implementation": "installer/InstallerEngine.cs embedded by tools/Build-Installer.ps1",
     "steam_app_id": 4570720,
     "discovery_policy": "bounded Steam library and appmanifest discovery with one separately validated explicit game path fallback",
@@ -308,7 +460,7 @@
     "package_topology": "one unsigned C# Setup archive containing exactly Setup, its SHA-256 sidecar, INSTALL.md, and THIRD_PARTY_NOTICES.txt plus two script-free ExperimentalNested manual archives whose roots map directly to DS/Binaries/Win64. Both manual archives carry the same source-bound Mod payload and one clean single-product ue4ss/Mods/mods.txt; No-UE4SS omits loader, proxy, and settings and requires copying mods.txt only when missing or manually merging the Radar line, while clean-target-only With-UE4SS adds the pinned runtime. Setup remains the supported automatic update and user-state-preservation route. StableRoot is unsupported",
     "integrity_policy": "verify fixed embedded payload topology, manifest identity, exact file set, SHA-256, size, and release version before installation; existing game, UE4SS loader, and proxy hashes are transaction provenance only and are not compatibility allowlists; before replacing an existing same-name target, require schema-5 release and schema-1 package metadata, exact immutable installed path/size/hash identity including metadata/release.json and a runtime-label-bearing dlls/main.dll, strict mutable treasure-override syntax, and an exact bounded recursive tree",
     "mutation_policy": "perform exactly three stopped-game checks before mutation; never elevate, launch, or terminate the game; replace only the exact native target, normalize one native mods.txt authority, remove every valid obsolete DragonSwordWorldRadarObjectState entry, and atomically preserve unrelated mods.txt encoding, line endings, bytes, and entries; reject active or malformed DragonSwordWorldRadar load control and exact DragonSwordWorldRadar/enabled.txt in any approved Mods root before backup or mutation, preserve exact disabled DragonSwordWorldRadar : 0, and never delete or disable that external renderer",
-    "user_state_policy": "preserve config/visibility.ini, config/diagnostics.ini, and data/defaults/treasure_overrides.txt byte-for-byte after strict validation; clean installs copy embedded defaults into the three live paths; example files are not installed",
+    "user_state_policy": "Preserve visibility.ini, diagnostics.ini and treasure_overrides.txt after strict validation. Preserve hotkeys.ini bytes unless the owner explicitly confirms changed Settings/Enable/Disable keys. Clean installs create the four live user-owned paths from validated defaults; example files are not installed.",
     "rollback_policy": "normal install and Update / Repair use a non-reparse temporary rollback journal that is removed after verified commit; only UE4SS bootstrap or conversion retains a complete verified original-layout backup; any failure restores every recorded mutation",
     "manual_matrix_gate": {
       "status": "PASSED_CURRENT_WM06_2_OF_2",
@@ -316,8 +468,8 @@
       "required_failed": 0,
       "required_skipped": 0
     },
-    "final_output": "dist/final-2.3.0 must contain exactly DragonSwordNativeWorldRadarPostRender-v2.3.0-Installer.zip, DragonSwordNativeWorldRadarPostRender-v2.3.0-Manual-No-UE4SS.zip, DragonSwordNativeWorldRadarPostRender-v2.3.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip, release-manifest.json, and SHA256SUMS.txt",
-    "evidence_boundary": "For 2.3.0 use release_acceptance in metadata/release.json and docs/RELEASE_PLAN_2_3_0.md; prior exact-byte evidence below is historical.",
+    "final_output": "Final packages remain verified SG-10. SG-12 is a local deployment candidate; no new package or promotion is requested until owner testing. See docs/RELEASE_STATUS.md and the SG-12 deployment receipt.",
+    "evidence_boundary": "SG-12 PREDEPLOYMENT_BUILD_SNAPSHOT: Core 9/9; native clean build 446/446; Compact, WorldMap, PostRender and Release Hygiene gates pass. DLL 56ADC902BED3C468D5E933F2D03A81850A9FEB7226A27D6702A04153716A1961, 1295360 bytes; receipt 2026-09-09T19:58:58.1322624Z. Scene 319, projection 39, viewport 83, clock 28, Escape 58 and confirmation 55 checks pass. F6 validates 423/750/250 main/help/confirmation codepoints and rejects 43 resource regressions. Inventory: 53 F6 TGAs, six Scene TGAs, two manifests; 61 UI files, 91 payload entries, 92 runtime files. SG-11 was built only and superseded before delivery. Current final packages remain SG-10; SG-12 packages are deferred by the owner. The separate SG-12 deployment receipt records installation after this snapshot. Gameplay, visual, controller and performance acceptance remain pending; no external publication occurred.",
     "historical_2_2_1_evidence_boundary": "Historical 2.2.0 and superseded 2.2.1 evidence remains bound to its recorded hashes and is not current WM-06 evidence. Exact-artifact 2.2.1 source, build, package, Setup 20/20, Manual 2/2, payload-equivalence, layout, clean-target, archive-reextraction, and rollback-backed developer-local deployment validation passed for current WM-06 DLL 6435E10031D90840BF0499664CF57347D7991C9C192BD3B2239ADE2324C723A1 and compiled source 0A1A4CE3EE9F3A04E4B258976CFD830654BCB778B1F9BF5715FB66242B5E5BC5. Gameplay acceptance remains NOT_VALIDATED."
   },
   "save_owner_binding": {
@@ -326,5 +478,132 @@
     "runtime_policy": "For observed game 1.0.11, use owner RVA 0x94F4FA8 with key member offset +0x128 only as the zero-scan fast path. If validation against the active .db fails during FullActivation, perform at most one current-EXE structural scan on the existing below-normal save worker. Scan only executable section bytes bounded by min(SizeOfRawData, VirtualSize), count only valid unique targets inside SizeOfImage, and share one total budget of at most 24 active-database key validations across packaged and structural owner routes. Structural incompatibility fails closed; this does not promise compatibility with every future game version.",
     "steady_state_cost": "no watcher, periodic scan, game-thread scan, UObject retention, or additional worker; a compatible update pays at most one below-normal mapped-image scan per game process"
   },
-  "update_policy": "A game executable update does not block Setup and does not request reinstall or catalog rebuilding. F7 performs save/runtime resynchronization and may use the bounded owner-pointer fallback, but it does not extract PAK data or regenerate immutable catalogs. New or corrected catalog rows still require a separately validated data release. The runtime has no watcher, hot configuration polling, network updater, or automatic reinstall prompt."
+  "update_policy": "A game executable update does not block Setup and does not request reinstall or catalog rebuilding. F7 performs save/runtime resynchronization and may use the bounded owner-pointer fallback, but it does not extract PAK data or regenerate immutable catalogs. New or corrected catalog rows still require a separately validated data release. The runtime has no watcher, hot configuration polling, network updater, or automatic reinstall prompt.",
+  "current_ui_revision": {
+    "candidate_id": "radar-3.0.0-sg16-20260909",
+    "reference_typography_px": {
+      "title": 22,
+      "section": 16,
+      "body_and_values": 14,
+      "buttons_and_footer": 13,
+      "annotations": 12
+    },
+    "primary_rgba": [
+      237,
+      244,
+      249,
+      255
+    ],
+    "secondary_rgba": [
+      206,
+      220,
+      232,
+      255
+    ],
+    "alignment": "font-metric-baseline",
+    "confirmation_size": [
+      380,
+      184
+    ],
+    "confirmation_body_scale": 1,
+    "yes": "right",
+    "no": "left",
+    "skin": "existing rounded nine-slice",
+    "material": "restrained blue-gray, 7-11 percent card transmission and 96-99 percent dialog opacity; no live blur",
+    "resources": "Main F6 54 files; Scene 7 files; Guide 12 files; 73 total",
+    "fixed_font_size": true,
+    "validation": "SOURCE_GATES_PASSED",
+    "viewport": "Source layout and previews cover 640x360, 854x480, 1280x720, 1920x1080, 2560x1080, 3440x1440 and 3840x2160; sticky header/footer and scrolling body",
+    "gameplay": "PENDING_OWNER_TEST",
+    "package": "STYLE_INCLUDED_IN_CURRENT_RELEASE_PAYLOAD",
+    "reference_panel_size": [
+      760,
+      876
+    ],
+    "all_controls": "Radar:7 supported entries; Map:5 supported entries. Checked only when every member is on. Partial selection remains unchecked. Scene/heights/filters stay independent."
+  },
+  "current_guide_revision": {
+    "candidate_id": "radar-3.0.0-sg16-guide4-20260909",
+    "entry": "Guide to the left of Close; Settings returns to settings",
+    "reference_atlas_size": [
+      760,
+      1184
+    ],
+    "physical_atlas_size": [
+      1520,
+      2368
+    ],
+    "body_crop": [
+      0,
+      64,
+      760,
+      1120
+    ],
+    "localization": "11 languages; source-bound labels and pinned fonts",
+    "layout": "Two-column activities: flying, wave and marmot mini-games plus bird eggs on the left; sudden missions, bosses and area quests on the right. Three height columns, clock, scene examples and distance rows retained.",
+    "optional_failure": "Only Guide disabled, Settings restored; optional assets never reject F6 opening",
+    "resources": "12 Guide files within 73 UI files",
+    "validation": "PASS_11_LANGUAGES_539_TEXT_CELLS_40_ICONS",
+    "gameplay": "PENDING_OWNER_TEST",
+    "package": "INCLUDED_IN_CURRENT_RELEASE_PAYLOAD",
+    "parent_candidate_id": "radar-3.0.0-sg16-guide3-20260909",
+    "height_columns": [
+      "above",
+      "near_level",
+      "below"
+    ],
+    "text_cells": 539,
+    "icon_examples": 40,
+    "runtime_height_behavior": "UNCHANGED"
+  },
+  "current_package_revision": {
+    "candidate_id": "radar-3.0.0-sg16-guide4-20260909",
+    "snapshot_type": "PREPACKAGING_GUIDE_ASSET_REVISION",
+    "scope": "Guide-only layout revision: swap the complete Marmot mini-game and Sudden mission entries, including both Radar/Map icons and labels, in all eleven languages. All runtime behavior is unchanged.",
+    "source": "GUIDE_RESOURCE_CHECK_PASSED_RELEASE_GATES_PENDING",
+    "build": "VERIFIED_SG16_NATIVE_ARTIFACT_REUSED",
+    "core": "SEE_CURRENT_RELEASE_MANIFEST",
+    "installer": "SEE_FINAL_RELEASE_MANIFEST",
+    "package": "OWNER_AUTHORIZED_LOCAL_RELEASE",
+    "subsequent_package_evidence": "dist/final-3.0.0/release-manifest.json",
+    "subsequent_deployment_evidence": "dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/deployment-verification.json",
+    "deployment": "OWNER_AUTHORIZED_PENDING_VERIFICATION",
+    "gameplay": "PENDING_OWNER_ACCEPTANCE",
+    "game_acceptance": "PENDING_OWNER_TEST",
+    "visual": "PENDING_OWNER_ACCEPTANCE",
+    "controller": "PENDING_OWNER_ACCEPTANCE",
+    "performance": "NO_MEASURED_FPS_CLAIM",
+    "publication": "NOT_PERFORMED",
+    "compiled_source_sha256": "8B5E73BEF70C4960C322CCDC1EE0172155B0D101D09B7D27F5D8ED63634D6793",
+    "native_main_dll_sha256": "92F0D10860E991BE090565EAD247D3C8731FF9A5C0E08CB65056C3E65BE0BE30",
+    "native_main_dll_size_bytes": 1325056,
+    "native_build_created_utc": "2026-09-10T00:08:45.8205296Z",
+    "release_tools_sha256": "AC44E446C30BF0400D3E8B40BFFB7036A711F00618CFFD1737145209B05AFF7F",
+    "parent_candidate_id": "radar-3.0.0-sg16-guide3-20260909"
+  },
+  "parent_sg16_package_revision": {
+    "candidate_id": "radar-3.0.0-sg16-guide3-20260909",
+    "snapshot_type": "PREPACKAGING_GUIDE_ASSET_REVISION",
+    "scope": "Guide-only layout revision: omit Unknown and distribute Above, Near level and Below across three columns in all eleven languages. Actual runtime height logic is unchanged.",
+    "source": "GUIDE_RESOURCE_CHECK_PASSED_RELEASE_GATES_PENDING",
+    "build": "VERIFIED_SG16_NATIVE_ARTIFACT_REUSED",
+    "core": "SEE_CURRENT_RELEASE_MANIFEST",
+    "installer": "SEE_FINAL_RELEASE_MANIFEST",
+    "package": "OWNER_AUTHORIZED_LOCAL_RELEASE",
+    "subsequent_package_evidence": "dist/final-3.0.0/release-manifest.json",
+    "subsequent_deployment_evidence": "dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/deployment-verification.json",
+    "deployment": "OWNER_AUTHORIZED_PENDING_VERIFICATION",
+    "gameplay": "PENDING_OWNER_ACCEPTANCE",
+    "game_acceptance": "PENDING_OWNER_TEST",
+    "visual": "PENDING_OWNER_ACCEPTANCE",
+    "controller": "PENDING_OWNER_ACCEPTANCE",
+    "performance": "NO_MEASURED_FPS_CLAIM",
+    "publication": "NOT_PERFORMED",
+    "compiled_source_sha256": "8B5E73BEF70C4960C322CCDC1EE0172155B0D101D09B7D27F5D8ED63634D6793",
+    "native_main_dll_sha256": "92F0D10860E991BE090565EAD247D3C8731FF9A5C0E08CB65056C3E65BE0BE30",
+    "native_main_dll_size_bytes": 1325056,
+    "native_build_created_utc": "2026-09-10T00:08:45.8205296Z",
+    "release_tools_sha256": "AC44E446C30BF0400D3E8B40BFFB7036A711F00618CFFD1737145209B05AFF7F",
+    "parent_candidate_id": "radar-3.0.0-sg16-20260909"
+  }
 }

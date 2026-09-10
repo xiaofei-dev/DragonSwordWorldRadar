@@ -1,6 +1,60 @@
 ﻿# Auto Pickup Attempt Ledger
 
-Last evidence audit: 2026-09-07.
+Last evidence audit: 2026-09-08.
+
+## 2026-09-08 PRE_CHANGE_NOVELTY_GATE: frame-paced throughput and debug isolation
+
+Status: `IMPLEMENTATION_IN_PROGRESS_RUNTIME_PENDING`. Owner authorizes local
+deployment, approved 20x Range PAK, and Debug ON testing; no public release.
+
+```text
+Proposed route: Remove redundant active scan/post-pickup waits, not a new discovery or input route.
+Target source: Existing single game-owned dual-anchor selector, with fresh player/Rider identity.
+Candidate discovery: At most one selector attempt per EngineTick; idle scans remain 33 ms.
+Action: Existing one-shot Enhanced Input, one global pending action; no batch RPC or repeated injection within a tick.
+Confirmation: Exact weak identity/state evidence before dispatch; dispatch is not pickup success. Preserve the preceding dispatch-attempt correction and bounded exact-Component retry/backoff.
+Prior versions compared: This ledger's 1.2.0 repeat storm, activation-quarantine failures, 1.3.0 dispatch observer, diagnostic distance-ProcessEvent failure, and the preceding dispatch-accounting candidate.
+New evidence: Active work currently incurs both a 25 ms pulse and scan due-time; confirmed pickup can add another 25 ms. PLAYER_CONTEXT_CHANGED and SELECTOR_PAIR_OBSERVED are still formatted before the 250 ms attempt budget check. At frame cadence, 128 retained unconfirmed records can fill before their 2250 ms retention expires.
+Why prior rejection is not repeated: Keep all world/owner/weak identity, foreground and one-in-flight guards. Defer debug formatting until after the decision using captured scalars, never location reads. Pre-admission capacity pressure waits and expires naturally without discarding retry history or disabling the activation.
+Expected observable: READY identifies frame cadence; normal dispatch/confirmation permits the next EngineTick without extra 25 ms delay. A cooled candidate is not spammed. Debug output performs no extra gameplay query. Capacity pressure never injects an untrackable action. Installed range is the existing approved 20x payload (type-7 drops still capped at 10x).
+Rollback artifact: Preserve the exact installed DLL/config/ownership record, mods.txt and 15x PAK before the authorized Setup transaction. Public 1.3.1 archives and debug=false defaults remain unchanged.
+```
+
+This optimizes bounded pickup processing; it does not prove repair of an
+already-stuck native interaction list. Mounted conch/manual pickup, rapid
+20x travel, Debug ON runtime and Debug OFF comparison remain acceptance gates.
+
+## 2026-09-08 PRE_CHANGE_NOVELTY_GATE: dispatch must not erase unconfirmed attempts
+
+Status: `SOURCE_CORE_NATIVE_ARTIFACT_PASSED_RUNTIME_PENDING`; not released or
+gameplay accepted. See `docs/EVIDENCE.md` for the isolated candidate identity.
+
+The owner reproduced a stuck conch prompt while mounted and confirmed the
+problem is Mod-induced, including manual interaction failing after F9 Off.
+The installed 1.3.1 user log records 46 invocations for the same exact type-2
+Component between 08:32:07.984Z and 08:33:03.558Z. Dispatch events explicitly
+do not prove pickup. The installed 15x PAK matches the release manifest; this
+is not evidence that its expanded overlap behavior is safe in this scene.
+
+```text
+Proposed route: Correct dispatch outcome accounting in the existing action state machine; no new pickup route.
+Target source: Unchanged game-owned, dual-anchor-resolved selector.
+Candidate discovery: One selector call per due game-thread scan, fresh current-player/Rider identity.
+Action: Unchanged single Enhanced Input injection; one global pending injection.
+Confirmation: Existing guarded exact weak-identity/state probe takes precedence over dispatch in the same poll. A dispatch alone is still unconfirmed.
+Prior versions compared: All routes in this ledger, especially 1.2.0 repeated injection, pre-observer 1.3.0 quarantine, and the 2026-08-31 dispatch-observer correction retained in 1.3.1.
+New evidence: The dispatch branch resets the attempt counter to zero and discards the record at 750 ms. Re-presenting the unchanged Component therefore starts attempt one indefinitely. The current owner's same-Component dispatch sequence exercises that previously untested branch.
+Why each prior rejection no longer applies: No RPC/input/discovery family is revived. Dispatch still releases the global slot; there is no activation-long quarantine or global delay. Only exact-Component unconfirmed accounting is shared by dispatch and timeout, so a dispatch cannot erase a preceding failure or bypass the existing second-attempt recovery backoff.
+Expected one-version observable: First unconfirmed dispatch retains 750 ms re-entry, re-presentation is attempt two, and a second unconfirmed outcome enters the existing 1500 ms Component-only recovery. Other selector results remain eligible. Expiry or an unused bounded retry opportunity permits recovery; exact confirmation and session resets clear state.
+Rollback artifact: Existing installed 1.3.1 and dist/releases/1.3.1 stay untouched. Build the candidate in a separate output directory; preserve a verified installed rollback before any later authorized deployment.
+```
+
+This fixes a demonstrated retry-accounting defect, not yet the complete cause
+of the game's stuck interaction list. No native target/list writes, collision
+changes, input flushing, or speculative PAK reduction are part of this attempt.
+The exact candidate must still be tested against the reported scene, including
+manual interaction and high-range mounted travel, before claiming the user-
+visible inability to pick up is resolved.
 
 This ledger is the mandatory starting point for every future AutoPickup change. It records what each version actually changed, which runtime gate was reached, and which route must not be presented as new without new contradictory evidence.
 

@@ -461,7 +461,7 @@ Run 'Update repair preserves user settings and refreshes bundled catalogs withou
     $state = InspectState $f
     Assert ([bool](Prop $state 'CanUpdate')) 'Owned current Radar did not enable Repair.'
     Assert ([bool](Prop $state 'CanUninstall')) 'Owned current Radar did not enable Uninstall.'
-    Equal ([string](Prop $state 'InstalledVersion')) '2.3.0' 'Current Radar version was not detected.'
+    Equal ([string](Prop $state 'InstalledVersion')) '3.0.0' 'Current Radar version was not detected.'
     $result = Install $f
     Assert ([bool](Prop $result 'UpdatedExistingRadar')) 'Install result did not report Update / Repair.'
     Equal (Get-Content (Join-Path $f.Target 'config\visibility.ini') -Raw) $visibility 'Visibility settings were overwritten.'
@@ -540,7 +540,7 @@ Run 'Older structurally owned Radar version is accepted for update' {
     $releaseEntry[0].size = (Get-Item -LiteralPath $releasePath).Length
     $releaseEntry[0].sha256 = Hash $releasePath
     WriteText $manifestPath ($manifest | ConvertTo-Json -Depth 100)
-    $record = (Get-Content -LiteralPath $recordPath -Raw) -replace 'Version: 2\.3\.0', 'Version: 2.1.1'
+    $record = (Get-Content -LiteralPath $recordPath -Raw) -replace 'Version: 3\.0\.0', 'Version: 2.1.1'
     WriteText $recordPath $record
     # Pre-2.3 installations have no hotkey file. Show defaults, then allow an
     # explicit custom selection on Update rather than silently ignoring it.
@@ -555,7 +555,7 @@ Run 'Older structurally owned Radar version is accepted for update' {
     Assert ([bool](Prop $plan 'UpdatesExistingRadar')) 'Older owned Radar was not accepted for Update / Repair.'
     [void](InstallKeys $f $upgradeKeys ([string](Prop $plan 'IdentityToken')))
     $updatedRelease = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json
-    Equal ([string]$updatedRelease.version) '2.3.0' 'Update did not restore the current release version.'
+    Equal ([string]$updatedRelease.version) '3.0.0' 'Update did not restore the current release version.'
     $upgradedKeys = Get-Content (Join-Path $f.Target 'config\hotkeys.ini') -Raw
     Assert ($upgradedKeys -match '(?m)^settings_hotkey=INSERT\r?$' -and
         $upgradedKeys -match '(?m)^enable_hotkey=HOME\r?$' -and

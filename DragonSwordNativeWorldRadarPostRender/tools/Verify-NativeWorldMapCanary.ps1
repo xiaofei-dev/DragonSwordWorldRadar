@@ -1303,4 +1303,5 @@ Assert-True ($mainCode -notmatch 'renderer_state_unchanged' `
     -and $mainCode -match 'WORLD_MAP_ZOOM_TOPOLOGY_CHAIN') `
     'Topology diagnostics must use sample-id correlated bounded records and must not claim the renderer state was globally unchanged.'
 
+& (Join-Path $PSScriptRoot 'Verify-HubMapPreview.ps1')
 Write-Host 'Native world-map full-stretch-host inner-atlas-layout canary passed.'

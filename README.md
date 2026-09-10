@@ -12,8 +12,8 @@ The GitHub repository is `xiaofei-dev/DragonSwordMods`; the historical
 
 | Directory | Role | Status |
 |---|---|---|
-| `DragonSwordNativeWorldRadarPostRender/` | Native in-game World Radar | Current local release: `2.3.0`; see product release status |
-| `DragonSwordNativeAutoPickup/` | Native automatic pickup | Current local release: `1.3.1`; see product release status |
+| `DragonSwordNativeWorldRadarPostRender/` | Native in-game World Radar | Published `3.0.0`; Guide4 package handoff and support follow-up recorded |
+| `DragonSwordNativeAutoPickup/` | Native automatic pickup | Published `1.3.1`; working source also contains an explicitly unreleased `frame-debug-20260908` candidate |
 | `DragonSwordPickupRangeExpansion/` | Optional interaction-range PAK variants | Maintained independent product |
 | `DragonSwordNativeAllMountsFreeFlight/` | Pure-resource all-mount free-flight PAK | Maintained independent product |
 | `DragonSwordWorldDataProbe/` | Independent read-only data-capture test Mod | Retained at the root even when inactive; it is not archived |
@@ -27,7 +27,9 @@ working tree. Their history remains available through Git.
 
 ## Current integration status
 
-The complete local release handoff is indexed in
+The current suite handoff is indexed in
+[`docs/GITHUB_CLOSEOUT_2026_09_10.md`](docs/GITHUB_CLOSEOUT_2026_09_10.md).
+The earlier package handoff remains in
 [`docs/RELEASE_CLOSEOUT_2026_09_07.md`](docs/RELEASE_CLOSEOUT_2026_09_07.md).
 Package verification, gameplay acceptance, and publication are separate states.
 
@@ -81,7 +83,11 @@ Use each product's checked-in verification entry points. Common examples:
 
 ```powershell
 Set-Location .\DragonSwordNativeWorldRadarPostRender
-& .\tools\Verify-Source.ps1
+& .\tools\Build-Core.ps1
+& .\tools\Verify-NativeCompactRenderer.ps1
+& .\tools\Verify-NativeWorldMapCanary.ps1
+& .\tools\Verify-PostRenderCanary.ps1
+& .\tools\Verify-ReleaseHygiene.ps1
 
 Set-Location ..\DragonSwordNativeAutoPickup
 & .\tools\Verify-Source.ps1

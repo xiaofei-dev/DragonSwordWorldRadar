@@ -1,4 +1,9 @@
-# DragonSword Native World Radar 2.3.0 - Manual Installation
+# DragonSword Native World Radar - Manual Installation
+
+This guide accompanies the two Native World Radar 3.0.0 manual archives.
+Verify the included checksums before copying files. Exact local release evidence
+and historical archive identities are recorded in the source repository's
+`docs/RELEASE_STATUS.md`.
 
 The two manual packages target only ExperimentalNested UE4SS. They contain no
 CMD, BAT, PowerShell, or executable installer and perform no automatic path,
@@ -6,7 +11,7 @@ version, layout, ownership, backup, merge, rollback, or uninstall operation.
 
 ## Manual installation without UE4SS
 
-Use `DragonSwordNativeWorldRadarPostRender-v2.3.0-Manual-No-UE4SS.zip` only
+Use `DragonSwordNativeWorldRadarPostRender-v3.0.0-Manual-No-UE4SS.zip` only
 when a compatible, structurally complete ExperimentalNested UE4SS runtime is
 already installed. If uncertain, use Setup for inspection and conversion.
 
@@ -37,7 +42,7 @@ would remove the enablement entries for other installed Mods.
 ## Manual installation with UE4SS
 
 Use
-`DragonSwordNativeWorldRadarPostRender-v2.3.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip`
+`DragonSwordNativeWorldRadarPostRender-v3.0.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip`
 for a clean target with no existing UE4SS. It contains the tested
 ExperimentalNested UE4SS v3.0.1 Beta #0 commit `1c1a1497`.
 
@@ -88,12 +93,19 @@ If a manual update is unavoidable, back up those files and the active
 `mods.txt`, copy only the new Mod folder, restore the user files, and confirm
 that exactly one enabled Radar line remains.
 
-The visibility file also stores the three compact-only height-arrow
-switches and the UI language preference. Clean defaults enable Treasure, Area
-Quest, and Mole height guidance. A valid existing configuration keeps its
-choices. The selector contains 11 explicit languages and persistent AUTO (Game
-Language). AUTO refreshes when Settings actually opens or Enable is pressed,
+The visibility file also stores five compact-only height controls, independent
+Scene switches, Scene range/count/distance settings and the UI language preference.
+Clean defaults enable Treasure, Area Quest, Mini-games, Boss and Assault height
+guidance. All three Scene categories default On with 600 m / 24 and Auto focus labels.
+Valid existing choices survive migration; missing new settings take these defaults.
+The selector contains 11 explicit languages and Use game language. Automatic
+language detection refreshes when Settings opens or Enable is pressed,
 retaining the last valid detection on failure. A saved manual choice stays fixed.
+
+Esc cancels an active confirmation. Otherwise it closes the complete settings
+page, including its language popup or focused slider, and keeps the last values.
+The same press's repeat/release
+messages remain consumed; release Esc and press again for normal game behavior.
 
 ### Custom keys
 
@@ -119,8 +131,21 @@ Mod. Invalid/missing runtime configuration uses all defaults. F6 settings never
 overwrite this file. Back it up before manually copying an update.
 
 F6 remains available while Radar is Off, On, or Faulted. The status action is
-Enable, Disable, or Retry; Enable still requires a loaded playable world. The
-Bug Report action opens the fixed Nexus Posts page.
+Enable, Disable, or Retry; Enable still requires a loaded playable world.
+Guide beside Close explains treasure colors, Radar/Map icons, height arrows
+and distance modes in all eleven languages. Guide and Settings retain separate
+scroll positions while the menu is open. The header and footer remain visible
+when the body scrolls on shorter displays.
+
+The All row changes the supported Radar or Map categories together. Map changes
+refresh an already-open world map. Mini-games includes flying, marmot and wave
+activities; green chests mark mini-game rewards. Reset to defaults also selects
+Auto focus; updates preserve your saved distance mode.
+
+Reset to defaults, Vote for this mod and Feedback sit in the bottom row and ask
+for confirmation. Reset restores display settings, preserving module power and
+startup hotkeys. Vote opens the Mod's Nexus page for Mod of the Month voting;
+Feedback opens Posts. Complete the vote or post on Nexus.
 
 ## Remove the Radar
 

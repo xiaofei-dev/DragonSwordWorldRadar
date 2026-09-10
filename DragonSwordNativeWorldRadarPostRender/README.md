@@ -1,14 +1,178 @@
 # DragonSwordNativeWorldRadarPostRender
 
-Current complete 2.3.0 package set: [Release status](docs/RELEASE_STATUS.md).
-Nexus copy and promotional screenshots are local-only publishing materials,
-not part of the public source checkout.
+**Native Map and Radar Enhancer 3.0.0** adds treasure, area quests, mini-games
+and other exploration markers to the minimap, world map and main game view.
+
+F6 opens Settings with independent Radar/Map categories, an All control for
+each column, and live changes on an open world map. Auto focus is the default
+distance mode; updates preserve saved choices. Aim and Auto keep the current
+distance visible while a better target settles.
+
+The blue-gray menu uses square checkboxes, consistent typography, concise
+hover help and compact confirmations. Guide explains treasure categories,
+Radar/Map symbols, height states, Clock and distance modes in eleven languages.
+Its body scrolls while header and footer actions remain available.
+
+[Release status](docs/RELEASE_STATUS.md) records exact build, deployment and
+package identities. Source checks, package verification and owner game
+acceptance are recorded separately. Nexus copy and promotional screenshots
+are local publishing materials, not part of the public source checkout.
 
 Native UE4SS C++ successor to DragonSword World Radar. It renders inside the
 game's UMG composition tree and ships no external runtime executable or Lua
 runtime. The Windows Setup executable is installation tooling only.
 
-## Custom keys (2.3.0)
+## Scene guidance in 3.0.0
+
+Settings (F6 by default) has independent **Scene** switches for Treasure,
+Area Quests, and Mini-games. New settings and Reset to Defaults enable all three;
+explicit existing choices survive
+upgrade. Chest colors distinguish treasure categories, gray open diamonds with three dots identify
+Area Quests, and purple crossed flags identify all 83 mini-games.
+
+The Area Quest diamond is 18% larger with a stronger gray outline and a subtle
+translucent backing behind its three dots. Other Scene glyphs and all small
+direction tips retain their size and position. Only UI projection is lifted;
+real coordinates, distance and height logic are unchanged.
+
+Reset to Defaults in the footer resets this page's visibility and height choices,
+filters, language and Scene defaults together. It keeps the current module
+power state and startup hotkeys. Resetting requires confirmation; No or Esc only
+dismisses the confirmation without changing settings. **Vote for This Mod** opens
+this mod's Nexus homepage for a Mod of the Month vote; **Feedback** opens its Posts page.
+Both website actions ask for confirmation first and never submit a vote or post.
+The confirmation blocks settings underneath it. All eleven languages use short
+questions and direct hover explanations. Technical details belong in these docs,
+not in the confirmation. Every control has a localized hover explanation;
+the seven marker names also accept hover. Individual explanations distinguish
+each marker category, each Scene and height switch, and both choices in each
+filter instead of reusing one description for a whole column.
+Clock follows Bird Eggs in the settings list. The existing one-hertz layout service
+centers its visible digits between the actual minimap bottom and quest-list top.
+Unavailable or unsuitable geometry uses a bounded 178-reference-unit fallback.
+Static rounded skins supply the visual effect without real-time blur.
+
+The Scene display section offers a **0-1000 m range** and **0-50 marker limit**,
+shared only among enabled Scene categories. Defaults are 600 m and 24. Either
+value at zero hides the scene layer. Selection favors nearby targets; points
+outside the camera view and overlapping close clusters are hidden.
+
+Distance modes are **Off**, **Aim focus**, **Auto focus**, and **All**.
+New settings and Reset to defaults use Auto focus; updates preserve an explicit
+saved choice.
+Aim Focus labels a visible icon inside a vertical ellipse with horizontal/vertical
+radii of 16%/34% of the shorter viewport side after the same target remains
+selected for 100 ms. Ranking uses distance normalized to that ellipse, allowing
+much more vertical offset. Once shown, the current label stays visible while a
+clearly better target settles for 350 ms. A small outer margin prevents flicker
+at the ellipse edge. Auto Focus selects from all actually visible icons and
+waits 500 ms before replacing a still-visible target. Both modes require over
+20% improvement and a minimum spatial advantage; a brief camera sweep does not
+switch the label. A hidden target loses its label immediately. All labels every
+visible marker within the shared range/count limit; it does not enable hidden categories.
+Range and count sliders apply immediately and coalesce configuration writes.
+
+The popup uses four sections: Marker visibility, In-world markers,
+Height indicators and Filter modes. Marker visibility has only Radar and Map
+columns. The All row changes every supported category in its column together
+and is checked only when all of them are enabled. Bird Eggs and Clock remain
+Radar only. The three Scene switches sit together horizontally in the next
+section. Map changes refresh an already-open world map after a 100 ms coalescing
+window; turning every Map category off hides that overlay immediately.
+The separate bottom row contains **Reset to defaults**, **Vote for this mod** and **Feedback**;
+the title bar contains Guide beside Close. Reset restores the display settings,
+including Scene all on, 600 m, 24 markers and Auto focus. Module power and
+startup hotkeys remain intact. On shorter displays the four cards scroll between
+the fixed header and footer. Resizing updates the same widget tree within 250 ms,
+preserving settings and scroll position. The panel stays centered on ultrawide
+displays; it does not stretch with the aspect ratio. The menu uses reference-pixel
+sizes of 22 for the title, 16 for section headings, 14 for body text and slider
+values, 13 for buttons and footer actions, and 12 for small annotations.
+Natural capitalization and shared baselines keep text aligned across roles.
+Stronger blue-gray reading surfaces reduce interference from the scene without
+adding live blur. The rounded confirmation card is 380×184 reference units,
+with a short question and two buttons; its existing confirmation behavior remains.
+
+**Guide** opens a separate scrolling page inside F6. Mini-games is the shared
+category for three types: flying, marmot and wave mini-games. Guide shows their
+Radar and Map symbols separately; Bird Eggs are marked Radar only. Treasure
+colors distinguish ordinary, mini-game reward, treasure-map or legendary, and
+puzzle chests. Green means a mini-game reward chest, not a guarantee that it
+can currently be opened.
+Guide uses compact treasure examples and two columns of activity entries,
+each with its Radar and Map symbols. Height examples cover above, near your
+height, and below for Treasure, Mini-games, Area Quests,
+Bosses and Sudden missions. Only the nearest chest and mini-game receive height
+hints; the other categories show them on each visible marker. Turning height
+indicators off keeps the ordinary category icons. Clock shows in-game time; its sun/moon
+symbol indicates the time of day. Scene examples align with their labels, and
+Off, Aim, Auto and All each have their own row. The scene v remains distinct
+from Radar height arrows.
+
+Guide and Settings retain separate scroll positions while F6 remains open.
+The header and footer remain available on either page; Settings returns to the
+four settings cards. Closing F6 starts the next opening on Settings. The guide
+uses localized static artwork rather than another gameplay polling service.
+Missing guide artwork disables only Guide and leaves Settings available.
+
+Treasure Scene projection is raised uniformly to 1.6 m, up from 1 m, to improve
+clearance above chest bodies. This changes UI placement only, not terrain or
+mesh detection; unusually tall chests still need visual acceptance.
+
+Scene symbols use six shared textures and one Image per marker. Texture import
+happens at attachment. Settings edits retain the pool and preview Radar visibility
+while F6 owns the gameplay cursor and the original HUD is visibly active. Native
+menus, pause, world map and hidden HUD still suppress the overlay.
+Scene projection runs each engine frame independently of the 16 ms player-position
+sample. Catalog selection stays at 250 ms; a bounded linear pass updates the
+distances of at most 50 preselected markers. Movement uses render translation
+instead of Canvas slot layout updates, with changed subpixel positions submitted
+each frame. Moving marker groups use volatile painting and disable pixel snapping
+when the engine exposes that option. A frame-local calibrated projection batches
+eight or more selected markers, validates both depth axes and a real marker, and
+uses native projection when the calibration is unsuitable. No earlier camera
+pose or temporal interpolation is used. Small edge and overlap margins reduce
+threshold flicker without delaying marker motion.
+Actual frame-time improvement has not yet been measured in-game.
+
+Scene symbols stay compact: chest and flags are about 18-19 units across;
+the open task body is about 22 units, all with the original small downward
+direction tip. Chests retain their separate lid/clasp shape, and the
+task icon has no exclamation mark. A display-only projection
+offset raises Treasure by 1.6 m, Area Quests by 1.8 m and Mini-games by 1.5 m.
+Catalog positions, range selection, actual distance and minimap height remain
+unchanged; focus follows the raised icon. Displayed Treasure/Area distance
+subtracts 1 m, Mole subtracts 2 m, and Fly/Wave keep their original distance.
+The corrected value is clamped to zero before rounding, so negative labels
+cannot appear. The direction tip moves with the raised UI group; it does not
+alter the underlying point or screen-focus calculation.
+
+The language selector keeps each highlight within its own cell. All eleven
+languages use bundled regular-weight glyph images for page text, language
+names, help, confirmations and numeric values. Shared roles have the same
+reference size; the three footer actions use the same 13-reference-pixel text. Font coverage,
+shared baselines and text bounds are checked before building. Optional main-page image failure
+preserves native text; missing confirmation resources remain cancel-only.
+
+143 of the 147 Area Quests use verified complete entity XYZ coordinates.
+Four without a confirmed scene anchor remain available on the minimap/map:
+1101301, 1103108, 1104104, and 1104203. Their scene markers are hidden instead
+of projecting unverified map height. Existing compact height profiles are preserved.
+
+The compact radar also supports separate Boss and Assault height switches.
+An up/down triangle replaces the category glyph when the authored spawn point
+is above/below the player; the glyph returns within the existing aligned band.
+Boss uses near-white, Assault cyan, both with a dark outline. Boss/Assault/Area
+reference sizes are 35/30/25 with consistent stroke widths. The existing
+player-origin correction and inclusive aligned band are shared by all three.
+These encounter heights describe spawn points, not moving monsters.
+
+Existing settings are preserved. Build and package checks do not establish
+gameplay, visual or performance acceptance. Use the included checksums and
+[Release status](docs/RELEASE_STATUS.md) to identify the exact 3.0.0 artifacts.
+Exact evidence: [scene guidance ledger](docs/SCENE_GUIDANCE_ATTEMPT_LEDGER.md).
+
+## Custom keys
 
 Close the game and run Setup. Choose **Settings key**, **Enable key**, and
 **Disable key**, then click **Install**, **Update**, or **Repair** and confirm.
@@ -47,24 +211,26 @@ controls logging (public default off). Changing F6 settings never rewrites
 
 ## Development status
 
-2.2.2 was never published; its flight-attachment and follow-language changes are
-included in the next 2.3.0 release alongside configurable hotkeys.
+2.2.2 was never published; its flight-attachment and follow-language changes were
+included in the local 2.3.0 packages alongside configurable hotkeys. The 3.0.0
+source retains those features.
 
-Next development release: `2.3.0` (unreleased).
-Current source targets `2.3.0`. Existing public `2.2.1` archives are unchanged.
+Current local release candidate: `3.0.0` (not externally published).
+Current source targets `3.0.0`. Existing `2.3.0` archives are unchanged.
 The exact candidate build/deployment status and remaining runtime checks are
-tracked in [the 2.3.0 plan](docs/RELEASE_PLAN_2_3_0.md). Historical acceptance
+tracked in [the 3.0.0 plan](docs/RELEASE_PLAN_3_0_0.md). Historical acceptance
 sections below remain bound to their named version and artifact.
 
-Developer follow-up WM-07 corrects initial map attachment during player motion.
+The inherited WM-07 fix corrects initial map attachment during player motion.
 It retains two-sample layout validation using a motion-compensated projection
-origin; retained pan/zoom placement stays immutable. This follow-up is not in
-the existing public ZIPs. Preliminary owner testing found no issue, and a live
-moving-player attachment passed; the full regression matrix remains pending.
+origin; retained pan/zoom placement stays immutable. It is included in the local
+2.3.0 packages and current 3.0.0 source. Historical owner testing found no issue,
+and a live moving-player attachment passed; those observations do not establish
+3.0.0 gameplay acceptance.
 See the [attempt ledger](docs/WORLD_MAP_ATTEMPT_LEDGER.md) for exact identities
-and the [2.3.0 plan](docs/RELEASE_PLAN_2_3_0.md) for remaining work.
+and the [3.0.0 plan](docs/RELEASE_PLAN_3_0_0.md) for current acceptance work.
 
-Runtime label: `DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0`.
+Runtime label: `DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_3_0_0`.
 
 The CM-04 package candidate also includes controller-menu suppression and
 persistent AUTO as the first language choice. AUTO follows the game when
@@ -78,8 +244,18 @@ from gameplay and third-party publication clearance.
 Current START identity:
 
 ```text
-START version=2.3.0 runtime_label=DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_3_0
+START version=3.0.0 runtime_label=DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_3_0_0
 ```
+
+The owner authorized SG-16, rollback-backed local deployment and three local
+release packages for review. Current build, deployment and package
+identities are in [Release status](docs/RELEASE_STATUS.md). External upload and
+exact-artifact gameplay acceptance remain separate.
+
+### Historical development evidence through 2.2.1
+
+The identities, settings and acceptance statements in this subsection describe
+their named historical candidates. They do not describe the installed 3.0.0 build.
 
 Version `1.2.0` was never published. Its candidate changes are included in
 `2.1.0`; there is no separate public `1.2.0` package.
@@ -181,8 +357,10 @@ and rights reviews. See the
 
 ## Current feature set
 
-Version 2.2.0 adds three independently controlled compact-radar height
-indicators, all enabled on a clean install. Treasure retains its unchanged
+The compact radar has five independent height controls, all enabled on a clean
+install: Treasure, Area Quest, Mole, Boss and Assault. Boss/Assault use authored
+spawn height and the shared corrected-player-Z / aligned-band rule described
+above. Treasure retains its unchanged
 category-colored six-piece full arrow to the left of the selected chest. Every visible Area Quest uses a generated one- or
   two-band height profile. A multi-band profile uses authored marker Z to select
   the uniquely nearest existing source band; marker Z is selection evidence,
@@ -197,7 +375,7 @@ below the selected mini-game icon, uses that marker's actual Fly, Mole, or Wave
   palette, and has a near-black contrast outline. The outline changes neither
   triangle size nor position nor projection. A target more than 500 vertical units above the comparable player
   Z shows an up triangle; a target more than 500 units below shows a down
-  triangle; the inclusive +/-500 band hides the triangle. All three height
+  triangle; the inclusive +/-500 band hides the triangle. All five height
   channels use the same comparable `playerZ - 150`; Treasure keeps its existing
   arrow geometry and dead-zone behavior. Exact `NPC_Start`
 heights cover all 83 map-100 mini-games: 33 Fly, 40 Mole, and 10 Wave. If a
@@ -205,24 +383,27 @@ trusted height is missing or ambiguous, only the mini-game triangle fails
 closed hidden; the marker remains. The persisted configuration key remains
 `mole` for compatibility.
 
-F6 is one responsive settings page with Mod Status, Language, Marker
-Visibility, Height Indicators (Radar Only), and Filter Modes. Bug Report and
-Close are separate controls in the top bar. It can open while Radar is Off, On,
+F6 is one responsive settings page with Status and Language above Marker
+visibility, In-world markers, Height indicators (Radar only), and Filter modes.
+In-world markers follows Marker visibility and contains the three Scene
+switches, range/count sliders and four distance choices. Close remains in the
+top bar; Reset to defaults, Vote for this mod and Feedback occupy the fixed footer.
+It can open while Radar is Off, On,
 or Faulted and fits/clamps to the available viewport instead of assuming one
 fixed resolution. Status itself is read-only text with a thin state-colored
 strip. Enable, Disable, or Retry is a separate action; using it
 keeps the page open, and enabling still requires a loaded playable world.
 Translucent section cards, equal-width filter choices, aligned text, and bounded
 non-overlapping hit regions are presentation-only.
-The centered language dropdown starts with `AUTO (Game Language)`, then English, Japanese, Korean,
+The language dropdown starts with `Use game language`, then English, Japanese, Korean,
 Simplified Chinese, Traditional Chinese, French, German, Spanish (Spain),
 Russian, Thai, and Portuguese (Brazil).
-AUTO remains saved as `auto`: each actual F6 opening or F7 activation samples
+The first option remains saved as `auto`: each actual F6 opening or F7 activation samples
 `DGameUserSettings.LanguageText`, with a bounded Kismet fallback. Failed detection
 retains the last valid language, or English before the first valid sample.
 Manual choices persist and take precedence; detection never changes the saved
 preference. A game-language change while F6 is open takes effect next opening.
-The closed selector shows the currently resolved language. F6 uses the
+The closed selector shows the currently resolved language. Native fallback uses the
 already-loaded game fonts `DsCompositFont_CommonSystem` for Korean and
 Latin/Cyrillic languages, `DsCompositFont_TCSystem` for both Chinese choices,
 `DsCompositFont_JPSystem` for Japanese, and `DsCompositFont_THSystem` for Thai.
@@ -234,17 +415,13 @@ missing or expired; there is no closed-panel or tick scan. The external
   `DS_HYFont_P.pak` overrides Common/TC and does not provide complete glyph
   coverage. Disable or replace that PAK for localization QA. Raw Pretendard
   FontFace assets are not valid `UFont` substitutes and are not bundled or routed.
-  Korean and Traditional Chinese fixed labels also use generated 2x overlays
-  from the pinned DroidSansFallback source. The canonical payload under
-  `assets/ui/f6` contains `ko-{off,on,fault}.tga`,
-  `zh-hant-{off,on,fault}.tga`, `language-popup.tga`, and `manifest.json`. Each
-  status-specific main overlay replaces all 30 fixed main-panel text slots for
-  its language; the shared popup replaces only the Korean and Traditional-
-  Chinese language names. The other nine languages continue through native game
-  fonts. The overlays are regenerated for the current top-bar, status, and
-  filter-row coordinates and use base size 32, a one-pixel translucent stroke,
-  and role-specific optical baselines. Static generation checks prove the slots
-  do not clip; live in-game size, weight, and alignment review is still required.
+  All eleven languages use generated regular-font images for the main page,
+  language choices, hover help, confirmations and numeric values. The canonical
+  payload and resource manifest are under `assets/ui/f6`. Text aligns role
+  baselines and uses 22/16/14 reference pixels for title/section/body text,
+  13 for buttons and footer actions, and 12 for small annotations, rather than
+  centering each string independently. Resource and bounds validation must be
+  rerun for the new glyphs; game size, weight and alignment remain owner acceptance.
 If the newly constructed text
 widget reports exactly `Font.Size == 0`, one bounded reference size is seeded.
 The reflected `FSlateFontInfo.Size` path accepts floating-point metrics, while
@@ -554,6 +731,10 @@ exact identity changes.
 
 ## Install
 
+The following filenames identify the 3.0.0 package contract. Use
+[Release status](docs/RELEASE_STATUS.md) for local availability and exact hashes,
+and distinguish these files from the retained historical 2.3.0 packages.
+
 1. Exit the game. Never install or update the mod while the game process is
    running.
 2. The one-click installer accepts a structurally complete ExperimentalNested
@@ -562,10 +743,10 @@ exact identity changes.
    Experimental build. A root, dual, malformed, or incomplete layout requires
    explicit confirmation before backed-up conversion.
 3. For the recommended transactional installation, download and fully extract
-   `DragonSwordNativeWorldRadarPostRender-v2.2.1-Installer.zip` after the
+   `DragonSwordNativeWorldRadarPostRender-v3.0.0-Installer.zip` after the
    candidate package has passed its release gates.
 4. Verify the SHA-256 sidecar, then run
-   `DragonSwordNativeWorldRadarPostRender-Setup-2.2.1.exe`. The Setup executable
+   `DragonSwordNativeWorldRadarPostRender-Setup-3.0.0.exe`. The Setup executable
    is unsigned and requests administrator access so it can apply one bounded
    transaction; it never launches or terminates the game.
 5. Select the exact `DSClient-Win64-Shipping.exe` when prompted. Setup performs
@@ -589,12 +770,12 @@ exact identity changes.
    only after strict ownership of the active installation is proven.
 8. Start the game in an open-world area and press F7 once.
 
-The 2.2.1 output contract also defines two manual ExperimentalNested channels:
+The 3.0.0 output contract also defines two manual ExperimentalNested channels:
 
-- `DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-No-UE4SS.zip` contains
+- `DragonSwordNativeWorldRadarPostRender-v3.0.0-Manual-No-UE4SS.zip` contains
   only the Mod payload and one clean single-product `mods.txt` for an already
   compatible ExperimentalNested runtime.
-- `DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip` contains
+- `DragonSwordNativeWorldRadarPostRender-v3.0.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip` contains
   the same Mod payload plus the pinned ExperimentalNested runtime for a direct
   closed-game installation.
 
@@ -604,7 +785,7 @@ folder; copy its one-line `ue4ss/Mods/mods.txt` only when the target file is
 missing, otherwise merge the exact Radar line without replacing unrelated
 entries. With-UE4SS is only for a clean target with no UE4SS and can be
 extracted directly into `Win64`. Use Setup for every existing Radar update so
-the three user-owned configuration files are preserved.
+the user-owned visibility, hotkey, diagnostics and treasure-override files are preserved.
 
 Neither manual archive supports StableRoot. Manual copying does not detect or
 convert another UE4SS version, merge load control, preserve settings
@@ -672,19 +853,22 @@ changing files. See [Installation](docs/INSTALL.md) for the manual fallback.
 - F8 disables radar features. F8 followed by F7 starts a fresh state
   reconciliation.
 - F6 opens the native responsive settings page in Off, On, or Fault state.
-  Bug Report and Close occupy the top bar. Read-only status text uses a thin
+  Close occupies the top bar. Reset to defaults, Vote for this mod and Feedback
+  share the footer and require confirmation. Read-only status text uses a thin
   state-colored strip; a separate Enable, Disable, or Retry action
-  keeps the page open, while Bug Report opens the fixed Nexus Posts page.
-  Language, compact `RADAR`,
-  expanded `MAP`, the three compact-only height indicators, and filter modes
+  keeps the page open. Feedback opens the fixed Nexus Posts page after confirmation.
+  Language, compact `Radar`,
+  expanded `Map`, independent Scene switches, the five compact-only height indicators,
+  Scene range/count/distance settings, and filter modes
   persist in `config/visibility.ini`. The current file uses readable
-  `[radar]`, `[map]`, `[modes]`, `[height_arrows]`, and `[interface]` sections with
+  `[radar]`, `[map]`, `[scene]`, `[modes]`, `[height_arrows]`, and `[interface]` sections with
   named `true|false` category keys and
   `available|all` mode values. It is bounded to 4 KiB, read once at startup,
   and never hot-polled. Strictly valid legacy schema 1-4 mask files remain
   accepted; the next real F6 change rewrites them atomically in the readable
-  current format. All three height indicators default ON for a clean or safely
-  migrated configuration; a valid existing file keeps the user's choices. Bird
+  current format. The previous readable three- and five-section forms are also
+  accepted. All five height indicators default ON; valid existing choices survive
+  migration, and missing new settings use their documented defaults. Bird
   eggs have an independent RADAR toggle and no
   MAP toggle. `AREA QUEST MODE` defaults to `AVAILABLE`; selecting `ALL`
   displays every unfinished catalog task even when its prerequisite graph
@@ -693,10 +877,16 @@ changing files. See [Installation](docs/INSTALL.md) for the manual fallback.
   records regardless of active hours, defeat, cooldown, or save readiness.
   Switching back to `AVAILABLE` restores those live filters. Boss and area-
   quest rules do not change. The selector contains 11 explicit languages plus
-  `AUTO (Game Language)`. AUTO follows each actual F6 opening or F7 activation;
+  `Use game language`. This option follows each actual F6 opening or F7 activation;
   manual choices remain authoritative and failed reads retain the last valid
   language. Neither detection nor a fallback rewrites the preference. Close with
-  `X` or F6.
+  Close, F6 or Esc. With a confirmation open, Esc cancels that action only.
+  Otherwise Esc closes the complete Radar settings page even when its language
+  popup or a slider owns focus, saves the final control values, and
+  consumes that same press's repeat/release messages. A subsequent independent
+  Esc returns to normal game handling. This is a current-process, verified
+  foreground Unreal-window thread filter; no global keyboard hook is installed.
+  Game-specific input routes still require owner testing.
 
 ## Compatibility, logs, and source builds
 
@@ -803,7 +993,7 @@ The public-report closeout and its unvalidated reporter-environment boundaries
 are recorded in the local-only Nexus feedback audit for 2.0.0.
 Post-2.0.0 corrective feedback and the owner matrix are recorded
 in [Runtime Feedback Audit for 2.1.0](docs/RUNTIME_FEEDBACK_AUDIT_2_1_0.md).
-The current 2.2.1 fixes-only scope and acceptance boundary are recorded in
+The historical 2.2.1 fixes-only scope and acceptance boundary are recorded in
 [Runtime Feedback Audit for 2.2.1](docs/RUNTIME_FEEDBACK_AUDIT_2_2_1.md).
 The [2.2.0 audit](docs/RUNTIME_FEEDBACK_AUDIT_2_2_0.md) remains historical
 feature-release evidence.
@@ -1205,6 +1395,13 @@ cache described above.
 
 ## Runtime schedules
 
+- Scene: numeric candidate selection every 250 ms while enabled, using existing
+  catalogs and eligibility. Only enabled Scene categories share the configured
+  0-50 pool within 0-1000 m. Selected points project at 16 ms service intervals;
+  distance text updates at most every 100 ms when its integer or identity changes.
+  Zero range/count bypasses Scene initialization and projection. Fixed pools,
+  bounded cold text creation and cluster suppression do not establish a measured
+  frame-time or first-open guarantee.
 - Player/root translation: 16 ms while compact rendering is active.
 - Activity and discovery service: 250 ms.
 - Compact catalog rebind: on a real state/radius change, 1,000 Unreal units of
@@ -1273,6 +1470,11 @@ cache described above.
 
 ## Build and verification
 
+Use Windows PowerShell 5.1 for the canonical release scripts and receipt checks.
+The output contract below describes the requested local package build. Current
+package availability and exact-artifact checks are in
+[the 3.0.0 plan](docs/RELEASE_PLAN_3_0_0.md).
+
 ```powershell
 .\tools\Build-Release.ps1 `
   -SdkRoot ".\.sdk" `
@@ -1289,10 +1491,10 @@ cache described above.
 Experimental-only Setup artifact, runs the isolated 20-case bootstrap,
 conversion, migration, conflict, confirmation-token, and rollback matrix,
 requires the two-case manual-install matrix, and re-extracts all three ZIPs
-before publication. The 2.2.1 output contract is `dist/final-2.2.1` with
-`DragonSwordNativeWorldRadarPostRender-v2.2.1-Installer.zip`,
-`DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-No-UE4SS.zip`,
-`DragonSwordNativeWorldRadarPostRender-v2.2.1-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip`,
+before publication. The 3.0.0 output contract is `dist/final-3.0.0` with
+`DragonSwordNativeWorldRadarPostRender-v3.0.0-Installer.zip`,
+`DragonSwordNativeWorldRadarPostRender-v3.0.0-Manual-No-UE4SS.zip`,
+`DragonSwordNativeWorldRadarPostRender-v3.0.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip`,
 `release-manifest.json`, and `SHA256SUMS.txt`. Legacy
 `Stage-Release.ps1`, `Install.cmd`, and
 `installer/Install-DragonSwordNativeWorldRadar.ps1` remain retired.
@@ -1395,7 +1597,7 @@ Setup and both manual packages carry immutable public defaults, and no artifact 
 deploy or launch the game and do not establish gameplay or publication
 acceptance.
 
-## Runtime acceptance for 2.2.1
+## Historical runtime acceptance for 2.2.1
 
 - Require `START version=2.2.1`, runtime label
   `DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1`, and the final packaged DLL
@@ -1434,11 +1636,11 @@ acceptance.
   confirm the bounded no-Font-mutation render-scale fallback still presents the
   complete page without a partially valid tree. Confirm Korean and Traditional
   Chinese 2x overlays use pinned DroidSansFallback at base size 32, a one-pixel
-  translucent stroke, and role-specific optical baselines. Confirm all 30 fixed
-  main-panel text slots in each status-specific overlay, only the ko/zh-Hant
-  names in the shared popup, regenerated current-layout coordinates, the
-  canonical `assets/ui/f6` payload, and native game-font rendering for the other
-  nine languages. Static no-clipping checks do not replace in-game size, weight,
+  translucent stroke, and role-specific optical baselines. Confirm all 41 fixed
+  main-panel text slots in each status-specific overlay, the KO/TC/FR/ES names
+  in the shared popup, and complete French/Spanish selected-name images.
+  Verify the canonical nine-image payload and that missing optional images
+  restore native text. Static no-clipping checks do not replace in-game size, weight,
   and alignment acceptance.
 - Select the first AUTO option, change game language, and confirm the next
   actual F6 opening or F7 activation reads `DGameUserSettings.LanguageText`,

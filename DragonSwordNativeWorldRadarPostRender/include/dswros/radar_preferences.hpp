@@ -3,13 +3,47 @@
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
+#include <dswros/scene_preferences.hpp>
 
 namespace dswros {
+
+[[nodiscard]] constexpr std::string_view scene_distance_mode_id(
+    SceneDistanceMode mode) noexcept {
+    switch (mode) {
+    case SceneDistanceMode::Off: return "off";
+    case SceneDistanceMode::CentralRadius: return "central_radius";
+    case SceneDistanceMode::NearestCenter: return "nearest_center";
+    case SceneDistanceMode::All: return "all";
+    }
+    return "nearest_center";
+}
+
+[[nodiscard]] constexpr bool parse_scene_distance_mode(
+    std::string_view value, SceneDistanceMode& output) noexcept {
+    for (unsigned index = 0; index < 4U; ++index) {
+        const auto candidate = static_cast<SceneDistanceMode>(index);
+        if (value == scene_distance_mode_id(candidate)) {
+            output = candidate;
+            return true;
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr bool scene_display_settings_equal(
+    const SceneDisplaySettings& left,
+    const SceneDisplaySettings& right) noexcept {
+    return left.range_meters == right.range_meters
+        && left.marker_limit == right.marker_limit
+        && left.distance_mode == right.distance_mode;
+}
 
 enum class HeightIndicatorCategory : std::uint8_t {
     Treasure,
     AreaQuest,
     Mole,
+    Boss,
+    Assault,
     Count,
 };
 
@@ -18,7 +52,9 @@ using HeightIndicatorMask = std::uint8_t;
 inline constexpr HeightIndicatorMask kHeightIndicatorTreasure = 0x01U;
 inline constexpr HeightIndicatorMask kHeightIndicatorAreaQuest = 0x02U;
 inline constexpr HeightIndicatorMask kHeightIndicatorMole = 0x04U;
-inline constexpr HeightIndicatorMask kHeightIndicatorAll = 0x07U;
+inline constexpr HeightIndicatorMask kHeightIndicatorBoss = 0x08U;
+inline constexpr HeightIndicatorMask kHeightIndicatorAssault = 0x10U;
+inline constexpr HeightIndicatorMask kHeightIndicatorAll = 0x1FU;
 inline constexpr HeightIndicatorMask kDefaultHeightIndicatorMask =
     kHeightIndicatorAll;
 

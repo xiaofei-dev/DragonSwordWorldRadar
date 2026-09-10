@@ -21,7 +21,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
 
         internal InstallerForm()
         {
-            Text = "DragonSword Native World Radar 2.3.0 Setup";
+            Text = "DragonSword Native World Radar 3.0.0 Setup";
             ClientSize = new Size(760, 510);
             MinimumSize = new Size(776, 549);
             StartPosition = FormStartPosition.CenterScreen;
@@ -194,7 +194,7 @@ namespace DragonSwordNativeWorldRadarPostRender.Installer
             var canInstall = _installationState != null &&
                 (_installationState.CanInstall || _installationState.CanUpdate);
             _install.Text = _installationState != null && _installationState.CanUpdate
-                ? string.Equals(_installationState.InstalledVersion, "2.3.0", StringComparison.Ordinal)
+                ? string.Equals(_installationState.InstalledVersion, "3.0.0", StringComparison.Ordinal)
                     ? "Repair"
                     : "Update"
                 : "Install";

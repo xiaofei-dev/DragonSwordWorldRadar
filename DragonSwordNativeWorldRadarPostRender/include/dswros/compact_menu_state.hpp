@@ -33,13 +33,16 @@ struct CompactMenuState final {
     bool game_paused{};
     bool activity_suppressed{};
     bool native_minimap_hidden{};
+    // Only the radar's own settings cursor may be exempted. The caller must
+    // prove gameplay HUD paint and that no cursor existed before opening it.
+    bool settings_cursor_only{};
 };
 
 [[nodiscard]] inline constexpr bool compact_render_suppressed(
     CompactMenuState state) noexcept {
     return !state.any_category_enabled
         || !state.position_valid
-        || state.mouse_cursor_visible
+        || (state.mouse_cursor_visible && !state.settings_cursor_only)
         || state.world_map_visible
         || state.game_paused
         || state.activity_suppressed

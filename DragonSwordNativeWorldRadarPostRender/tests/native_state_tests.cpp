@@ -411,9 +411,12 @@ int main() {
                     && current.settings.height_treasure
                     && current.settings.height_area_quests
                     && current.settings.height_mole
+                    && current.settings.height_boss
+                    && current.settings.height_assault
+                    && dswros::scene_visibility_mask(current.settings) == 0x32U
                     && current.settings.language
                         == dswros::RadarLanguagePreference::Auto,
-                "the 2.1.1 sectioned visibility defaults must migrate exactly");
+                "legacy sectioned choices must migrate with enabled defaults for previously absent Scene fields");
         require(allocation_count == allocations_before,
                 "visibility parsing must not allocate");
 
@@ -427,6 +430,11 @@ int main() {
         customized.height_treasure = false;
         customized.height_area_quests = true;
         customized.height_mole = true;
+        customized.height_boss = false;
+        customized.height_assault = true;
+        customized.scene_treasure = true;
+        customized.scene_area_quests = false;
+        customized.scene_mini_games = false;
         customized.language = dswros::RadarLanguagePreference::Thai;
         const std::string serialized =
             dswros::format_visibility_config(customized);
@@ -443,9 +451,180 @@ int main() {
                     && !round_trip.settings.height_treasure
                     && round_trip.settings.height_area_quests
                     && round_trip.settings.height_mole
+                    && !round_trip.settings.height_boss
+                    && round_trip.settings.height_assault
+                    && round_trip.settings.scene_treasure
+                    && !round_trip.settings.scene_area_quests
                     && round_trip.settings.language
                         == dswros::RadarLanguagePreference::Thai,
                 "F6 visibility, height, and language output must round-trip");
+
+        const std::string previous_sectioned = std::string{current_config}
+            + "[height_arrows]\ntreasure=false\narea_quests=true\nmole=false\n"
+              "[interface]\nlanguage=ja\n";
+        const auto previous = dswros::parse_visibility_config(previous_sectioned);
+        require(previous && !previous.settings.height_treasure
+                    && previous.settings.height_area_quests
+                    && !previous.settings.height_mole
+                    && previous.settings.height_boss
+                    && previous.settings.height_assault
+                    && dswros::scene_visibility_mask(previous.settings) == 0x32U
+                    && previous.settings.language
+                        == dswros::RadarLanguagePreference::Japanese,
+                "pre-Scene F6 settings must preserve existing height and language choices while defaulting the new fields");
+        for (unsigned selection = 0U; selection < 4U; ++selection) {
+            auto settings = customized;
+            settings.scene_treasure = (selection & 1U) != 0U;
+            settings.scene_area_quests = (selection & 2U) != 0U;
+            settings.height_boss = (selection & 1U) != 0U;
+            settings.height_assault = (selection & 2U) != 0U;
+            const auto saved = dswros::parse_visibility_config(
+                dswros::format_visibility_config(settings));
+            const auto expected_scene = static_cast<std::uint8_t>(
+                ((selection & 1U) != 0U ? 0x02U : 0U)
+                | ((selection & 2U) != 0U ? 0x20U : 0U));
+            require(saved
+                        && dswros::scene_visibility_mask(saved.settings)
+                            == expected_scene
+                        && saved.settings.height_boss == settings.height_boss
+                        && saved.settings.height_assault == settings.height_assault
+                        && dswros::compact_visibility_mask(saved.settings)
+                            == dswros::compact_visibility_mask(customized)
+                        && dswros::world_visibility_mask(saved.settings)
+                            == dswros::world_visibility_mask(customized)
+                        && saved.settings.area_quest_mode == customized.area_quest_mode
+                        && saved.settings.assault_mode == customized.assault_mode
+                        && saved.settings.height_treasure == customized.height_treasure
+                        && saved.settings.height_area_quests == customized.height_area_quests
+                        && saved.settings.height_mole == customized.height_mole
+                        && saved.settings.language == customized.language,
+                    "all independent Scene and encounter-height combinations must save without changing existing F6 selections");
+        }
+        const auto scene_only_extension = dswros::parse_visibility_config(
+            std::string{current_config}
+                + "[scene]\ntreasure=false\narea_quests=true\n");
+        require(scene_only_extension
+                    && dswros::scene_visibility_mask(scene_only_extension.settings) == 0x30U,
+                "Scene may extend the older three-section format independently");
+        require(scene_only_extension.settings.scene_mini_games
+                    && scene_only_extension.settings.scene_settings.range_meters == 600U
+                    && scene_only_extension.settings.scene_settings.marker_limit == 24U
+                    && scene_only_extension.settings.scene_settings.distance_mode
+                        == dswros::SceneDistanceMode::NearestCenter,
+                "older Scene choices must preserve their category selection and receive the new display defaults");
+        const auto explicit_scene_off = dswros::parse_visibility_config(
+            std::string{current_config}
+                + "[scene]\ntreasure=false\narea_quests=false\nmini_games=false\n"
+                  "range_meters=0\nmarker_limit=0\ndistance_mode=off\n");
+        require(explicit_scene_off
+                    && dswros::scene_visibility_mask(explicit_scene_off.settings) == 0U
+                    && explicit_scene_off.settings.scene_settings.range_meters == 0U
+                    && explicit_scene_off.settings.scene_settings.marker_limit == 0U
+                    && explicit_scene_off.settings.scene_settings.distance_mode
+                        == dswros::SceneDistanceMode::Off,
+                "enabled new defaults must never overwrite a saved disabled Scene configuration");
+        const auto default_preset = dswros::parse_visibility_config(
+            dswros::format_visibility_config(dswros::VisibilityConfigSettings{}));
+        require(default_preset
+                    && dswros::compact_visibility_mask(default_preset.settings) == 0x7FU
+                    && dswros::world_visibility_mask(default_preset.settings) == 0x3EU
+                    && dswros::scene_visibility_mask(default_preset.settings) == 0x32U
+                    && default_preset.settings.height_treasure
+                    && default_preset.settings.height_area_quests
+                    && default_preset.settings.height_mole
+                    && default_preset.settings.height_boss
+                    && default_preset.settings.height_assault
+                    && default_preset.settings.area_quest_mode == dswros::VisibilityAreaQuestMode::Available
+                    && default_preset.settings.assault_mode == dswros::VisibilityAssaultMode::Available
+                    && default_preset.settings.language == dswros::RadarLanguagePreference::Auto
+                    && dswros::scene_display_settings_equal(
+                        default_preset.settings.scene_settings, dswros::SceneDisplaySettings{}),
+                "the serialized global display preset must contain all enabled categories and default height/filter/language/Scene preferences");
+        for (unsigned categories = 0U; categories < 8U; ++categories) {
+            for (unsigned mode = 0U; mode < 4U; ++mode) {
+                for (unsigned range : {0U, 600U, 1000U}) {
+                    for (unsigned limit : {0U, 24U, 50U}) {
+                        auto settings = customized;
+                        settings.scene_treasure = (categories & 1U) != 0U;
+                        settings.scene_area_quests = (categories & 2U) != 0U;
+                        settings.scene_mini_games = (categories & 4U) != 0U;
+                        settings.scene_settings = {
+                            static_cast<std::uint16_t>(range), static_cast<std::uint8_t>(limit),
+                            static_cast<dswros::SceneDistanceMode>(mode)};
+                        const auto restored = dswros::parse_visibility_config(
+                            dswros::format_visibility_config(settings));
+                        const auto expected_mask = static_cast<std::uint8_t>(
+                            ((categories & 1U) != 0U ? 0x02U : 0U)
+                            | ((categories & 2U) != 0U ? 0x20U : 0U)
+                            | ((categories & 4U) != 0U ? 0x10U : 0U));
+                        require(restored
+                                    && dswros::scene_visibility_mask(restored.settings) == expected_mask
+                                    && dswros::scene_display_settings_equal(
+                                        restored.settings.scene_settings, settings.scene_settings)
+                                    && dswros::compact_visibility_mask(restored.settings)
+                                        == dswros::compact_visibility_mask(customized)
+                                    && dswros::world_visibility_mask(restored.settings)
+                                        == dswros::world_visibility_mask(customized)
+                                    && restored.settings.language == customized.language,
+                                "all Scene categories, distance modes, and range/limit endpoints must round-trip independently of Radar/Map");
+                    }
+                }
+            }
+        }
+        for (std::string_view bad_scene_value : {
+                 "mini_games=1\n", "range_meters=1001\n", "range_meters=-1\n",
+                 "range_meters=1.5\n", "marker_limit=51\n", "marker_limit=-1\n",
+                 "range_meters=4294967296\n", "distance_mode=CENTRAL_RADIUS\n",
+                 "distance_mode=center\n", "range_meters=1\nrange_meters=2\n",
+                 "marker_limit=0\nmarker_limit=1\n", "distance_mode=off\ndistance_mode=all\n",
+                 "mini_games=false\nmini_games=true\n"}) {
+            require(!dswros::parse_visibility_config(previous_sectioned
+                        + "[scene]\ntreasure=true\narea_quests=false\n"
+                        + std::string{bad_scene_value}),
+                    "new Scene settings must reject invalid ranges, modes, and duplicate fields");
+        }
+        const dswros::SceneDisplaySettings center_settings{};
+        auto off_settings = center_settings;
+        off_settings.distance_mode = dswros::SceneDistanceMode::Off;
+        require(!dswros::scene_display_settings_equal(center_settings, off_settings),
+                "changing only the distance mode must mark the F6 selection changed");
+        const auto one_height_extension = dswros::parse_visibility_config(
+            std::string{current_config}
+                + "[height_arrows]\ntreasure=false\narea_quests=true\nmole=false\n"
+                  "boss=false\n[interface]\nlanguage=auto\n");
+        require(one_height_extension && !one_height_extension.settings.height_boss
+                    && one_height_extension.settings.height_assault,
+                "an omitted new height field must retain its default without resetting the supplied one");
+        for (std::string_view invalid_scene : {
+                 "[scene]\ntreasure=true\n",
+                 "[scene]\ntreasure=true\narea_quests=false\nboss=true\n",
+                 "[scene]\ntreasure=TRUE\narea_quests=false\n",
+                 "[scene]\ntreasure=true\ntreasure=false\narea_quests=true\n",
+                 "[scene]\ntreasure=true\narea_quests=false\n[scene]\n"}) {
+            require(!dswros::parse_visibility_config(
+                        previous_sectioned + std::string{invalid_scene}),
+                    "partial, unsupported, malformed, and duplicate Scene fields must fail closed");
+        }
+        for (std::string_view invalid_height : {
+                 "boss=false\nboss=true\n", "assault=true\nassault=false\n",
+                 "boss=1\n", "assault=TRUE\n"}) {
+            require(!dswros::parse_visibility_config(
+                        std::string{current_config}
+                            + "[height_arrows]\ntreasure=false\narea_quests=true\nmole=false\n"
+                            + std::string{invalid_height}
+                            + "[interface]\nlanguage=auto\n"),
+                    "new encounter-height fields must reject duplicates and invalid booleans");
+        }
+        require(dswros::height_indicator_bit(dswros::HeightIndicatorCategory::Boss)
+                        == dswros::kHeightIndicatorBoss
+                    && dswros::height_indicator_bit(dswros::HeightIndicatorCategory::Assault)
+                        == dswros::kHeightIndicatorAssault
+                    && dswros::height_indicator_enabled(dswros::kHeightIndicatorBoss,
+                        dswros::HeightIndicatorCategory::Boss)
+                    && !dswros::height_indicator_enabled(dswros::kHeightIndicatorBoss,
+                        dswros::HeightIndicatorCategory::Assault)
+                    && dswros::kDefaultHeightIndicatorMask == 0x1FU,
+                "Boss and Assault height preferences must use distinct bits and default on");
 
         for (std::size_t index = 0;
              index < dswros::kRadarLanguagePreferenceCount; ++index) {
@@ -613,6 +792,7 @@ int main() {
                         && present(text.automatic)
                         && present(text.marker_visibility)
                         && present(text.radar) && present(text.map)
+                        && present(text.scene)
                         && present(text.height_indicators)
                         && present(text.radar_only)
                         && present(text.filter_modes)
@@ -624,7 +804,9 @@ int main() {
                         && present(text.enable_mod)
                         && present(text.disable_mod)
                         && present(text.retry_mod)
-                        && present(text.bug_report),
+                        && present(text.bug_report)
+                        && present(text.scene_settings) && present(text.scene_range)
+                        && present(text.scene_limit) && present(text.scene_distance),
                     "every supported UI language must define all shared labels");
             for (const wchar_t* category : text.marker_categories) {
                 require(present(category),
@@ -633,6 +815,9 @@ int main() {
             for (const wchar_t* category : text.height_categories) {
                 require(present(category),
                         "every language must define all height category labels");
+            }
+            for (const wchar_t* mode : text.scene_distance_modes) {
+                require(present(mode), "every language must name all four Scene distance modes");
             }
         }
         require(
@@ -646,19 +831,19 @@ int main() {
         const auto& english_controls = dswros::radar_localized_text(
             dswros::RadarUiLanguage::English);
         require(
-            std::wstring_view(english_controls.status_off) == L"OFF"
-                && std::wstring_view(english_controls.status_on) == L"ON"
+            std::wstring_view(english_controls.status_off) == L"Off"
+                && std::wstring_view(english_controls.status_on) == L"On"
                 && std::wstring_view(english_controls.status_fault)
-                    == L"FAULT"
+                    == L"Error"
                 && std::wstring_view(english_controls.enable_mod)
-                    == L"ENABLE"
+                    == L"Enable"
                 && std::wstring_view(english_controls.disable_mod)
-                    == L"DISABLE"
+                    == L"Disable"
                 && std::wstring_view(english_controls.retry_mod)
-                    == L"RETRY"
+                    == L"Retry"
                 && std::wstring_view(english_controls.bug_report)
-                    == L"BUG REPORT",
-            "the F6 status card must expose complete OFF/ON/FAULT controls and a report action");
+                    == L"Feedback",
+            "the F6 status card must expose complete OFF/ON/ERROR controls and a feedback action");
 
         const auto legacy1 = dswros::parse_visibility_config(
             "; schema 1\ncompact_mask=63\nworld_mask=62\n");
@@ -3172,6 +3357,26 @@ int main() {
                 "unknown/stale native state must not latch a blank HUD or bypass cursor guards");
         require(allocation_count == allocations_before,
                 "compact menu-state classification must not allocate");
+        for (const bool cursor : {false, true, false, true, true}) {
+            require(!dswros::compact_render_suppressed({
+                        true, true, cursor, false, false, false, false, true}),
+                    "the verified settings-owned cursor must not flash gameplay radar");
+        }
+        for (unsigned guard = 0; guard < 6; ++guard) {
+            dswros::CompactMenuState settings_preview{
+                true, true, true, false, false, false, false, true};
+            if (guard == 0) settings_preview.any_category_enabled = false;
+            if (guard == 1) settings_preview.position_valid = false;
+            if (guard == 2) settings_preview.world_map_visible = true;
+            if (guard == 3) settings_preview.game_paused = true;
+            if (guard == 4) settings_preview.activity_suppressed = true;
+            if (guard == 5) settings_preview.native_minimap_hidden = true;
+            require(dswros::compact_render_suppressed(settings_preview),
+                    "own settings preview never bypasses real menu or gameplay eligibility guards");
+        }
+        require(dswros::compact_render_suppressed({
+                    true, true, true, false, false, false, false, false}),
+                "a pre-existing cursor menu is not a settings-owned cursor exception");
     }
     {
         dswros::LiveMarkerPresenceGate gate;

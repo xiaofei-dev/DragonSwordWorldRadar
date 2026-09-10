@@ -22,22 +22,49 @@ process-lifetime capability resolved by two reflected structural paths, and
 replaces those scheduling policies with one global
 pending action keyed to the exact returned Component, exact
 invalidation/state-transition confirmation, one selector-represented bounded
-retry before exact-Component quarantine, and a
+retry, and a
 true physical F9 edge.
-Version 1.3.1 preserves that native pickup behavior. It changes the separate
+The later dispatch-observer correction replaced activation-long quarantine
+with expiring Component recovery. Version 1.3.1 preserves that native pickup
+behavior. It changes the separate
 high-range PAK policy so 15x/20x gather and animal targets retain their selected
 range while short-lived drops are capped at 10x. It also corrects one startup
 readiness race: if the reflected interactable class exists before its CDO, the
 Mod remains fail-closed and retries that dependency every 250 ms for at most 30
 seconds before running the unchanged full reflection and selector contracts.
-The latest corrective source includes the strict owner-settle and preflight
+The 1.3.1 release snapshot includes the strict owner-settle and preflight
 ordering audit and passed a fresh exact static, core, native-artifact,
 installer 11/11, and deterministic four-package audit. A local 1.3.0
 diagnostic installation produced in-process evidence, and the owner reported
 completed gameplay testing and acceptance on 2026-08-31. The exact installed
 DLL hash was not independently recorded in this repository.
 
-## Runtime contract
+## Unreleased source candidate
+
+The current working source is a separate, unreleased repeated-dispatch
+correction; it does not change the published 1.3.1 release identity or its
+archived artifacts. Current logs showed the same normal-gather target
+repeatedly reaching interaction dispatch without disappearing. The prior
+dispatch path cleared its attempt count despite explicitly not proving pickup.
+The candidate shares the exact-Component two-attempt budget across dispatch
+and timeout outcomes and checks exact confirmation before consuming dispatch
+in the same poll.
+
+The follow-on `frame-debug-20260908` candidate is frame-paced while enabled,
+with no additional 25 ms active/post-pickup waits, one in-flight action, and
+33 ms idle scans. Saturated retry capacity waits before input and expires
+naturally. Context/selector diagnostics move after the decision and retain
+only scalar snapshots. The owner authorizes local Setup deployment with the
+existing approved 20x PAK and Debug ON; record deployment and gameplay
+evidence independently, and keep public debug defaults false.
+
+Core regression evidence is separate from deployment and gameplay acceptance.
+This correction does not yet establish a complete fix for the owner's
+manual-interaction blockage, and cannot be described as repairing an already
+stuck game interaction state. Keep the accepted selector/input route and the
+separate range PAK unchanged while validating this single hypothesis.
+
+## Current source runtime contract
 
 - Automatic pickup is Off after every game start.
 - Returning to the main menu or initializing a new save or World forces Off,
@@ -62,11 +89,23 @@ DLL hash was not independently recorded in this repository.
 - Only one automatic action may be pending globally. No later candidate is
   invoked while it remains pending.
 - Exact Actor/Component weak-identity invalidation or the exact pending
-  component leaving `InteractableValue=2` is the automatic success signal. The
-  confirmation window is 650 ms. A first timeout enters a 100 ms cooldown and
-  permits one retry only if the game
-  selector presents the same exact Component again. A second timeout
-  quarantines that Component for the current activation.
+  component leaving `InteractableValue=2` is the target-level confirmation
+  signal. The fallback confirmation window is 750 ms. This guarded probe runs
+  before dispatch-marker consumption, so exact confirmation wins when both
+  arrive in the same poll and clears the attempt history.
+- Dispatch releases the global injection slot but is not target-level success.
+  A first unconfirmed dispatch retains a 750 ms same-Component re-entry delay
+  plus a 1500 ms retry opportunity. During that opportunity a selector-represented
+  identical Component is attempt two, never a fresh first attempt. If unused,
+  the record expires at the end of that opportunity.
+- A first no-dispatch timeout retains the existing 200 ms retry delay plus
+  1500 ms retry opportunity. Both outcome kinds share the same two-attempt
+  budget. A second unconfirmed dispatch or timeout, including either mixed
+  order, applies a 1500 ms Component backoff before a fresh first-attempt cycle.
+  There is no activation-long quarantine. Component delays do not keep the
+  global injection slot occupied for other selector results, and do not bypass
+  the game's single-result selector. Toggle, owner, and World resets clear the
+  pending action and its attempt records.
 - A changed interaction-owner identity resets the action activation even when
   the `UWorld` identity remains stable. This covers travel/context replacement
   observed in runtime logs without treating mount Rider changes as travel. The

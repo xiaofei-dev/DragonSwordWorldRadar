@@ -254,9 +254,9 @@ foreach ($value in @(
     'reset_action_activation(source, true)',
     'AutomaticActionDecision::FailClosed',
     'kPulseInterval = std::chrono::milliseconds{25}',
-    'kActiveScanInterval = std::chrono::milliseconds{25}',
+    'kActiveScanInterval = std::chrono::milliseconds{0}',
     'kIdleScanInterval = std::chrono::milliseconds{33}',
-    'kPostPickupCooldown = std::chrono::milliseconds{25}')) {
+    'kPostPickupCooldown = std::chrono::milliseconds{0}')) {
     Assert-ContainsOrdinal $adapter $value 'ExperimentalNested selector contract'
 }
 
@@ -645,7 +645,50 @@ foreach ($value in @(
         'Time-bounded automatic-action record contract'
 }
 
+$dispatchAccounting = Get-BracedBlock $actionEvidence `
+    'std::optional<PendingActionEvidence> observe_dispatch(' `
+    'Unconfirmed dispatch accounting'
+Assert-ContainsOrdinal $dispatchAccounting `
+    'record->unconfirmed_count = dispatched->attempt_ordinal;' `
+    'Dispatch preserves exact attempt history'
+Assert-ContainsOrdinal $dispatchAccounting `
+    'dispatched->attempt_ordinal >= kMaximumAutomaticActionAttempts' `
+    'Second unconfirmed dispatch enters recovery'
+Assert-DoesNotContain $dispatchAccounting 'record->unconfirmed_count = 0' `
+    'Dispatch is not a success reset'
+$pendingPoll = Get-BracedBlock $adapter `
+    'void poll_pending_action(Clock::time_point now) noexcept' `
+    'Pending action terminal evidence ordering'
+$confirmationIndex = $pendingPoll.IndexOf('automatic_action_.confirm(pending_candidate)')
+$dispatchConsumeIndex = $pendingPoll.IndexOf('automatic_action_.observe_dispatch(pending_candidate, now)')
+if ($confirmationIndex -lt 0 -or $dispatchConsumeIndex -lt 0 -or
+    $confirmationIndex -ge $dispatchConsumeIndex) {
+    throw 'Exact target confirmation must precede dispatch consumption and weak-handle clearing.'
+}
+foreach ($value in @('const bool matching_dispatch = observed_action_id == pending_action_id_;',
+                      'retry_counter_preserved=1 recovery_backoff={}',
+                      'dispatch_attempt_policy=shared_unconfirmed_v1')) {
+    Assert-ContainsOrdinal $adapter $value 'Shared unconfirmed-attempt candidate diagnostics'
+}
+
 $interactionDescription = 'Interaction metadata automatic-action contract'
+foreach ($value in @(
+    'active_cadence=engine_tick_v1 capacity_policy=wait_before_input',
+    'debug_decision_policy=deferred_scalar_v1',
+    'engine_tick_active_.test_and_set(std::memory_order_acquire)',
+    'engine_tick_active_.clear(std::memory_order_release)',
+    'start_window(request_id, Clock::now());',
+    'AutomaticActionDecision::CapacityWait',
+    'return reject("action_record_capacity_wait");')) {
+    Assert-ContainsOrdinal $adapter $value 'Frame-paced bounded pickup contract'
+}
+Assert-ContainsOrdinal $actionEvidence 'AutomaticActionDecision::CapacityWait' `
+    'Recoverable capacity pressure before input'
+Assert-JsonExact $interactionContract.working_tree_candidate 'active_scan_ms' 0 `
+    'Working-tree frame cadence'
+Assert-JsonExact $interactionContract.working_tree_candidate 'post_pickup_ms' 0 `
+    'Working-tree confirmation cadence'
+# Remaining metadata below is explicitly the dated published-package snapshot.
 Assert-JsonExact $interactionContract 'runtime_label' `
     'DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_1' 'Current interaction metadata'
 Assert-JsonExact $interactionContract.current_candidate 'version' '1.3.1' `
@@ -882,9 +925,9 @@ $observeDispatchIndex = $pollPendingAction.IndexOf(
     [StringComparison]::Ordinal)
 $weakProbeIndex = $pollPendingAction.IndexOf(
     'weak_get_guarded(pending_actor_', [StringComparison]::Ordinal)
-if ($markerConsumeIndex -lt 0 -or $observeDispatchIndex -le $markerConsumeIndex -or
-    $weakProbeIndex -le $observeDispatchIndex) {
-    throw 'EngineTickPost must consume and correlate the dispatch marker before weak confirmation probes.'
+if ($markerConsumeIndex -lt 0 -or $weakProbeIndex -le $markerConsumeIndex -or
+    $observeDispatchIndex -le $weakProbeIndex) {
+    throw 'EngineTickPost must snapshot the marker, then probe exact confirmation before consuming dispatch as an unconfirmed outcome.'
 }
 $matchingDispatch = Get-BracedBlock $pollPendingAction `
     'if (observed_action_id == pending_action_id_)' `
@@ -1237,6 +1280,106 @@ foreach ($value in @(
 }
 
 $pickupBlock = Get-BracedBlock $adapter 'bool invoke_pickup_unsafe(' 'Guarded pickup implementation'
+# Debug attribution may capture scalar snapshots during validation, but must
+# not format/enqueue context or selector details until the action decision ends.
+$pickupDecision = Get-BracedBlock $pickupBlock `
+    'const auto run_pickup_decision = [&]() -> bool' `
+    'Pickup decision before deferred debug attribution'
+foreach ($value in @('"PLAYER_CONTEXT_CHANGED"', '"SELECTOR_PAIR_OBSERVED"')) {
+    Assert-DoesNotContain $pickupDecision $value `
+        'Pre-decision context and selector diagnostics must not format or enqueue'
+}
+foreach ($value in @('context_diagnostic = DeferredContextDiagnostic{',
+                     'selector_diagnostic = DeferredSelectorDiagnostic{',
+                     'copy_diagnostic_token(context_reason_view)',
+                     'copy_diagnostic_token(receiver_source_view)')) {
+    Assert-ContainsOrdinal $pickupDecision $value `
+        'Pre-ProcessEvent diagnostics must retain owned scalar snapshots'
+}
+foreach ($snapshotType in @('struct DeferredContextDiagnostic', 'struct DeferredSelectorDiagnostic')) {
+    $snapshotFields = Get-BracedBlock $pickupBlock $snapshotType 'Deferred diagnostic fields'
+    Assert-ContainsOrdinal $snapshotFields 'std::array<char, 128>' `
+        'Pre-decision snapshot capture must be bounded and allocation-free'
+    foreach ($value in @('UObject', 'FWeakObjectPtr', 'std::string', 'const char*')) {
+        Assert-DoesNotContain $snapshotFields $value `
+            'Deferred attribution must not retain gameplay pointers or borrowed text'
+    }
+}
+$diagnosticTokenCopy = Get-BracedBlock $pickupBlock `
+    'const auto copy_diagnostic_token = [](std::string_view token) noexcept' `
+    'Bounded diagnostic token copy'
+foreach ($value in @('std::array<char, 128> copied{};',
+                     'std::min(token.size(), copied.size() - 1)',
+                     'if (count != 0) std::copy_n(token.data(), count, copied.data());')) {
+    Assert-ContainsOrdinal $diagnosticTokenCopy $value `
+        'Pre-decision diagnostic tokens must copy without allocation and retain NUL termination'
+}
+foreach ($emitterMarker in @(
+    'const auto emit_context_diagnostic = [this, request_id, snapshot = context_diagnostic]()',
+    'const auto emit_selector_diagnostic = [this, snapshot = selector_diagnostic]()')) {
+    $diagnosticEmitter = Get-BracedBlock $pickupBlock $emitterMarker `
+        'Value-captured post-decision diagnostic emitter'
+    Assert-ContainsOrdinal $diagnosticEmitter 'if (!snapshot.emit) return;' `
+        'Deferred diagnostics must retain change-only and capped admission'
+    foreach ($value in @('ProcessEvent', 'UObject', 'FWeakObjectPtr', 'context.',
+                         'selected.', 'automatic_action_', 'window_deadline_',
+                         'resolve_live_interaction_action', 'inject_live_interaction_action_once',
+                         'catch (')) {
+        Assert-DoesNotContain $diagnosticEmitter $value `
+            'Post-decision attribution must neither touch game state nor mask exceptions'
+    }
+}
+$decisionCompletedIndex = $pickupBlock.IndexOf('const bool decision_result = run_pickup_decision();',
+    [StringComparison]::Ordinal)
+foreach ($value in @('"PLAYER_CONTEXT_CHANGED"', '"SELECTOR_PAIR_OBSERVED"',
+                     'emit_context_diagnostic();', 'emit_selector_diagnostic();',
+                     'return decision_result;')) {
+    $deferredIndex = $pickupBlock.IndexOf($value, [StringComparison]::Ordinal)
+    if ($decisionCompletedIndex -lt 0 -or $deferredIndex -le $decisionCompletedIndex) {
+        throw "Deferred context/selector attribution must follow the completed pickup decision: $value"
+    }
+}
+$postInjectionDiagnosticTry = Get-BracedBlock $pickupBlock `
+    '// POST_INJECTION_DIAGNOSTIC_ONLY_TRY:' `
+    'Completed-injection diagnostic exception boundary'
+$postDecisionDiagnosticTry = Get-BracedBlock $pickupBlock `
+    '// POST_DECISION_DIAGNOSTIC_ONLY_TRY:' `
+    'Completed-decision diagnostic exception boundary'
+foreach ($diagnosticTry in @($postInjectionDiagnosticTry, $postDecisionDiagnosticTry)) {
+    Assert-ContainsOrdinal $diagnosticTry 'try {' 'Narrow diagnostic exception boundary'
+    foreach ($value in @('run_pickup_decision();', 'inject_live_interaction_action_once(',
+                         '->ProcessEvent(', 'automatic_action_.', 'pending_action_invoked_ =',
+                         '++action_lifecycle_cancellations_', 'if (reason) *reason =',
+                         'dispatch_observer_armed_.store', 'return decision_result;')) {
+        Assert-DoesNotContain $diagnosticTry $value `
+            'Diagnostic exception isolation must not enclose game calls or action-state decisions'
+    }
+}
+$postInjectionTryIndex = $pickupBlock.IndexOf('// POST_INJECTION_DIAGNOSTIC_ONLY_TRY:',
+    [StringComparison]::Ordinal)
+$postInjectionMarkerIndex = $pickupBlock.IndexOf(
+    '// PROCESS_EVENT_RETURNED_SCALAR_ONLY: no UObject access below this line.',
+    [StringComparison]::Ordinal)
+foreach ($value in @('if (pending_unchanged) pending_action_invoked_ = true;',
+                     'if (!pending_unchanged) ++action_lifecycle_cancellations_;',
+                     'if (reason) *reason = pending_unchanged')) {
+    $stateFinalizedIndex = $pickupBlock.IndexOf($value, [StringComparison]::Ordinal)
+    if ($stateFinalizedIndex -le $postInjectionMarkerIndex -or
+        $stateFinalizedIndex -ge $postInjectionTryIndex) {
+        throw "Injection outcome must be finalized before fallible diagnostics: $value"
+    }
+}
+if ($pickupBlock.IndexOf('// POST_DECISION_DIAGNOSTIC_ONLY_TRY:',
+        [StringComparison]::Ordinal) -le $decisionCompletedIndex) {
+    throw 'Deferred diagnostic exception isolation must begin after the gameplay lambda returns.'
+}
+$diagnosticCatches = [regex]::Matches($pickupBlock,
+    'catch \(const std::exception&\)\s*\{\s*\+\+diagnostic_write_failures_;\s*\}')
+if ($diagnosticCatches.Count -ne 2) {
+    throw 'Exactly two diagnostic-only std::exception catches must account failures without changing gameplay state.'
+}
+Assert-DoesNotContain $pickupBlock 'catch (...)' `
+    'Diagnostic isolation must not swallow unknown exceptions or guarded UObject faults'
 $scalarOnlyMarkerIndex = $pickupBlock.IndexOf(
     '// PROCESS_EVENT_RETURNED_SCALAR_ONLY: no UObject access below this line.',
     [StringComparison]::Ordinal)

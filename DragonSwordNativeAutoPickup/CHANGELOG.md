@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased candidate - 2026-09-08
+
+- Process active pickup on each EngineTick without extra 25 ms scan or
+  post-pickup waits. Keep one in-flight input and the 33 ms empty-scan interval.
+- Defer context/selector debug formatting until after the pickup decision;
+  diagnostics must not consume the pre-injection attempt budget.
+- Wait before input when all 128 retry records are occupied, then recover as
+  records expire. Do not discard protected history or disable normal overload.
+- Preserve exact-target retry counts when the game reports interaction dispatch
+  without confirmed pickup. A second unconfirmed dispatch or timeout now enters
+  the existing recoverable 1500 ms target-only backoff.
+- Check existing exact target confirmation before discarding pending evidence
+  on dispatch, without adding a delay to the already elapsed dispatch scan path.
+- Add repeated-dispatch, mixed-outcome, identity, expiry, and reset regressions.
+- Range PAKs and the published 1.3.1 packages are unchanged. Full recovery of
+  the owner-reported stuck/manual pickup scene remains unverified in game.
+
 ## 1.3.1 full package refresh - 2026-09-07
 
 - Fixed Update and Repair silently ignoring the selected toggle and fallback keys.

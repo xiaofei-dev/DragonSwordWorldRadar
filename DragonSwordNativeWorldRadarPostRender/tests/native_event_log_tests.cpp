@@ -61,7 +61,7 @@ int main() {
         dsnwr::NativeEngineTickProfileSample slow{};
         slow.activation = 3;
         slow.epoch = 4;
-        slow.elapsed_us = {2500, 1, 2, 3, 4, 5, 6, 7, 8};
+        slow.elapsed_us = {2500, 1, 2, 3, 4, 5, 6, 7, 8, 90};
         slow.area_quest_scan_active = true;
         slow.area_quest_scan_index = 12;
         slow.area_quest_catalog_size = 147;
@@ -103,6 +103,8 @@ int main() {
                 "ordinary queued event was not drained");
         require(document.find("ENGINE_TICK_SLOW") != std::string::npos,
                 "structured slow record was not serialized");
+        require(document.find("scene_umg_us=90") != std::string::npos,
+                "scene timing must remain independently attributable");
         require(document.find("total_us=2500") != std::string::npos,
                 "structured slow timing was changed");
         require(document.find("ENGINE_TICK_PROFILE") != std::string::npos,

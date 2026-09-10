@@ -1,16 +1,31 @@
 # DragonSword Mod Integration Status
 
-Last updated: 2026-08-31.
+Last updated: 2026-09-10.
 
 ## Maintained products
 
 | Product | Version/boundary | Owner status |
 |---|---|---|
-| `DragonSwordNativeWorldRadarPostRender` | Native Radar `2.1.0` | Gameplay-tested and accepted |
-| `DragonSwordNativeAutoPickup` | Native AutoPickup `1.3.0` | Gameplay-tested and accepted |
+| `DragonSwordNativeWorldRadarPostRender` | Native Radar `3.0.0`, Guide4 local package | Published by owner; two user-reported issues await logs and reproduction |
+| `DragonSwordNativeAutoPickup` | Published `1.3.1`; unreleased `frame-debug-20260908` working source | Candidate startup/deployment evidence exists; gameplay acceptance remains separate |
 | `DragonSwordPickupRangeExpansion` | Optional authored range PAK variants | Maintained independently |
 | `DragonSwordNativeAllMountsFreeFlight` | Pure-resource free-flight PAK | Maintained independently |
 | `DragonSwordWorldDataProbe` | Independent read-only research/test Mod | Retained at root; currently not required to be active |
+| `DragonSwordUE4SSCompatibilityRuntime` | Pinned `v3.0.1 Beta #0`, commit `1c1a1497` | Shared packaging component; unchanged in this source sync |
+
+See [September 10 suite closeout](GITHUB_CLOSEOUT_2026_09_10.md) for current
+source and package boundaries. The August 31 observations and acceptance
+below apply to Radar 2.1.0 and AutoPickup 1.3.0, not automatically to later
+versions or the current AutoPickup candidate.
+
+## Radar 3.0 support follow-up
+
+Two reports remain unconfirmed: some previously opened chests reportedly
+remain marked, and initial world entry can show the clock/settings without
+markers until fast travel. Radar debug logs, UE4SS logs where applicable,
+exact version and affected locations have been requested. Neither a Mod
+conflict nor a specific initialization/save-reading fault is established.
+No new gameplay fix is included in this repository closeout.
 
 ## Radar and AutoPickup mounted-flight observation
 
@@ -44,7 +59,7 @@ claimed root cause.
 ## Acceptance decision
 
 The owner subsequently reported completed gameplay testing and accepted the
-current Radar and AutoPickup versions. The transient observation above is kept
+then-current Radar 2.1.0 and AutoPickup 1.3.0 versions. The transient observation above is kept
 for regression comparison but is not a release blocker.
 
 This owner attestation does not assert that every prescribed checklist row has

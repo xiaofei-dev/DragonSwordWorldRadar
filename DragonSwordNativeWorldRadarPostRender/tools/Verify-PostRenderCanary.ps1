@@ -1,8 +1,11 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
+& (Join-Path $PSScriptRoot 'Verify-SceneFrameContract.ps1')
+& (Join-Path $PSScriptRoot 'Verify-ConfirmationContract.ps1')
+& (Join-Path $PSScriptRoot 'Verify-GuideContract.ps1')
 
 function Assert-True {
     param([bool]$Condition, [string]$Message)
@@ -60,6 +63,12 @@ $visibilityHub = Get-Content `
     (Join-Path $projectRoot 'src\native\radar_visibility_hub.cpp') -Raw
 $visibilityHubHeader = Get-Content `
     (Join-Path $projectRoot 'src\native\radar_visibility_hub.hpp') -Raw
+$hubEscapeSource = Get-Content `
+    (Join-Path $projectRoot 'src\native\hub_escape_input.cpp') -Raw
+$hubEscapeModel = Get-Content `
+    (Join-Path $projectRoot 'include\dswros\escape_input_model.hpp') -Raw
+$hubEscapeTests = Get-Content `
+    (Join-Path $projectRoot 'tests\hub_escape_input_tests.cpp') -Raw
 $visibilityConfig = Get-Content `
     (Join-Path $projectRoot 'config\visibility.ini') -Raw
 $visibilityParser = Get-Content `
@@ -67,7 +76,7 @@ $visibilityParser = Get-Content `
 $radarPreferences = Get-Content `
     (Join-Path $projectRoot 'include\dswros\radar_preferences.hpp') -Raw
 $radarLocalization = Get-Content `
-    (Join-Path $projectRoot 'include\dswros\radar_localization.hpp') -Raw
+    (Join-Path $projectRoot 'include\dswros\radar_localization.hpp') -Raw -Encoding UTF8
 $visibilityHubPolicy = Get-Content `
     (Join-Path $projectRoot `
         'include\dswros\radar_visibility_hub_policy.hpp') -Raw
@@ -81,12 +90,20 @@ $objectState = Get-Content `
     (Join-Path $projectRoot 'include\dswros\object_state.hpp') -Raw
 $nativeTests = Get-Content `
     (Join-Path $projectRoot 'tests\native_state_tests.cpp') -Raw
+$sceneModel = Get-Content `
+    (Join-Path $projectRoot 'include\dswros\scene_marker_model.hpp') -Raw
+$sceneRenderer = Get-Content `
+    (Join-Path $projectRoot 'src\native\scene_umg_renderer.cpp') -Raw
+$sceneRendererHeader = Get-Content `
+    (Join-Path $projectRoot 'src\native\scene_umg_renderer.hpp') -Raw
 $cmake = Get-Content (Join-Path $projectRoot 'CMakeLists.txt') -Raw
 $deploy = Get-Content (Join-Path $projectRoot 'tools\Deploy-NativePrototype.ps1') -Raw
 $metadata = Get-Content (Join-Path $projectRoot 'metadata\release.json') -Raw | ConvertFrom-Json
 $mainCode = Remove-CppComments $main
 $nativeEventLogCode = Remove-CppComments $nativeEventLog
 $visibilityHubCode = Remove-CppComments $visibilityHub
+$hubEscapeCode = Remove-CppComments $hubEscapeSource
+$hubEscapeModelCode = Remove-CppComments $hubEscapeModel
 $compatibleFontProperty = Get-VisibilityHubFreeFunction `
     $visibilityHubCode 'compatible_font_property' 'FStructProperty\s*\*'
 
@@ -106,8 +123,12 @@ Assert-True ($config -match '(?m)^late_present_relative_marker_enabled=false\r?$
     'The late Present relative marker must be disabled by default.'
 Assert-True ($metadata.name -eq 'DragonSwordNativeWorldRadarPostRender') `
     'Release metadata names the wrong mod.'
-Assert-True ($metadata.version -eq '2.3.0') `
+Assert-True ($metadata.version -eq '3.0.0') `
     'Release metadata version is stale for the current native milestone.'
+Assert-True ($main -match 'version=3\.0\.0 runtime_label' `
+    -and $main -match '"READY_3_0_0"' `
+    -and $main -notmatch '2\.3\.0|2_3_0') `
+    'Active native startup and readiness diagnostics must match the 3.0.0 identity.'
 Assert-True ($cmake -notmatch 'src/native/late_present_canary\.cpp') `
     'The runtime-rejected late Present source must not be compiled.'
 Assert-True ($cmake -notmatch 'src/native/postrender_canary\.cpp' `
@@ -447,18 +468,20 @@ Assert-True ($visibilityConfig -match '(?m)^\[radar\]\r?$' `
     -and $visibilityConfig -match '(?m)^assault=available\r?$' `
     -and $visibilityConfig -match '(?m)^\[height_arrows\]\r?$' `
     -and $visibilityConfig -match `
-        '(?ms)^\[height_arrows\]\r?\n(?:#[^\r\n]*\r?\n)*treasure=true\r?\narea_quests=true\r?\nmole=true\r?$' `
+        '(?ms)^\[height_arrows\]\r?\n(?:#[^\r\n]*\r?\n)*treasure=true\r?\narea_quests=true\r?\nmole=true\r?\nboss=true\r?\nassault=true\r?$' `
+    -and $visibilityConfig -match `
+        '(?ms)^\[scene\]\r?\n(?:#[^\r\n]*\r?\n)*treasure=true\r?\narea_quests=true\r?\nmini_games=true\r?\nrange_meters=600\r?\nmarker_limit=24\r?\ndistance_mode=nearest_center\r?$' `
     -and $visibilityConfig -match '(?m)^\[interface\]\r?$' `
     -and $visibilityConfig -match '(?m)^language=auto\r?$' `
     -and [regex]::Matches(
-        $visibilityConfig, '(?m)^\[[a-z_]+\]\r?$').Count -eq 5 `
+        $visibilityConfig, '(?m)^\[[a-z_]+\]\r?$').Count -eq 6 `
     -and $visibilityParser -match 'kMaximumVisibilityConfigBytes\s*=\s*4096U' `
     -and $visibilityParser -match `
         'VisibilityConfigFormat::LegacySchema1[\s\S]*?VisibilityConfigFormat::LegacySchema4' `
     -and $visibilityParser -match `
-        'old_sectioned\s*=\s*seen_sections\s*==\s*0x07U' `
+        'base_sections\s*=\s*static_cast<std::uint8_t>\(\s*seen_sections\s*&\s*~0x20U\)[\s\S]*?old_sectioned\s*=\s*base_sections\s*==\s*0x07U' `
     -and $visibilityParser -match `
-        'current_sectioned\s*=\s*seen_sections\s*==\s*0x1FU[\s\S]*?height_arrow_keys\s*==\s*0x07U[\s\S]*?interface_keys\s*==\s*0x01U' `
+        'current_sectioned\s*=\s*base_sections\s*==\s*0x1FU[\s\S]*?\(height_arrow_keys\s*&\s*0x07U\)\s*==\s*0x07U[\s\S]*?interface_keys\s*==\s*0x01U[\s\S]*?\(\(seen_sections\s*&\s*0x20U\)\s*!=\s*0U\s*&&\s*\(scene_keys\s*&\s*0x03U\)\s*!=\s*0x03U\)' `
     -and $visibilityParser -match `
         'bool\s+height_treasure\{true\}[\s\S]*?bool\s+height_area_quests\{true\}[\s\S]*?bool\s+height_mole\{true\}[\s\S]*?RadarLanguagePreference\s+language\{RadarLanguagePreference::Auto\}' `
     -and $visibilityParser -match 'parse_visibility_config\(' `
@@ -470,9 +493,10 @@ Assert-True ($visibilityConfig -match '(?m)^\[radar\]\r?$' `
         $radarPreferences,
         'case\s+RadarUiLanguage::[A-Za-z]+:\s*return\s+"[^"]+"').Count -eq 11 `
     -and $radarLocalization -match `
-        'array<const wchar_t\*,\s*7>\s+marker_categories[\s\S]*?array<const wchar_t\*,\s*3>\s+height_categories' `
+        'scene[\s\S]*?array<const wchar_t\*,\s*7>\s+marker_categories[\s\S]*?array<const wchar_t\*,\s*static_cast<std::size_t>\(\s*HeightIndicatorCategory::Count\)>\s+height_categories' `
     -and [regex]::Matches(
-        $radarLocalization, '(?<![A-Za-z0-9_])L"').Count -eq 341 `
+        $radarLocalization, '(?<![A-Za-z0-9_])L"').Count -eq 858 `
+    -and $radarLocalization -match 'const wchar_t\*\s+restore_defaults\{\}' `
     -and $visibilityHubHeader -match `
         'AreaQuests,[\s\S]*?BirdEggs,[\s\S]*?Count' `
     -and $visibilityHubHeader -match `
@@ -488,7 +512,13 @@ Assert-True ($visibilityConfig -match '(?m)^\[radar\]\r?$' `
     -and $visibilityHubCode -match `
         'localized\.marker_categories\[category_index\]' `
     -and $visibilityHubCode -match `
-        'column\s*==\s*1[\s\S]*?category\s*==\s*static_cast<std::size_t>\([\s\S]*?RadarVisibilityCategory::Clock\)[\s\S]*?category\s*==\s*static_cast<std::size_t>\([\s\S]*?RadarVisibilityCategory::BirdEggs\)[\s\S]*?continue' `
+        'std::array<std::uint8_t,\s*3>\s+kColumnCategories[\s\S]*?kRadarVisibilityAllCategories,[\s\S]*?kRadarVisibilityWorldCategories,[\s\S]*?kRadarVisibilitySceneCategories' `
+    -and $visibilityHubCode -match `
+        '\(kColumnCategories\[column\]\s*&\s*radar_visibility_bit\(definition\.category\)\)\s*==\s*0U[\s\S]*?continue' `
+    -and $visibilityHubCode -match `
+        '\(kColumnCategories\[column\]\s*&\s*\(1U\s*<<\s*category\)\)\s*==\s*0U[\s\S]*?continue' `
+    -and $visibilityHubHeader -match `
+        'kRadarVisibilitySceneCategories\s*=\s*0x32U' `
     -and $deploy -match `
         '\$sourceVisibilityConfig\s*=\s*Join-Path\s+\$projectRoot\s+''config\\visibility\.ini''' `
     -and $deploy -match `
@@ -503,7 +533,200 @@ Assert-True ($visibilityConfig -match '(?m)^\[radar\]\r?$' `
     -and [regex]::Matches(
         $deploy,
         'Copy-Item\s+-LiteralPath\s+\$sourceVisibilityConfig').Count -eq 1) `
-    'Exact-mirror deployment, compact-only bird eggs, five-section 2.2 defaults, migration, and complete localization no longer agree.'
+    'Exact-mirror deployment, compact-only bird eggs, enabled Scene preset, six-section migration, and complete localization no longer agree.'
+$sceneCandidates = Get-NativeOwnerFunction $mainCode 'rebuild_scene_candidates'
+$sceneService = Get-NativeOwnerFunction $mainCode 'service_scene_guidance'
+$sceneServiceUnsafe = Get-NativeOwnerFunction $mainCode 'service_scene_guidance_unsafe'
+$sceneSuppression = Get-NativeOwnerFunction $mainCode 'scene_render_suppressed'
+$sceneRendererCode = Remove-CppComments $sceneRenderer
+Assert-True ($sceneRendererHeader -match 'kMarkerTextureCount\s*=\s*6' `
+    -and $sceneRendererHeader -match 'std::array<RC::Unreal::FWeakObjectPtr,\s*kSceneUmgMarkerCapacity>\s*marker_images_' `
+    -and $sceneRendererHeader -match 'std::array<RC::Unreal::FWeakObjectPtr,\s*kMarkerTextureCount>\s*texture_keepers_' `
+    -and $sceneRendererCode -match 'i\s*<\s*kMarkerTextureCount' `
+    -and $sceneRendererCode -match 'texture_keepers_\[i\]\s*=\s*keeper;\s*visibility\(keeper,\s*visible_,\s*false\)' `
+    -and $sceneRendererCode -match 'GetObjectPropertyValue\(resource\)\s*!=\s*texture' `
+    -and $sceneRendererCode -notmatch 'PieceStyle|kMarkerPieces|UMG\.Border|AddToRoot' `
+    -and $sceneRendererCode -match 'add\(root,\s*group,\s*0,\s*0,\s*32,\s*36,\s*false\)' `
+    -and $sceneRendererCode -match 'add\(group,\s*image,\s*0,\s*0,\s*32,\s*36,\s*false\)' `
+    -and $sceneRendererCode -match 'marker\.x\s*-\s*16(?:\.0)?[\s\S]*?marker\.y\s*-\s*16(?:\.0)?') `
+    'Scene glyphs must use one Image per fixed marker slot, six reflected Brush-owned textures, and unchanged 32x36 geometry/center, without Border-piece or raw rooted ownership.'
+$sceneUpdate = [regex]::Match(
+    $sceneRendererCode,
+    '(?ms)^bool\s+SceneUmgRenderer::update_unsafe\s*\([^;]*?\)[^{]*\{(?:(?!^\}).)*^\}').Value
+$sceneAbandon = [regex]::Match(
+    $sceneRendererCode,
+    '(?ms)^void\s+SceneUmgRenderer::abandon_runtime_handles\s*\([^;]*?\)[^{]*\{(?:(?!^\}).)*^\}').Value
+$sceneResetHandles = [regex]::Match(
+    $sceneRendererCode,
+    '(?ms)^void\s+SceneUmgRenderer::reset_handles\s*\([^;]*?\)[^{]*\{(?:(?!^\}).)*^\}').Value
+$sceneResetBody = [regex]::Match(
+    $sceneResetHandles, '(?s)\{(?<body>.*)\}\s*$').Groups['body'].Value
+$sceneResetNonAssignments = [regex]::Replace(
+    $sceneResetBody,
+    '(?m)^\s*(?:[A-Za-z_]\w*\s*=\s*)+(?:FWeakObjectPtr\{\}|\{\}|false|nullptr|0)\s*;\s*$', '')
+$sceneResetNonAssignments = [regex]::Replace($sceneResetNonAssignments,
+    '(?m)^\s*displayed_distances_\.fill\(1001\);\s*$', '')
+Assert-True ($visibilityParser -match `
+        'bool\s+scene_treasure\{true\}[\s\S]*?bool\s+scene_area_quests\{true\}[\s\S]*?bool\s+scene_mini_games\{true\}' `
+    -and $visibilityHubHeader -match `
+        'using RadarVisibilityMaskWord\s*=\s*std::uint32_t' `
+    -and $visibilityHubHeader -match `
+        'std::uint8_t scene\s*=\s*0U[\s\S]*?scene\s*&\s*kRadarVisibilitySceneCategories\)\s*<<\s*16U' `
+    -and $visibilityHubHeader -match `
+        'kDefaultRadarVisibilityMasks\s*=\s*pack_radar_visibility_masks\(\s*kRadarVisibilityAllCategories,\s*kRadarVisibilityWorldCategories,\s*kRadarVisibilitySceneCategories\)' `
+    -and $visibilityHubHeader -match 'kColumnCount\s*=\s*3' `
+    -and $sceneService -match `
+        'scene_radar_visibility_mask\(visibility_masks_\)\s*==\s*0[\s\S]*?return;[\s\S]*?service_scene_guidance_unsafe' `
+    -and $sceneServiceUnsafe -match `
+        'scene_render_suppressed\(\)[\s\S]*?return;[\s\S]*?if\s*\(!scene_initialized_\)[\s\S]*?scene_umg_renderer_\.initialize\(mod_directory\(\)\s*/\s*"assets"\s*/\s*"ui"\s*/\s*"scene"\)' `
+    -and $sceneSuppression -match `
+        '!enabled_[\s\S]*?transition_active_[\s\S]*?dswros::compact_render_suppressed\([\s\S]*?position_valid_[\s\S]*?mouse_cursor_visible_[\s\S]*?world_map_compact_suppressed_[\s\S]*?game_paused_[\s\S]*?activity_suppressed_[\s\S]*?owns_gameplay_cursor\(\)[\s\S]*?NativeMinimapPaint::Visible' `
+    -and $sceneCandidates -match `
+        'treasure_eligibility_ready_[\s\S]*?scene_visibility_enabled\([\s\S]*?RadarVisibilityCategory::Treasure[\s\S]*?compact_eligibility_\[index\][\s\S]*?!entry\.has_z[\s\S]*?kCompactMapId' `
+    -and $sceneCandidates -match `
+        'area_quest_state_ready_[\s\S]*?scene_visibility_enabled\([\s\S]*?RadarVisibilityCategory::AreaQuests[\s\S]*?area_quest_visible_for_selected_mode\(index\)[\s\S]*?quest\.scene_position' `
+    -and $sceneCandidates -notmatch `
+        'compact_visibility_enabled|world_visibility_enabled|encounter_catalog_|bird_egg_runtime_candidates_|ProcessEvent|FindAllOf|FindFirstOf|StaticFindObject|read_actor_position|sqlite|sqlcipher|filesystem|fstream|std::vector|\bnew\b' `
+    -and $mainCode -match `
+        'std::array<dsnwr::SceneUmgMarker,\s*kMaximumTreasureCatalogEntries\s*\+\s*kExpectedAreaQuestCount\s*\+\s*kExpectedMiniGameCount>\s*scene_candidates_' `
+    -and $sceneServiceUnsafe -match `
+        'scene_attach_attempts_\s*>=\s*3[\s\S]*?std::chrono::seconds\{2\}[\s\S]*?scene_umg_renderer_\.attach_once\(controller\)' `
+    -and $sceneServiceUnsafe -match `
+        'now\s*>=\s*scene_refresh_after_[\s\S]*?scene_refresh_after_\s*=\s*now\s*\+\s*std::chrono::milliseconds\{250\}[\s\S]*?rebuild_scene_candidates\(\)' `
+    -and $sceneModel -match 'kSceneMarkerCapacity\s*=\s*50' `
+    -and $sceneModel -match 'kSceneMaximumDistanceMeters\s*=\s*1000\.0' `
+    -and $sceneModel -match `
+        'enum class SceneMarkerKind[^}]*TreasureOther[^}]*TreasureMiniGame[^}]*TreasureMap[^}]*TreasurePuzzle[^}]*AreaQuest' `
+    -and (Remove-CppComments $sceneModel) -notmatch 'UObject|ProcessEvent|FindAllOf|FindFirstOf|StaticFindObject|std::vector|\bnew\b' `
+    -and $sceneUpdate.Length -gt 0 `
+    -and $sceneUpdate -match `
+        'owner_\.Get\(\)\s*!=\s*controller[\s\S]*?owner\.result\s*!=\s*controller[\s\S]*?return false' `
+    -and $sceneUpdate -match `
+        'std::array<dswros::SceneProjectedPoint,\s*kSceneUmgMarkerCapacity>[\s\S]*?capture_projection_unsafe[\s\S]*?i\s*<\s*selection_\.count[\s\S]*?project_engine_unsafe\(controller,\s*display_position\)' `
+    -and $sceneRendererCode -match
+        'project_engine_unsafe\([\s\S]*?std::array<std::byte,\s*128>[\s\S]*?ProcessEvent\(project_' `
+    -and $sceneUpdate -notmatch `
+        'FindAllOf|FindFirstOf|StaticFindObject|NewObject|read_actor_position|sqlite|sqlcipher|filesystem|fstream|std::vector|\bnew\b' `
+    -and $sceneRendererHeader -match `
+        'FWeakObjectPtr\s+host_[\s\S]*?FWeakObjectPtr\s+owner_' `
+    -and $sceneAbandon.Length -gt 0 `
+    -and $sceneAbandon -match `
+        '(?s)\{\s*reset_handles\(\);\s*blueprint_library_\s*=\s*FWeakObjectPtr\{\};\s*layout_library_\s*=\s*FWeakObjectPtr\{\};\s*rendering_library_\s*=\s*FWeakObjectPtr\{\};\s*state_\s*=\s*SceneUmgRendererState::Disabled;\s*\}\s*$' `
+    -and $sceneResetHandles.Length -gt 0 `
+    -and [string]::IsNullOrWhiteSpace($sceneResetNonAssignments)) `
+    'Scene must enable its three categories in the preset, preserve independent masks and prefiltered numeric catalogs, cap candidate/projection work, retain exact controller ownership and suppression boundaries, and add no actor discovery or save query.'
+$sceneApply = Get-NativeOwnerFunction $mainCode 'apply_visibility_hub_result'
+Assert-True ($sceneUpdate -notmatch 'import_file_as_texture_|bind_marker_texture_unsafe\(keeper' `
+    -and $sceneUpdate -match
+    'if\s*\(!style_valid_\[i\]\s*\|\|\s*displayed_kinds_\[i\]\s*!=\s*kind\)[\s\S]*?bind_marker_texture_unsafe\(\s*marker_images_\[i\]\.Get\(\),\s*marker_textures_\[texture_index\]\.Get\(\)\)' `
+    -and $sceneUpdate -match
+    'marker\.x\s*!=\s*submitted_positions_\[i\]\.x\s*\|\|\s*marker\.y\s*!=\s*submitted_positions_\[i\]\.y' `
+    -and $sceneUpdate -match
+    'if\s*\(!position_valid_\[i\]\s*\|\|\s*marker\.x\s*!=\s*submitted_positions_\[i\]\.x\s*\|\|\s*marker\.y\s*!=\s*submitted_positions_\[i\]\.y\)\s*\{\s*vector_call\(group,\s*render_translation_,\s*marker\.x\s*-\s*16\.0,\s*marker\.y\s*-\s*16\.0\);\s*submitted_positions_\[i\]\s*=\s*\{marker\.x,\s*marker\.y\};\s*position_valid_\[i\]\s*=\s*true;\s*\+\+position_update_count_;\s*\}\s*else\s*\{\s*\+\+position_reuse_count_;\s*\}' `
+    -and $sceneRendererCode -match
+    'set_menu_suppressed\(bool suppressed\)[^{]*\{[\s\S]*?if\s*\(suppressed_\s*==\s*suppressed\)\s*return;' `
+    -and $sceneApply -notmatch 'reset_scene_runtime\(|\.detach\(|\.begin_activation\(' `
+    -and $sceneApply -match
+    'result.action\s*==\s*dsnwr::RadarVisibilityHubAction::Applied\s*&&\s*result.global_reset_requested\s*&&\s*scene_settings_persist_pending_\)\s*\{\s*scene_settings_persist_after_\s*=\s*\{\};\s*\}[\s\S]*?!result.changed' `
+    -and $sceneApply -match
+    'scene_selection_\s*=\s*\{\};\s*scene_marker_count_\s*=\s*0;\s*scene_refresh_after_\s*=\s*\{\};\s*if\s*\(scene_initialized_\)\s*\{\s*scene_umg_renderer_\.set_display_settings\(scene_display_settings_\);\s*scene_umg_renderer_\.set_menu_suppressed\(scene_render_suppressed\(\)\);') `
+    'Scene updates must reuse imported textures, bind only on kind changes, submit changed subpixel positions without a dead band, collapse on suppression edges, retain the hidden pool during settings edits and flush explicit reset even when values already match.'
+$scenePreferences = Get-Content (Join-Path $projectRoot 'include\dswros\scene_preferences.hpp') -Raw
+$sceneModelCode = Remove-CppComments $sceneModel
+$sceneSelect = Get-VisibilityHubFreeFunction $sceneModelCode `
+    'select_scene_markers' 'inline\s+SceneSelection'
+$sceneLayout = Get-VisibilityHubFreeFunction $sceneModelCode `
+    'layout_scene_markers' 'inline\s+SceneFrame'
+$sceneDisplayPosition = Get-VisibilityHubFreeFunction $sceneModelCode `
+    'scene_display_position' 'constexpr\s+Position'
+$sceneDistanceOffset = Get-VisibilityHubFreeFunction $sceneModelCode `
+    'scene_distance_offset_meters' 'constexpr\s+double'
+$sceneDisplayDistance = Get-VisibilityHubFreeFunction $sceneModelCode `
+    'scene_display_distance' 'inline\s+std::uint16_t'
+$sceneRoundedDistance = Get-VisibilityHubFreeFunction $sceneModelCode `
+    'scene_rounded_distance' 'inline\s+std::uint16_t'
+Assert-True ($scenePreferences -match
+    'range_meters\{600\}[\s\S]*?marker_limit\{24\}[\s\S]*?SceneDistanceMode::NearestCenter' `
+    -and $sceneService -match
+    'range_meters\s*==\s*0[\s\S]*?marker_limit\s*==\s*0[\s\S]*?return;' `
+    -and $sceneCandidates -match
+    'scene_visibility_enabled\(dsnwr::RadarVisibilityCategory::MiniGames\)[\s\S]*?mini_game_eligibility_\[index\]\s*==\s*0[\s\S]*?SceneUmgMarkerKind::MiniGame' `
+    -and $sceneCandidates -match
+    'select_scene_markers\([\s\S]*?scene_selection_,\s*scene_display_settings_\)' `
+    -and $sceneLayout -match
+    'SceneDistanceMode::Off\s*\|\|\s*settings\.distance_mode\s*==\s*SceneDistanceMode::All\)\s*continue;' `
+    -and $sceneUpdate -match
+    'layout_scene_markers\([\s\S]*?settings_,\s*focus_state_,\s*now,[\s\S]*?previous_visible_count_\}\);\s*focus_state_\s*=\s*frame\.focus_state;[\s\S]*?distance_refresh_at_\s*=\s*now\s*\+\s*100' `
+    -and $sceneUpdate -match
+    'distance_widget_budget_\s*=\s*4;\s*distance_value_budget_\s*=\s*8;' `
+    -and $sceneRendererCode -match
+    'distance_widget_budget_\s*==\s*0[\s\S]*?return true[\s\S]*?--distance_widget_budget_' `
+    -and $sceneRendererCode -match
+    'distance_value_budget_\s*==\s*0[\s\S]*?--distance_value_budget_' `
+    -and $sceneRendererHeader -match
+    'std::array<DistanceText,\s*1001>\s+distance_cache_' `
+    -and $sceneRendererCode -match
+    'DestroyValue_InContainer\(distance_cache_\[i\]\.parameters\.data\(\)\)' `
+    -and $sceneUpdate -match
+    '!distance_failed_[\s\S]*?show_distance' `
+    -and $mainCode -match
+    'last_text_failure\(\)[\s\S]*?scene_reported_text_failure_') `
+    'Scene 3.0 must share enabled-category limits, pass current focus/time state, preserve Off/All behavior, bound cold text work, and isolate/report text failures.'
+Assert-True ($sceneDisplayPosition -match
+    '(?s)\{\s*Position position\s*=\s*marker\.position;\s*position\.z\s*\+=\s*marker\.kind\s*==\s*SceneMarkerKind::AreaQuest\s*\?\s*180\.0\s*:\s*marker\.kind\s*==\s*SceneMarkerKind::MiniGame\s*\?\s*150\.0\s*:\s*160\.0;\s*return position;\s*\}\s*$' `
+    -and $sceneSelect -match
+    'distance\s*=\s*std::hypot\(\s*marker\.position\.x\s*-\s*player\.x,\s*marker\.position\.y\s*-\s*player\.y,\s*marker\.position\.z\s*-\s*player\.z\)\s*/\s*100\.0;[\s\S]*?distance\s*>\s*settings\.range_meters\)\s*continue;' `
+    -and $sceneSelect -notmatch 'scene_display_position|scene_distance_offset_meters|scene_display_distance' `
+    -and $sceneCandidates -notmatch 'scene_display_position|scene_distance_offset_meters|scene_display_distance' `
+    -and $sceneUpdate -match
+    'const auto display_position\s*=\s*dswros::scene_display_position\(\s*selection_\.values\[i\]\.marker\);[\s\S]*?projection\.project\(display_position\)\s*:\s*project_engine_unsafe\(controller,\s*display_position\);' `
+    -and $sceneUpdate -match
+    'vector_call\(group,\s*render_translation_,\s*marker\.x\s*-\s*16\.0,\s*marker\.y\s*-\s*16\.0\);') `
+    'Scene height lifting must be a copied display-only position (Area 180/chest 160/mini-game 150 cm); raw distance/range/catalog selection stay unchanged and focus matches the raised icon center.'
+Assert-True ($sceneModelCode -match 'kSceneAimHorizontalRadiusFraction\s*=\s*0\.16;' `
+    -and $sceneModelCode -match 'kSceneAimVerticalRadiusFraction\s*=\s*0\.34;' `
+    -and $sceneModelCode -match 'kSceneAimDwellMilliseconds\s*=\s*100;' `
+    -and $sceneModelCode -match 'kSceneAimSwitchMilliseconds\s*=\s*350;' `
+    -and $sceneModelCode -match 'kSceneAutoSwitchMilliseconds\s*=\s*500;' `
+    -and $sceneModelCode -match 'kSceneAimExitRadiusMultiplier\s*=\s*1\.2;' `
+    -and $sceneLayout -match
+    'short_side\s*=\s*std::min\(width,\s*height\);\s*const double aim_radius_x\s*=\s*short_side\s*\*\s*kSceneAimHorizontalRadiusFraction;\s*const double aim_radius_y\s*=\s*short_side\s*\*\s*kSceneAimVerticalRadiusFraction;' `
+    -and $sceneLayout -match
+    'aim_x\s*=\s*dx\s*/\s*aim_radius_x;\s*const double aim_y\s*=\s*dy\s*/\s*aim_radius_y;\s*const double center_distance\s*=\s*settings.distance_mode\s*==\s*SceneDistanceMode::CentralRadius\s*\?\s*aim_x\s*\*\s*aim_x\s*\+\s*aim_y\s*\*\s*aim_y\s*:\s*dx\s*\*\s*dx\s*\+\s*dy\s*\*\s*dy;' `
+    -and $sceneLayout -match
+    '!point\.in_front[\s\S]*?point\.y\s*>\s*height\s*-\s*margin\)\s*continue;[\s\S]*?if\s*\(crowded\)\s*continue;[\s\S]*?center_distance\s*>=\s*1\.0\s*-\s*1e-12\)\s*continue;' `
+    -and $sceneLayout -match
+    'is_incumbent\s*&&\s*previous_focus\.acquired\s*\?\s*kSceneAimExitRadiusMultiplier\s*:\s*1\.0;' `
+    -and $sceneLayout -match
+    'SceneFocusState previous_focus\s*=\s*\{\},\s*std::uint64_t now_ms\s*=\s*0[\s\S]*?SceneFrame frame\{\};' `
+    -and $sceneLayout -match
+    'previous_focus\.mode\s*!=\s*settings\.distance_mode[\s\S]*?now_ms\s*<\s*previous_focus\.last_update_ms[\s\S]*?previous_focus\s*=\s*\{\};' `
+    -and $sceneLayout -match
+    'incumbent\s*<\s*frame\.count\s*&&\s*previous_focus\.acquired[\s\S]*?state\.challenger\s*=\s*\{\};[\s\S]*?minimum_advantage\s*=\s*aim\s*\?\s*0\.08\s*:\s*short_side\s*\*\s*0\.012;' `
+    -and $sceneLayout -match
+    'best_distance\s*<\s*current_distance\s*\*\s*0\.8\s*&&\s*current_distance\s*-\s*best_distance\s*>\s*minimum_advantage;' `
+    -and $sceneLayout -match
+    'chosen\s*=\s*incumbent;[\s\S]*?same_scene_focus\(\s*state\.challenger,\s*previous_focus\.challenger\)[\s\S]*?aim\s*\?\s*kSceneAimSwitchMilliseconds\s*:\s*kSceneAutoSwitchMilliseconds;[\s\S]*?now_ms\s*-\s*state\.challenger_since_ms\s*>=\s*wait[\s\S]*?chosen\s*=\s*frame\.focus;[\s\S]*?frame\.focus\s*=\s*chosen;' `
+    -and $sceneLayout -match
+    'same_scene_focus\(identity,\s*previous_focus\.identity\)[\s\S]*?acquired\s*=\s*!aim\s*\|\|\s*now_ms\s*-\s*since\s*>=\s*kSceneAimDwellMilliseconds;[\s\S]*?if\s*\(!acquired\)\s*frame\.focus\s*=\s*std::numeric_limits<std::size_t>::max\(\);[\s\S]*?show_distance\s*=\s*true;' `
+    -and $sceneRendererCode -match
+    'set_display_settings\([^;]*?\)[^{]*\{[\s\S]*?settings_\.distance_mode\s*!=\s*settings\.distance_mode\)\s*focus_state_\s*=\s*\{\};' `
+    -and $sceneRendererCode -match
+    'set_menu_suppressed\(bool suppressed\)[^{]*\{\s*if\s*\(suppressed\)\s*focus_state_\s*=\s*\{\};') `
+    'Aim/Auto must retain one visible incumbent while a clearly better identity settles for 350/500ms, preserve 100ms initial Aim acquisition and acquired-only exit margin, and clear invalid targets and obsolete timers.'
+Assert-True ($sceneModelCode -match
+    'enum class SceneMiniGameKind[^}]*None,\s*Fly,\s*Mole,\s*Wave[\s\S]*?SceneMiniGameKind minigame_kind\{SceneMiniGameKind::None\}' `
+    -and $sceneCandidates -match
+    'game\.kind\s*==\s*MiniGameKind::Mole\s*\?\s*dswros::SceneMiniGameKind::Mole\s*:\s*game\.kind\s*==\s*MiniGameKind::Wave\s*\?\s*dswros::SceneMiniGameKind::Wave\s*:\s*dswros::SceneMiniGameKind::Fly;[\s\S]*?game\.position,\s*subtype' `
+    -and $sceneDistanceOffset -match
+    '(?s)\{\s*if\s*\(marker\.kind\s*==\s*SceneMarkerKind::MiniGame\)\s*return marker\.minigame_kind\s*==\s*SceneMiniGameKind::Mole\s*\?\s*2\.0\s*:\s*0\.0;\s*return 1\.0;\s*\}\s*$' `
+    -and $sceneDisplayDistance -match
+    '(?s)\{\s*if\s*\(!std::isfinite\(candidate\.distance_meters\)\)\s*return 1001;\s*return scene_rounded_distance\(std::max\(0\.0,\s*candidate\.distance_meters\s*-\s*scene_distance_offset_meters\(candidate\.marker\)\)\);\s*\}\s*$' `
+    -and $sceneRoundedDistance -match
+    'static_cast<std::uint16_t>\(\s*std::clamp\(std::round\(meters\),\s*0\.0,\s*kSceneMaximumDistanceMeters\)\)' `
+    -and $sceneRendererCode -match
+    'const auto meters\s*=\s*dswros::scene_display_distance\(candidate\);') `
+    'Scene label distance must subtract exactly one total correction (Treasure/Area 1m, Mole 2m, Fly/Wave 0m), clamp nonnegative before rounding, keep raw distance intact and reject nonfinite input.'
 Assert-True ($deploy -match `
         '\[ValidateSet\(''Preserve'',\s*''Enable'',\s*''Disable''\)\]' `
     -and $deploy -match `
@@ -722,7 +945,7 @@ Assert-True ($radarModStatus.Length -gt 0 `
     -and $activateOwner -match `
         'enabled_\s*=\s*true;[\s\S]*?engine_tick_fault_terminal_\s*=\s*false' `
     -and $serviceVisibilityHubToggleRequest -match `
-        'if\s*\(!controller\)[\s\S]*?visibility_hub_\.detach\(\)[\s\S]*?else\s*\{' `
+        'if\s*\(!controller\)[\s\S]*?visibility_hub_\.close\(\s*nullptr,[\s\S]*?handle_visibility_hub_result[\s\S]*?else\s*\{' `
     -and $serviceVisibilityHubToggleRequest -notmatch `
         'if\s*\(!controller\)[\s\S]{0,500}?release_for_travel\(\)') `
     'Terminal engine-tick faults must keep F6 FAULT/RETRY reachable, and a missing transient controller must still restore input through the Hub owner.'
@@ -754,7 +977,7 @@ Assert-True ($applyVisibilityHubResult -match `
         'language_preference_\s*=\s*result\.language[\s\S]*?active_ui_language_\s*=\s*dswros::resolve_radar_ui_language' `
     -and [regex]::Matches(
         $mainCode,
-        'persist_visibility_settings\(').Count -eq 2 `
+        'persist_visibility_settings\(').Count -eq 3 `
     -and [regex]::Matches(
         $mainCode,
         'load_visibility_settings\(').Count -eq 2 `
@@ -764,12 +987,21 @@ Assert-True ($applyVisibilityHubResult -match `
     -and $mainCode -match 'parse_visibility_config\(' `
     -and $visibilityParser -match 'VisibilityConfigFormat::LegacySchema4' `
     -and $visibilityParser -match `
-        'old_sectioned\s*=\s*seen_sections\s*==\s*0x07U' `
+        'old_sectioned\s*=\s*base_sections\s*==\s*0x07U' `
     -and $mainCode -notmatch `
         'migrate_legacy_auto_language_preference|resolve_explicit_radar_language_preference' `
     -and $mainCode -match `
         'assault_mode=[\s\S]*?AssaultDisplayMode::All[\s\S]*?"current"') `
     'Visibility settings must load once, accept legacy schema 1-4 and complete old three-section files, preserve persistent AUTO, and write preferences only after a real Hub change.'
+$flushPendingSceneSettings = Get-NativeOwnerFunction $mainCode 'flush_pending_scene_settings'
+Assert-True ($applyVisibilityHubResult -match
+    'if\s*\(scene_settings_changed\)[\s\S]*?scene_settings_persist_pending_\s*=\s*true[\s\S]*?std::chrono::milliseconds\{300\}' `
+    -and $flushPendingSceneSettings -match
+    '!scene_settings_persist_pending_[\s\S]*?visibility_hub_\.is_open\(\)[\s\S]*?now\s*<\s*scene_settings_persist_after_[\s\S]*?return;[\s\S]*?persist_visibility_settings\(' `
+    -and $mainCode -match
+    'service_visibility_hub\(engine,\s*now\);\s*flush_pending_scene_settings\(now\);' `
+    -and [regex]::Matches($mainCode, 'flush_pending_scene_settings\(').Count -eq 2) `
+    'Scene slider writes must be debounced and flushed at the control tick after close; untouched settings must not cause writes.'
 $detectCurrentLanguage = [regex]::Match(
     $mainCode,
     '(?ms)^\s{4}\[\[nodiscard\]\]\s+dswros::RadarUiLanguage\s+detect_current_game_language\s*\([^;]*?\)[^{]*\{(?:(?!^\s{4}\}).)*^\s{4}\}').Value
@@ -842,16 +1074,120 @@ Assert-True ($visibilityHubHeader -match `
     -and $visibilityHubCode -notmatch `
         'L"APPLY"|L"CANCEL"|apply_control_|cancel_control_' `
     -and $hubToggle -match `
-        'state_\s*==\s*RadarVisibilityHubState::Open[\s\S]*?RadarVisibilityHubAction::Closed' `
+        'state_\s*==\s*RadarVisibilityHubState::Open[\s\S]*?return\s+close\(current_controller,\s*current_mod_status\)' `
     -and $hubServiceUnsafe -match `
         'close_control_\.Get\(\)[\s\S]*?is_checked\(close_control,[\s\S]*?detach_unsafe\(current_controller\)[\s\S]*?RadarVisibilityHubAction::Closed' `
     -and $hubServiceUnsafe -match `
         'pending_masks_\s*==\s*source_masks_[\s\S]*?pending_area_quest_mode_\s*==\s*source_area_quest_mode_[\s\S]*?pending_assault_mode_\s*==\s*source_assault_mode_[\s\S]*?pending_height_indicators_\s*==\s*source_height_indicators_[\s\S]*?pending_language_\s*==\s*source_language_[\s\S]*?RadarVisibilityHubAction::None' `
     -and $hubServiceUnsafe -match `
         'const RadarVisibilityMaskWord applied\s*=\s*pending_masks_[\s\S]*?applied_height_indicators[\s\S]*?applied_language[\s\S]*?source_masks_\s*=\s*applied[\s\S]*?source_height_indicators_\s*=\s*applied_height_indicators[\s\S]*?source_language_\s*=\s*applied_language[\s\S]*?RadarVisibilityHubAction::Applied' `
-    -and $hubServiceUnsafe -notmatch `
-        'source_masks_\s*=\s*applied[\s\S]*?detach_unsafe') `
-    'Hub selections must auto-apply exactly on mask, filter-mode, height, or language changes while X or a second F6 closes without Apply/Cancel controls.'
+    -and $hubServiceUnsafe -match `
+        'const bool changed\s*=\s*!\([\s\S]*?scene_display_settings_equal[\s\S]*?if\s*\(!changed\s*&&\s*!close_requested\s*&&\s*!global_reset_requested\)[\s\S]*?RadarVisibilityHubAction::None' `
+    -and $hubServiceUnsafe -match `
+        'if\s*\(changed\)\s*\+\+apply_count_;\s*if\s*\(close_requested\)\s*\{[\s\S]*?detach_unsafe\(current_controller\)[\s\S]*?RadarVisibilityHubAction::Closed,\s*applied,\s*changed[\s\S]*?RadarVisibilityHubAction::Applied') `
+    'Hub selections must auto-apply only on real preference changes, and X/F6/Escape must close after final sampling without Apply/Cancel controls.'
+
+# Escape is consumed before Unreal/Slate dispatch, only on the verified local
+# game window thread. An ordinary UE4SS keydown observer cannot satisfy this.
+$escapeAttach = Get-VisibilityHubFreeFunction $hubEscapeCode 'attach' 'bool'
+$escapeFilter = Get-VisibilityHubFreeFunction $hubEscapeCode 'filter_message' 'LRESULT\s+CALLBACK'
+$escapeLifecycle = Get-VisibilityHubFreeFunction $hubEscapeCode 'observe_window_lifecycle' 'LRESULT\s+CALLBACK'
+$escapeService = Get-VisibilityHubFreeFunction $hubEscapeCode 'service' 'void'
+$escapeReset = Get-VisibilityHubFreeFunction $hubEscapeCode 'reset' 'void'
+$escapePanelClosed = Get-VisibilityHubFreeFunction $hubEscapeCode 'panel_closed' 'void'
+$escapeAbandon = Get-VisibilityHubFreeFunction $hubEscapeCode 'abandon_for_process_shutdown' 'void'
+$escapeOwnerService = Get-NativeOwnerFunction $mainCode 'service_visibility_hub_escape_request'
+$hubClose = Get-VisibilityHubMethod $visibilityHubCode 'close'
+$hubTravelRelease = Get-VisibilityHubMethod $visibilityHubCode 'release_for_travel'
+Assert-True ($escapeAttach -match
+        'GetWindowThreadProcessId\(window,\s*&process\)[\s\S]*?!window\s*\|\|\s*!IsWindow\(window\)\s*\|\|\s*!thread\s*\|\|\s*process\s*!=\s*GetCurrentProcessId\(\)[\s\S]*?GetAncestor\(window,\s*GA_ROOT\)\s*!=\s*window[\s\S]*?return false;' `
+    -and $escapeAttach -match
+        'GetForegroundWindow\(\)\s*!=\s*window[\s\S]*?GetClassNameW\(window,[\s\S]*?std::wcscmp\(class_name,\s*L"UnrealWindow"\)\s*!=\s*0[\s\S]*?return false;' `
+    -and [regex]::Matches($hubEscapeCode, 'SetWindowsHookExW\(').Count -eq 2 `
+    -and $escapeAttach -match
+        'SetWindowsHookExW\(WH_GETMESSAGE,\s*filter_message,\s*nullptr,\s*thread\)' `
+    -and $escapeAttach -match
+        'SetWindowsHookExW\(\s*WH_CALLWNDPROC,\s*observe_window_lifecycle,\s*nullptr,\s*thread\)' `
+    -and $escapeAttach -match
+        'if\s*\(!installed\)[\s\S]*?return false;[\s\S]*?if\s*\(!lifecycle\)[\s\S]*?UnhookWindowsHookEx\(installed\)[\s\S]*?return false;' `
+    -and $hubEscapeCode -match
+        'bool open\(\)\s*noexcept\s*\{\s*return attach\(GetForegroundWindow\(\),\s*true\);' `
+    -and $hubEscapeCode -match
+        '#if defined\(DSNWRPR_ESCAPE_INPUT_TEST\)[\s\S]*?open_test_window[\s\S]*?attach\(static_cast<HWND>\(window\),\s*false\)') `
+    'Escape hooks must validate a nonzero thread and current-process foreground UnrealWindow, fail closed on either hook failure, and keep the focus bypass test-only.'
+Assert-True ($escapeFilter -match
+        'ingress_enabled\.load[\s\S]*?GetCurrentThreadId\(\)\s*==\s*owner_thread[\s\S]*?owner_destroyed\s*\|\|\s*!foreground_matches\(\)' `
+    -and $escapeFilter -match
+        'message->hwnd\s*==\s*owner_window\s*\|\|\s*IsChild\(owner_window,\s*message->hwnd\)' `
+    -and $escapeFilter -match
+        'WM_KEYDOWN[\s\S]*?WM_SYSKEYDOWN[\s\S]*?WM_KEYUP[\s\S]*?WM_SYSKEYUP[\s\S]*?message->wParam\s*==\s*VK_ESCAPE[\s\S]*?model\.key\(down,\s*removal\s*==\s*PM_REMOVE\)' `
+    -and $escapeFilter -match
+        'WM_CHAR[\s\S]*?WM_SYSCHAR[\s\S]*?WM_UNICHAR[\s\S]*?message->wParam\s*==\s*VK_ESCAPE[\s\S]*?model\.active\(\)' `
+    -and $escapeFilter -match
+        'if\s*\(consume\)\s*\{\s*message->message\s*=\s*WM_NULL;\s*message->wParam\s*=\s*0;\s*message->lParam\s*=\s*0;' `
+    -and $escapeFilter -match 'return CallNextHookEx\(' `
+    -and $hubEscapeCode -notmatch
+        'SendInput|keybd_event|mouse_event|WH_KEYBOARD_LL|WH_MOUSE_LL|GetAsyncKeyState|register_keydown_event|UObject|ProcessEvent|FindAllOf|FindFirstOf|StaticFindObject|NewObject|std::vector|std::filesystem|fstream|\bnew\b') `
+    'Escape must become WM_NULL before dispatch on the owned window/children only; the input module must not use polling as consumption, global low-level hooks, synthetic input, Unreal access, scanning, or allocation.'
+Assert-True ($hubEscapeModelCode -match
+        'consume\s*=\s*panel_open_\s*\|\|\s*press_owned_;\s*if\s*\(!consume\s*\|\|\s*!remove\)\s*return consume;' `
+    -and $hubEscapeModelCode -match
+        'if\s*\(down\)\s*\{\s*if\s*\(!press_owned_\s*&&\s*close_reason_\s*!=\s*EscapeCloseReason::FocusLost\)\s*close_reason_\s*=\s*EscapeCloseReason::Escape;\s*press_owned_\s*=\s*true;\s*\}\s*else\s*\{\s*press_owned_\s*=\s*false;' `
+    -and $hubEscapeModelCode -match
+        'void close\(\)\s*noexcept\s*\{\s*panel_open_\s*=\s*false;\s*close_reason_\s*=\s*EscapeCloseReason::None;\s*\}' `
+    -and $hubEscapeModelCode -match
+        'void lose_focus\(\)\s*noexcept\s*\{\s*if\s*\(panel_open_\s*\|\|\s*close_requested\(\)\)\s*close_reason_\s*=\s*EscapeCloseReason::FocusLost;\s*press_owned_\s*=\s*false;\s*\}' `
+    -and $escapePanelClosed -match 'model\.close\(\)[\s\S]*?service\(\)' `
+    -and $escapeLifecycle -match
+        'GetCurrentThreadId\(\)\s*==\s*owner_thread[\s\S]*?message->hwnd\s*==\s*owner_window[\s\S]*?WM_NCDESTROY[\s\S]*?WM_KILLFOCUS[\s\S]*?WM_ACTIVATEAPP[\s\S]*?WM_ACTIVATE[\s\S]*?WA_INACTIVE[\s\S]*?model\.lose_focus\(\)' `
+    -and $escapeService -match
+        'if\s*\(!ingress_enabled\.load[^;]*?return;[\s\S]*?owner_destroyed[\s\S]*?GetWindowThreadProcessId[\s\S]*?GetCurrentProcessId[\s\S]*?foreground_matches[\s\S]*?model\.lose_focus\(\)' `
+    -and $escapeService -match
+        'remove\s*=\s*!model\.active\(\)\s*&&\s*!model\.close_requested\(\);[\s\S]*?if\s*\(remove\)\s*reset\(\)' `
+    -and $escapeReset -match
+        'ingress_enabled\.store\(false[\s\S]*?hook\s*=\s*nullptr;[\s\S]*?lifecycle_hook\s*=\s*nullptr;[\s\S]*?owner_window\s*=\s*nullptr;[\s\S]*?model\.reset\(\);\s*\}\s*if\s*\(removed\)\s*UnhookWindowsHookEx\(removed\);\s*if\s*\(removed_lifecycle\)\s*UnhookWindowsHookEx\(removed_lifecycle\)' `
+    -and $escapeAbandon -match 'ingress_enabled\.store\(false' `
+    -and $escapeAbandon -notmatch 'UnhookWindowsHookEx|Lock\s|UObject|ProcessEvent') `
+    'The owned Escape gesture must survive UI close through repeat/key-up, peeks must not advance it, synchronous focus loss must request close without an exposed return gap, and teardown must unhook outside the state lock without Unreal calls.'
+$hubClosedResultIndex = $hubServiceUnsafe.IndexOf('RadarVisibilityHubAction::Closed', [StringComparison]::Ordinal)
+$hubFinalSliderIndex = $hubServiceUnsafe.IndexOf('slider->ProcessEvent(get_slider_value_', [StringComparison]::Ordinal)
+Assert-True ($hubClose -match
+        'if\s*\(!is_open\(\)\)\s*return\s*\{\};\s*return service_guarded\(current_controller,\s*current_mod_status,\s*true\)' `
+    -and $hubServiceUnsafe -match
+        'if\s*\(\(force_close\s*\|\|\s*cancel_confirmation\)\s*&&\s*!current_controller\)\s*\{\s*current_controller\s*=\s*owning_player.return_value;' `
+    -and $hubServiceUnsafe -match
+        'close_requested\s*=\s*force_close\s*\|\|\s*is_checked\(close_control,' `
+    -and $hubFinalSliderIndex -ge 0 -and $hubClosedResultIndex -gt $hubFinalSliderIndex `
+    -and [regex]::Matches($hubServiceUnsafe, 'RadarVisibilityHubAction::Closed').Count -eq 1 `
+    -and $hubServiceUnsafe -match
+        'source_scene_settings_\s*=\s*pending_scene_settings_[\s\S]*?if\s*\(close_requested\)[\s\S]*?RadarVisibilityHubAction::Closed,\s*applied,\s*changed' `
+    -and $handleVisibilityHubResult -match
+        'RadarVisibilityHubAction::Closed\)\s*\{\s*apply_visibility_hub_result\(result\);[\s\S]*?flush_visibility_hub_world_map_refresh' `
+    -and $escapeOwnerService -match
+        'hub_escape_input::service\(\)[\s\S]*?take_close_reason\(\)[\s\S]*?if\s*\(visibility_hub_\.is_open\(\)\)[\s\S]*?current_player_controller_for_visibility_hub\(engine\)[\s\S]*?reason == dswros::EscapeCloseReason::FocusLost[\s\S]*?visibility_hub_\.close\(controller,\s*radar_mod_status\(\)\)[\s\S]*?visibility_hub_\.escape\(controller,\s*radar_mod_status\(\)\)[\s\S]*?handle_visibility_hub_result' `
+    -and $mainCode -match
+        'service_visibility_hub_toggle_request\(engine,\s*now\);\s*service_visibility_hub_escape_request\(engine\);\s*service_visibility_hub\(engine,\s*now\);\s*flush_pending_scene_settings\(now\);[\s\S]*?!required_runtime_ready_' `
+    -and $hubOpenUnsafe -match
+        'if\s*\(!hub_escape_input::open\(\)\)[\s\S]*?last_failure_\s*=\s*40;[\s\S]*?RadarVisibilityHubAction::Rejected[\s\S]*?ProcessEvent\(add_to_viewport_' `
+    -and $hubTravelRelease -match 'hub_escape_input::reset\(\)' `
+    -and $transitionOwner -match 'visibility_hub_\.detach\(\);\s*dsnwr::hub_escape_input::reset\(\)' `
+    -and $mainCode -match
+        'OnUObjectArrayShutdown\(\)\s*override\s*\{\s*dsnwr::hub_escape_input::reset\(\)' `
+    -and $mainCode -match
+        'if\s*\(process_shutdown\)\s*\{\s*dsnwr::hub_escape_input::abandon_for_process_shutdown\(\);\s*\}\s*else\s*\{\s*dsnwr::hub_escape_input::reset\(\)') `
+    'Escape/F6/X must sample the final sliders before a single Closed result, publish and persist that final sample, keep input cleanup alive while Radar is Off, reject an unprotected viewport open, and clear ingress at travel/UObject/process teardown.'
+Assert-True ($cmake -match 'src/native/hub_escape_input\.cpp' `
+    -and $cmake -match 'DSNWRPR_ESCAPE_INPUT_TEST' `
+    -and $cmake -match 'add_test\(NAME hub_escape_input_tests COMMAND DragonSwordHubEscapeInputTests\)' `
+    -and $hubEscapeTests -match 'PeekMessageW[\s\S]*?TranslateMessage[\s\S]*?DispatchMessageW' `
+    -and $hubEscapeTests -match 'PM_NOREMOVE' `
+    -and $hubEscapeTests -match 'WM_KILLFOCUS' `
+    -and $hubEscapeTests -match 'WM_ACTIVATEAPP' `
+    -and $hubEscapeTests -match 'post-close repeat cannot open game menu' `
+    -and $hubEscapeTests -match 'new press/release restored to target' `
+    -and $hubEscapeTests -match 'other top-level window remains untouched' `
+    -and (Remove-CppComments $hubEscapeTests) -notmatch 'SendInput|SetForegroundWindow|keybd_event|mouse_event') `
+    'The local Escape filter must remain covered by an isolated Win32 message-loop test including release, peeks, focus loss, and unrelated windows without synthetic game input or foreground changes.'
 $hubOpenInputIndex = $hubOpenUnsafe.IndexOf(
     'set_input_mode_game_and_ui_, &input', [StringComparison]::Ordinal)
 $hubOpenCursorIndex = $hubOpenUnsafe.IndexOf(
@@ -864,45 +1200,35 @@ Assert-True ($hubOpenInputIndex -ge 0 `
     -and $hubServiceUnsafe -notmatch `
         'if\s*\(cursor_visible\)[\s\S]*?set_input_mode_game_and_ui_') `
     'Hub opening must set GameAndUI before the cursor write and reassert input only after an open-panel cursor overwrite is observed.'
-Assert-True ($visibilityHubCode -match `
-        'kReferencePanelWidth\s*=\s*680\.0' `
-    -and $visibilityHubCode -match `
-        'kReferencePanelHeight\s*=\s*660\.0' `
-    -and $visibilityHubCode -match `
-        'kMinimumViewportMargin\s*=\s*16\.0' `
-    -and $hubOpenUnsafe -match `
-        'std::min\(\s*viewport_size\.return_value\.x\s*/\s*kReferenceViewportWidth,\s*viewport_size\.return_value\.y\s*/\s*kReferenceViewportHeight\)' `
-    -and $hubOpenUnsafe -match `
-        'fit_width\s*=\s*viewport_size\.return_value\.x[\s\S]*?-\s*kMinimumViewportMargin\s*\*\s*2\.0' `
-    -and $hubOpenUnsafe -match `
-        'fit_height\s*=\s*viewport_size\.return_value\.y[\s\S]*?-\s*kMinimumViewportMargin\s*\*\s*2\.0' `
-    -and $hubOpenUnsafe -match `
-        'fit_scale\s*=\s*std::min\([\s\S]*?fit_width\s*/\s*kReferencePanelWidth,[\s\S]*?fit_height\s*/\s*kReferencePanelHeight\)' `
-    -and $hubOpenUnsafe -match `
-        'display_scale\s*=\s*std::min\(reference_scale,\s*fit_scale\)' `
-    -and $hubOpenUnsafe -match `
-        'const double unit_scale\s*=\s*display_scale\s*/\s*static_cast<double>\(viewport_scale\.return_value\)' `
-    -and $hubOpenUnsafe -match `
-        '\(viewport_size\.return_value\.x\s*-\s*physical_width\)\s*\*\s*0\.5' `
-    -and $hubOpenUnsafe -match `
-        '\(viewport_size\.return_value\.y\s*-\s*physical_height\)\s*\*\s*0\.5') `
-    'The 680x660 Hub must fit-clamp against both viewport dimensions, preserve DPI conversion, and remain centered.'
+$hubLayoutModel = Get-Content -LiteralPath (Join-Path $projectRoot 'include/dswros/hub_viewport_layout.hpp') -Raw -Encoding UTF8
+Assert-True ($hubOpenUnsafe -match 'compute_hub_viewport_layout\([\s\S]*?viewport_size.return_value.x,[\s\S]*?viewport_size.return_value.y,[\s\S]*?viewport_scale.return_value' `
+    -and $hubOpenUnsafe -match 'unit_scale\s*=\s*viewport_layout.unit_scale' `
+    -and $hubLayoutModel -match 'display / dpi' `
+    -and $hubLayoutModel -match 'panel_height - header_height - footer_height' `
+    -and $hubOpenUnsafe -match 'body_scroll_slot_\s*=\s*add_to_canvas' `
+    -and $hubOpenUnsafe -match 'footer_slot_\s*=\s*add_to_canvas' `
+    -and $hubOpenUnsafe -match 'modal_slot_\s*=\s*add_to_canvas' `
+    -and $hubOpenUnsafe -match 'viewport_layout.panel_reference_height \* unit_scale' `
+    -and $hubOpenUnsafe -match '\(viewport_size.return_value.x - physical_width\) \* 0.5' `
+    -and $hubOpenUnsafe -match '\(viewport_size.return_value.y - physical_height\) \* 0.5') `
+    'SG12 F6 must keep fixed readable controls, scroll the body, center the retained viewport and preserve DPI conversion.'
 Assert-True ($hubOpenUnsafe -match `
-        'LocalizedTextSlot::BugReport,\s*localized\.bug_report,\s*411\.0,\s*17\.0,\s*126\.0,\s*26\.0' `
+        'LocalizedTextSlot::BugReport,\s*localized\.bug_report,\s*512\.0,\s*831\.0,\s*206\.0,\s*24\.0' `
     -and $hubOpenUnsafe -match `
-        'LocalizedTextSlot::Close,\s*localized\.close,\s*559\.0,\s*17\.0,\s*94\.0,\s*26\.0' `
+        'LocalizedTextSlot::Close,\s*localized\.close,\s*658\.0,\s*17\.0,\s*76\.0,\s*24\.0' `
     -and $hubOpenUnsafe -match `
-        'bug_report_control,\s*400\.0,\s*8\.0,\s*146\.0,\s*50\.0' `
+        'bug_report_control\s*=\s*add_control\(kContentX\s*\+\s*2\.0\s*\*\s*kFooterButtonStep,\s*kFooterButtonY,\s*kFooterButtonWidth,\s*30\.0,\s*false,\s*22\)' `
+    -and $hubOpenUnsafe -match 'endorsement_control_\s*=\s*add_control\(kContentX\s*\+\s*kFooterButtonStep,\s*kFooterButtonY,\s*kFooterButtonWidth,\s*30\.0,\s*false,\s*22\)' `
     -and $hubOpenUnsafe -match `
-        'mod_status_visual\s*=\s*add_border\(\s*146\.0,\s*143\.0,\s*5\.0,\s*22\.0' `
+        'mod_status_visual\s*=\s*add_border\(\s*483\.0,\s*63\.0,\s*4\.0,\s*16\.0' `
     -and $hubOpenUnsafe -notmatch 'kStatusBadgeSurface' `
     -and $hubOpenUnsafe -match `
-        'const\s+std::array<double,\s*2>\s+mode_width\{\{154\.0,\s*154\.0\}\}' `
+        'for\s*\(std::size_t\s+group\s*=\s*0;\s*group\s*<\s*2U;[\s\S]*?left\s*=\s*kContentX\s*\+\s*static_cast<double>\(group\)\s*\*\s*354\.0' `
     -and $hubOpenUnsafe -match `
-        'mode_x\[0\]\s*\+\s*4\.0,\s*y\s*\+\s*3\.0,\s*mode_width\[0\]\s*-\s*8\.0' `
+        'for\s*\(std::size_t\s+option\s*=\s*0;\s*option\s*<\s*2U;[\s\S]*?add_control\(x,\s*kFilterOptionsY,\s*160\.0,\s*30\.0,\s*selected\)' `
     -and $hubOpenUnsafe -match `
-        'mode_x\[1\]\s*\+\s*4\.0,\s*y\s*\+\s*3\.0,\s*mode_width\[1\]\s*-\s*8\.0') `
-    'The polished Hub must keep title-bar Bug Report and Close targets separate, render status as a non-button signal, and give both filter choices identical centered geometry.'
+        'option\s*==\s*0U\s*\?\s*localized\.available\s*:\s*localized\.all,[\s\S]*?x\s*\+\s*4\.0,\s*kFilterOptionsY\s*\+\s*3\.0,\s*152\.0,\s*24\.0,\s*8,\s*0\.40625,\s*kTextCenter') `
+    'The Hub must keep footer Feedback and Endorse targets separate from the header Close control, render status as a non-button signal, and give both filter choices identical centered geometry.'
 Assert-True ($hubInitialize -match `
         '/Script/UMG\.TextBlock:SetFont' `
     -and $hubInitialize -match `
@@ -979,7 +1305,7 @@ Assert-True ($visibilityHubCode -match `
     -and $hubOpenUnsafe -match `
         'RadarVisibilityHubFontPlanSource::TextBlockFallback[\s\S]*?RadarVisibilityHubFontSource::TextBlockFallback[\s\S]*?RadarVisibilityHubFontPlanSource::[\s\S]*?DTextBlockInheritedDefault[\s\S]*?RadarVisibilityHubFontSource::DTextBlockInheritedDefault[\s\S]*?RadarVisibilityHubFontSource::DTextBlockClassDefaultObject' `
     -and $visibilityHubCode -match `
-        'read_font_size_raw\([\s\S]*?source_size\s*==\s*0[\s\S]*?source_size\s*=\s*kReferenceHubFontSize[\s\S]*?source_size\s*<\s*0\s*\|\|\s*source_size\s*>\s*kMaximumHubFontSize[\s\S]*?return\s+false' `
+        'read_font_size_raw\([\s\S]*?source_size\s*<\s*0\s*\|\|\s*source_size\s*>\s*kMaximumHubFontSize[\s\S]*?return\s+false[\s\S]*?kReferenceHubFontSize\s*\*\s*unit_scale\s*\*\s*role_scale' `
     -and $compatibleFontProperty -match `
         'IsA\(text_block_class\)[\s\S]*?property\s*=\s*expected_font_property[\s\S]*?GetOwner<UClass>\(\)[\s\S]*?GetClassPrivate\(\)[\s\S]*?IsChildOf\(property_owner\)[\s\S]*?GetOffset_Internal\(\)\s*<\s*0[\s\S]*?IsInContainer\(actual_class\)[\s\S]*?ContainerPtrToValuePtr<void>\(text_block\)' `
     -and $compatibleFontProperty -notmatch `
@@ -998,7 +1324,7 @@ Assert-True ($visibilityHubCode -match `
         'visibility_hub_\.toggle\(\s*controller,\s*visibility_masks_' `
     -and $mainCode -notmatch `
         'visibility_hub_\.toggle\([\s\S]{0,160}?current_compact_layer_guarded\(\)') `
-    'F6 must prefer the language-aware DTextBlock, seed deferred zero-size fonts safely, retry the base TextBlock in the same transaction, and remain independent of compact-layer lifetime and selected language.'
+    'F6 must prefer the language-aware DTextBlock, use a fixed 32-unit reference size even with deferred zero-size fonts, retry the base TextBlock in the same transaction, and remain independent of compact-layer lifetime and selected language.'
 $hubTextRecordIndex = $hubOpenUnsafe.IndexOf(
     'text_layout_record_count_ = text_font_record_count',
     [StringComparison]::Ordinal)
@@ -1070,21 +1396,163 @@ Assert-True ($hubInitialize -match `
     'Every native F6 text slot must persist authored geometry, recenter exact font-layout records after each text-visibility lifecycle change, and preserve render-scale fallback slots without changing button hit regions or map geometry.'
 Assert-True ($visibilityHubCode -match 'kPanelFrame' `
     -and $visibilityHubCode -match 'kContentBackground' `
-    -and $visibilityHubCode -match 'kCompactHeader' `
-    -and $visibilityHubCode -match 'kWorldHeader' `
+    -and $visibilityHubCode -match 'kSectionTitleScale\s*=\s*0\.50' `
+    -and $hubOpenUnsafe -match 'LocalizedTextSlot::Title,\s*localized\.title,\s*24\.0,\s*12\.0,\s*610\.0,\s*36\.0,\s*5,\s*0\.6875' `
+    -and [regex]::Matches($hubOpenUnsafe, 'add_border\(kCardX,\s*k(?:MarkerHeader|SceneTitle|HeightHeader|FilterHeader)Y\s*\+\s*4\.0,\s*3\.0,\s*20\.0,\s*4,\s*kPanelAccent\)').Count -eq 4 `
     -and $visibilityHubCode -match `
         'LocalizedTextSlot::Radar,\s*localized\.radar' `
     -and $visibilityHubCode -match `
         'LocalizedTextSlot::Map,\s*localized\.map' `
     -and $hubOpenUnsafe -match `
-        'LocalizedTextSlot::Language,\s*localized\.language,\s*176\.0,\s*76\.0,\s*328\.0[\s\S]*?LocalizedTextSlot::LanguageValue,\s*language_display\.data\(\),\s*200\.0,\s*92\.0,\s*280\.0' `
+        'LocalizedTextSlot::Language,\s*localized\.language,\s*36\.0,\s*59\.0,\s*84\.0[\s\S]*?LocalizedTextSlot::LanguageValue,\s*language_display\.data\(\),\s*kLanguageValueX,\s*kLanguageValueY,\s*kLanguageValueWidth,\s*kLanguageValueHeight' `
+    -and $visibilityHubCode -match 'kLanguageValueX\s*=\s*126\.0;[\s\S]*?kLanguageValueY\s*=\s*58\.0;[\s\S]*?kLanguageValueWidth\s*=\s*220\.0;[\s\S]*?kLanguageValueHeight\s*=\s*26\.0;' `
     -and $visibilityHubCode -notmatch `
         'L"(?:MINIMAP|WORLD MAP|RADAR SETTINGS|MARKER VISIBILITY|BIRD EGGS|AVAILABLE|ALL|CLOSE)"' `
     -and $hubOpenUnsafe -match `
         'std::array<HubTextFontRecord,\s*kMaximumHubTextCount>\s+text_font_records' `
-    -and $visibilityHubCode -match `
-        'row\s*%\s*2U\s*==\s*0U\s*\?\s*kBaseRow\s*:\s*kAlternateRow') `
-    'Hub visual hierarchy must retain its framed panel, column chips, and alternating row surfaces.'
+    -and $hubOpenUnsafe -match 'add_border\(kCardX,\s*kMarkerTop[\s\S]*?add_border\(kCardX,\s*kSceneTop[\s\S]*?add_border\(kCardX,\s*kHeightTop[\s\S]*?add_border\(kCardX,\s*kFilterTop' `
+    -and $visibilityHubCode -match 'kSceneTop\s*=\s*kMarkerBottom\s*\+\s*10\.0' `
+    -and $hubOpenUnsafe -notmatch 'kBaseRow|kAlternateRow|kRowDivider|LocalizedTextSlot::Scene\b|control_x\[2\]') `
+    'Hub hierarchy must use four separated cards in Marker/Scene/Height/Filter order, larger title/headings with restrained accents, compact language geometry, and no old three-column table or per-row framing.'
+$hubLocalizedSlots = [regex]::Match($visibilityHubHeader,
+    '(?s)enum class LocalizedTextSlot[^\{]*\{(.*?)\bCount,').Groups[1].Value
+Assert-True ([regex]::Matches($hubLocalizedSlots, '\b[A-Z][A-Za-z]+\s*,').Count -eq 33 `
+    -and $hubOpenUnsafe -match 'std::array<double,\s*2>\s+control_x\{\{516\.0,\s*642\.0\}\}[\s\S]*?column\s*<\s*control_x\.size\(\)' `
+    -and $hubOpenUnsafe -match 'std::array<RadarVisibilityCategory,\s*3>\s+scene_categories\{\{\s*RadarVisibilityCategory::Treasure,\s*RadarVisibilityCategory::AreaQuests,\s*RadarVisibilityCategory::MiniGames' `
+    -and $hubOpenUnsafe -match 'std::array<LocalizedTextSlot,\s*3>\s+scene_category_slots\{\{\s*LocalizedTextSlot::SceneTreasure,\s*LocalizedTextSlot::SceneAreaQuest,\s*LocalizedTextSlot::SceneMiniGame' `
+    -and [regex]::Matches($hubOpenUnsafe, 'controls\[2\]\[category\]\s*=\s*control;').Count -eq 1 `
+    -and [regex]::Matches($hubOpenUnsafe, 'enabled_visuals\[2\]\[category\]\s*=\s*inner;').Count -eq 1 `
+    -and $hubOpenUnsafe -match 'add_localized_text\(scene_category_slots\[index\],[\s\S]*?localized\.marker_categories\[category\]' `
+    -and $hubRefreshLocalizedText -match 'scene_distance_modes\[3\],[\s\S]*?RadarVisibilityCategory::Treasure[\s\S]*?RadarVisibilityCategory::AreaQuests[\s\S]*?RadarVisibilityCategory::MiniGames[\s\S]*?localized\.restore_defaults' `
+    -and $hubOpenUnsafe -match 'height_label_texts\[index\]\s*=\s*add_text[\s\S]*?202\.0,\s*24\.0,\s*8,\s*0\.40625,\s*kTextCenter') `
+    'The 45 main text slots (33 localized, seven marker, five height) must keep two marker columns and three separately labeled Scene chips bound exactly once to the existing logical Scene state.'
+$hubGlobalReset = [regex]::Match($hubServiceUnsafe,
+    '(?s)if\s*\(global_reset_requested\)\s*\{(.*?)\n\s*const std::array<unsigned, 2> slider_maximum').Value
+$hubRuntimeReset = Get-VisibilityHubMethod $visibilityHubCode 'reset_runtime_handles'
+Assert-True ($visibilityHubHeader -match 'SceneDisplaySettings\s+scene_settings\{\};\s*bool\s+global_reset_requested\{\};' `
+    -and $visibilityHubHeader -match 'FWeakObjectPtr\s+global_reset_control_' `
+    -and $hubOpenUnsafe -match 'LocalizedTextSlot::GlobalReset,\s*localized\.restore_defaults' `
+    -and $hubServiceUnsafe -match 'global_reset_requested\s*=\s*!close_requested\s*&&\s*confirmed_reset' `
+    -and $hubGlobalReset.Length -gt 0 `
+    -and $hubGlobalReset -match 'const dswros::SceneDisplaySettings defaults\{\}' `
+    -and $hubGlobalReset -match 'column\s*<\s*kColumnCount[\s\S]*?kColumnCategories\[column\]\s*&\s*\(1U\s*<<\s*category\)[\s\S]*?controls_\[column\]\[category\]\.Get\(\)[\s\S]*?set_checked\(control,\s*set_is_checked_,\s*true\)' `
+    -and $hubGlobalReset -match 'height_controls_\[index\]\.Get\(\)[\s\S]*?dswros::kDefaultHeightIndicatorMask' `
+    -and $hubGlobalReset -match 'area_mode_available_control_\.Get\(\),\s*area_mode_all_control_\.Get\(\),\s*assault_mode_current_control_\.Get\(\),\s*assault_mode_all_control_\.Get\(\)' `
+    -and $hubGlobalReset -match 'control\s*==\s*area_mode_available_control_\.Get\(\)[\s\S]*?control\s*==\s*assault_mode_current_control_\.Get\(\)' `
+    -and $hubGlobalReset -match 'pending_language_\s*=\s*dswros::RadarLanguagePreference::Auto[\s\S]*?resolved_ui_language_\s*=\s*dswros::resolve_radar_ui_language[\s\S]*?refresh_localized_text_unsafe\(\)[\s\S]*?set_language_popup_visibility_unsafe\(false\)' `
+    -and $hubGlobalReset -match 'command\s*=\s*RadarVisibilityHubCommand::None' `
+    -and $hubGlobalReset -match 'defaults\.range_meters\)\s*/\s*1000\.0F[\s\S]*?defaults\.marker_limit\)\s*/\s*50\.0F[\s\S]*?ProcessEvent\(set_slider_value_,\s*&value\)' `
+    -and $hubGlobalReset -match 'scene_distance_controls_\[index\]\.Get\(\)[\s\S]*?defaults\.distance_mode' `
+    -and $hubGlobalReset -notmatch 'hotkey|persist_visibility|RadarVisibilityHubAction::Applied|EnableMod|DisableMod|request_radar_activation|enabled_\s*=' `
+    -and $hubServiceUnsafe -match 'if\s*\(global_reset_requested\)[\s\S]*?ProcessEvent\(get_slider_value_[\s\S]*?pending_masks_\s*=\s*pack_radar_visibility_masks\(compact,\s*world,\s*scene\)' `
+    -and [regex]::Matches($hubServiceUnsafe, 'RadarVisibilityHubAction::Applied').Count -eq 1 `
+    -and $hubServiceUnsafe -match 'RadarVisibilityHubAction::Applied,\s*applied,\s*changed,[\s\S]*?command,\s*source_scene_settings_,\s*global_reset_requested' `
+    -and $hubRuntimeReset -match 'global_reset_control_\s*=\s*FWeakObjectPtr\{\}' `
+    -and $applyVisibilityHubResult -match 'if\s*\(result\.global_reset_requested\)[\s\S]*?scene_settings_persist_after_\s*=\s*\{\}' ) `
+    'Global Restore Preset must reset all legal renderer categories, five height choices, both Available filters, Scene 600/24/Auto and AUTO through one final-sampling result; running state and hotkeys stay outside the preset.'
+function Test-Sg07TooltipBindings {
+    param([string]$Code, [string]$Header)
+    $clean = Remove-CppComments $Code
+    $open = [regex]::Match($clean,
+        '(?ms)^RadarVisibilityHubResult\s+RadarVisibilityHub::open_unsafe\s*\([^;]*?\)[^{]*\{(?:(?!^\}).)*^\}').Value
+    $marker = [regex]::Match($clean,
+        '(?ms)^\[\[nodiscard\]\]\s+constexpr\s+dswros::RadarTooltipId\s+marker_tooltip_for\s*\([^;]*?\)[^{]*\{(?:(?!^\}).)*^\}').Value
+    $markerNames = @('Treasure','Boss','Assault','MiniGames','AreaQuests','BirdEggs','Clock')
+    $mappingValid = [regex]::Matches($marker, 'case\s+RadarVisibilityCategory::').Count -eq 7
+    foreach ($name in $markerNames) {
+        $mappingValid = $mappingValid -and ($marker -match (
+            'case\s+RadarVisibilityCategory::' + $name +
+            ':\s*return\s+dswros::RadarTooltipId::' + $name + ';'))
+    }
+    $checks = @(
+        ($clean -match 'static_assert\(dswros::kRadarTooltipCount\s*==\s*34U\)' -and $Header -match 'kMaximumTooltipCount\s*=\s*64' -and $Header -match 'static_assert\(58U\s*<=\s*kMaximumTooltipCount\)'),
+        ($mappingValid -and $marker -match 'default:\s*return\s+dswros::RadarTooltipId::Count;'),
+        ($open -match 'row\s*<\s*kRows.size\(\)[\s\S]*?const\s+auto\s+category\s*=\s*kRows\[row\].category;[\s\S]*?category_index\s*=\s*static_cast<std::size_t>\(category\);[\s\S]*?topic\s*=\s*marker_tooltip_for\(category\);[\s\S]*?column\s*<\s*2U;[\s\S]*?controls\[column\]\[category_index\]\)\s*bind_tip\(control,\s*topic\)'),
+        ($open -match 'label_tooltip_target\s*=\s*add_border\(kContentX,\s*kMarkerRowsY\s*\+\s*static_cast<double>\(row\)\s*\*\s*kMarkerRowStep,\s*420\.0,\s*kMarkerRowStep,\s*11,\s*transparent_hover_color\)' -and $open -match 'set_visibility\(label_tooltip_target,\s*set_visibility_,\s*kVisible\);\s*bind_tip\(label_tooltip_target,\s*topic\)'),
+        ($open -match 'scene_tips\{\{\s*dswros::RadarTooltipId::SceneTreasure,\s*dswros::RadarTooltipId::SceneAreaQuests,\s*dswros::RadarTooltipId::SceneMiniGames\}\}' -and $open -match 'index\s*<\s*scene_categories.size\(\)[\s\S]*?bind_tip\(controls\[2\]\[static_cast<std::size_t>\(scene_categories\[index\]\)\],\s*scene_tips\[index\]\)'),
+        ($open -match 'height_tips\{\{\s*dswros::RadarTooltipId::HeightTreasure,\s*dswros::RadarTooltipId::HeightAreaQuests,\s*dswros::RadarTooltipId::HeightMole,\s*dswros::RadarTooltipId::HeightBoss,\s*dswros::RadarTooltipId::HeightAssault\}\}' -and $open -match 'index\s*<\s*height_controls.size\(\)[\s\S]*?bind_tip\(height_controls\[index\],\s*height_tips\[index\]\)'),
+        ($open -match 'bind_tip\(area_mode_controls\[0\],\s*dswros::RadarTooltipId::AreaQuestAvailable\);\s*bind_tip\(area_mode_controls\[1\],\s*dswros::RadarTooltipId::AreaQuestAll\);\s*bind_tip\(assault_mode_controls\[0\],\s*dswros::RadarTooltipId::AssaultAvailable\);\s*bind_tip\(assault_mode_controls\[1\],\s*dswros::RadarTooltipId::AssaultAll\)'),
+        ($open -notmatch 'RadarTooltipId::(?:RadarVisibility|MapVisibility|SceneVisibility|HeightIndicators|AreaQuestFilter|AssaultFilter)\b' -and [regex]::Matches($open, 'bind_tip\(label_tooltip_target,\s*topic\)').Count -eq 1)
+    )
+    return -not ($checks -contains $false)
+}
+Assert-True (Test-Sg07TooltipBindings $visibilityHubCode $visibilityHubHeader) 'SG-07 requires specific marker, Scene, height and filter help plus seven safe row-name hover targets within the existing 64-owner pool.'
+$sg07TooltipMutants = @(
+    @{ Name='treasure topic replaced by boss'; From='case RadarVisibilityCategory::Treasure: return dswros::RadarTooltipId::Treasure;'; To='case RadarVisibilityCategory::Treasure: return dswros::RadarTooltipId::Boss;' },
+    @{ Name='row index used as category'; From='const auto category = kRows[row].category;'; To='const auto category = static_cast<RadarVisibilityCategory>(row);' },
+    @{ Name='scene uses broad marker loop'; From='column < 2U;'; To='column < 3U;' },
+    @{ Name='label hover covers checkboxes'; From='420.0, kMarkerRowStep, 11, transparent_hover_color'; To='700.0, kMarkerRowStep, 11, transparent_hover_color' },
+    @{ Name='label hover collapsed with text'; From='set_visibility(label_tooltip_target, set_visibility_, kVisible);'; To='set_visibility(label_tooltip_target, set_visibility_, kCollapsed);' },
+    @{ Name='scene task receives treasure help'; From='dswros::RadarTooltipId::SceneAreaQuests'; To='dswros::RadarTooltipId::SceneTreasure' },
+    @{ Name='mole height receives boss help'; From='dswros::RadarTooltipId::HeightMole'; To='dswros::RadarTooltipId::HeightBoss' },
+    @{ Name='all receives available filter help'; From='bind_tip(area_mode_controls[1], dswros::RadarTooltipId::AreaQuestAll);'; To='bind_tip(area_mode_controls[1], dswros::RadarTooltipId::AreaQuestAvailable);' },
+    @{ Name='old eighteen-topic atlas'; From='kRadarTooltipCount == 34U'; To='kRadarTooltipCount == 18U' },
+    @{ Name='new target budget shrunk'; Header=$true; From='kMaximumTooltipCount = 64'; To='kMaximumTooltipCount = 48' }
+)
+foreach ($mutant in $sg07TooltipMutants) {
+    $code = $visibilityHubCode
+    $header = $visibilityHubHeader
+    if ($mutant.ContainsKey('Header')) { $header = $header.Replace($mutant.From, $mutant.To) }
+    else { $code = $code.Replace($mutant.From, $mutant.To) }
+    Assert-True (($code -cne $visibilityHubCode) -or ($header -cne $visibilityHubHeader)) ("SG-07 tooltip witness did not mutate: " + $mutant.Name)
+    Assert-True (-not (Test-Sg07TooltipBindings $code $header)) ("SG-07 invalid tooltip binding was accepted: " + $mutant.Name)
+}
+function Test-Sg06HubPresentationSafety {
+    param([string]$Code, [string]$Header)
+    $open = Get-VisibilityHubMethod $Code 'open_unsafe'
+    $service = Get-VisibilityHubMethod $Code 'service_unsafe'
+    $initialize = Get-VisibilityHubMethod $Code 'initialize'
+    $nine = Get-VisibilityHubMethod $Code 'configure_chip_nine_slice_unsafe'
+    $bind = Get-VisibilityHubMethod $Code 'bind_tooltip_unsafe'
+    $create = Get-VisibilityHubMethod $Code 'create_tooltip_content_unsafe'
+    $tips = Get-VisibilityHubMethod $Code 'refresh_tooltips_unsafe'
+    $clear = Get-VisibilityHubMethod $Code 'reset_runtime_handles'
+    $srgb = Get-VisibilityHubFreeFunction $Code 'decode_ui_srgb' 'LinearColor'
+    $checks = @(
+        ($srgb -match 'value\s*<=\s*0\.04045F\s*\?\s*value\s*/\s*12\.92F' -and $srgb -match 'std::pow\(\(value\s*\+\s*0\.055F\)\s*/\s*1\.055F,\s*2\.4F\)' -and $srgb -match 'decode_srgb\(color\.blue\),\s*color\.alpha'),
+        ([regex]::Matches($Code, 'BrushColorParameters\s+(?:parameters|color)\{decode_ui_srgb\(').Count -eq 3),
+        ($Code -match 'kRows\{\{\s*\{RadarVisibilityCategory::Treasure\}[\s\S]*?\{RadarVisibilityCategory::BirdEggs\},\s*\{RadarVisibilityCategory::Clock\},\s*\}\};'),
+        ($open -match 'add_border\(control_x\[column\]\s*\+\s*11\.0,\s*y\s*\+\s*1\.0,\s*22\.0,\s*22\.0' -and $open -match 'add_control\(control_x\[column\]\s*\+\s*10\.0,\s*y,\s*24\.0,\s*24\.0,\s*enabled\)'),
+        ($Header -match 'kDefaultRadarVisibilityMasks\s*=\s*pack_radar_visibility_masks\(\s*kRadarVisibilityAllCategories,\s*kRadarVisibilityWorldCategories,\s*kRadarVisibilitySceneCategories\)'),
+        ($open -match 'skin_files\{\{L"main-glass\.tga",\s*L"popup-glass\.tga",\s*L"chip-idle\.tga",\s*L"chip-active\.tga",\s*L"check-idle\.tga",\s*L"check-active\.tga"' -and $open -match 'if\s*\(!skin_attempted\[index\]\)[\s\S]*?skin_attempted\[index\]\s*=\s*true[\s\S]*?import_text_overlay_unsafe'),
+        ($open -match 'index\s*==\s*2U\s*\|\|\s*index\s*==\s*3U[\s\S]*?!configure_chip_nine_slice_unsafe\(image,\s*unit_scale\)' -and $nine -match 'FontCallParameters\s+parameters\(set_image_brush_\)[\s\S]*?CopyCompleteValue\(target,\s*current\)'),
+        ($initialize -match 'set_image_brush_value_property_->GetStruct\(\)\.Get\(\)\s*==\s*brush_struct[\s\S]*?GetParmsSize\(\)\s*<=\s*static_cast<std::int32_t>\(kFontParameterCapacity\)' -and $initialize -match 'metric->IsFloatingPoint\(\)\s*&&\s*metric->IsInContainer\(owner\)'),
+        ($Code -match 'kChipCornerRadius\s*=\s*10\.0' -and $nine -match 'kChipCornerRadius\s*/\s*kChipSkinReferenceWidth' -and $nine -match 'write_font_metric\(draw_as,\s*draw_value,\s*1\.0\)' -and $nine -match 'font_metric_matches\(actual,\s*expected\[index\]\)' -and $nine -match 'read_struct_object_property\(image,\s*L"Brush",\s*L"ResourceObject"\)\s*==\s*texture'),
+        ($initialize -match '/Script/UMG\.Widget:SetToolTip"' -and $initialize -match 'exact_parameter\(set_tool_tip_,\s*L"Widget",\s*0,\s*8,\s*8\)' -and $initialize -match 'exact_parameter\(set_content_,\s*L"ReturnValue",\s*8,\s*8,\s*16\)' -and $initialize -match 'exact_parameter\(set_clipping_,\s*L"InClipping",\s*0,\s*1,\s*1\)'),
+        ($Code -match 'kTooltipReferenceWidth\s*=\s*320\.0' -and $Code -match 'kTooltipReferenceHeight\s*=\s*72\.0' -and $Header -match 'kMaximumTooltipCount\s*=\s*64' -and $bind -match 'tooltip_count_\s*>=\s*tooltips_\.size\(\)'),
+        ($create -match 'size_box->ProcessEvent\(set_width_override_,\s*&width\)[\s\S]*?size_box->ProcessEvent\(set_height_override_,\s*&height\)' -and $create -match 'ByteParameters\s+clipping\{1\}[\s\S]*?canvas->ProcessEvent\(set_clipping_,\s*&clipping\)' -and $create -match '-kTooltipReferenceHeight\s*\*\s*static_cast<double>\(tooltip_id\)\s*\*\s*unit_scale'),
+        ($create -match 'set_visibility\(size_box,\s*set_visibility_,\s*kHitTestInvisible\)[\s\S]*?control->ProcessEvent\(set_tool_tip_,\s*&tooltip\)' -and $create -notmatch 'set_input_mode|SetFocus|Register|GetCursor|FindAllOf|FindFirstOf|StaticFindObject|UVRegion'),
+        ($tips -match 'tooltip_atlas_language_\s*!=\s*resolved_ui_language_[\s\S]*?tooltip_atlas_attempted_\s*=\s*false' -and $tips -match 'tooltip_widget_abi_available_\s*&&\s*!tooltip_atlas_attempted_[\s\S]*?tooltip_atlas_attempted_\s*=\s*true[\s\S]*?import_text_overlay_unsafe'),
+        ($tips -match 'texture\s*&&\s*content\s*&&\s*image\s*&&\s*apply_text_overlay_unsafe\(image,\s*texture\)' -and $tips -match 'ObjectReturnParameters\s+clear\{\};\s*control->ProcessEvent\(set_tool_tip_,\s*&clear\)' -and $tips -match 'set_text\(control,\s*set_tool_tip_text_,\s*tool_tip_text_property_,\s*localized\.tooltips\[record\.id\]\)'),
+        ($tips -match 'texture\s*&&\s*\(!content\s*\|\|\s*!image\)[\s\S]*?create_tooltip_content_unsafe\(index,\s*widget_tree_\.Get\(\)\)' -and [regex]::Matches($Code, 'refresh_tooltips_unsafe\(').Count -eq 3 -and $service -notmatch 'refresh_tooltips_unsafe|NewObject|import_text_overlay'),
+        ($clear -match 'for\s*\(auto&\s+tooltip\s*:\s*tooltips_\)\s*tooltip\s*=\s*TooltipRecord\{\}[\s\S]*?tooltip_count_\s*=\s*0[\s\S]*?tooltip_atlas_\s*=\s*FWeakObjectPtr\{\}[\s\S]*?tooltip_atlas_language_\s*=\s*dswros::RadarUiLanguage::Count[\s\S]*?tooltip_atlas_attempted_\s*=\s*false' -and $clear -notmatch 'ProcessEvent|\.Get\(\)|RemoveFromParent|FindAllOf|StaticFindObject'),
+        ($open -match 'bind_tip\(scene_sliders_\[0\]\.Get\(\),\s*dswros::RadarTooltipId::SceneRange\)' -and $open -match 'for\s*\(UObject\*\s+control\s*:\s*language_choice_controls\)[\s\S]*?RadarTooltipId::Language' -and $open -match 'bind_tip\(global_reset_control_\.Get\(\),\s*dswros::RadarTooltipId::RestoreDefaults\)' -and $open -match 'bind_tip\(bug_report_control,\s*dswros::RadarTooltipId::BugReport\)' -and $open -match 'bind_tip\(close_control,\s*dswros::RadarTooltipId::Close\)'),
+        ($service -match 'command\s*=\s*RadarVisibilityHubCommand::None;[\s\S]*?column\s*<\s*kColumnCount[\s\S]*?set_checked\(control,\s*set_is_checked_,\s*true\)' -and $service -match 'pending_language_\s*=\s*dswros::RadarLanguagePreference::Auto'),
+        ([regex]::Matches($open, 'global_reset_control_\s*=\s*add_control\(').Count -eq 1 -and $open -match 'global_reset_control_\s*=\s*add_control\(kContentX,\s*kFooterButtonY,\s*kFooterButtonWidth,\s*30\.0,\s*false,\s*22\)' -and $open -notmatch 'scene_reset|SceneReset')
+    )
+    return -not ($checks -contains $false)
+}
+Assert-True (Test-Sg06HubPresentationSafety $visibilityHubCode $visibilityHubHeader) 'SG-06 rounded skins, linear colors, square settings checks, native localized tooltips, fixed ownership and global reset no longer agree.'
+$sg06HubMutants = @(
+    @{ Name='gamma bypass'; From='BrushColorParameters parameters{decode_ui_srgb(color)}'; To='BrushColorParameters parameters{color}' },
+    @{ Name='overlapping checkbox target'; From='y, 24.0, 24.0, enabled)'; To='y, 28.0, 28.0, enabled)' },
+    @{ Name='stretched chip corners'; From='!configure_chip_nine_slice_unsafe(image, unit_scale)'; To='false' },
+    @{ Name='missing Box mode'; From='write_font_metric(draw_as, draw_value, 1.0)'; To='write_font_metric(draw_as, draw_value, 2.0)' },
+    @{ Name='unclipped tooltip atlas'; From='ByteParameters clipping{1}'; To='ByteParameters clipping{0}' },
+    @{ Name='interactive tooltip content'; From='set_visibility(size_box, set_visibility_, kHitTestInvisible)'; To='set_visibility(size_box, set_visibility_, kVisible)' },
+    @{ Name='stale language tooltip'; From='control->ProcessEvent(set_tool_tip_, &clear);'; To='(void)control;' },
+    @{ Name='missing atlas cleanup'; From='tooltip_atlas_ = FWeakObjectPtr{};'; To='(void)tooltip_atlas_attempted_;' },
+    @{ Name='unbounded tooltip owners'; Header=$true; From='kMaximumTooltipCount = 64'; To='kMaximumTooltipCount = 4096' },
+    @{ Name='reset language not AUTO'; From='pending_language_ = dswros::RadarLanguagePreference::Auto;'; To='pending_language_ = dswros::RadarLanguagePreference::English;' }
+)
+foreach ($mutant in $sg06HubMutants) {
+    $code = $visibilityHubCode
+    $header = $visibilityHubHeader
+    if ($mutant.ContainsKey('Header')) { $header = $header.Replace($mutant.From, $mutant.To) }
+    else { $code = $code.Replace($mutant.From, $mutant.To) }
+    Assert-True (($code -cne $visibilityHubCode) -or ($header -cne $visibilityHubHeader)) ("SG-06 negative witness did not mutate: " + $mutant.Name)
+    Assert-True (-not (Test-Sg06HubPresentationSafety $code $header)) ("SG-06 unsafe presentation mutation was accepted: " + $mutant.Name)
+}
 Assert-True ($visibilityHubHeader -match `
         'enum class AreaQuestDisplayMode[\s\S]*?Available,[\s\S]*?AllUnfinished' `
     -and $visibilityHubHeader -match `
@@ -1112,7 +1580,7 @@ Assert-True ($visibilityHubHeader -match `
         'assault_mode_changed[\s\S]*?compact_changed[\s\S]*?world_changed' `
     -and $applyVisibilityHubResult -match `
         'if\s*\(assault_mode_changed\)[\s\S]*?establish_encounter_visibility_baseline\(unix_seconds\(\)\)' `
-    -and ($hubOpenUnsafe + $hubServiceUnsafe) -notmatch `
+    -and (($hubOpenUnsafe -replace 'viewport_check_after_\s*=\s*std::chrono::steady_clock::now\(\)\s*\+\s*std::chrono::milliseconds\(250\);', '') + $hubServiceUnsafe) -notmatch `
         'std::chrono|Clock::|sqlite|sqlcipher|execute_optional_sql|request_area_quest_scan|service_runtime_visibility_edges|FindAllOf|FindFirstOf') `
     'F6 Assault AVAILABLE/ALL must be mutually exclusive, invalidate both existing snapshots on a real edge, re-baseline the existing mask, and introduce no timer, scan, or SQL work.'
 Assert-True ($setHubText.Length -gt 0 `

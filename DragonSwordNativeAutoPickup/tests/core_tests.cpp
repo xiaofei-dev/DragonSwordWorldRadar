@@ -1354,9 +1354,161 @@ void test_automatic_action_dispatch_releases_pending_and_isolates_cooldown() {
     const auto first_rearmed_at = dispatch_at + dsnap::kAutomaticActionDispatchReentryDelay;
     require(state.begin(first, first_rearmed_at, 1.0) == Decision::Ready,
             "the dispatched component must rearm automatically at the exact cooldown boundary");
-    require(state.pending_attempt() == 1,
-            "a completed dispatch cycle must rearm as a fresh first attempt");
-    require(state.cancel(first), "the fresh post-dispatch attempt should support exact rollback");
+    require(state.pending_attempt() == 2,
+            "dispatch without target confirmation must preserve the first attempt for one tracked retry");
+    require(state.cancel(first), "the tracked post-dispatch retry should support exact rollback");
+}
+
+void test_automatic_action_repeated_dispatch_is_bounded_and_recovers() {
+    using namespace std::chrono_literals;
+    using Decision = dsnap::AutomaticActionDecision;
+
+    dsnap::AutomaticActionState state{};
+    const dsnap::WeakObjectId stalled{73, 7};
+    const dsnap::WeakObjectId other{74, 8};
+    auto cycle_at = std::chrono::steady_clock::time_point{4s};
+
+    // A long-lived gather target may keep accepting interaction dispatch while
+    // remaining collectable. Every recovery cycle must still bound its attempts.
+    for (int cycle = 0; cycle < 20; ++cycle) {
+        require(state.begin(stalled, cycle_at, 1.0) == Decision::Ready &&
+                    state.pending_attempt() == 1,
+                "a fresh or recovered dispatch cycle must begin with attempt one");
+        const auto first_dispatch_at = cycle_at + 40ms;
+        const auto first = state.observe_dispatch(stalled, first_dispatch_at);
+        require(first.has_value() && first->attempt_ordinal == 1 && !state.pending(),
+                "the first dispatch releases only the global injection slot, not failure history");
+        require(state.begin(other, first_dispatch_at, 2.0) == Decision::Ready,
+                "a dispatched target must not prevent a different target from being injected");
+        require(state.cancel(other), "the independent target must support exact rollback");
+
+        const auto retry_at = first_dispatch_at + dsnap::kAutomaticActionDispatchReentryDelay;
+        require(state.begin(stalled, retry_at - 1ms, 1.0) == Decision::Cooldown,
+                "the first dispatch must preserve the complete same-component re-entry delay");
+        require(state.begin(stalled, retry_at, 1.0) == Decision::Ready &&
+                    state.pending_attempt() == 2,
+                "the same unconfirmed component must re-enter as attempt two, never a new first attempt");
+        const auto second_dispatch_at = retry_at + 40ms;
+        const auto second = state.observe_dispatch(stalled, second_dispatch_at);
+        require(second.has_value() && second->attempt_ordinal == 2 && !state.pending(),
+                "a second dispatch must preserve the second unconfirmed attempt while freeing the slot");
+
+        const auto recovery_at = second_dispatch_at + dsnap::kAutomaticActionFailureBackoff;
+        require(state.inspect(stalled, recovery_at - 1ms, 1.0) == Decision::Cooldown,
+                "a repeatedly dispatched but unconfirmed component must wait the full failure backoff");
+        const dsnap::WeakObjectId reused{stalled.object_index, stalled.serial_number + 1};
+        require(state.begin(reused, second_dispatch_at, 1.0) == Decision::Ready &&
+                    state.pending_attempt() == 1,
+                "dispatch recovery must not block a different serial at the same object index");
+        require(state.cancel(reused), "reused identity rollback must not affect the stalled component");
+        require(state.inspect(stalled, recovery_at - 1ms, 1.0) == Decision::Cooldown,
+                "another candidate's admission must not erase the stalled component's backoff");
+        require(state.record_size() == 1 && !state.fail_closed(),
+                "repeated dispatch recovery must reuse one bounded record without activation quarantine");
+        cycle_at = recovery_at;
+    }
+
+    require(state.begin(stalled, cycle_at, 1.0) == Decision::Ready &&
+                state.pending_attempt() == 1,
+            "a sustained dispatch stall must still recover without toggling or changing World");
+    state.reset_activation();
+    require(!state.pending() && state.record_size() == 0 && !state.fail_closed(),
+            "an activation reset must clear dispatch recovery and its in-flight action");
+    require(state.begin(stalled, cycle_at, 1.0) == Decision::Ready &&
+                state.pending_attempt() == 1,
+            "activation reset must restore a clean first attempt for the exact same identity");
+    require(state.cancel(stalled), "the reset first attempt must support rollback");
+}
+
+void test_automatic_action_mixed_dispatch_and_timeout_preserve_attempts() {
+    using namespace std::chrono_literals;
+    using Decision = dsnap::AutomaticActionDecision;
+
+    for (const bool dispatch_first : {false, true}) {
+        dsnap::AutomaticActionState state{};
+        const dsnap::WeakObjectId candidate{75, 9};
+        const auto now = std::chrono::steady_clock::time_point{4s};
+        require(state.begin(candidate, now, 1.0) == Decision::Ready,
+                "a mixed-outcome cycle must begin with one global pending action");
+        const auto first_terminal_at = now + (dispatch_first
+            ? 40ms : dsnap::kActionConfirmationWindow);
+        const auto first = dispatch_first
+            ? state.observe_dispatch(candidate, first_terminal_at)
+            : state.expire(first_terminal_at);
+        require(first.has_value() && first->attempt_ordinal == 1,
+                "either first unconfirmed outcome must retain attempt one");
+        const auto retry_at = first_terminal_at + (dispatch_first
+            ? dsnap::kAutomaticActionDispatchReentryDelay
+            : dsnap::kAutomaticActionRetryDelay);
+        require(state.begin(candidate, retry_at, 1.0) == Decision::Ready &&
+                    state.pending_attempt() == 2,
+                "changing outcome kind must not reset an unconfirmed component's attempt budget");
+        const auto second_terminal_at = retry_at + (dispatch_first
+            ? dsnap::kActionConfirmationWindow : 40ms);
+        const auto second = dispatch_first
+            ? state.expire(second_terminal_at)
+            : state.observe_dispatch(candidate, second_terminal_at);
+        require(second.has_value() && second->attempt_ordinal == 2 && !state.pending(),
+                "a mixed second outcome must finish the same bounded two-attempt cycle");
+        const auto recovery_at = second_terminal_at + dsnap::kAutomaticActionFailureBackoff;
+        require(state.begin(candidate, recovery_at - 1ms, 1.0) == Decision::Cooldown,
+                "both timeout-then-dispatch and dispatch-then-timeout must apply full failure backoff");
+        require(state.begin(candidate, recovery_at, 1.0) == Decision::Ready &&
+                    state.pending_attempt() == 1,
+                "both mixed-outcome cycles must automatically recover after bounded backoff");
+        require(state.cancel(candidate), "the recovered mixed-outcome action must support rollback");
+    }
+}
+
+void test_automatic_action_exact_confirmation_clears_dispatch_history() {
+    using namespace std::chrono_literals;
+    using Decision = dsnap::AutomaticActionDecision;
+
+    dsnap::AutomaticActionState state{};
+    const dsnap::WeakObjectId candidate{76, 10};
+    const auto now = std::chrono::steady_clock::time_point{4s};
+    require(state.begin(candidate, now, 1.0) == Decision::Ready,
+            "the confirmation fixture must establish a first pending action");
+    require(state.observe_dispatch(candidate, now + 40ms).has_value(),
+            "the first dispatch must retain unconfirmed history");
+    const auto retry_at = now + 40ms + dsnap::kAutomaticActionDispatchReentryDelay;
+    require(state.begin(candidate, retry_at, 1.0) == Decision::Ready &&
+                state.pending_attempt() == 2,
+            "the exact component must enter its tracked second attempt before confirmation");
+    require(!state.confirm({candidate.object_index, candidate.serial_number + 1}).has_value(),
+            "confirmation for a reused serial must not clear another component's pending history");
+    require(state.pending() && state.record_size() == 1,
+            "mismatched confirmation must preserve both pending and prior dispatch history");
+    const auto confirmed = state.confirm(candidate);
+    require(confirmed.has_value() && confirmed->attempt_ordinal == 2 &&
+                !state.pending() && state.record_size() == 0,
+            "exact target confirmation must clear pending and all unconfirmed dispatch history");
+    require(state.begin(candidate, retry_at + 1ms, 1.0) == Decision::Ready &&
+                state.pending_attempt() == 1,
+            "a genuinely confirmed component must not inherit the prior retry or backoff");
+    require(state.cancel(candidate), "the post-confirmation action must support rollback");
+}
+
+void test_automatic_action_unused_dispatch_retry_opportunity_expires() {
+    using namespace std::chrono_literals;
+    using Decision = dsnap::AutomaticActionDecision;
+
+    const dsnap::WeakObjectId candidate{77, 11};
+    const auto now = std::chrono::steady_clock::time_point{4s};
+    const auto retry_expires_at = now + dsnap::kAutomaticActionDispatchReentryDelay +
+        dsnap::kAutomaticActionRetryOpportunityWindow;
+    for (const bool opportunity_expired : {false, true}) {
+        dsnap::AutomaticActionState state{};
+        require(state.begin(candidate, now, 1.0) == Decision::Ready &&
+                    state.observe_dispatch(candidate, now).has_value(),
+                "a first dispatch must retain one bounded retry opportunity");
+        const auto selected_again_at = retry_expires_at - (opportunity_expired ? 0ms : 1ms);
+        require(state.begin(candidate, selected_again_at, 1.0) == Decision::Ready,
+                "a selected component must be eligible after dispatch re-entry cooldown");
+        require(state.pending_attempt() == (opportunity_expired ? 1 : 2),
+                "dispatch history must survive until, but not beyond, the exact retry-opportunity deadline");
+        require(state.cancel(candidate), "a reselected dispatch target must support exact rollback");
+    }
 }
 
 void test_automatic_action_no_dispatch_retries_then_recovers_without_activation_reset() {
@@ -1444,7 +1596,8 @@ void test_automatic_action_expired_records_are_recycled() {
     require(state.record_size() == dsnap::kAutomaticActionRecordCapacity && !state.fail_closed(),
             "the exact active-record capacity must remain usable without failing closed");
 
-    const auto records_expire_at = now + dsnap::kAutomaticActionDispatchReentryDelay;
+    const auto records_expire_at = now + dsnap::kAutomaticActionDispatchReentryDelay +
+        dsnap::kAutomaticActionRetryOpportunityWindow;
     const dsnap::WeakObjectId replacement{9000, 9001};
     require(state.begin(replacement, records_expire_at, 1.0) == Decision::Ready,
             "a fresh candidate must prune genuinely expired records before admission");
@@ -1480,7 +1633,7 @@ void test_automatic_action_unused_retry_opportunity_expires() {
     require(state.cancel(replacement), "the replacement admission should support exact rollback");
 }
 
-void test_automatic_action_active_record_exhaustion_fails_closed() {
+void test_automatic_action_active_record_capacity_wait_recovers() {
     using namespace std::chrono_literals;
     using Decision = dsnap::AutomaticActionDecision;
 
@@ -1500,18 +1653,114 @@ void test_automatic_action_active_record_exhaustion_fails_closed() {
             "filling but not exceeding active capacity must remain valid");
 
     const dsnap::WeakObjectId overflow{9500, 9501};
-    require(state.begin(overflow, now, 1.0) == Decision::Ready,
-            "an overflow identity may establish pending before its outcome needs a record");
-    require(state.observe_dispatch(overflow, now).has_value(),
-            "the overflow identity must still release the exact pending action");
-    require(state.fail_closed(),
-            "exhausting storage with unexpired active records must fail closed rather than evict evidence");
-    require(state.begin({9502, 9503}, now + 1ms, 1.0) == Decision::FailClosed,
-            "active-record exhaustion must reject every later automatic action in the activation");
+    require(state.inspect(overflow, now, 1.0) == Decision::CapacityWait &&
+                state.begin(overflow, now, 1.0) == Decision::CapacityWait,
+            "an unknown identity must wait before injection while all retained slots are occupied");
+    require(!state.pending() && !state.fail_closed() &&
+                state.record_size() == dsnap::kAutomaticActionRecordCapacity,
+            "ordinary saturation must preserve all protected records without a permanent fault");
+    require(!state.observe_dispatch(overflow, now).has_value(),
+            "a capacity-waiting identity must never have an injectable pending action");
+
+    const dsnap::WeakObjectId existing{3000, 4000};
+    const auto retry_at = now + dsnap::kAutomaticActionDispatchReentryDelay;
+    require(state.begin(existing, retry_at - 1ms, 1.0) == Decision::Cooldown,
+            "capacity handling must not erase an existing identity's protected cooldown");
+    require(state.begin(existing, retry_at, 1.0) == Decision::Ready &&
+                state.pending_attempt() == 2,
+            "an existing identity may reuse its slot for its tracked retry at full capacity");
+    require(state.observe_dispatch(existing, retry_at).has_value(),
+            "an existing retry must retain its second unconfirmed outcome without extra capacity");
+    require(state.inspect(overflow, retry_at, 1.0) == Decision::CapacityWait,
+            "reusing one slot must not evict another identity or admit an unprotected new one");
+
+    const auto records_expire_at = now + dsnap::kAutomaticActionDispatchReentryDelay +
+        dsnap::kAutomaticActionRetryOpportunityWindow;
+    require(state.inspect(overflow, records_expire_at - 1ms, 1.0) == Decision::CapacityWait,
+            "read-only preflight must retain the complete opportunity and recovery windows");
+    require(state.inspect(overflow, records_expire_at, 1.0) == Decision::Ready,
+            "read-only preflight must recognize expired slots so admission can perform pruning");
+    require(state.record_size() == dsnap::kAutomaticActionRecordCapacity,
+            "read-only preflight must not mutate expired-record storage");
+    require(state.begin(overflow, records_expire_at, 1.0) == Decision::Ready &&
+                state.pending_attempt() == 1 && state.record_size() == 0,
+            "capacity must recover automatically at expiry without an activation reset");
+    require(state.observe_dispatch(overflow, records_expire_at).has_value() &&
+                state.record_size() == 1 && !state.fail_closed(),
+            "the recovered new identity must have a reserved bounded outcome slot");
 
     state.reset_activation();
     require(!state.fail_closed() && state.record_size() == 0,
-            "an explicit activation reset must recover from true active-record exhaustion");
+            "activation reset must also clear a recovered saturation episode");
+}
+
+void test_automatic_action_sustained_high_frame_rate_capacity_is_nonterminal() {
+    using namespace std::chrono_literals;
+    using Decision = dsnap::AutomaticActionDecision;
+
+    dsnap::AutomaticActionState state{};
+    const auto start = std::chrono::steady_clock::time_point{10s};
+    std::size_t admitted{};
+    std::size_t waits{};
+    std::size_t recoveries{};
+    bool was_waiting{};
+    // A deliberately pessimistic 250 Hz dispatch stream without exact target
+    // confirmation exercises capacity independently of actual game frame rate.
+    for (int frame = 0; frame < 5000; ++frame) {
+        const auto now = start + 4ms * frame;
+        const dsnap::WeakObjectId candidate{10000 + frame, 20000 + frame};
+        const auto decision = state.inspect(candidate, now, 1.0);
+        require(decision == Decision::Ready || decision == Decision::CapacityWait,
+                "sustained fresh identities may be ready or capacity-waiting, never faulted");
+        require(state.begin(candidate, now, 1.0) == decision,
+                "read-only capacity preflight and mutating admission must agree at the same time");
+        if (decision == Decision::CapacityWait) {
+            ++waits;
+            was_waiting = true;
+            require(!state.pending(), "capacity waits must not arm an input action");
+        } else {
+            ++admitted;
+            if (was_waiting) ++recoveries;
+            was_waiting = false;
+            require(state.pending_attempt() == 1 &&
+                        state.observe_dispatch(candidate, now).has_value(),
+                    "each admitted fresh identity must release pending into a protected outcome record");
+        }
+        require(!state.fail_closed() && !state.pending() &&
+                    state.record_size() <= dsnap::kAutomaticActionRecordCapacity,
+                "repeated saturation must remain bounded and recoverable for the complete stream");
+    }
+    require(admitted > dsnap::kAutomaticActionRecordCapacity && waits > 0 && recoveries > 1,
+            "the high-rate fixture must actually saturate, recover, and continue across multiple windows");
+}
+
+void test_automatic_action_timeout_prunes_unrelated_expired_records() {
+    using namespace std::chrono_literals;
+    using Decision = dsnap::AutomaticActionDecision;
+
+    dsnap::AutomaticActionState state{};
+    const auto now = std::chrono::steady_clock::time_point{40s};
+    for (std::size_t index = 0; index + 1 < dsnap::kAutomaticActionRecordCapacity; ++index) {
+        const dsnap::WeakObjectId candidate{
+            static_cast<std::int32_t>(30000 + index),
+            static_cast<std::int32_t>(40000 + index),
+        };
+        require(state.begin(candidate, now, 1.0) == Decision::Ready &&
+                    state.observe_dispatch(candidate, now).has_value(),
+                "the timeout fixture must populate all but one protected capacity slot");
+    }
+    const dsnap::WeakObjectId timed_out{50000, 50001};
+    require(state.begin(timed_out, now, 1.0) == Decision::Ready,
+            "one remaining slot must admit a potentially unconfirmed outcome");
+    const auto late_poll = now + 3s;
+    require(state.expire(late_poll).has_value() && !state.pending(),
+            "a delayed poll must still account for its exact pending timeout");
+    require(state.record_size() == 1 && !state.fail_closed(),
+            "timeout accounting must prune unrelated expired records before appending its outcome");
+    require(state.begin(timed_out, late_poll + dsnap::kAutomaticActionRetryDelay, 1.0) ==
+                Decision::Ready && state.pending_attempt() == 2,
+            "pruning unrelated records must preserve the timed-out identity's tracked retry");
+    require(state.cancel(timed_out), "the tracked timeout retry must support exact rollback");
 }
 
 void test_transient_target_ownership() {
@@ -1781,10 +2030,16 @@ int main() {
     test_pending_action_timeout_is_terminal();
     test_pending_action_exact_cancel();
     test_automatic_action_dispatch_releases_pending_and_isolates_cooldown();
+    test_automatic_action_repeated_dispatch_is_bounded_and_recovers();
+    test_automatic_action_mixed_dispatch_and_timeout_preserve_attempts();
+    test_automatic_action_exact_confirmation_clears_dispatch_history();
+    test_automatic_action_unused_dispatch_retry_opportunity_expires();
     test_automatic_action_no_dispatch_retries_then_recovers_without_activation_reset();
     test_automatic_action_expired_records_are_recycled();
     test_automatic_action_unused_retry_opportunity_expires();
-    test_automatic_action_active_record_exhaustion_fails_closed();
+    test_automatic_action_active_record_capacity_wait_recovers();
+    test_automatic_action_sustained_high_frame_rate_capacity_is_nonterminal();
+    test_automatic_action_timeout_prunes_unrelated_expired_records();
     test_transient_target_ownership();
     test_exact_one_selection_includes_previous_attempts();
     test_distinct_interaction_capture_logging();

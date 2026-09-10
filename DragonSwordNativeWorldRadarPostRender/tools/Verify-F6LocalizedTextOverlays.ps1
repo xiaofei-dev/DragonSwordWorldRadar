@@ -44,3 +44,7 @@ if (-not (Test-Path -LiteralPath $verifier -PathType Leaf)) {
 if ($LASTEXITCODE -ne 0) {
     throw "F6 localized-overlay verification failed: $LASTEXITCODE"
 }
+& $PythonPath (Join-Path $PSScriptRoot 'Verify-F6Guide.py') --project-root $projectRoot
+if ($LASTEXITCODE -ne 0) {
+    throw "F6 guide verification failed: $LASTEXITCODE"
+}

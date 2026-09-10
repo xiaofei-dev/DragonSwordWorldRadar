@@ -1,11 +1,59 @@
 # Release Routing and Historical 2.2.1 Contract
 
-Current 2.3.0 packages: [Release status](RELEASE_STATUS.md).
-Current validation plan: [2.3.0 Development and Validation](RELEASE_PLAN_2_3_0.md).
-All 2.2.1 contracts, commands, hashes, and acceptance rows below are historical;
-do not use them to build or validate 2.3.0.
+## Current Guide asset and package revision
 
-This document's version-specific receipts are historical. For the current
+Candidate `radar-3.0.0-sg16-guide4-20260909`; version **3.0.0**.
+
+This is a layout-only asset revision of `radar-3.0.0-sg16-guide3-20260909`. Its 1,325,056-byte DLL remains `92F0D10860E991BE090565EAD247D3C8731FF9A5C0E08CB65056C3E65BE0BE30`, with compiled source `8B5E73BEF70C4960C322CCDC1EE0172155B0D101D09B7D27F5D8ED63634D6793`. No native code or localization-header change is included, and no new native compilation is claimed.
+
+The canonical release pipeline reran Core 9/9 and all four source/release gates successfully while reusing the verified native binary; no new native compilation is claimed. New deployment was verified at `2026-09-10T02:04:37.4453785Z`; the same DLL, native receipt and all 73 UI files match the new candidate. Four settings/data files were preserved, with 2 AutoPickup files recorded unchanged. Setup 20/20 and Manual 2/2 pass with no failures/skips, 104 equivalent runtime files and 4/108/112 ZIP entries. The final set was promoted at `2026-09-10T02:06:49.3883924Z`.
+
+Manifest UTC: `2026-09-10T02:06:02.2485470Z`. The five parent final files are backed up at [dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/previous-final-guide3](../dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/previous-final-guide3/).
+
+Evidence: [deployment](../dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/deployment-verification.json), [release manifest](../dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/release-packages/release-manifest.json) and [promotion](../dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/package-verification.json).
+
+The previous Guide3 and earlier SG-16 sections below remain historical records. Their earlier activity order and ZIP hashes identify those sets. The new asset and package checks do not establish game visual/input or performance acceptance; these remain owner testing. No Nexus upload or post was performed. Finalized payload documents and metadata remain unchanged after the new package seal.
+
+## Current Guide asset and package revision
+
+Candidate `radar-3.0.0-sg16-guide3-20260909`; version **3.0.0**.
+
+This is an asset/documentation revision of `radar-3.0.0-sg16-20260909`, not a new native build. Its 1,325,056-byte DLL remains `92F0D10860E991BE090565EAD247D3C8731FF9A5C0E08CB65056C3E65BE0BE30`, with compiled source `8B5E73BEF70C4960C322CCDC1EE0172155B0D101D09B7D27F5D8ED63634D6793`. The parent's 446/446 native and Core 9/9 evidence retains its original identity.
+
+The canonical release pipeline reran Core 9/9 and all four source/release gates successfully while reusing the verified native binary; no new native compilation is claimed. New deployment was verified at `2026-09-10T01:45:25.9749727Z`; the same DLL, native receipt and all 73 UI files match the new candidate. Four settings/data files were preserved, with 2 AutoPickup files recorded unchanged. Setup 20/20 and Manual 2/2 pass with no failures/skips, 104 equivalent runtime files and 4/108/112 ZIP entries. The final set was promoted at `2026-09-10T01:47:39.7016800Z`.
+
+Manifest UTC: `2026-09-10T01:46:51.6121910Z`. The five parent final files are backed up at [dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/previous-final-sg16](../dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/previous-final-sg16/).
+
+Evidence: [deployment](../dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/deployment-verification.json), [release manifest](../dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/release-packages/release-manifest.json) and [promotion](../dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/package-verification.json).
+
+The previous SG-16 sections below are preserved historical records. Their four-column Guide description and old ZIP hashes describe that earlier set. The new asset and package checks do not establish game visual/input or performance acceptance; these remain owner testing. No Nexus upload or post was performed. Finalized payload documents and metadata remain unchanged after the new package seal.
+
+Current local delivery is **3.0.0 / SG-16**, candidate `radar-3.0.0-sg16-20260909`.
+Build, local deployment and all three packages are verified and promoted. The
+installed and packaged DLL is byte-identical. Native 446/446, Core 9/9 and all four source/release gates pass. Setup passes 20/20 and Manual 2/2, with no failures or skips. The three channels have 104 equivalent runtime files, including 73 UI files and twelve Guide files; ZIP entry counts are 4/108/112.
+The preceding five SG-15 final files are backed up at `dist/work/candidates/radar-3.0.0-sg16-20260909/previous-final-sg15`.
+Use current receipts in [Release status](RELEASE_STATUS.md); do not reuse
+historical hashes. Payload documents remain unchanged after the final package seal.
+Game acceptance and external publication remain separate.
+
+The preceding runtime source is **3.0.0 / SG-15**, including localized Guide,
+stable Aim/Auto distance switching and the revised Settings UI. SG-15 was
+locally deployed and verified. The owner has now authorized three local
+release packages; the package candidate is `radar-3.0.0-sg15-release-20260909`.
+The three packages are generated and promoted, with Setup 20/20, Manual 2/2,
+104 equivalent runtime files and 4/108/112 ZIP entries. Release status records
+their exact identities. The rebuilt DLL was not redeployed; the earlier SG-15
+installation and backed-up SG-10 packages retain their own identities.
+
+Current installed 3.0.0 candidate, package status and exact checks:
+[Release status](RELEASE_STATUS.md).
+Current validation plan: [3.0.0 Development and Validation](RELEASE_PLAN_3_0_0.md).
+All 2.2.1 contracts, commands, hashes, and acceptance rows below are historical;
+do not use them to build or validate 3.0.0. The local 3.0.0 package set is in
+`dist/final-3.0.0`; owner gameplay acceptance and external publication remain separate.
+This request does not authorize Nexus uploading, posting or external publication.
+
+This document's version-specific receipts are historical. For the historical
 2.3.0 CM-04 three-package delivery and remaining acceptance boundaries, use
 `RELEASE_PLAN_2_3_0.md` and `dist/final-2.3.0/release-manifest.json` (the latter
 relative to the project root). Do not relabel the 2.2.1 evidence below.

@@ -1,9 +1,235 @@
 # Project Context
 
-Current local package identities and documentation closeout:
-`docs/RELEASE_STATUS.md`. The dated CM-04 and installer-only receipts below
-remain evidence for their exact bytes, not the latest repackaged ZIPs.
+## September 10 source handoff
+
+The owner has published Radar 3.0.0 on Nexus. Source synchronization is tracked
+in `../docs/GITHUB_CLOSEOUT_2026_09_10.md`; dated package/deployment records below
+retain their original evidence scope. Public download bytes were not rechecked.
+Two support reports (previously opened chest markers and markers appearing
+only after first fast travel) await logs; neither has a confirmed root cause
+or a new fix in this handoff. See `docs/RELEASE_STATUS.md`.
+
+## Current Guide asset revision
+
+Candidate `radar-3.0.0-sg16-guide4-20260909`; version **3.0.0**.
+
+Guide swaps the Marmot mini-game and Sudden mission entries as complete groups: the text and both Radar/Map icons move together. The left column now reads Flying mini-game, Wave mini-game, Marmot mini-game and Bird eggs; the right column reads Sudden mission, World boss and Area quest. All eleven languages use this order. The three height columns, 40 icon examples and 539 text cells remain unchanged.
+
+This is a layout-only asset revision of `radar-3.0.0-sg16-guide3-20260909`. Its 1,325,056-byte DLL remains `92F0D10860E991BE090565EAD247D3C8731FF9A5C0E08CB65056C3E65BE0BE30`, with compiled source `8B5E73BEF70C4960C322CCDC1EE0172155B0D101D09B7D27F5D8ED63634D6793`. No native code or localization-header change is included, and no new native compilation is claimed.
+
+The canonical release pipeline reran Core 9/9 and all four source/release gates successfully while reusing the verified native binary; no new native compilation is claimed. New deployment was verified at `2026-09-10T02:04:37.4453785Z`; the same DLL, native receipt and all 73 UI files match the new candidate. Four settings/data files were preserved, with 2 AutoPickup files recorded unchanged. Setup 20/20 and Manual 2/2 pass with no failures/skips, 104 equivalent runtime files and 4/108/112 ZIP entries. The final set was promoted at `2026-09-10T02:06:49.3883924Z`.
+
+Manifest UTC: `2026-09-10T02:06:02.2485470Z`. The five parent final files are backed up at [dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/previous-final-guide3](dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/previous-final-guide3/).
+
+Evidence: [deployment](dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/deployment-verification.json), [release manifest](dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/release-packages/release-manifest.json) and [promotion](dist/work/candidates/radar-3.0.0-sg16-guide4-20260909/package-verification.json).
+
+The previous Guide3 and earlier SG-16 sections below remain historical records. Their earlier activity order and ZIP hashes identify those sets. The new asset and package checks do not establish game visual/input or performance acceptance; these remain owner testing. No Nexus upload or post was performed. Finalized payload documents and metadata remain unchanged after the new package seal.
+
+## Current Guide asset revision
+
+Candidate `radar-3.0.0-sg16-guide3-20260909`; version **3.0.0**.
+
+The owner requested a simpler height reference. Guide now displays only Above, Near level and Below, with 15 height examples, 40 total icon examples and 539 text cells across eleven languages. The Unknown column is no longer drawn. Actual unknown-height handling, height switches and all other gameplay behavior are unchanged. The existing 44-string localization schema remains intact.
+
+This is an asset/documentation revision of `radar-3.0.0-sg16-20260909`, not a new native build. Its 1,325,056-byte DLL remains `92F0D10860E991BE090565EAD247D3C8731FF9A5C0E08CB65056C3E65BE0BE30`, with compiled source `8B5E73BEF70C4960C322CCDC1EE0172155B0D101D09B7D27F5D8ED63634D6793`. The parent's 446/446 native and Core 9/9 evidence retains its original identity.
+
+The canonical release pipeline reran Core 9/9 and all four source/release gates successfully while reusing the verified native binary; no new native compilation is claimed. New deployment was verified at `2026-09-10T01:45:25.9749727Z`; the same DLL, native receipt and all 73 UI files match the new candidate. Four settings/data files were preserved, with 2 AutoPickup files recorded unchanged. Setup 20/20 and Manual 2/2 pass with no failures/skips, 104 equivalent runtime files and 4/108/112 ZIP entries. The final set was promoted at `2026-09-10T01:47:39.7016800Z`.
+
+Manifest UTC: `2026-09-10T01:46:51.6121910Z`. The five parent final files are backed up at [dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/previous-final-sg16](dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/previous-final-sg16/).
+
+Evidence: [deployment](dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/deployment-verification.json), [release manifest](dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/release-packages/release-manifest.json) and [promotion](dist/work/candidates/radar-3.0.0-sg16-guide3-20260909/package-verification.json).
+
+The previous SG-16 sections below are preserved historical records. Their four-column Guide description and old ZIP hashes describe that earlier set. The new asset and package checks do not establish game visual/input or performance acceptance; these remain owner testing. No Nexus upload or post was performed. Finalized payload documents and metadata remain unchanged after the new package seal.
+
+Current source and local delivery: **3.0.0 / SG-16**, candidate
+`radar-3.0.0-sg16-20260909`. The revision adds independent Radar/Map All controls, live category
+changes on an open world map and default Auto focus. Guide clarifies mini-game
+reward chests and flying/marmot/wave types, uses compact two-column entries,
+illustrates height states and Clock, aligns Scene examples and gives each
+distance mode its own row. Aim first acquisition is 100 ms; replacement buffers
+remain 350/500 ms. Updates preserve explicit saved settings.
+
+Native 446/446, Core 9/9 and all four source/release gates pass. Setup passes 20/20 and Manual 2/2, with no failures or skips. The three channels have 104 equivalent runtime files, including 73 UI files and twelve Guide files; ZIP entry counts are 4/108/112.
+
+The same native artifact is locally deployed and packaged. Deployment UTC:
+`2026-09-10T00:22:37.0293741Z`; promotion UTC: `2026-09-10T00:23:01.4155094Z`.
+The final directory is SG-16. Five earlier SG-15 files are preserved in
+`dist/work/candidates/radar-3.0.0-sg16-20260909/previous-final-sg15`. [Release status](docs/RELEASE_STATUS.md) owns exact identities and
+receipts. Payload documents were finalized and frozen before the final package build.
+
+Build, source/resource checks, installation and package checks are verified; they do not establish game visual, input, Guide usability, camera-motion or measured performance acceptance. Those remain owner testing. No Nexus upload or post was performed.
+
+Previous source, 2026-09-09: **3.0.0 / SG-15**, candidate
+`radar-3.0.0-sg15-20260909`. Guide beside Close opens an eleven-language icon
+reference with Radar/Map comparisons, treasure colors, height arrows, Scene
+symbols and distance modes. Guide and Settings retain separate scroll positions
+while F6 is open. Missing guide artwork leaves Settings available. The existing
+61 UI files remain unchanged; eleven guide atlases and one manifest bring the
+installed UI inventory to 73 files. Core 9/9, native 446/446, all four gates and
+local deployment are verified in [Release status](docs/RELEASE_STATUS.md).
+SG-14 typography, SG-13 Aim/Auto switching and H2 optional scrollbar compatibility
+are retained. Game appearance, guide scrolling and input remain owner testing.
+All eleven languages have concise help and
+confirmation text, pinned regular fonts and consistent numeric glyphs.
+**Reset to Defaults / Vote for This Mod / Feedback** share a fixed bottom row.
+Vote refers to Nexus Mod of the Month voting and opens the mod page after
+confirmation. The player completes the vote there.
+
+The reference panel is **760×852**. Its four cards scroll on short displays,
+with header/footer always accessible. Window and DPI changes update the
+existing tree. Scene rendering uses current-frame calibrated batch projection,
+native fallback, changed subpixel translations and stable visibility margins.
+Raw catalog positions, height rules, distance corrections and presets remain.
+
+Core **9/9**, native **446/446**, font checks and numeric projection/layout
+checks pass. [Release status](docs/RELEASE_STATUS.md) tracks the final gates and
+deployment receipt. SG-11 was built only and superseded before delivery.
+Three local 3.0.0 release packages are complete and verified. Candidate
+`radar-3.0.0-sg15-release-20260909` passes Setup 20/20, Manual 2/2, payload
+equivalence and fresh extraction checks: 104 runtime files, 73 UI files and
+4/108/112 ZIP entries. Release status records exact hashes and verified final
+promotion, with the previous five SG-10 files backed up. The rebuilt DLL has
+the same compiled source as deployed SG-15 but a different hash; it was not
+redeployed. The original SG-15 installation remains in place. Package metadata
+and payload documents remain the frozen pre-package snapshot. Nexus edits are
+local copy only; game acceptance and external publication remain separate.
+
+## Preserved SG-10 delivery
+
+Verified previous source, 2026-09-09: **3.0.0 / SG-10**, candidate
+`radar-3.0.0-sg10-20260909`. **Build, local deployment and all three final local
+packages are complete and verified.** Core 7/7, the 446-target clean native
+build and all four source gates pass; Setup 20/20 and Manual 2/2 pass.
+SG-10 was installed at `2026-09-09T16:51:20.6801835Z`, preserving all four user
+configuration files and verifying the DLL/receipt and 34 UI files. Package
+verification also matched 60 installed static files and 64 payload files in
+each manual archive.
+
+The three SG-10 archives replaced `dist/final-3.0.0` at
+`2026-09-09T16:55:11.2153219Z`; their entry counts are 4/69/73. The previous
+SG-03 final set is preserved in the SG-10 candidate's `previous-final-sg03`
+directory. [Release status](docs/RELEASE_STATUS.md) records the exact build,
+deployment and package receipts. Source and delivery verification do not
+establish game visual, input or performance acceptance; those remain pending
+owner testing. Nexus material is a local draft only; nothing was uploaded.
+
+## Preserved SG-10 confirmation scope
+
+- **Endorse and Feedback are separate entries.** Each opens a blue-gray UMG
+  confirmation panel. Only Yes emits the corresponding command to open this
+  mod's Nexus page or its feedback/posts page. Neither entry submits an
+  endorsement, post or report on the owner's behalf.
+- **Restore Preset also requires Yes.** Confirmation uses the existing global
+  display preset; runtime power and startup hotkeys remain unchanged. No or
+  Esc dismisses only the confirmation and does not change settings or open a
+  website. F6 remains open. Focus loss closes the entire F6 panel and clears
+  pending confirmation; F6 exit and travel also clear the intent.
+- **Confirmation is consumed once before effects.** A fresh neutral input
+  sample must precede Yes. While the panel is active, its input shield and
+  disabled background controls prevent settings interaction; a dismissal
+  guard skips background sampling on the following service turn. The modal
+  uses native UMG and does not block the game thread with a Windows dialog.
+- **All eleven languages have confirmation text.** The same eleven tooltip
+  atlases now contain 32 help topics plus seven confirmation tiles each;
+  the 34-file UI inventory and 44 main text slots remain unchanged. Missing
+  or obsolete atlas data leaves a cancel-only fallback with Yes disabled.
+
+The pure confirmation model passes **55 checks**, including held/repeated Yes,
+No priority, all three intents and lifecycle clearing. Independent source
+review and English/Chinese source-derived panel previews are complete. These
+checks do not prove actual Slate click capture, focus transitions or in-game
+composition; those remain owner acceptance items for the installed SG-10
+artifact. The final delivery receipts are retained under
+`dist/work/candidates/radar-3.0.0-sg10-20260909` and indexed in Release status.
+
+## Inherited SG-09 implementation
+
+1. **Settings material:** soft blue-gray translucent surfaces, restrained
+   gradients and readable text/status plates replace SG-08 charcoal. Preserve
+   the approved four-card layout, square settings checkboxes, eleven languages,
+   existing help topics and file inventory. No live blur or refraction is added.
+2. **Area Quest Scene icon:** retain the enlarged open gray diamond, three
+   white dots and small direction tip; add a subtle translucent gray-blue
+   interior backing. Chest and flag textures keep their existing appearance.
+3. **Treasure Scene height:** increase only the projected Treasure point from
+   +100 to **+160 cm**. Area Quest/Mini-game lifts remain +180/+150 cm. Raw XYZ,
+   distance, range and minimap/map height logic do not change. This uniform UI
+   clearance adjustment does not measure terrain or mesh bounds and cannot
+   establish correct alignment for every chest.
+4. **Clock placement:** use the existing **1 Hz** layout service and the exact
+   native minimap RetainerBox/`DLayerQuest` geometry. Center the visible glyph
+   between minimap bottom and task top, accounting for its 15-unit visual center
+   inside the 42-unit container. Invalid/hidden geometry, insufficient gap or
+   screen/host bounds use the **178-reference-unit** fallback from minimap
+   center. No widget scan or world-time provider change is introduced.
+5. **Live F6 preview:** Compact Radar and Scene may remain visible while this
+   settings panel owns a cursor opened over visibly active gameplay. Real menus,
+   pause, world map, hidden HUD and activity guards still suppress them. Routine
+   menu sampling and settings edits retain the renderer tree.
+6. **Scene motion and bounded work:** project the retained selection each engine
+   frame, independently of the 16 ms player-position sample. Catalog selection
+   stays at 250 ms; each frame updates at most 50 selected scalar distances.
+   Move markers with render translation and cumulative 0.25-physical-pixel
+   caching instead of repeated Canvas layout changes. No measured FPS or
+   frame-time improvement is claimed.
+
+The inherited Scene choices remain independent Treasure/Area/Mini-game switches,
+shared 0-1000 m range and 0-50 maximum marker count, with defaults all on,
+600 m / 24 and Aim Focus. Explicit saved choices survive upgrades. Zero range
+or count hides Scene. Aim keeps the 16%/34% short-side ellipse and 120 ms initial
+dwell. Aim/Auto replacements require a continuous 350/500 ms advantage while
+the old visible label remains. Both require over 20% improvement and a small
+absolute advantage; acquired Aim targets receive a 1.2-times exit margin.
+After confirmation, Reset to Defaults in the bottom action row resets display
+preferences, filters and language; runtime power and startup hotkeys remain
+unchanged. Scene uses six shared glyph
+textures and a fixed pool of 50 marker Images plus six hidden texture keepers.
+
+143 Area tasks have verified whole-XYZ Scene anchors; four unconfirmed anchors
+remain omitted from Scene only. Compact Boss/Assault/Area sizes remain 35/30/25
+with a common stroke, corrected player Z and inclusive same-level thresholds.
+The original distance offsets and zero-before-rounding rule remain intact.
+Details and historical experiments are in the
+[Scene guidance ledger](docs/SCENE_GUIDANCE_ATTEMPT_LEDGER.md),
+[3.0 release plan](docs/RELEASE_PLAN_3_0_0.md) and
+[acceptance checklist](docs/ACCEPTANCE_CHECKLIST.md).
 Nexus copy is indexed in `assets/nexus/README.md`.
+
+## Preserved SG-09 deployment and earlier 3.0 checkpoints
+
+SG-09 was built and installed on September 9. Release status records Core
+6/6, the clean native build, the matching installed DLL/receipt and all 34 UI
+resources, with four user configuration files preserved byte for byte. Its
+deployment supersedes the SG-08 installation below. SG-09's generated package
+candidate is separate from promotion of the final archives, and neither
+transaction identifies the SG-10 source or establishes owner acceptance.
+
+SG-08 was installed on September 9 after the owner's explicit request. Its DLL,
+receipt and 34 UI resource files matched the retained candidate; visibility,
+hotkeys, diagnostics and treasure overrides were preserved byte for byte.
+`dist/work/candidates/radar-3.0.0-sg08-20260909/deployment-verification.json`
+records that transaction and supersedes SG-08's earlier undeployed snapshot.
+The complete preceding SG-05 installation was backed up. That receipt verifies
+SG-08 installation only; it is not an SG-09 receipt or game/visual acceptance.
+
+SG-08's neutral-charcoal material, SG-07's 31 setting-specific tooltips,
+SG-06's page-wide preset/enlarged task diamond and SG-05's retained sprite pool
+remain dated history in the release plan. SG-06 moved Clock down 16 reference
+units; SG-09 replaces that fixed correction with measured gap placement.
+The SG-07 audit found matching static chest catalogs and a direction tip 16
+logical pixels below its projected center. Its then-current +100 cm lift and
+unconfirmed mesh-top alignment are historical findings, not today's lift.
+The audit remains at repository-root `out/handoff/SG07_TREASURE_HEIGHT_AUDIT.md`.
+
+Historical SG-03 local handoff: `dist/final-3.0.0` contains three verified
+archives and their manifest/checksums. Core 5/5, Setup 20/20 and Manual 2/2
+passed; independent archive checks passed 1,548/1,548. At that checkpoint the
+same DLL and 35 non-user payload files were installed, preserving all four
+existing user files byte for byte. Its deployment backup remains
+`dist/work/deployment/deploy-backups/20260908-220537-090-native-only-deploy`.
+SG-03's exclamation task icon, 10% circular Aim and default-off Scene controls
+are historical behavior, superseded by later source changes. No external
+publication or owner gameplay acceptance follows from those archive checks.
 
 ## Ownership
 
@@ -17,7 +243,7 @@ is:
 available through Git history, not a current working-tree project. Do not
 modify or deploy other Mods from this project.
 
-## Next release - 2.3.0 (unreleased)
+## Historical 2.3.0 package work
 
 2.2.2 was not published. On 2026-09-07 the owner promoted its flight/language
 work plus configurable hotkeys to 2.3.0. `config/hotkeys.ini` is a standalone
@@ -27,11 +253,12 @@ Install / Update / Repair. Preserve unchanged key-file bytes and all other
 user settings; public defaults remain F6/F7/F8. The 2026-09-07 installer-only
 follow-up does not change the accepted/native-test candidate DLL.
 
-The owner assigned all unpublished follow-up work to 2.3.0. Runtime, installer,
-metadata, package tools, and source gates now target 2.3.0. The published 2.2.1
+At that time, the owner assigned all unpublished follow-up work to 2.3.0.
+Runtime, installer, metadata, package tools, and source gates were aligned to
+2.3.0. The published 2.2.1
 package set is unchanged; do not relabel historical artifacts or receipts.
-Current candidate build/deployment identities, scope, and
-acceptance boundaries are tracked in `docs/RELEASE_PLAN_2_3_0.md`.
+Those historical build/deployment identities, scope, and acceptance boundaries
+are tracked in `docs/RELEASE_PLAN_2_3_0.md`.
 
 On 2026-09-07 the owner requested the three local 2.3.0 packages. The preceding
 CM-04 set is now in `dist/final-2.3.0`, with Setup 20/20, Manual 2/2 and
@@ -59,9 +286,9 @@ if it is running, wait for the owner to close it before installation. This
 authorization does not cover game launch, save changes, other mods, public
 release/packaging, Git commits/pushes, or acceptance claims.
 
-## Active follow-up - WM-07 flight attachment (2026-09-06)
+## Inherited WM-07 and CM-04 behavior (historical 2026-09-06/07 evidence)
 
-The current worktree includes an unpublished fix to 2.2.1's initial world-map
+The 3.0.0 source retains the fix to 2.2.1's initial world-map
 attachment gate. Raw PlayerIcon motion previously exhausted all three attempts
 while flying. The new attach-only sampler compares the motion-compensated
 world-to-Canvas origin and parent extent using the same attempt's player
@@ -69,8 +296,8 @@ coordinates. It requires two valid samples with matching layer, FogAbove,
 PlayerIcon, and owning-controller weak identities and matching map metadata.
 The generic extent sampler and WM-06 immutable retained placement are unchanged.
 `WORLD_MAP_ATTACH_PROJECTION` records inputs and separate deltas only during
-bounded attachment attempts. Existing public ZIPs remain the WM-06 artifacts;
-the version label alone does not identify the developer candidate. Exact build,
+bounded attachment attempts. The earlier local 2.3.0 packages include this fix;
+the version label alone does not identify a developer candidate. Exact historical build,
 deployment, and runtime status are appended to `docs/WORLD_MAP_ATTEMPT_LEDGER.md`.
 The owner reported that preliminary testing found no issue. The current local
 log independently confirms moving-player attachment on attempt 2/3 with a
@@ -83,14 +310,14 @@ CM-04 implements this additional compact-only guard at the existing 250 ms edge;
 two virtual-controller Start/Hero return cycles, including Hero Skill, passed
 without settled-menu residue on 2026-09-07. Full runtime acceptance remains
 pending; exact evidence and untested routes are in
-`docs/CONTROLLER_MENU_ATTEMPT_LEDGER.md`. CM-04 is installed for owner testing;
-the preceding CM-03 diagnostic and logs are retained in the deployment backup.
+`docs/CONTROLLER_MENU_ATTEMPT_LEDGER.md`. CM-04 was installed for owner testing
+at that time; the preceding CM-03 diagnostic and logs remain in its deployment backup.
 WM-09 records Radar-on/F8-disabled map-close comparisons: similar 0.7-0.8 s
 transitions, with no additional close stall reproduced in the tested scene.
 Persistent follow-game language is implemented in 2.3.0;
 its runtime acceptance is tracked separately in the release plan.
 
-## Historical 2.2.1 baseline (not 2.3.0 acceptance)
+## Historical 2.2.1 baseline (not 3.0.0 acceptance)
 
 - Version: current fixes-only release candidate `2.2.1`.
 - Runtime label: `DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1`.
@@ -627,15 +854,23 @@ its runtime acceptance is tracked separately in the release plan.
   `logger_truncated`. A 1 MiB current file rotates to exactly one previous file.
   This adds no game query or event cadence. Public defaults remain off.
 - The current startup-only visibility document accepts at most 4 KiB and uses
-  readable `[radar]`, `[map]`, `[modes]`, `[height_arrows]`, and `[interface]`
+  readable `[radar]`, `[map]`, `[scene]`, `[modes]`, `[height_arrows]`, and `[interface]`
   sections. Every category is a
   named `true|false` key; `area_quests` and `assault` modes accept
-  `available|all`; three height keys accept `true|false`, and `language`
-  accepts one of the 11 explicit languages or persistent `auto` in 2.3.0.
+  `available|all`; five height keys accept `true|false`, and `language`
+  accepts one of the 11 explicit languages or persistent `auto`. Scene adds
+  independent Treasure/Area/Mini-game switches, range 0-1000 m, count 0-50 and
+  `off|central_radius|nearest_center|all` distance modes. Old readable three- and
+  five-section forms, prior Scene controls, and strict packed formats migrate
+  with existing choices preserved; missing new Scene settings default to
+  600 m / 24 / Aim Focus with new Scene switches on. Explicit saved false
+  values remain false. The persisted tokens remain
+  `central_radius` / `nearest_center` for backward compatibility.
   AUTO follows the game on actual F6 opening or F7 activation without converting
   to an explicit persisted language. Strictly valid legacy schema 1-4 files remain
   readable for upgrades. F6 applies changes immediately and replaces the file
-  atomically in current format only on a real change; there is no hot polling.
+  atomically in current format only on a real change. Slider writes debounce for
+  300 ms and flush on panel close; there is no hot polling.
 - Dev65 added a binary-package `Install.cmd` one-click installer. The 2.0.0
   public package retires that entry point in favor of one embedded C# Setup;
   `Build-Release.ps1` is the only release builder. Setup discovers
@@ -864,7 +1099,11 @@ its runtime acceptance is tracked separately in the release plan.
   confirmed nonexistent save ID `11230106` is their sole set difference and
   the only default exclusion. There are 1,506 map-100 render records before
   that exact eligibility filter.
-- Encounters: 9 Boss and 40 Assault records.
+- Encounters: 9 Boss and 40 Assault records. Compact Boss/Assault height
+  controls use authored spawn Z, the existing `playerZ - 150` correction and
+  inclusive +/-500 alignment band; their reference sizes are 35/30, with
+  Area Quest at 25 and consistent outline weight. These are icon sizes, not
+  height thresholds. No new Boss/Assault Scene category is added.
 - Mini-games: 33 Fly, 40 Mole, and 10 Wave records. All 83 map-100 rows carry
   exact trusted `NPC_Start` heights for the shared compact mini-game triangle;
   it is centered below the selected icon, uses the actual kind palette, points
@@ -877,6 +1116,22 @@ its runtime acceptance is tracked separately in the release plan.
   rows. Authored marker Z selects the uniquely nearest existing source band for
   the multi-band row but never supplies height; an exact-distance tie or missing
   profile remains neutral. Area Quest comparison also uses `playerZ - 150`.
+- Area Quest Scene anchors are a separate full-XYZ catalog: 143 verified entity
+  positions and four unconfirmed rows (1101301, 1103108, 1104104, 1104203).
+  Those four are omitted only from Scene; the 147 original map records and
+  144 height profiles above remain unchanged.
+- Scene capacity: 50, with configurable 0-1000 m range and 0-50 shared limit.
+  Only enabled Treasure/Area/Mini-game Scene categories consume the candidate
+  budget. Defaults are 600 m / 24, Aim Focus labels and Scene switches on.
+  Candidate refresh is 250 ms, selected projection 16 ms, changed distance text
+  at most 100 ms. The shared cap does not promise that offscreen or clustered
+  candidates will be replaced to fill every visible slot. Distance selection
+  uses actually shown, raised icons: Aim Focus requires a same-identity 120 ms
+  dwell inside the X16% / Y34% short-side ellipse, ranked by normalized ellipse
+  distance; Auto Focus uses Euclidean distance and a 15% switch buffer.
+  Projection-only offsets are Treasure +100, Area +180 and Mini-game +150 cm.
+  Display distances subtract 1 m for Treasure/Area or 2 m for Mole only, clamp
+  <=0 to zero, then round; Fly/Wave and authoritative distances stay unchanged.
 - Expanded-map fixed capacity: 4,096 markers. The accepted maximum is 2,500
   Treasures plus 279 fixed non-Treasure rows, or 2,779 total, leaving 1,317 spare
   slots. Observed 1,632/1,501 snapshots were below the old 1,785 limit, so
@@ -1064,7 +1319,7 @@ applicable before disconnected reuse and again after a graph-owned clean build.
 `dist/work/build/native/native-build-receipt.json` binds the output DLL to the current
 compiled inputs and build tools.
 
-## Next runtime gate
+## Historical 2.2.1 runtime gate
 
 Require `START version=2.2.1`, runtime label
 `DRAGONSWORD_NATIVE_WORLD_RADAR_POSTRENDER_2_2_1`, and exact identity with the

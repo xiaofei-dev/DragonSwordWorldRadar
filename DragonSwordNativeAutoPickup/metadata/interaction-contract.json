@@ -2,6 +2,22 @@
   "schema_version": 63,
   "status": "V1_3_1_HIGH_RANGE_DROP_CAP_BUILT_RUNTIME_PENDING",
   "runtime_label": "DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_1",
+  "working_tree_candidate": {
+    "id": "frame-debug-20260908",
+    "released": false,
+    "dispatch_attempt_policy": "shared_unconfirmed_v1",
+    "outcome_policy": "dispatch_preserves_attempt_count_first_reentry_750ms_second_unconfirmed_dispatch_or_timeout_backoff_1500ms",
+    "confirmation_order": "guarded_exact_target_confirmation_before_dispatch_consumption_preserves_elapsed_dispatch_scan_due",
+    "range_pak_changed": false,
+    "active_cadence": "engine_tick_v1",
+    "active_scan_ms": 0,
+    "post_pickup_ms": 0,
+    "idle_scan_ms": 33,
+    "capacity_policy": "wait_before_input_preserve_128_records_expiry_recovery",
+    "debug_decision_policy": "deferred_scalar_v1",
+    "gameplay_validation": "PENDING_not_proof_of_stuck_manual_interaction_recovery",
+    "historical_candidate_note": "current_candidate_below_is_a_dated_package_snapshot_not_this_working_tree_build"
+  },
   "runtime_acceptance": false,
   "gameplay_validation": "EXACT_1_3_1_PACKAGES_OWNER_SMOKE_PENDING",
   "current_candidate": {

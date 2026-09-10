@@ -1,12 +1,12 @@
 # Installation
 
-This is the 2.3.0 installation guide. Use the checksums shipped with your
-archive for its exact identity. Workspace validation and prior receipts are
-indexed in `docs/RELEASE_STATUS.md`; old receipt hashes are not current hashes.
+This guide accompanies Native World Radar 3.0.0. Use the checksums included
+with your archive to verify its exact identity. The source repository's
+`docs/RELEASE_STATUS.md` records local package verification and historical receipts.
 
 ## Release identity
 
-Native World Radar 2.3.0 uses the ExperimentalNested UE4SS directory contract.
+Native World Radar uses the ExperimentalNested UE4SS directory contract.
 The game executable and existing UE4SS loader/proxy are validated structurally
 rather than through fixed compatibility hashes, so a compatible game or UE4SS
 update does not require rebuilding the Mod.
@@ -34,7 +34,7 @@ resynchronization; it is not an installer and does not rebuild static catalogs.
 1. Close DragonSword Awakening.
 2. Fully extract the installer archive.
 3. Verify the Setup executable against its `.sha256` sidecar.
-4. Run `DragonSwordNativeWorldRadarPostRender-Setup-2.3.0.exe`.
+4. Run `DragonSwordNativeWorldRadarPostRender-Setup-3.0.0.exe`.
 5. Select `DSClient-Win64-Shipping.exe` from `DS/Binaries/Win64`.
 6. Setup inspects the selected path and automatically presents `Install`,
    `Update`, or `Repair`. `Uninstall` remains disabled unless an active Radar
@@ -139,14 +139,18 @@ exact legacy one-line `event_log_enabled=true|false` form remains accepted for
 preserved older installations. The log is written under `runtime/logs` and is
 never included in a release package.
 
-Fresh visibility configuration uses readable `[radar]`, `[map]`, `[modes]`,
-`[height_arrows]`, and `[interface]` sections. Height-arrow defaults are
-Treasure ON, Area Quest ON, and Mole ON. A valid existing configuration keeps
-its choices. The interface offers 11 explicit languages and persistent AUTO
-(Game Language). AUTO refreshes on an actual Settings opening or Enable action,
+Fresh visibility configuration uses six readable sections: `[radar]`, `[map]`,
+`[scene]`, `[modes]`, `[height_arrows]`, and `[interface]`. Treasure, Area Quest,
+Mini-games, Boss and Assault height controls default On. Scene Treasure, Area Quest
+and Mini-games also default On; Scene range/count default to 600 m / 24,
+with Auto focus distance labels. A valid existing configuration keeps its
+choices; missing new settings take these defaults. The interface offers 11
+explicit languages and Use game language. Automatic detection refreshes when
+Settings opens or Enable is pressed,
 retains the last valid detected language on failure, and never replaces a
 saved manual choice. Strictly valid older formats remain upgrade-readable;
-the next real F6 change atomically writes the current complete format. Setup
+the next real F6 change atomically writes the current complete format. Scene
+sliders apply immediately, debounce disk saves for 300 ms, and flush on close. Setup
 rejects malformed, oversized, duplicate, unknown, mixed, or incomplete content
 before mutation.
 
@@ -177,12 +181,27 @@ edits only selected values, and supplies defaults for missing files unless you
 choose other keys; invalid config stops Setup before mutation. F6 saves
 never change this file. It must be UTF-8, at most 4 KiB.
 
-F6 may open while Radar is Off, On, or Faulted. Bug Report and Close are
-separate top-bar controls. Read-only status text uses a thin state-colored strip;
-Enable, Disable, or Retry is a separate action that keeps the page open. Enable
-still requires a loaded playable world, and Bug Report opens the fixed Nexus
-Posts page. These runtime controls do not run Setup or
-change installed files beyond the normal bounded visibility-config save.
+F6 may open while Radar is Off, On, or Faulted. The status action is Enable,
+Disable, or Retry; Enable requires a loaded playable world. Guide beside Close
+explains treasure colors, Radar/Map icons, height arrows and distance modes in
+all eleven languages. Guide and Settings keep separate scroll positions while
+the menu remains open, with the header and footer always available.
+
+The All row changes the supported Radar or Map categories together. Map changes
+refresh an already-open world map. Mini-games includes flying, marmot and wave
+activities; green chests mark mini-game rewards. New settings and Reset to
+defaults use Auto focus, while updates preserve your saved distance mode.
+
+Reset to defaults, Vote for this mod and Feedback are in the bottom row. Each
+asks for confirmation. Reset restores display settings while preserving module
+power and startup hotkeys. Vote opens this Mod's Nexus page for Mod of the Month
+voting; Feedback opens Posts. Complete the vote or post on Nexus.
+
+Esc cancels an active confirmation. Otherwise it closes the whole settings
+page, including a language popup or focused slider, and keeps the latest
+settings. That same Esc press, its repeats and release are consumed; a new
+press after release returns to normal game handling. These runtime controls
+do not run Setup or change installed files beyond the normal visibility save.
 
 ## Transaction, backup, and rollback
 
@@ -233,7 +252,7 @@ been accepted in game.
 
 ## Manual installation without UE4SS
 
-Use `DragonSwordNativeWorldRadarPostRender-v2.3.0-Manual-No-UE4SS.zip` only
+Use `DragonSwordNativeWorldRadarPostRender-v3.0.0-Manual-No-UE4SS.zip` only
 when a structurally compatible ExperimentalNested UE4SS runtime is already
 installed. Fully extract the archive and close the game. Copy only
 `ue4ss/Mods/DragonSwordNativeWorldRadarPostRender` into the existing
@@ -255,7 +274,7 @@ never supports StableRoot.
 
 ## Manual installation with UE4SS
 
-`DragonSwordNativeWorldRadarPostRender-v2.3.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip` contains
+`DragonSwordNativeWorldRadarPostRender-v3.0.0-Manual-With-UE4SS-v3.0.1-Beta0-g1c1a1497.zip` contains
 the same Mod payload plus the pinned integrity-verified ExperimentalNested
 runtime and a clean enabled `mods.txt`. It is valid only when the target has no
 existing UE4SS installation. Fully extract it, close the game, and copy
@@ -291,17 +310,21 @@ game saves as part of Radar removal.
 
 ## Acceptance boundary
 
-Current 2.3.0 build/test and runtime status is in `RELEASE_PLAN_2_3_0.md`.
-The exact-byte receipts below are historical 2.2.0/2.2.1 evidence only, not
-2.3.0 validation.
+Current build, package and owner-test status is recorded in the source repository's
+`docs/RELEASE_PLAN_3_0_0.md` and the matching release manifest. Each new package
+requires its own Setup/manual matrix and archive-equivalence checks; earlier
+package receipts apply only to their original bytes.
 
 Successful compilation, package hashing, isolated installation, or rollback
 testing proves only those stages. Fresh in-game startup, F7 activation, world
-transition, map rendering, physical-controller behavior, all three height
-controls, the responsive F6 status/actions/Bug Report page, all 11 language
-glyph sets, and owner-observed
-performance remain separate runtime acceptance requirements for the exact
-rebuilt installer. Refreshed Core `2/2`, all static gates, release hygiene, and
+transition, scene and map rendering, physical-controller behavior, all five
+height controls, Scene sliders/distance modes, all 11 language glyph sets, and
+owner-observed performance remain separate runtime acceptance requirements.
+
+### Historical 2.2.0/2.2.1 evidence
+
+The following receipts describe their named old bytes, not 3.0.0 validation.
+Refreshed Core `2/2`, all static gates, release hygiene, and
 the clean native `/W4 /WX` build passed for DLL
 `6AEFDACC1A44EF6F387456CB31FE1A6828259EF7ACDEE1D1FE13BAE10BDFA4D5`,
 bound to compiled-source SHA-256

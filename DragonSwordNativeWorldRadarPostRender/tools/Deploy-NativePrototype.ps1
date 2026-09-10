@@ -388,7 +388,8 @@ $catalogRules = @(
     [pscustomobject]@{ Name = 'treasure-actors.tsv'; Header = "SaveId`tClassName`tX`tY`tZ"; Minimum = 1600; Maximum = 2500 },
     [pscustomobject]@{ Name = 'boss-actors.tsv'; Header = "Id`tClassName`tX`tY`tZ"; Minimum = 9; Maximum = 9 },
     [pscustomobject]@{ Name = 'assault-actors.tsv'; Header = "Id`tClassName`tX`tY`tZ"; Minimum = 40; Maximum = 40 },
-    [pscustomobject]@{ Name = 'area-quests.tsv'; Header = "Id`tX`tY`tZ`tHeight1MinZ`tHeight1MaxZ`tHeight2MinZ`tHeight2MaxZ`tHeightBandCount"; Minimum = 147; Maximum = 147 }
+    [pscustomobject]@{ Name = 'area-quests.tsv'; Header = "Id`tX`tY`tZ`tHeight1MinZ`tHeight1MaxZ`tHeight2MinZ`tHeight2MaxZ`tHeightBandCount"; Minimum = 147; Maximum = 147 },
+    [pscustomobject]@{ Name = 'area-quest-scene-anchors.tsv'; Header = "Id`tX`tY`tZ`tSourceAvailable"; Minimum = 147; Maximum = 147 }
 )
 foreach ($rule in $catalogRules) {
     $catalogPath = Join-Path $sourceData $rule.Name
@@ -829,6 +830,11 @@ $installedAreaQuestCatalogHash = (Get-FileHash -LiteralPath $installedAreaQuestC
 if ($sourceAreaQuestCatalogHash -ne $installedAreaQuestCatalogHash) {
     throw 'Installed area quest catalog hash does not match the source.'
 }
+$sourceSceneAnchorsHash = (Get-FileHash -LiteralPath (Join-Path $sourceData 'area-quest-scene-anchors.tsv') -Algorithm SHA256).Hash
+$installedSceneAnchorsHash = (Get-FileHash -LiteralPath (Join-Path $target 'data\generated\area-quest-scene-anchors.tsv') -Algorithm SHA256).Hash
+if ($sourceSceneAnchorsHash -ne $installedSceneAnchorsHash) {
+    throw 'Installed scene anchor catalog hash does not match the source.'
+}
 
 [pscustomobject]@{
     Version = $expectedVersion
@@ -836,6 +842,7 @@ if ($sourceAreaQuestCatalogHash -ne $installedAreaQuestCatalogHash) {
     InstalledSqlCipherSha256 = $installedSqlCipherHash
     InstalledRenderCatalogSha256 = $installedRenderCatalogHash
     InstalledAreaQuestCatalogSha256 = $installedAreaQuestCatalogHash
+    InstalledSceneAnchorsSha256 = $installedSceneAnchorsHash
     InstalledTreasureOverridesSha256 = $installedOverrideHash
     PredecessorEntryPresent = $false
     NativeEnabled = 1

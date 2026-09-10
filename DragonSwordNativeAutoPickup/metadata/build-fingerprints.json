@@ -1,5 +1,22 @@
 {
   "schema_version": 29,
+  "working_tree_candidate": {
+    "id": "frame-debug-20260908",
+    "runtime_policy_marker": "active_cadence=engine_tick_v1 capacity_policy=wait_before_input debug_decision_policy=deferred_scalar_v1",
+    "native_bytes": 950272,
+    "native_sha256": "68F7FF81CCA6B94B195E30D3AB85E6C00D0AD64369ED3FEC5778AAAE629DE5BA",
+    "source_core_native_artifact_gates": "PASSED",
+    "installer_sha256": "2053A07E31B3C361A5FE9F6D95634F2ADD7A8EE5451CA6E4B0D66BFB56D4042C",
+    "installer_tests": "PASSED_95_KEY_ASSERTIONS_AND_11_CASES",
+    "released": false,
+    "deployment": true,
+    "deployed_at_utc": "2026-09-08T09:22:58.6203471Z",
+    "installed_range": "X20_approved_existing_payload",
+    "installed_debug_logging": true,
+    "fresh_runtime_ready": "PASSED_2026_09_08T09_23_30Z_exact_policy_markers",
+    "gameplay_validation": "PENDING",
+    "historical_candidate_note": "candidate_below_is_a_dated_package_snapshot_not_this_working_tree_build"
+  },
   "candidate": {
     "version": "1.3.1",
     "runtime_label": "DRAGONSWORD_NATIVE_AUTO_PICKUP_1_3_1",

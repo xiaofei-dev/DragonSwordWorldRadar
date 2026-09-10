@@ -269,10 +269,11 @@ bool write_queued_record(
         const auto& sample = record.slow;
         const auto& elapsed = sample.elapsed_us;
         const auto detail = std::format(
-            "activation={} epoch={} total_us={} threshold_us={} world_map_layering_us={} area_quest_us={} activity_us={} position_save_us={} compact_umg_us={} encounter_us={} bird_egg_us={} observed_us={} area_scan_active={} area_scan_index={}/{} compact_called={} discovery_called={} world_map_layering_pending={} bird_egg_active={} slow_total={} logger_dropped={} logger_truncated={}",
+            "activation={} epoch={} total_us={} threshold_us={} world_map_layering_us={} area_quest_us={} activity_us={} position_save_us={} compact_umg_us={} encounter_us={} bird_egg_us={} observed_us={} scene_umg_us={} area_scan_active={} area_scan_index={}/{} compact_called={} discovery_called={} world_map_layering_pending={} bird_egg_active={} slow_total={} logger_dropped={} logger_truncated={}",
             sample.activation, sample.epoch, elapsed[0],
             record.slow_threshold_us, elapsed[1], elapsed[2], elapsed[3],
             elapsed[4], elapsed[5], elapsed[6], elapsed[7], elapsed[8],
+            elapsed[9],
             sample.area_quest_scan_active, sample.area_quest_scan_index,
             sample.area_quest_catalog_size, sample.compact_update_called,
             sample.discovery_called, sample.world_map_layering_pending,
@@ -291,12 +292,12 @@ bool write_queued_record(
                            metric.maximum_us);
     };
     const auto detail = std::format(
-        "activation={} epoch={} interval_ms={} metric_format=calls_total_us_max_us ticks={} total={} world_map_layering={} area_quest={} activity={} position_save={} compact_umg={} encounter={} bird_egg={} observed={} slow_ticks={} slow_threshold_us={} logger_dropped={} logger_truncated={}",
+        "activation={} epoch={} interval_ms={} metric_format=calls_total_us_max_us ticks={} total={} world_map_layering={} area_quest={} activity={} position_save={} compact_umg={} encounter={} bird_egg={} observed={} scene_umg={} slow_ticks={} slow_threshold_us={} logger_dropped={} logger_truncated={}",
         report.activation, report.epoch, report.interval_ms,
         report.metrics[0].calls, format_metric(0), format_metric(1),
         format_metric(2), format_metric(3), format_metric(4),
         format_metric(5), format_metric(6), format_metric(7),
-        format_metric(8), report.slow_ticks, report.slow_threshold_us,
+        format_metric(8), format_metric(9), report.slow_ticks, report.slow_threshold_us,
         state.dropped_records.load(std::memory_order_relaxed),
         state.truncated_records.load(std::memory_order_relaxed));
     return append_line_locked(
